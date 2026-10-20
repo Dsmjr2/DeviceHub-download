@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/Dsmjr2/DeviceHub-download/releases/download/v1.0/DeviceHub-Setup.exe"><b>⬇ Download DeviceHub-Setup.exe</b></a>
-  &nbsp;·&nbsp; 34 MB &nbsp;·&nbsp; Windows 10 or 11
+  &nbsp;·&nbsp; 34 MB &nbsp;·&nbsp; Windows 11 only
 </p>
 
 ## Install in three steps
@@ -17,6 +17,9 @@
 
 Nothing else needs installing: Node.js comes inside. For headset and monitor EQ, DeviceHub's Headset page has a
 button that sets up Equalizer APO (free, from its official site).
+
+To remove it: Windows **Settings > Apps > Installed apps > DeviceHub > Uninstall** (your backups are kept in
+Documents).
 
 ## What it controls
 
