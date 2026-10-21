@@ -180,7 +180,7 @@ function macroPanel(s) {
   // the slots in use, plus the first empty one to add a macro (or all of them)
   const firstEmpty = m.list.slice(0, m.mi.count).findIndex((t) => !t);
   const show = m.list.slice(0, m.mi.count).map((text, i) => [text, i]).filter(([text, i]) => ui.allMacros || text || i === firstEmpty);
-  return card([h('h2', {}, 'Macros'), h('span', { class: 'help', title: help }, '?'), h('span', { class: 'spacer' })],
+  return card([h('h2', {}, 'Macros'), h('span', { class: 'spacer' })], h('p', { class: 'faint', style: { margin: '0 0 10px' } }, help),
     ...show.map(([text, i]) => {
       const locked = m.editable && !m.editable[i] && !!text;
       const input = h('input', { class: 'text mono', value: text, placeholder: text ? '' : 'New macro: type its text', 'aria-label': `macro ${i}`, disabled: locked, title: locked ? 'Made in another app with steps DeviceHub cannot show exactly; edit it there' : null });

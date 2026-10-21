@@ -17,6 +17,8 @@ export function h(tag, attrs = {}, ...kids) {
     }
     else if (k === 'dataset') Object.assign(el.dataset, v);
     else if (k === 'html') el.innerHTML = v;
+    // no hover pop-ups anywhere (Shawn, 21 Oct 2026): a title only names the control for screen readers
+    else if (k === 'title') { if (!attrs['aria-label']) el.setAttribute('aria-label', v); }
     else if (v === true) el.setAttribute(k, '');
     else el.setAttribute(k, v);
   }

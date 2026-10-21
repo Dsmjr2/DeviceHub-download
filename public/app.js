@@ -98,7 +98,7 @@ function paintShield() {
   if (!el) return;
   const fresh = lastBackupAt && Date.now() - lastBackupAt < FRESH_MS;
   el.classList.toggle('fresh', !!fresh);
-  el.title = lastBackupAt ? `Last backup ${new Date(lastBackupAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'No backups yet';
+  el.ariaLabel = lastBackupAt ? `Last backup ${new Date(lastBackupAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'No backups yet';
 }
 setInterval(readLastBackup, 30000);
 setTimeout(readLastBackup, 500);
