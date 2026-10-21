@@ -55,10 +55,17 @@ Demo with pretend devices: Settings > Demo mode.
 - Never written directly: the motherboard's SMBus or a graphics card's I2C bus (motherboard and RAM lights). Those go
   through OpenRGB, which you install yourself if you want them.
 
+## Updates and your own devices
+
+Settings shows when a new version is ready; Update installs it and keeps everything set up on your PC. Devices Claude
+adds for you live in the `my-devices` folder, each with its own page, and no update ever changes them. If DeviceHub's
+own files were changed on your PC too, Update brings those changes and the new version together; where both changed
+the same lines it stops and says which, and Claude Code ("update DeviceHub") brings them together.
+
 ## Uninstall
 
-In DeviceHub: Settings > Uninstall. Or Windows Settings > Apps > Installed apps > DeviceHub > Uninstall, or tell Claude
-Code "uninstall DeviceHub". It asks once, quits DeviceHub, removes "start with Windows"
+In DeviceHub: Settings > Uninstall (or Windows Settings > Apps > Installed apps > DeviceHub > Uninstall, or tell Claude
+Code "uninstall DeviceHub"). It asks once, quits DeviceHub, removes "start with Windows"
 and the shortcuts, keeps your backups in Documents\DeviceHub backups and deletes the DeviceHub folder. Your devices
 keep their settings.
 
