@@ -59,6 +59,7 @@ export function showSetting(s, go) {
 
 // the row of section names under a page's heading (four or more sections)
 export function jumpLinks(page) {
+  if (page.hasAttribute('data-no-jump')) return;
   const heads = [...page.querySelectorAll('.panel-head h2')].filter((x) => x.textContent.trim());
   if (heads.length < 4) return;
   // the section is looked up when pressed: pages redraw themselves, so the heading seen here may be gone by then

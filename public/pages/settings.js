@@ -254,11 +254,13 @@ export default {
     if (syncSt === null) loadSyncPower();
     // what DeviceHub always does to keep the devices safe (short, plain; 20 Oct 2026)
     const SAFETY = ['Never flashes firmware', 'Never sends reset or bootloader commands', 'Backs up before every change', 'Reads back every change to confirm it', 'Stays offline, except to check for updates'];
-    return h('div', {},
+    // no jump links: the page fits on about one screen (Shawn, 21 Oct 2026)
+    return h('div', { 'data-no-jump': '' },
       topbar('App', 'Settings', null),
-      // the two cards keep their own heights (no stretching to match each other)
+      // the two columns keep their own heights; More sits under Appearance, in the space beside the taller Startup card
+      // (Shawn, 21 Oct 2026: it was on its own row below, leaving an empty space there)
       h('div', { class: 'grid two top' },
-        appearanceCard(),
+        h('div', { class: 'stack' }, appearanceCard(), moreCards(results, SAFETY)),
         card([h('h2', {}, 'Startup')],
           selfRow(),
           row('Share DeviceHub', 'Download link to send to people.', button('Copy link', copyDownloadLink, { kind: 'small', ic: 'external' })),
@@ -270,16 +272,17 @@ export default {
             } })),
           isDemo() ? null : row('Files', 'Where DeviceHub keeps its data.', button('Open folder', () => fetch('/api/reveal', { method: 'POST' }), { kind: 'ghost small', ic: 'external' })),
           isDemo() ? null : row('Demo mode', 'Try it with pretend devices.', button('Open demo', () => window.open('/?demo#/overview', '_blank'), { kind: 'ghost small', ic: 'play' })),
-          isDemo() ? null : row('Uninstall', 'Removes DeviceHub. Backups are kept.', button('Uninstall', uninstall, { kind: 'ghost small danger' })))),
-      // used once in a while: folded under More (remembered), on its own row below
-      more('settings', 'Health, updates, self-test, safety',
-        h('div', { class: 'grid two top' },
-          h('div', { class: 'stack' }, healthCard(), updatesCard()),
-          h('div', { class: 'stack' },
+          isDemo() ? null : row('Uninstall', 'Removes DeviceHub. Backups are kept.', button('Uninstall', uninstall, { kind: 'ghost small danger' })))));
+  },
+};
+
+// used once in a while: folded under More (remembered), one column
+function moreCards(results, SAFETY) {
+  return more('settings', 'Health, updates, self-test, safety',
+        h('div', { class: 'stack' }, healthCard(), updatesCard(),
               card([h('h2', {}, 'Self-test'), h('span', { class: 'spacer' }), button('Run', selfTest, { kind: 'primary small', ic: 'shield' })],
                 results ? h('div', { class: 'diff' }, ...results.map(([dev, st, msg]) => h('div', { style: { gridTemplateColumns: '150px 60px 1fr' } }, h('span', { class: 'dev' }, dev), pill(st, st === 'pass' ? 'good' : st === 'fail' ? 'bad' : st === 'warn' ? 'warn' : ''), h('span', {}, msg))))
                   : h('p', { class: 'faint', style: { margin: 0 } }, 'Reads each device twice to check it.')),
             card([icon('shield'), h('h2', {}, 'Safety')],
-              h('div', { class: 'files' }, ...SAFETY.map((t) => h('div', { class: 'file', style: { gridTemplateColumns: '24px 1fr', '--cc': 'var(--good)' } }, icon('check'), h('span', {}, t)))))))));
-  },
-};
+              h('div', { class: 'files' }, ...SAFETY.map((t) => h('div', { class: 'file', style: { gridTemplateColumns: '24px 1fr', '--cc': 'var(--good)' } }, icon('check'), h('span', {}, t)))))));
+}
