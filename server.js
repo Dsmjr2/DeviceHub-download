@@ -339,7 +339,7 @@ async function api(req, res, url) {
       // A POST changes only the keys it names, and only known keys with the right type (window and tray both write here).
       const cur = readJsonFile(SETTINGS, {});
       const b = await readBody(req);
-      for (const [k, type] of Object.entries({ autoSwitch: 'boolean', defaultProfile: 'string', artStyle: 'string', ankerGuard: 'boolean', batterySaver: 'boolean', settingsSync: 'boolean', lightWindow: 'boolean' })) if (typeof b[k] === type) cur[k] = type === 'string' ? b[k].slice(0, 100) : b[k];
+      for (const [k, type] of Object.entries({ autoSwitch: 'boolean', defaultProfile: 'string', artStyle: 'string', ankerGuard: 'boolean', batterySaver: 'boolean', settingsSync: 'boolean', lightWindow: 'boolean', batteryCare: 'boolean' })) if (typeof b[k] === type) cur[k] = type === 'string' ? b[k].slice(0, 100) : b[k];
       if (cur.artStyle && !['photo', 'frosted', 'studio', 'glow', 'matte', 'night'].includes(cur.artStyle)) delete cur.artStyle;  // Settings > Appearance
       writeAtomic(SETTINGS, JSON.stringify(cur, null, 2));
       agent?.reloadSettings();

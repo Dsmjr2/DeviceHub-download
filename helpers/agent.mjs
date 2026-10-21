@@ -12,6 +12,7 @@ import headset, { setCorsairCall } from '../public/devices/headset-adapter.js';
 import { auto, startAutoSwitch, loadSettings, onAuto } from '../public/core/autoswitch.js';
 import * as weekly from './weekly-setup.mjs';
 import * as daily from './daily-check.mjs';
+import * as batteryCare from './battery-care.mjs';
 import { loadProfiles, apply } from '../public/core/profiles.js';
 import { provider, closeAll, setGoneHandler, setMovedHandler, devicesChanged, useKeyboardSpec, addSpec } from './hid-host.mjs';
 import * as myDevices from './my-devices.mjs';
@@ -132,6 +133,7 @@ export async function start({ port, corsairHelper }) {
   for (const id of Object.keys(core.devices)) core.connect(id, false);
   core.startPolling();
   daily.start(pathSeen.dirname(SEEN_FILE), core);  // the quiet daily self-check (helpers/daily-check.mjs)
+  batteryCare.start(pathSeen.dirname(SEEN_FILE), core);  // lights down on a low battery, back once it charges
   startAutoSwitch();
   // the weekly setup file (helpers/weekly-setup.mjs): checked 90 s after start (the devices have connected) and daily
   setTimeout(() => weekly.saveIfDue(core, core.log).catch((e) => console.error('[setup] weekly', e.message)), 90000);

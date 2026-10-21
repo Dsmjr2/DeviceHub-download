@@ -126,7 +126,11 @@ const LIGHTS_FILE = path.join(__dirname, '..', 'headset-lights.json');
 // a new PC starts with the logos on, as the headset comes (Shawn's own choice is in his headset-lights.json)
 const DEFAULTS = { logoColor: '#ffffff', logoBrightness: 100, micLight: true };
 function loadSettings() { try { return { ...DEFAULTS, ...JSON.parse(require('fs').readFileSync(LIGHTS_FILE, 'utf8')) }; } catch { return { ...DEFAULTS }; } }
-const lights = { muted: null, mic: [0x80, 0x00, 0x00], timer: null, ticks: 0, lastError: null, settings: loadSettings() };
+const lights = { muted: null, mic: [0x80, 0x00, 0x00], timer: null, ticks: 0, lastError: null, settings: loadSettings(),
+  // (21 Oct 2026, battery) an unchanged light message is sent only every lightEvery rounds of 0.5 s (a changed one at
+  // once): every 4 s. Measured on Shawn's HS80: it kept DeviceHub's lights with one every 2, 4 and 8 s (0 drops in 90 s
+  // each); 4 s leaves a margin. modeDrops counts the times it was found back in its own light mode.
+  lightEvery: 8, lastSent: null, sinceSent: 0, modeDrops: 0 };
 function hexRgb(h) { return [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)); }
 function lightMessage() {
   // a short preview (lights-preview): one position in one color, everything else off
@@ -169,7 +173,7 @@ async function lightRound() {
   if (lights.ticks % 4 === 1) {
     const m = await get(0x03);
     if (lastTimedOut) { lights.quietUntil = Date.now() + 5000; return; }
-    if (m && m.status === 0 && m.value !== 2) await one('MODE 2');
+    if (m && m.status === 0 && m.value !== 2) { lights.modeDrops++; lights.lastSent = null; await one('MODE 2'); }
   }
   // The mic position: the headset's own change notice comes at once (onEvent), but did not always arrive (19 Oct 2026,
   // the light stayed red 8.6 s after the mic went live), so it is also asked every second (every tick until 21 Oct
@@ -179,14 +183,18 @@ async function lightRound() {
     if (lastTimedOut) { lights.quietUntil = Date.now() + 5000; return; }
     if (m && m.status === 0) lights.muted = m.value === 1;
   }
-  let r = await one(`LIGHT ${lightMessage()}`);
+  const msg = lightMessage();
+  if (msg === lights.lastSent && ++lights.sinceSent < lights.lightEvery) return;
+  lights.sinceSent = 0;
+  let r = await one(`LIGHT ${msg}`);
+  lights.lastSent = r === '00' ? msg : null;
   // refused (03): the lighting channel is not open, e.g. after the headset restarted or over the cable; open it
   if (r !== '00' && r !== 'GONE' && r !== 'NONE' && r !== 'TIMEOUT') { await one('OPENLIGHT'); r = await one(`LIGHT ${lightMessage()}`); }
   lights.lastError = r === '00' ? null : r;
 }
 function startLights() {
   if (lights.timer) return;
-  lights.ticks = 0;
+  lights.ticks = 0; lights.lastSent = null;   // a fresh start sends the lights at once
   lights.timer = setInterval(() => { lightTick().catch(() => {}); }, 500);
 }
 function stopLights() { clearInterval(lights.timer); lights.timer = null; }
@@ -213,4 +221,6 @@ function setLogo(r, g, b) {
 
 function close() { stopLights(); stopStandby(); stopHost(); }
 
-module.exports = { lookForCable, lightSettings: () => ({ ...lights.settings }), setLightSettings, preview, setLog: (fn) => { log = fn; }, open, reopen, connection: () => conn, read, close, icueRunning, setLogo, set, lastFirmware, lights: () => ({ ...lights, timer: !!lights.timer }) };
+// for the light-interval test (tests that the headset keeps DeviceHub's lights with fewer messages)
+function setLightEvery(n) { if (Number.isInteger(n) && n >= 1 && n <= 40) lights.lightEvery = n; return { lightEvery: lights.lightEvery, modeDrops: lights.modeDrops }; }
+module.exports = { lookForCable, setLightEvery, lightSettings: () => ({ ...lights.settings }), setLightSettings, preview, setLog: (fn) => { log = fn; }, open, reopen, connection: () => conn, read, close, icueRunning, setLogo, set, lastFirmware, lights: () => ({ ...lights, timer: !!lights.timer }) };

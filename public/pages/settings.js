@@ -83,6 +83,8 @@ function syncRows() {
     row('Settings sync', syncBusy ? loadingBar('sync-bar', 'Syncing with your other PCs', null) : syncText, h('div', { class: 'srow-ctl' },
       opts?.settingsSync === false || sy.notSetUp ? null : button(syncBusy ? 'Syncing…' : 'Sync now', async () => { syncBusy = true; rerender(); syncSt = await env.api('/api/settings-sync', {}).catch((e) => ({ error: e.message })); syncBusy = false; toast(syncSt.error ? 'Not synced' : 'Synced', syncSt.error ? 'bad' : 'good', { detail: syncSt.error || (syncSt.lastLoaded ? `Loaded ${syncSt.lastLoaded.parts.join(', ')}` : null) }); loadSyncPower(); }, { kind: 'ghost small', ic: 'refresh', disabled: syncBusy }),
       toggle({ value: opts?.settingsSync !== false, label: 'Settings sync', onCommit: (on) => setOpt('settingsSync', on) }))),
+    // battery care (helpers/battery-care.mjs): the wireless devices' lights down on a low battery, back once they charge
+    row('Save device battery', 'At 20% or less: lights off, the mouse at 1000 Hz. Back once it charges.', toggle({ value: opts?.batteryCare !== false, label: 'Save device battery', onCommit: (on) => setOpt('batteryCare', on) })),
     row('Battery saver', powerText, toggle({ value: opts?.batterySaver !== false, label: 'Battery saver', onCommit: (on) => setOpt('batterySaver', on) })),
     // light window: DeviceHub inside the Chrome already running (much less memory); on by default on a PC with a battery
     row('Low-memory window', 'Opens in your Chrome, about 350 MB less.', toggle({ value: opts?.lightWindow ?? !!pw.hasBattery, label: 'Low-memory window', onCommit: (on) => setOpt('lightWindow', on) })),

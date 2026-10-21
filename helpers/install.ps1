@@ -86,7 +86,7 @@ if ($same) { Write-Host '   already in place' } else {
   }
   # this PC's own data in an existing install is never overwritten
   $keep = 'backups', 'profiles.json', 'settings.json', 'activity.jsonl', 'battery-history.jsonl', 'mouse-battery-study.jsonl',
-    'mouse-level.json', 'headset-lights.json', 'seen-devices.json', 'waiting-changes.json', 'last-device-values.json', 'waiting-monitors.json', 'last-monitor-values.json', 'daily-check.json', 'window-profile', '.git'
+    'mouse-level.json', 'headset-lights.json', 'seen-devices.json', 'waiting-changes.json', 'last-device-values.json', 'waiting-monitors.json', 'last-monitor-values.json', 'daily-check.json', 'battery-care.json', 'window-profile', '.git'
   if (-not (Test-Path (Join-Path $Source 'node_modules\cue-sdk'))) { $keep += 'node_modules' }
   # Folders are merged with robocopy (21 Oct 2026): Copy-Item onto a folder that already exists puts the new one INSIDE
   # it (public\public), so a reinstall or an update left every folder's old files running. Files are always replaced

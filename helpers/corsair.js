@@ -49,6 +49,8 @@ async function handle(action, body) {
   // Straight to the receiver, for when iCUE is not running (helpers/hs80-direct.js).
   if (action === 'direct-open') return { found: await direct.open() };
   if (action === 'direct-read') return { values: await direct.read(), connection: direct.connection() };
+  // the headset light-interval test (helpers/hs80-direct.js setLightEvery): how often an unchanged light message is sent
+  if (action === 'light-every') return direct.setLightEvery(Number(body.n));
   if (action === 'direct-reopen') return { found: await direct.reopen(), connection: direct.connection() };
   if (action === 'direct-logo') {
     const ok = (v) => Number.isInteger(v) && v >= 0 && v <= 255;
