@@ -55,6 +55,11 @@ const set = (key, value, label, display) => write('mouse', key, value, { label, 
 const locked = (key) => d().adapter.trusted && !d().adapter.trusted(key);
 
 // Log scale so 400 and 26000 both read well.
+// Auto sleep stops (21 Oct 2026, Shawn: "its currently hard to select the auto sleep"): 10 s to 30 min in 10 s steps was 179
+// positions in one short bar; the slider now stops only on these times, finer where small changes matter. The mouse's
+// own value is one of the stops even when it is not in this list, so the slider always shows what the mouse has.
+const SLEEP_STOPS = [10, 20, 30, 40, 50, 60, 120, 180, 240, 300, 360, 420, 480, 540, 600, 720, 900, 1200, 1500, 1800];
+const sleepStops = (cur) => (cur == null || SLEEP_STOPS.includes(cur) ? SLEEP_STOPS : [...SLEEP_STOPS, cur].sort((a, b) => a - b));
 const sleepText = (sec) => (sec == null ? '—' : sec < 60 ? `${sec} s` : sec % 60 ? `${Math.floor(sec / 60)} min ${sec % 60} s` : `${sec / 60} min`);
 const pos = (dpi) => (Math.log(dpi / 50) / Math.log(DPI_MAX / 50)) * 100;
 
@@ -195,7 +200,7 @@ export default {
             row('Ripple control', 'Smooths jitter at high DPI.', toggle({ value: v.ripple, label: 'Ripple control', disabled: locked('ripple'), onCommit: (on) => set('ripple', on, 'Ripple control', on ? 'on' : 'off') }))),
           // Power & light
           card([h('h2', {}, 'Power & light')],
-            row('Auto sleep', null, slider({ value: v.sleep, min: 10, max: 1800, step: 10, format: sleepText, disabled: locked('sleep'), grab: () => prepare('mouse'), onCommit: (sec) => set('sleep', sec, 'Auto sleep', sleepText(sec)) })),
+            row('Auto sleep', null, (() => { const stops = sleepStops(v.sleep); return slider({ value: v.sleep == null ? null : stops.indexOf(v.sleep), min: 0, max: stops.length - 1, step: 1, format: (i) => sleepText(stops[i]), disabled: locked('sleep'), grab: () => prepare('mouse'), onCommit: (i) => set('sleep', stops[i], 'Auto sleep', sleepText(stops[i])) }); })()),
             row('DPI light', null, segmented({ value: v.dpiEffect, disabled: locked('dpiEffect'), options: [{ value: 'off', label: 'Off' }, { value: 'steady', label: 'Steady' }, { value: 'breathing', label: 'Breathing' }], onCommit: (e) => set('dpiEffect', e, 'DPI light', e) })),
             // brightness applies to steady and speed to breathing, as in the Pulsar app
             v.dpiEffect === 'steady' ? row('Light brightness', null, slider({ value: v.effectBrightness, min: 1, max: 10, disabled: locked('effectBrightness'), grab: () => prepare('mouse'), onCommit: (n) => set('effectBrightness', n, 'DPI light brightness', `${n} of 10`) })) : null,

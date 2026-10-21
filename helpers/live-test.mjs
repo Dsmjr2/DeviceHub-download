@@ -164,7 +164,9 @@ if ((await dev('mouse')).status === 'connected') {
     await switchTest(`mouse ${label}`, null, label, async () => (await mv())[key]);
   }
   await sliderTest('mouse debounce', null, 'Debounce', async () => (await mv()).debounce, 1, 0);
-  await sliderTest('mouse auto sleep', null, 'Auto sleep', async () => (await mv()).sleep, -10, 0);
+  // the Auto sleep slider moves between stops (public/pages/mouse.js SLEEP_STOPS), so it is read as the stop's place
+  const STOPS = [10, 20, 30, 40, 50, 60, 120, 180, 240, 300, 360, 420, 480, 540, 600, 720, 900, 1200, 1500, 1800];
+  await sliderTest('mouse auto sleep', null, 'Auto sleep', async () => { const s = (await mv()).sleep; const stops = STOPS.includes(s) ? STOPS : [...STOPS, s].sort((a, b) => a - b); return stops.indexOf(s); }, -1, 0);
   // a choice button in a segmented row, found by its text, inside the row whose buttons include `other`
   const seg = (other, txt) => ev(`(() => { const row = [...document.querySelectorAll('#main .seg, #main [role=radiogroup]')].find((r) => r.textContent.includes(${JSON.stringify(other)})); const b = row && [...row.querySelectorAll('button')].find((x) => x.textContent.trim() === ${JSON.stringify(txt)}); if (!b) return 'missing'; b.click(); return 'ok'; })()`);
   async function segTest(name, other, read, from, fromTxt, to, toTxt) {
