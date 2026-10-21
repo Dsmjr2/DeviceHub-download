@@ -163,18 +163,22 @@ async function lightRound() {
   lights.ticks++;
   // every 10 s: give way to iCUE if it was opened
   if (lights.ticks % 20 === 1 && (await icueRunning())) { stopLights(); stopStandby(); return; }
-  // every second: put the headset back in software mode if it dropped out (it starts in its own white-light mode
-  // whenever it switches on or reconnects, so this check decides how long that white light shows)
-  if (lights.ticks % 2 === 1) {
+  // every 2 s (every second until 21 Oct 2026; battery: each question is radio the headset answers): put the headset
+  // back in software mode if it dropped out (it starts in its own white-light mode whenever it switches on or
+  // reconnects, so this check decides how long that white light shows)
+  if (lights.ticks % 4 === 1) {
     const m = await get(0x03);
     if (lastTimedOut) { lights.quietUntil = Date.now() + 5000; return; }
     if (m && m.status === 0 && m.value !== 2) await one('MODE 2');
   }
-  // Ask for the mic position on every tick: the headset's own change notice did not always arrive
-  // (19 Oct 2026, the catcher saw the light stay red 8.6 s after the mic went live).
-  const m = await get(0xa6);
-  if (lastTimedOut) { lights.quietUntil = Date.now() + 5000; return; }
-  if (m && m.status === 0) lights.muted = m.value === 1;
+  // The mic position: the headset's own change notice comes at once (onEvent), but did not always arrive (19 Oct 2026,
+  // the light stayed red 8.6 s after the mic went live), so it is also asked every second (every tick until 21 Oct
+  // 2026: half the questions, for the headset's battery)
+  if (lights.ticks % 2 === 0) {
+    const m = await get(0xa6);
+    if (lastTimedOut) { lights.quietUntil = Date.now() + 5000; return; }
+    if (m && m.status === 0) lights.muted = m.value === 1;
+  }
   let r = await one(`LIGHT ${lightMessage()}`);
   // refused (03): the lighting channel is not open, e.g. after the headset restarted or over the cable; open it
   if (r !== '00' && r !== 'GONE' && r !== 'NONE' && r !== 'TIMEOUT') { await one('OPENLIGHT'); r = await one(`LIGHT ${lightMessage()}`); }

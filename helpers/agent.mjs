@@ -81,8 +81,8 @@ export async function start({ port, corsairHelper }) {
   // cable in or out: read it again now, and at ~2, 5 and 10 s, because the mouse takes a few seconds to start (or stop)
   // reporting that it charges (19 Oct 2026: the switch was instant but "Charging" waited for the 60 s battery read)
   setMovedHandler((id) => {
-    core.refresh(id, { quiet: true }).catch(() => {});
-    for (const ms of [2000, 5000, 10000]) setTimeout(() => core.refresh(id, { quiet: true }).catch(() => {}), ms);
+    core.refresh(id, { quiet: true, full: true }).catch(() => {});
+    for (const ms of [2000, 5000, 10000]) setTimeout(() => core.refresh(id, { quiet: true, full: true }).catch(() => {}), ms);
   });
   if (corsair) setCorsairCall(async (action, body) => corsair.handle(action, body || {}));
   mouse.levelFilter = require('./mouse-level').filter;  // the mouse's real battery level (helpers/mouse-level.js)
@@ -162,7 +162,7 @@ export async function start({ port, corsairHelper }) {
       await devicesChanged().catch(() => {});
       for (const d of Object.values(core.devices)) {
         if (['missing', 'idle', 'error'].includes(d.status)) await core.connect(d.id, false).catch(() => {});
-        else if (['connected', 'asleep'].includes(d.status)) await core.refresh(d.id, { quiet: true }).catch(() => {});
+        else if (['connected', 'asleep'].includes(d.status)) await core.refresh(d.id, { quiet: true, full: true }).catch(() => {});
       }
       const s = Object.values(core.devices).map((d) => `${d.id} ${d.status}`).join(', ');
       console.log(`[power] ${label} after waking (${Math.round((Date.now() - wokeAt) / 1000)} s): ${s}`);

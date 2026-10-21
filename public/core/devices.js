@@ -178,7 +178,8 @@ export async function connect(id, prompt = false) {
   });
 }
 const lastTry = {};
-const asleepLook = {};   // when an asleep device was last asked whether it is back
+const asleepLook = {};
+const fullReadAt = {}, FULL_READ_MS = 10 * 60 * 1000;   // a background look reads only what changes on the device (refreshUnlocked)   // when an asleep device was last asked whether it is back
 
 const isAsleep = (e) => /asleep|out of range|no reply/i.test(e.message);
 
@@ -187,14 +188,19 @@ export function refresh(id, opts) {
   return withDevice(id, () => refreshUnlocked(id, opts));
 }
 
-async function refreshUnlocked(id, { quiet, first } = {}) {
+async function refreshUnlocked(id, { quiet, first, full } = {}) {
   const d = devices[id];
   if (!['connected', 'asleep'].includes(d.status) && !(first && d.status === 'connecting')) return;
   // still asleep? one quick question instead of a whole read (21 Oct 2026: ~25 requests a look)
   if (d.status === 'asleep' && d.adapter.awake && !(await d.adapter.awake())) return;
   try {
-    const info = await d.adapter.info();
-    const values = await d.adapter.read();
+    // A background look at a wireless device (waking, the minute check) reads only what can change on the device
+    // itself (21 Oct 2026, battery: every request is radio traffic it answers): the mouse's DPI stage, its battery, and
+    // the rest as last read. A full read at least every 10 minutes, at connect, and on Re-read.
+    const quick = quiet && !first && !full && d.adapter.wakeRead && d.info && Object.keys(d.info).length && Date.now() - (fullReadAt[id] || 0) < FULL_READ_MS;
+    const info = quick ? d.info : await d.adapter.info();
+    const values = quick ? await d.adapter.wakeRead() : await d.adapter.read();
+    if (!quick) fullReadAt[id] = Date.now();
     const battery = d.adapter.battery ? await d.adapter.battery() : null;
     // Unchanged readings don't redraw the page (keeps sliders and inputs undisturbed).
     const same = d.status === 'connected' && !d.error && JSON.stringify([info, values, battery]) === JSON.stringify([d.info, d.values, d.battery]);

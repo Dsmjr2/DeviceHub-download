@@ -91,6 +91,7 @@ const watchdogState = () => ({ restartsLastHour: restarts.filter((t) => Date.now
 // requests by kind (the channel's first part: hid, hs80, audio, monitor ...), counted since start: Settings > Health and
 // the daily check can see a part that keeps asking more and more (21 Oct 2026: CPU crept up over a night)
 const calls = {};
+let traceAt = 0;
 const callCounts = () => ({ ...calls });
 
 // One request on one channel; resolves with the reply text, or 'TIMEOUT'.
@@ -100,6 +101,9 @@ function request(chan, cmd, ms = 8000) {
   const c = chan.split(':'), w = String(cmd).split(' ');
   const kind = `${c[0] === 'hid' || c[0] === 'hs80' ? `${c[0]}:${c[1]}` : c[0]} ${w[0]}${c[0] === 'hid' && w[0] === 'REQ' ? ` ${w[3]}` : ''}`;
   calls[kind] = (calls[kind] || 0) + 1;
+  // DEVICEHUB_TRACE=<kind>: where the first request of each burst of that kind comes from, in server.log (diagnosis)
+  if (process.env.DEVICEHUB_TRACE === kind && Date.now() - (traceAt || 0) > 1000) console.log(`[trace] ${kind} ${new Error().stack.split('\n').slice(2, 9).map((l) => l.trim().replace(/^at /, '').replace(/\(?file:\/\/\/[^)]*\/DeviceHub\//, '')).join(' < ')}`);
+  if (process.env.DEVICEHUB_TRACE === kind) traceAt = Date.now();
   start();
   const key = `${chan} ${++seq}`;
   return new Promise((resolve) => {

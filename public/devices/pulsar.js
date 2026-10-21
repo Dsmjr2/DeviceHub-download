@@ -164,6 +164,14 @@ export class PulsarMouse {
     return { mouse: ver(r), dongle: ver(d) };
   }
 
+  // The last full snapshot with only the DPI stage read again (21 Oct 2026, battery): the one setting that changes on
+  // the mouse itself (its DPI button). One read instead of about 20; the full snapshot when there is none yet.
+  async wakeSnapshot() {
+    if (!this.mirror) return this.snapshot();
+    await this.session(() => this.readFlash(ADDR.dpiStage, 2));
+    return [...this.mirror];
+  }
+
   // Raw snapshot of the settings area (0..199) and the buttons' key blocks (256..447), for backups.
   async snapshot() { const f = await this.session(() => this.readFlash(0, KEY_BLOCKS + KEY_BLOCK_SIZE * 6)); this.mirror = [...f]; this.mirrorAt = Date.now(); return f; }
 

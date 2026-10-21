@@ -76,6 +76,8 @@ const adapter = {
   },
 
   async read() { return this.decodeFlash(await mouse.snapshot()); },
+  // a background look (waking, the minute check): the DPI stage read again, the rest as last read (pulsar.js)
+  async wakeRead() { return this.decodeFlash(await mouse.wakeSnapshot()); },
   // while it sleeps: the quick question before a whole read (public/core/devices.js refreshUnlocked)
   async awake() { try { return await mouse.isAwake(); } catch { return false; } },
 
