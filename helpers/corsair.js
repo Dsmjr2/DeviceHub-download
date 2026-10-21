@@ -113,7 +113,7 @@ async function handle(action, body) {
   // ...or DeviceHub's own boost in Equalizer APO when it is installed and finds the headset mic (server.js sets it)
   if (action === 'mic-boost') return boostVia && (await boostVia.ready()) ? boostVia.read() : require('./mic-boost').read();
   if (action === 'mic-boost-set') return boostVia && (await boostVia.ready()) ? boostVia.set(body.db) : require('./mic-boost').set(body.db, require('path').join(__dirname, '..', 'backups'), () => connected);
-  if (action === 'last-firmware') return { firmware: direct.lastFirmware(), autoOffMin: direct.lastAutoOff() };
+  if (action === 'last-firmware') return { firmware: direct.lastFirmware() };
   // shared, cached 10 s; iCUE opened by DeviceHub itself to apply a mic boost does not count (the headset stays direct)
   if (action === 'icue-running') return { running: !require('./mic-boost').applying() && (await direct.icueRunning()) };
   need();
