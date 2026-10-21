@@ -133,6 +133,7 @@ function render(fresh) {
   // the device's color tints only its drawing (--page-tone); controls keep the one calm accent (19 Oct 2026)
   document.documentElement.style.setProperty('--page-tone', page.accent || 'var(--signal)');
   document.documentElement.toggleAttribute('data-device-page', !!page.device);
+  document.documentElement.dataset.page = page.id;  // which page is open (style.css: the Mouse page's arrow cursor)
   const el = page.render({ go, fresh: !!fresh, redraw: () => { if (current === page) render(false); } });
   el.classList.add('page');
   if (!changed && !fresh) el.classList.add('no-anim');

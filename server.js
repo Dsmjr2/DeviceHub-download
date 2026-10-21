@@ -507,6 +507,8 @@ async function api(req, res, url) {
     try { const r = await monitors.set(String(id), String(feature), Number(value), { live: live === true && feature !== 'colorPreset' }); if (!silent && !live) serverLog({ kind: r.waiting ? 'info' : 'good', text: `${r.name}: ${feature === 'volume' ? 'speaker volume' : feature} → ${r.value}${r.waiting ? ' (applied when the monitor is on)' : ''}` }); return send(res, 200, r); }
     catch (e) { serverLog({ kind: 'bad', text: `Monitor ${feature}: ${e.message}` }); return send(res, 400, { error: e.message }); }
   }
+  // how far an update has got, for Settings' loading bar (helpers/self-update.js)
+  if (url.pathname === '/api/self-update/progress') return send(res, 200, require('./helpers/self-update').getProgress() || {});
   if (url.pathname === '/api/self-update') {
     const su = require('./helpers/self-update');
     if (req.method === 'GET') return send(res, 200, await su.status());

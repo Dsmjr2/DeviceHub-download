@@ -49,7 +49,16 @@ async function zipStatus() {
     return { git: false, zip: true, behind: newer ? 1 : 0, blocked: blocked.length ? blockedText(blocked) : undefined, latest: newer ? `a new version from ${new Date(rel.builtAt).toLocaleDateString()}` : null, at: own.builtAt, skipped: failed === rel.commit ? 'the newest version' : undefined };
   } catch (e) { return { git: false, zip: true, error: e.message }; }
 }
+// How far an update has got (21 Oct 2026, for Settings' loading bar): the step in words and, while downloading, a
+// percentage (null = a step whose length is not known). GET /api/self-update/progress.
+let progress = null;
+const step = (text, pct = null) => { progress = { text, pct, at: Date.now() }; };
+const getProgress = () => progress;
+// a program run without stopping DeviceHub meanwhile (spawnSync held the whole server, the loading bar too)
+const runAsync = (cmd, args, opts) => new Promise((resolve) => execFile(cmd, args, { encoding: 'utf8', windowsHide: true, maxBuffer: 8 << 20, ...opts }, (e, stdout, stderr) => resolve({ status: e ? (typeof e.code === 'number' ? e.code : 1) : 0, stdout, stderr })));
+
 async function zipUpdate() {
+  step('Checking for the new version');
   const own = mine(), rel = await releaseInfo();
   if (!own) throw new Error('this copy does not know its version');
   if (!(rel.commit !== own.commit && rel.builtAt > own.builtAt)) return { updated: false };
@@ -58,20 +67,27 @@ async function zipUpdate() {
   const crypto = require('crypto'), os = require('os');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'devicehub-update-'));
   const zip = path.join(dir, 'DeviceHub-setup.zip');
+  step('Downloading', 0);
   const r = await fetch(RELEASE + 'DeviceHub-setup.zip', { signal: AbortSignal.timeout(10 * 60 * 1000) });
   if (!r.ok) throw new Error(`the download failed (${r.status})`);
-  const buf = Buffer.from(await r.arrayBuffer());
+  // read in pieces, so the bar moves as it arrives
+  const parts = []; let got = 0;
+  for await (const chunk of r.body) { parts.push(chunk); got += chunk.length; step('Downloading', Math.min(100, Math.round((got / rel.size) * 100))); }
+  const buf = Buffer.concat(parts);
+  step('Checking the download');
   if (buf.length !== rel.size) throw new Error(`the download is ${buf.length} bytes, not ${rel.size}; nothing was changed`);
   if (crypto.createHash('sha256').update(buf).digest('hex') !== rel.sha256) throw new Error('the download does not match its checksum; nothing was changed');
   fs.writeFileSync(zip, buf);
-  const ps = (cmd, ms) => spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', cmd], { encoding: 'utf8', timeout: ms, windowsHide: true });
-  const x = ps(`Expand-Archive -LiteralPath '${zip.replace(/'/g, "''")}' -DestinationPath '${dir.replace(/'/g, "''")}' -Force`, 5 * 60 * 1000);
+  const ps = (cmd, ms) => runAsync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', cmd], { timeout: ms });
+  step('Unpacking');
+  const x = await ps(`Expand-Archive -LiteralPath '${zip.replace(/'/g, "''")}' -DestinationPath '${dir.replace(/'/g, "''")}' -Force`, 5 * 60 * 1000);
   const src = path.join(dir, 'DeviceHub');
   if (x.status !== 0 || !fs.existsSync(path.join(src, 'helpers', 'install.ps1'))) throw new Error('the download could not be unpacked; nothing was changed');
   // the new version checks itself before it is installed
+  step('Checking the new version');
   const check = path.join(src, 'tests', 'check.mjs');
   if (fs.existsSync(check)) {
-    const c = spawnSync(process.execPath, [check], { cwd: src, encoding: 'utf8', timeout: 120000, windowsHide: true });
+    const c = await runAsync(process.execPath, [check], { cwd: src, timeout: 120000 });
     if (c.status !== 0) throw new Error('the new version did not pass its checks, so DeviceHub stayed on this one');
   }
   // its installer replaces this copy (it quits this DeviceHub first and starts the new one); run on its own, outside
@@ -97,6 +113,7 @@ async function zipUpdate() {
   const launcher = `Start-Process -FilePath powershell.exe -WindowStyle Hidden -WorkingDirectory ${sq(dir)} -RedirectStandardOutput ${sq(path.join(dir, 'install.log'))} -ArgumentList ${sq(inner)}`;
   const p = spawn('powershell.exe', ['-NoProfile', '-EncodedCommand', Buffer.from(launcher, 'utf16le').toString('base64')], { cwd: dir, stdio: 'ignore', windowsHide: true });
   p.on('error', () => {});
+  step('Installing; DeviceHub restarts by itself');
   return { updated: true, installing: true, count: 1, latest: `version from ${new Date(rel.builtAt).toLocaleDateString()}` };
 }
 
@@ -121,6 +138,10 @@ async function status() {
 
 // pulls the new changes; the caller restarts DeviceHub afterwards
 async function update() {
+  step('Looking for the new version');
+  try { return await updateSteps(); } catch (e) { progress = null; throw e; }
+}
+async function updateSteps() {
   const s = await status();
   if (s.zip) return zipUpdate();
   if (!s.git) throw new Error('this copy of DeviceHub is not connected to GitHub');
@@ -129,11 +150,13 @@ async function update() {
   if (s.changed) throw new Error(`${s.changed} file(s) were changed on this PC; not updating over them`);
   if (!s.behind) return { updated: false };
   const old = await git(['rev-parse', 'HEAD']);
+  step('Getting the new changes');
   await git(['pull', '--ff-only', '--quiet'], 60000);
   // check the new code before running it
   const check = path.join(ROOT, 'tests', 'check.mjs');
   if (fs.existsSync(check)) {
-    const r = spawnSync(process.execPath, [check], { cwd: ROOT, encoding: 'utf8', timeout: 120000, windowsHide: true });
+    step('Checking the new version');
+    const r = await runAsync(process.execPath, [check], { cwd: ROOT, timeout: 120000 });
     if (r.status !== 0) {
       await git(['reset', '--quiet', '--hard', old]);
       const why = `${r.stdout || ''}${r.stderr || ''}`.split('\n').find((l) => l.startsWith('- ')) || 'its checks failed';
@@ -141,6 +164,7 @@ async function update() {
     }
   }
   writeAtomic(path.join(ROOT, 'update-rollback.txt'), old);
+  step('Restarting DeviceHub');
   return { updated: true, count: s.behind, latest: s.latest };
 }
 
@@ -152,8 +176,10 @@ async function update() {
 const ME = ['-c', 'user.name=DeviceHub', '-c', 'user.email=devicehub@localhost'];
 async function mergeUpdate(s) {
   if (!s.behind) return { updated: false };
+  step('Keeping the changes made on this PC');
   if (s.changed) await git([...ME, 'commit', '-q', '-a', '-m', 'Changes made on this PC']);
   const before = await git(['rev-parse', 'HEAD']);
+  step('Bringing them together with the new version');
   try { await git([...ME, 'merge', '--no-edit', '-q', '@{u}'], 60000); }
   catch (e) {
     const both = (await git(['diff', '--name-only', '--diff-filter=U']).catch(() => '')).split('\n').filter(Boolean);
@@ -165,10 +191,12 @@ async function mergeUpdate(s) {
   }
   const check = path.join(ROOT, 'tests', 'check.mjs');
   if (fs.existsSync(check)) {
-    const r = spawnSync(process.execPath, [check], { cwd: ROOT, encoding: 'utf8', timeout: 120000, windowsHide: true });
+    step('Checking the new version');
+    const r = await runAsync(process.execPath, [check], { cwd: ROOT, timeout: 120000 });
     if (r.status !== 0) { await git(['reset', '-q', '--hard', before]); throw new Error("the new version, with this PC's changes, did not pass its checks, so DeviceHub stayed as it was"); }
   }
   writeAtomic(path.join(ROOT, 'update-rollback.txt'), before);
+  step('Restarting DeviceHub');
   return { updated: true, count: s.behind, latest: s.latest };
 }
 
@@ -179,4 +207,4 @@ function confirm(log) {
   setTimeout(() => { try { fs.unlinkSync(f); log && log({ kind: 'good', text: 'DeviceHub update running well' }); } catch {} }, 60000);
 }
 
-module.exports = { status, update, confirm };
+module.exports = { status, update, confirm, getProgress };

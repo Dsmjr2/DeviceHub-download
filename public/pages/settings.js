@@ -32,17 +32,41 @@ async function loadSelf() {
   try { self = await (await fetch('/api/self-update')).json(); } catch { self = { error: 'DeviceHub did not answer' }; }
   rerender();
 }
+// A loading bar (21 Oct 2026, Shawn: "put loading bars when updating or syncing"): a percentage when it is known (the
+// download), else a sweep, with the step in words under it. The update's steps come from /api/self-update/progress
+// every 0.4 s, and only the bar is redrawn.
+function loadingBar(id, text, pct) {
+  return h('div', { class: 'loadbar-wrap', id },
+    h('div', { class: `loadbar${pct == null ? ' sweep' : ''}`, role: 'progressbar', 'aria-label': text, 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': pct == null ? null : String(pct) },
+      h('span', { style: pct == null ? {} : { width: `${pct}%` } })),
+    h('span', { class: 'loadbar-text' }, pct == null ? text : `${text} · ${pct}%`));
+}
+let selfStep = null, stepTimer = null;
+function showStep(p) {
+  selfStep = p;
+  const el = document.getElementById('self-bar');
+  if (el) el.replaceWith(loadingBar('self-bar', p.text, p.pct)); else rerender();
+}
+function watchSteps() {
+  clearInterval(stepTimer);
+  stepTimer = setInterval(async () => {
+    if (!selfBusy) { clearInterval(stepTimer); return; }
+    try { const p = await (await fetch('/api/self-update/progress')).json(); if (p.text && (p.text !== selfStep?.text || p.pct !== selfStep?.pct)) showStep(p); } catch {}
+  }, 400);
+}
 async function runSelfUpdate() {
-  selfBusy = true; rerender();
+  selfBusy = true; selfStep = { text: 'Looking for the new version', pct: null }; rerender(); watchSteps();
   try {
     const r = await env.api('/api/self-update', {});
     if (r.installing) toast('Updating DeviceHub', 'busy', { detail: 'Downloaded and checked. Installing; DeviceHub restarts by itself in under a minute.', ms: 30000 });
     else if (r.updated) toast('Updating DeviceHub', 'busy', { detail: `${r.count} new change${r.count === 1 ? '' : 's'}. Restarting…`, ms: 8000 });
     else { toast('Already up to date', 'good'); selfBusy = false; loadSelf(); }
+    // updated: the bar stays ("Restarting") until the window reloads itself with the new version
+    if (r.updated) showStep({ text: r.installing ? 'Installing; DeviceHub restarts by itself' : 'Restarting DeviceHub', pct: null });
   } catch (e) { toast('Not updated', 'bad', { detail: e.message }); selfBusy = false; rerender(); }
 }
 // settings sync and the battery saver (helpers/settings-sync.js, helpers/power.js)
-let syncSt = null, powerSt = null, opts = null;
+let syncSt = null, powerSt = null, opts = null, syncBusy = false;
 async function loadSyncPower() {
   if (isDemo()) { syncSt = { enabled: true, last: new Date().toISOString() }; powerSt = { hasBattery: true, onBattery: false, enabled: true }; opts = {}; return; }
   try { [syncSt, powerSt, opts] = await Promise.all(['/api/settings-sync', '/api/power', '/api/settings'].map(async (u) => (await fetch(u)).json())); } catch {}
@@ -56,8 +80,8 @@ function syncRows() {
   const syncText = !syncSt ? 'Checking…' : sy.notSetUp ? 'Not set up: it needs your own private GitHub copy of DeviceHub.' : opts?.settingsSync === false ? 'Off.' : sy.error ? `Couldn't sync: ${sy.error}` : sy.role === 'main' ? `This PC sends its EQ, sound tools, options and profiles to your other PCs. Checked ${syncAgo(sy.last)}.` : `Follows ${sy.mainName || 'your main PC'}: its settings load here. Checked ${syncAgo(sy.last)}.`;
   const powerText = !powerSt ? 'Checking…' : !pw.hasBattery ? 'No battery on this PC: always full speed.' : pw.onBattery ? (pw.saving ? 'On battery: background checks slowed.' : 'On battery.') : 'On the charger: full speed.';
   return [
-    row('Settings sync', syncText, h('div', { class: 'srow-ctl' },
-      opts?.settingsSync === false || sy.notSetUp ? null : button('Sync now', async () => { syncSt = await env.api('/api/settings-sync', {}).catch((e) => ({ error: e.message })); toast(syncSt.error ? 'Not synced' : 'Synced', syncSt.error ? 'bad' : 'good', { detail: syncSt.error || (syncSt.lastLoaded ? `Loaded ${syncSt.lastLoaded.parts.join(', ')}` : null) }); loadSyncPower(); }, { kind: 'ghost small', ic: 'refresh' }),
+    row('Settings sync', syncBusy ? loadingBar('sync-bar', 'Syncing with your other PCs', null) : syncText, h('div', { class: 'srow-ctl' },
+      opts?.settingsSync === false || sy.notSetUp ? null : button(syncBusy ? 'Syncing…' : 'Sync now', async () => { syncBusy = true; rerender(); syncSt = await env.api('/api/settings-sync', {}).catch((e) => ({ error: e.message })); syncBusy = false; toast(syncSt.error ? 'Not synced' : 'Synced', syncSt.error ? 'bad' : 'good', { detail: syncSt.error || (syncSt.lastLoaded ? `Loaded ${syncSt.lastLoaded.parts.join(', ')}` : null) }); loadSyncPower(); }, { kind: 'ghost small', ic: 'refresh', disabled: syncBusy }),
       toggle({ value: opts?.settingsSync !== false, label: 'Settings sync', onCommit: (on) => setOpt('settingsSync', on) }))),
     row('Battery saver', powerText, toggle({ value: opts?.batterySaver !== false, label: 'Battery saver', onCommit: (on) => setOpt('batterySaver', on) })),
     // light window: DeviceHub inside the Chrome already running (much less memory); on by default on a PC with a battery
@@ -69,7 +93,7 @@ function selfRow() {
   if (isDemo()) return null;
   const s = self || {};
   const text = !self || s.checking ? 'Checking…' : !s.git && !s.zip ? 'Not set up for this copy.' : s.error ? `Couldn't check: ${s.error}` : s.blocked ? `A new version is ready, but ${s.blocked.charAt(0).toLowerCase()}${s.blocked.slice(1)}` : s.behind ? (s.zip ? `Ready: ${s.latest}` : `${s.behind} new change${s.behind === 1 ? '' : 's'}: ${s.latest}`) : s.skipped ? 'The newest version did not start here, so DeviceHub stayed on this one. A fix will show up here.' : 'Up to date.';
-  return row('DeviceHub updates', text, s.behind && !s.blocked ? button(selfBusy ? 'Updating…' : 'Update', runSelfUpdate, { kind: 'primary small', ic: 'refresh', disabled: selfBusy })
+  return row('DeviceHub updates', selfBusy && selfStep ? loadingBar('self-bar', selfStep.text, selfStep.pct) : text, s.behind && !s.blocked ? button(selfBusy ? 'Updating…' : 'Update', runSelfUpdate, { kind: 'primary small', ic: 'refresh', disabled: selfBusy })
     : s.git === false && !s.zip ? null : button('Check', () => loadSelf(), { kind: 'ghost small', ic: 'refresh' }));
 }
 let results = null;
