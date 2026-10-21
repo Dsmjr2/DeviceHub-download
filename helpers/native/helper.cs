@@ -129,6 +129,7 @@ public static class Helper {
     if (c.Name == "tray") {  // START <port> <folder>
       var w = rest.Split(new[] { ' ' }, 3);
       if (w[0] == "START" && w.Length == 3) return Tray.Start(int.Parse(w[1]), w[2]);
+      if (w[0] == "WAKE" && w.Length == 2) return Tray.Wake(w[1] == "ON");  // WAKE ON | OFF: listen for the mouse's wake
       return "ERR unknown command";
     }
     if (c.Name == "diag") {  // MEM [GC]: .NET heap, collections and working set; GC first collects (19 Oct 2026, leak hunt)

@@ -95,7 +95,10 @@ const callCounts = () => ({ ...calls });
 
 // One request on one channel; resolves with the reply text, or 'TIMEOUT'.
 function request(chan, cmd, ms = 8000) {
-  const kind = `${chan.split(':')[0]} ${String(cmd).split(' ')[0]}`;
+  // a device channel by its device too (hid:3710 the mouse, hid:342D the keyboard), the rest by kind
+  // (a HID request by its command byte too: REQ <echo> <ms> <command> ...)
+  const c = chan.split(':'), w = String(cmd).split(' ');
+  const kind = `${c[0] === 'hid' || c[0] === 'hs80' ? `${c[0]}:${c[1]}` : c[0]} ${w[0]}${c[0] === 'hid' && w[0] === 'REQ' ? ` ${w[3]}` : ''}`;
   calls[kind] = (calls[kind] || 0) + 1;
   start();
   const key = `${chan} ${++seq}`;

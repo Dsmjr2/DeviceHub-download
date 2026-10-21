@@ -109,6 +109,15 @@ export class PulsarMouse {
     throw new Error('mouse stayed busy');
   }
 
+  // Is the mouse awake? One host-control request and its release, nothing read (21 Oct 2026): a sleeping mouse was
+  // looked for with a whole read, about 25 requests, each time.
+  async isAwake() {
+    const r = await this.send(CMD.deviceOnline, { data: [1] });
+    const awake = r[1] === 0 && (r[5] === 1 || r[9] === 1);
+    try { await this.send(CMD.deviceOnline, { data: [0] }); } catch {}
+    return awake;
+  }
+
   // Every session: enter host control, run fn, always leave host control.
   async session(fn) {
     await this.online(true);

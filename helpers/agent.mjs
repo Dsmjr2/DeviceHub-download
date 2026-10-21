@@ -145,6 +145,7 @@ export async function start({ port, corsairHelper }) {
       const at = new Date().toLocaleTimeString();
       devicesChanged().then((moved) => console.log(`[devices] Windows reported a device change at ${at}; ${moved.length ? `moved ${moved.join(', ')} at ${new Date().toLocaleTimeString()}` : 'no cable change'}`)).catch(() => {});
       for (const d of Object.values(core.devices)) if (['missing', 'idle', 'error'].includes(d.status)) core.connect(d.id, false);
+      require('./hs80-direct').lookForCable();  // the headset's cable may be what was plugged in
     }, 400);
   });
   // Waking from sleep (20 Oct 2026; helpers/native/tray.cs passes on Windows' power messages): USB devices come back a
@@ -169,6 +170,26 @@ export async function start({ port, corsairHelper }) {
     setTimeout(() => round('first look').catch(() => {}), 3000);
     setTimeout(() => round('second look').catch(() => {}), 10000);
   });
+  // Mouse wake (21 Oct 2026): while the mouse sleeps, the helper listens for its first movement (helpers/native/tray.cs,
+  // DeviceWatch) and passes it on; the mouse is then looked for at once, and again as the dongle catches up, so it is back
+  // in DeviceHub the moment it is moved. Its timed look while asleep becomes a 30 s fallback (public/core/devices.js).
+  {
+    const nat = require('./native');
+    let wakeOn = false;
+    const wakeWatch = async (on) => {
+      if (on === wakeOn) return;
+      wakeOn = on;
+      const r = await nat.request('tray', on ? 'WAKE ON' : 'WAKE OFF', 5000).catch(() => 'NO');
+      if (r === 'OK') env.wakeEvents = true; else wakeOn = false;
+    };
+    core.onChange((id) => { if (id === 'mouse' && core.devices.mouse) wakeWatch(core.devices.mouse.status === 'asleep'); });
+    nat.onExit(() => { wakeOn = false; env.wakeEvents = false; });
+    nat.onEvent('input', () => {
+      wakeOn = false;
+      if (core.devices.mouse?.status !== 'asleep') return;
+      for (const ms of [0, 400, 1200, 2500, 5000]) setTimeout(() => { if (core.devices.mouse.status === 'asleep') core.refresh('mouse', { quiet: true }).catch(() => {}); }, ms);
+    });
+  }
   // A device that failed (not just unplugged) is retried every 30 s.
   setInterval(() => { for (const d of Object.values(core.devices)) if (d.status === 'error') core.connect(d.id, false); }, 30000);
 }

@@ -178,6 +178,7 @@ export async function connect(id, prompt = false) {
   });
 }
 const lastTry = {};
+const asleepLook = {};   // when an asleep device was last asked whether it is back
 
 const isAsleep = (e) => /asleep|out of range|no reply/i.test(e.message);
 
@@ -189,6 +190,8 @@ export function refresh(id, opts) {
 async function refreshUnlocked(id, { quiet, first } = {}) {
   const d = devices[id];
   if (!['connected', 'asleep'].includes(d.status) && !(first && d.status === 'connecting')) return;
+  // still asleep? one quick question instead of a whole read (21 Oct 2026: ~25 requests a look)
+  if (d.status === 'asleep' && d.adapter.awake && !(await d.adapter.awake())) return;
   try {
     const info = await d.adapter.info();
     const values = await d.adapter.read();
@@ -461,7 +464,9 @@ export function startPolling() {
   if (env.agent) repeat(() => { for (const d of Object.values(devices)) if (d.status === 'connected' && !d.adapter.pollRead) refresh(d.id, { quiet: true }); }, 60000);
   repeat(() => {
     for (const d of Object.values(devices)) {
-      if (d.status === 'asleep') refresh(d.id, { quiet: true });
+      // asleep: asked again every 5 s; when the agent hears the mouse wake by itself (env.wakeEvents: the helper
+      // passes on its first movement, helpers/agent.mjs), only every 30 s, as a fallback (21 Oct 2026)
+      if (d.status === 'asleep' && !(env.wakeEvents && d.id === 'mouse' && Date.now() - (asleepLook[d.id] || 0) < 30000)) { asleepLook[d.id] = Date.now(); refresh(d.id, { quiet: true }); }
       if ((d.status === 'missing' || d.status === 'idle') && (d.adapter.autoReconnect || env.agent)) {
         // Looking for a missing mouse or keyboard costs a device scan, so the agent does it every 20 s, not every 5.
         if (env.agent && !d.adapter.pollRead && Date.now() - (lastTry[d.id] || 0) < 20000) continue;

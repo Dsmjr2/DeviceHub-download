@@ -76,6 +76,8 @@ const adapter = {
   },
 
   async read() { return this.decodeFlash(await mouse.snapshot()); },
+  // while it sleeps: the quick question before a whole read (public/core/devices.js refreshUnlocked)
+  async awake() { try { return await mouse.isAwake(); } catch { return false; } },
 
   // For the backup before a change (19 Oct 2026, speed): the mouse's flash as DeviceHub last read it, when that full
   // read is under 30 s old, kept current by every write's own read-back. Saves reading all 200 bytes before every

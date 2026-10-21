@@ -20,7 +20,21 @@ using System.Windows.Forms;
 // "dev EVT 00 1"; DeviceHub then looks for the device at once instead of on its next timed check. No polling.
 public class DeviceWatch : NativeWindow {
   public DeviceWatch() { CreateHandle(new CreateParams()); }
+  // Mouse wake (21 Oct 2026): a sleeping wireless mouse that wakes makes Windows announce nothing, so DeviceHub had to
+  // ask the dongle every few seconds. While DeviceHub's mouse sleeps, the first movement of a mouse is passed on as
+  // "input EVT 00 1" and the listening stops at once (an 8 kHz mouse would otherwise send thousands a second).
+  // Nothing is read from the movement and nothing is held up: input sink, without NOLEGACY.
+  [StructLayout(LayoutKind.Sequential)] struct RawDevice { public ushort Page, Usage; public uint Flags; public IntPtr Target; }
+  [DllImport("user32.dll", SetLastError = true)] static extern bool RegisterRawInputDevices(RawDevice[] d, uint n, uint size);
+  bool listening;
+  public void Listen(bool on) {
+    if (on == listening) return;
+    var d = new[] { new RawDevice { Page = 1, Usage = 2, Flags = on ? 0x100u : 0x1u, Target = on ? Handle : IntPtr.Zero } };  // RIDEV_INPUTSINK / RIDEV_REMOVE
+    if (RegisterRawInputDevices(d, 1, (uint)Marshal.SizeOf(typeof(RawDevice)))) listening = on;
+  }
   protected override void WndProc(ref Message m) {
+    // WM_INPUT: the mouse moved while DeviceHub listens for its wake
+    if (m.Msg == 0x00FF && listening) { Listen(false); Helper.Say("input EVT 00 1"); }
     // WM_DEVICECHANGE: DBT_DEVNODES_CHANGED (7), DBT_DEVICEARRIVAL (0x8000), DBT_DEVICEREMOVECOMPLETE (0x8004)
     if (m.Msg == 0x0219) { long w = m.WParam.ToInt64(); if (w == 7 || w == 0x8000 || w == 0x8004) Helper.Say("dev EVT 00 1"); }
     // WM_POWERBROADCAST (20 Oct 2026): going to sleep (PBT_APMSUSPEND 4) and waking (PBT_APMRESUMEAUTOMATIC 0x12,
@@ -38,6 +52,13 @@ public static class Tray {
   static readonly string[] order = { "mouse", "headset", "keyboard" };
   static readonly Dictionary<string, string> names = new Dictionary<string, string> { { "mouse", "Mouse" }, { "headset", "Headset" }, { "keyboard", "Keyboard" } };
   static Thread thread;
+
+  // listen for the mouse's wake (DeviceWatch.Listen), on the tray's own thread, which owns the window
+  public static string Wake(bool on) {
+    if (host == null || watch == null || !host.IsHandleCreated) return "NO";
+    host.BeginInvoke((Action)(() => watch.Listen(on)));
+    return "OK";
+  }
 
   public static string Start(int port, string folder) {
     if (thread != null) return "OK";

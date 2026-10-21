@@ -37,23 +37,28 @@ let silentAt = 0;  // when the headset last left a question unanswered (0 = it a
 // light shows for about a second instead of the 5-10 s a fresh start took (19 Oct 2026).
 let standby = null, standbyTimer = null, standbyBusy = false;
 let log = () => {};
+// (21 Oct 2026) Windows announces a plugged-in cable (the helper's device messages, helpers/agent.mjs calls
+// lookForCable), so the timed look is every 10 s instead of every second: a quarter of all the helper's requests.
+async function standbyTick() {
+  if (!standby || standbyBusy || conn === 'wired') return;
+  standbyBusy = true;
+  try {
+    if ((await standby.one('OPEN', 15000)) === 'OK') {
+      const old = host;
+      host = standby; conn = 'wired'; standby = new Host('wired');
+      if (old) old.stop();
+      stopLights(); startLights();
+      log({ kind: 'info', device: 'headset', text: `Headset on its cable: DeviceHub took over its lights at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` });
+    }
+  } finally { standbyBusy = false; }
+}
 function startStandby() {
   if (standbyTimer) return;
   standby = new Host('wired');
-  standbyTimer = setInterval(async () => {
-    if (standbyBusy || conn === 'wired') return;
-    standbyBusy = true;
-    try {
-      if ((await standby.one('OPEN', 15000)) === 'OK') {
-        const old = host;
-        host = standby; conn = 'wired'; standby = new Host('wired');
-        if (old) old.stop();
-        stopLights(); startLights();
-        log({ kind: 'info', device: 'headset', text: `Headset on its cable: DeviceHub took over its lights at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` });
-      }
-    } finally { standbyBusy = false; }
-  }, 1000);
+  standbyTimer = setInterval(standbyTick, 10000);
 }
+// a device was plugged in: look for the headset's cable now, and as Windows finishes setting it up
+function lookForCable() { if (!standbyTimer) return; for (const ms of [0, 1200, 3000]) setTimeout(() => standbyTick().catch(() => {}), ms); }
 function stopStandby() { clearInterval(standbyTimer); standbyTimer = null; if (standby) standby.stop(); standby = null; }
 
 // Is iCUE running? Asked from several places; one tasklist run answers them all for 10 s (19 Oct 2026: idle cost).
@@ -204,4 +209,4 @@ function setLogo(r, g, b) {
 
 function close() { stopLights(); stopStandby(); stopHost(); }
 
-module.exports = { lightSettings: () => ({ ...lights.settings }), setLightSettings, preview, setLog: (fn) => { log = fn; }, open, reopen, connection: () => conn, read, close, icueRunning, setLogo, set, lastFirmware, lights: () => ({ ...lights, timer: !!lights.timer }) };
+module.exports = { lookForCable, lightSettings: () => ({ ...lights.settings }), setLightSettings, preview, setLog: (fn) => { log = fn; }, open, reopen, connection: () => conn, read, close, icueRunning, setLogo, set, lastFirmware, lights: () => ({ ...lights, timer: !!lights.timer }) };
