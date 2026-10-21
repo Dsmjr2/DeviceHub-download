@@ -104,7 +104,12 @@ const adapter = {
     if (mode === 'direct') {
       const f = raw.firmware?.bytes;
       if (f) lastFirmware = `${f[0]}.${f[1]}.${f[2]}`;
-      return { Model: 'CORSAIR HS80 RGB Wireless', Firmware: f ? `${f[0]}.${f[1]}.${f[2]}` : '—', 'Sleep after': raw.autoOff ? `${Math.round(raw.autoOff.value / 60000)} min` : '—', Control: `DeviceHub direct over the ${via === 'wired' ? 'USB cable' : 'receiver'} (no iCUE)` };
+      // while the headset is off, the values it gave when last on (helpers/hs80-direct.js keeps them)
+      let kept = {};
+      if (!f || !raw.autoOff) try { kept = await call('last-firmware', {}); } catch {}
+      const off = raw.autoOff ? Math.round(raw.autoOff.value / 60000) : kept.autoOffMin;
+      const unread = 'turn the headset on to read it';
+      return { Model: 'CORSAIR HS80 RGB Wireless', Firmware: f ? `${f[0]}.${f[1]}.${f[2]}` : kept.firmware || unread, 'Sleep after': off ? `${off} min` : unread, Control: `DeviceHub direct over the ${via === 'wired' ? 'USB cable' : 'receiver'} (no iCUE)` };
     }
     let i;
     try { i = await call('info', { id: dev.id }); } catch (e) { throw Object.assign(e, { gone: true }); }

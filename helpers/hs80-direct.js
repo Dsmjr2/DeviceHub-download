@@ -9,7 +9,10 @@ const native = require('./native');
 const CONNS = { wired: { pid: '0A69', ep: 8 }, receiver: { pid: '0A6B', ep: 9 } };
 let onEvent = () => {};
 const FW_FILE = path.join(__dirname, '..', 'headset-firmware.json');
-function lastFirmware() { try { return JSON.parse(require('fs').readFileSync(FW_FILE, 'utf8')).firmware; } catch { return null; } }
+// the firmware and sleep timer last read from the headset, shown while it is off (21 Oct 2026: they read "—" then)
+const remembered = () => { try { return JSON.parse(require('fs').readFileSync(FW_FILE, 'utf8')); } catch { return {}; } };
+function lastFirmware() { return remembered().firmware || null; }
+function lastAutoOff() { return remembered().autoOffMin ?? null; }
 
 // One connection to the headset: its own channel on the native helper (helpers/native.js); requests go one at a time.
 let hostCount = 0;
@@ -116,7 +119,11 @@ async function read() {
   }
   if (out.micMuted) lights.muted = out.micMuted.value === 1;
   // remembered for when iCUE runs (its SDK does not report the firmware)
-  if (out.firmware) try { require('fs').writeFileSync(FW_FILE, JSON.stringify({ firmware: out.firmware.bytes.slice(0, 3).join('.'), at: new Date() })); } catch {}
+  if (out.firmware || out.autoOff) {
+    const keep = remembered();
+    const next = { ...keep, ...(out.firmware ? { firmware: out.firmware.bytes.slice(0, 3).join('.') } : {}), ...(out.autoOff ? { autoOffMin: Math.round(out.autoOff.value / 60000) } : {}) };
+    if (next.firmware !== keep.firmware || next.autoOffMin !== keep.autoOffMin) try { require('fs').writeFileSync(FW_FILE, JSON.stringify({ ...next, at: new Date() })); } catch {}
+  }
   return out;
 }
 
@@ -229,4 +236,4 @@ function close() { stopLights(); stopStandby(); stopHost(); }
 
 // for the light-interval test (tests that the headset keeps DeviceHub's lights with fewer messages)
 function setLightEvery(n) { if (Number.isInteger(n) && n >= 1 && n <= 40) lights.lightEvery = n; return { lightEvery: lights.lightEvery, modeDrops: lights.modeDrops }; }
-module.exports = { lookForCable, setLightEvery, useWindowsEvents, lightSettings: () => ({ ...lights.settings }), setLightSettings, preview, setLog: (fn) => { log = fn; }, open, reopen, connection: () => conn, read, close, icueRunning, setLogo, set, lastFirmware, lights: () => ({ ...lights, timer: !!lights.timer }) };
+module.exports = { lookForCable, setLightEvery, useWindowsEvents, lightSettings: () => ({ ...lights.settings }), setLightSettings, preview, setLog: (fn) => { log = fn; }, open, reopen, connection: () => conn, read, close, icueRunning, setLogo, set, lastFirmware, lastAutoOff, lights: () => ({ ...lights, timer: !!lights.timer }) };
