@@ -1,0 +1,75 @@
+// npm test, part 1 (20 Oct 2026): checks that need nothing running and change nothing.
+// - every JavaScript file parses (server and helpers as CommonJS / ES modules as written, the page code as modules)
+// - no stray control characters in any source file (a lost backslash once left one in a regex, 19 Oct 2026)
+// - every JSON file git tracks parses
+// - every page the sidebar lists exists and has a unique id
+import { execFileSync, spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+// the app's own files: what git tracks, or (a copy from the installer zip has no git) the folder itself without the
+// bundled runtime, packages and this PC's data
+function appFiles() {
+  try { return execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\n').filter(Boolean); } catch {}
+  const skip = /^(node_modules|runtime|backups|setups|learn|captures|dist|icons-cache|window-profile|settings-sync|helpers\/bin|\.git)(\/|$)/;
+  const out = [];
+  const walk = (rel) => {
+    for (const e of fs.readdirSync(path.join(ROOT, rel), { withFileTypes: true })) {
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (skip.test(r)) continue;
+      if (e.isDirectory()) walk(r); else if (!/\.(log|jsonl|csv)$/.test(e.name) && !/^(settings|profiles|eq-presets|seen-devices|mouse-level|headset-lights|headset-firmware|updates-cache|settings-sync-state)\.json$/.test(r)) out.push(r);
+    }
+  };
+  walk('');
+  return out;
+}
+const tracked = appFiles();
+const problems = [];
+let checked = 0;
+
+// 1. syntax: .mjs and everything under public/ as ES modules, the rest as Node decides (CommonJS here)
+for (const f of tracked.filter((x) => /\.(m?js)$/.test(x))) {
+  const file = path.join(ROOT, f);
+  const asModule = f.endsWith('.mjs') || f.startsWith('public/');
+  const r = asModule
+    ? spawnSync(process.execPath, ['--input-type=module', '--check'], { input: fs.readFileSync(file), encoding: 'utf8' })
+    : spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
+  checked++;
+  if (r.status !== 0) problems.push(`${f}: ${(r.stderr || '').trim().split('\n').slice(0, 4).join(' / ')}`);
+}
+
+// 2. control characters (tab, newline and carriage return are fine)
+for (const f of tracked.filter((x) => /\.(m?js|cs|css|html|ps1|bat|vbs|json|md)$/.test(x))) {
+  const text = fs.readFileSync(path.join(ROOT, f), 'utf8');
+  const m = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/.exec(text);
+  if (m) {
+    const line = text.slice(0, m.index).split('\n').length;
+    problems.push(`${f}:${line}: control character 0x${m[0].charCodeAt(0).toString(16).padStart(2, '0')}`);
+  }
+}
+
+// 3. JSON
+for (const f of tracked.filter((x) => x.endsWith('.json') || x.endsWith('.webmanifest'))) {
+  try { JSON.parse(fs.readFileSync(path.join(ROOT, f), 'utf8')); } catch (e) { problems.push(`${f}: ${e.message}`); }
+}
+
+// 4. the pages in the sidebar (app.js PAGES) each import a file with an id
+const app = fs.readFileSync(path.join(ROOT, 'public/app.js'), 'utf8');
+const names = (/const PAGES = \[([^\]]+)\]/.exec(app) || [])[1]?.split(',').map((s) => s.trim()) || [];
+if (!names.length) problems.push('public/app.js: no PAGES list found');
+const ids = [];
+for (const n of names) {
+  const imp = new RegExp(`import ${n} from '\\./(pages/[\\w-]+\\.js)'`).exec(app);
+  if (!imp) { problems.push(`public/app.js: page ${n} has no import`); continue; }
+  const src = fs.readFileSync(path.join(ROOT, 'public', imp[1]), 'utf8');
+  const id = (/\bid: '([\w-]+)'/.exec(src) || [])[1];
+  if (!id) problems.push(`${imp[1]}: no page id`); else ids.push(id);
+}
+const dup = ids.filter((x, i) => ids.indexOf(x) !== i);
+if (dup.length) problems.push(`page ids used twice: ${dup.join(', ')}`);
+
+console.log(`checked ${checked} scripts, ${tracked.length} files, ${ids.length} pages (${ids.join(', ')})`);
+if (problems.length) { console.log(`\n${problems.length} problem${problems.length === 1 ? '' : 's'}:\n- ${problems.join('\n- ')}`); process.exit(1); }
+console.log('offline checks: all good');

@@ -1,0 +1,5 @@
+# Windows' batch and script files need Windows line endings: with Unix ones cmd loses its place after a call or goto
+# (20 Oct 2026: keep-running.bat stopped after 'call :now')
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.vbs text eol=crlf

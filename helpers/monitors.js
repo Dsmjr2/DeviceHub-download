@@ -1,0 +1,188 @@
+// Monitor controls (20 Oct 2026): brightness, contrast, speaker volume, color preset and color balance of each monitor over DDC/CI, through
+// the helper's "monitor" channel (helpers/monitors.cs, Windows' own monitor API; nothing installed). The same rules as
+// the devices: every change is backed up first (backups/monitor-<model>-<time>.json, all of that monitor's values),
+// written one setting at a time and read back. Power, input, factory reset and anything else are never sent (the
+// input is left out because these monitors report it at random, so a change could not be read back).
+const fs = require('fs');
+const { writeAtomic } = require('./safe-write');  // crash-proof saving (helpers/safe-write.js)
+const path = require('path');
+
+const FEATURES = { brightness: 0x10, contrast: 0x12, volume: 0x62,
+  // the standard picture settings (20 Oct 2026, each tested on Shawn's two monitors: written, read back, put back)
+  colorPreset: 0x14, red: 0x16, green: 0x18, blue: 0x1A, blackRed: 0x6C, blackGreen: 0x6E, blackBlue: 0x70 };
+// MCCS color preset values (0x14), named; a monitor offers the ones its capabilities list
+// in words (Shawn, 20 Oct 2026): the lower the K, the warmer (yellower) the white; the higher, the cooler (bluer)
+const PRESETS = { 1: 'sRGB', 2: 'Native', 3: 'Warmest', 4: 'Warm', 5: 'Standard', 6: 'Cool', 7: 'Cooler', 8: 'Coolest', 9: 'Very cool', 10: 'Bluest', 11: 'Custom', 12: 'Custom 2', 13: 'Custom 3' };
+// the capabilities' vcp(...) list as { code: [listed values] }, e.g. "vcp(10 12 14(05 06 08 0B) 16)" -> { 16: [], 18: [], 20: [5, 6, 8, 11], 22: [] }
+function vcpList(caps) {
+  const out = {};
+  const at = (caps || '').toLowerCase().indexOf('vcp(');
+  if (at < 0) return out;
+  let i = at + 4, depth = 0, code = null, word = '';
+  const flush = () => { if (!word) return; const n = parseInt(word, 16); if (depth === 0) { code = n; out[n] = out[n] || []; } else if (code != null && depth === 1) out[code].push(n); word = ''; };
+  for (; i < caps.length; i++) {
+    const ch = caps[i];
+    if (ch === '(') { flush(); depth++; } else if (ch === ')') { flush(); if (depth === 0) break; depth--; } else if (ch === ' ') flush(); else word += ch;
+  }
+  // codes longer than two digits are the maker's own (E2A006 ...): never offered
+  for (const k of Object.keys(out)) if (Number(k) > 0xff) delete out[k];
+  return out;
+}
+// Shawn's two (named as on the Equalizer's tabs); any other monitor shows its own model name
+const KNOWN = [[/AG276QZD2/i, 'AOC AGON OLED'], [/VG272UV/i, 'Acer IPS']];
+const known = (model) => (KNOWN.find(([re]) => re.test(model || '')) || [])[1];
+// what a monitor lists but ignores, measured: the Acer VG272UV keeps its speaker volume at 100 whatever it is sent
+const IGNORES = [[/VG272UV/i, ['volume']]];
+const ignores = (model, f) => IGNORES.some(([re, fs]) => re.test(model || '') && fs.includes(f));
+
+let native = null, backupDir = null, cache = { at: 0, list: null }, busy = Promise.resolve();
+// a monitor's capabilities never change and take seconds to read: read once per monitor, then only its values (0.7 s)
+const capsById = new Map();
+const lastBackupAt = new Map();   // monitor id -> when its last backup was written
+const call = async (q, ms = 15000) => {
+  const raw = await native.request('monitor', JSON.stringify(q), ms);
+  // the helper is not running (GONE) or did not answer in time (TIMEOUT): say so in words (20 Oct 2026)
+  if (raw === 'GONE' || raw === 'TIMEOUT') throw new Error(raw === 'GONE' ? 'the device helper is not running' : 'no answer in time');
+  const r = JSON.parse(raw);
+  if (!r.ok) throw new Error(r.error || 'monitor error');
+  return r;
+};
+// one monitor operation at a time (DDC/CI answers slowly and dislikes overlapping messages)
+const serial = (f) => { const p = busy.then(f, f); busy = p.catch(() => {}); return p; };
+
+function shape(m) {
+  const caps = m.caps || capsById.get(m.id) || '';
+  if (m.caps) capsById.set(m.id, m.caps);
+  const model = (/model\(([^)]+)\)/.exec(caps) || [])[1] || null;
+  const vcp = vcpList(caps);
+  const v = (code) => (m.values || {})[code.toString(16).toUpperCase().padStart(2, '0')] || null;
+  const num = (code) => { const x = v(code); return x ? { value: x.cur, max: x.max || 100 } : null; };
+  return {
+    id: m.id, screen: m.screen, model, name: known(model) || model || m.name, ddc: !!m.ddc,
+    brightness: num(0x10), contrast: num(0x12), volume: /\b62\b/.test(caps) && !ignores(model, 'volume') ? num(0x62) : null,
+    // the picture settings this monitor lists (and answers)
+    ...Object.fromEntries(['red', 'green', 'blue', 'blackRed', 'blackGreen', 'blackBlue'].map((k) => [k, vcp[FEATURES[k]] ? num(FEATURES[k]) : null])),
+    colorPreset: vcp[0x14] && num(0x14) ? { ...num(0x14), options: vcp[0x14].filter((x) => PRESETS[x]).map((x) => ({ value: x, label: PRESETS[x] })) } : null,
+    error: m.error || null,
+  };
+}
+
+// ---- changes waiting for a monitor that is off or not answering (21 Oct 2026, Shawn: "I dont want to have to rely
+// on the devices to be on") ----
+// A change made then is kept (waiting-monitors.json: monitor id -> { setting: value }), shown as made, and written the
+// normal way (backup, write, read back) once the monitor answers again: looked for once a minute while something waits,
+// and whenever the Monitors page reads them.
+const WAIT_FILE = path.join(process.env.DEVICEHUB_DATA_DIR || path.join(__dirname, '..'), 'waiting-monitors.json');  // a test points it elsewhere
+let waiting = {};
+try { waiting = JSON.parse(fs.readFileSync(WAIT_FILE, 'utf8')) || {}; } catch {}
+// monitor id -> its last reading while it answered; kept in last-monitor-values.json, so a monitor that is off when
+// DeviceHub starts still shows its settings and takes changes (21 Oct 2026)
+const LAST_FILE = path.join(path.dirname(WAIT_FILE), 'last-monitor-values.json');
+const lastSeen = new Map();
+try { for (const [id, m] of Object.entries(JSON.parse(fs.readFileSync(LAST_FILE, 'utf8')) || {})) lastSeen.set(id, m); } catch {}
+let lastText = '';
+const saveLastSeen = () => { const t = JSON.stringify(Object.fromEntries(lastSeen)); if (t !== lastText) { lastText = t; try { writeAtomic(LAST_FILE, t); } catch {} } };
+const saveWaiting = () => { try { writeAtomic(WAIT_FILE, JSON.stringify(waiting)); } catch {} };
+const notAnswering = (e) => /refused it|did not answer|not found|no answer in time|not running/i.test(e?.message || '');
+let retry = null;
+function keepTrying() {
+  if (retry || !Object.keys(waiting).length) return;
+  retry = setInterval(() => { if (!Object.keys(waiting).length) { clearInterval(retry); retry = null; return; } list(true).catch(() => {}); }, 60000);
+  retry.unref?.();
+}
+let flushing = false;
+async function flush() {
+  if (flushing) return; flushing = true;
+  try {
+    for (const [id, keys] of Object.entries(waiting)) {
+      const m = (cache.list || []).find((x) => x.id === id);
+      if (!m || !m.ddc || m.away) continue;
+      for (const [feature, value] of Object.entries({ ...keys })) {
+        try { await set(id, feature, value, { fromQueue: true }); if (waiting[id]?.[feature] === value) delete waiting[id][feature]; onApplied(`${m.name}: ${feature === 'volume' ? 'speaker volume' : feature} → ${value} (made while it was off)`); }
+        catch (e) { if (notAnswering(e)) break; if (waiting[id]?.[feature] === value) delete waiting[id][feature]; onApplied(`${m.name}: ${feature} not changed: ${e.message}`, true); }
+      }
+      if (waiting[id] && !Object.keys(waiting[id]).length) delete waiting[id];
+    }
+  } finally { flushing = false; saveWaiting(); }
+}
+let onApplied = () => {};
+// a monitor that is away keeps its last reading on the page, with the waiting values shown as made
+function withWaiting(list) {
+  const out = list.map((m) => {
+    if (m.ddc) { lastSeen.set(m.id, { ...m, error: null }); return m; }
+    return lastSeen.has(m.id) ? { ...lastSeen.get(m.id), away: true } : m;
+  });
+  // one that dropped out of Windows' list while changes wait for it
+  for (const id of Object.keys(waiting)) if (!out.some((m) => m.id === id) && lastSeen.has(id)) out.push({ ...lastSeen.get(id), away: true });
+  saveLastSeen();
+  return out.map((m) => {
+    const w = waiting[m.id];
+    if (!w) return m;
+    const o = { ...m, waiting: Object.keys(w) };
+    for (const [f, v] of Object.entries(w)) if (o[f]) o[f] = { ...o[f], value: v };
+    return o;
+  });
+}
+
+async function list(fresh) {
+  if (!fresh && cache.list && Date.now() - cache.at < 10000) return cache.list;
+  const result = await serial(async () => {
+    let r0 = await call({ op: 'monitors', caps: false }, 30000);
+    // a monitor that answered before and is silent now has usually just missed one DDC/CI reply: ask once more
+    if (r0.monitors.some((m) => !m.ddc && capsById.has(m.id))) r0 = await call({ op: 'monitors', caps: false }, 30000);
+    // capabilities only for a monitor not read before
+    const r = r0.monitors.some((m) => m.ddc && !capsById.has(m.id)) ? await call({ op: 'monitors', caps: true }, 30000) : r0;
+    cache = { at: Date.now(), list: withWaiting(r.monitors.map(shape)) };
+    return cache.list;
+  });
+  if (result.some((m) => m.waiting && m.ddc && !m.away)) setTimeout(() => flush().catch(() => {}), 0);
+  return result;
+}
+
+async function set(id, feature, value, { live = false, fromQueue = false } = {}) {
+  const code = FEATURES[feature];
+  if (code == null) throw new Error('unknown setting');
+  // a reading from the last 30 s checks the value and fills the backup (20 Oct 2026: a fresh read of every monitor
+  // before each change made one slider step take ~690 ms; with this it is the write and its read-back only)
+  const all = cache.list && Date.now() - cache.at < 30000 ? cache.list : await list(true);
+  const m = all.find((x) => x.id === id) || (lastSeen.has(id) ? { ...lastSeen.get(id), away: true } : null);
+  if (!m) throw new Error('monitor not found');
+  const cur = m[feature];
+  if (!cur) throw new Error(`this monitor does not offer ${feature}`);
+  if (feature === 'colorPreset') { if (!cur.options.some((o) => o.value === value)) throw new Error('this monitor does not offer that color preset'); }
+  else if (!Number.isInteger(value) || value < 0 || value > cur.max) throw new Error(`${feature} must be 0-${cur.max}`);
+  // off or not answering: the change waits for it (a step while dragging is not kept)
+  if (m.away || !m.ddc) { if (live) return { name: m.name, feature, value, live: true }; return wait(m, feature, value); }
+  // a direct change replaces one that was waiting
+  if (!fromQueue && waiting[id]?.[feature] !== undefined) { delete waiting[id][feature]; if (!Object.keys(waiting[id]).length) delete waiting[id]; saveWaiting(); }
+  // back up all of this monitor's values first; changes a few seconds apart (a slider dragged) share the backup taken
+  // before the first, which holds every value as it was (21 Oct 2026)
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  if (!(Date.now() - (lastBackupAt.get(id) || 0) < 15000)) {
+    writeAtomic(path.join(backupDir, `monitor-${(m.model || 'monitor').replace(/[^\w-]/g, '')}-${stamp}.json`),
+      JSON.stringify({ at: new Date().toISOString(), monitor: m.name, model: m.model, id: m.id, ...Object.fromEntries(Object.keys(FEATURES).map((k) => [k, (lastSeen.get(id) || m)[k] ?? null])) }, null, 1));
+    lastBackupAt.set(id, Date.now());
+  }
+  let r;
+  try { r = await serial(() => call({ op: 'monitor-set', id, code, value, live })); }
+  catch (e) { if (!live && !fromQueue && notAnswering(e)) return wait(m, feature, value); throw e; }
+  // a live step is not read back (the release is): its value is kept as sent
+  if (live) { if (m[feature]) m[feature] = { ...m[feature], value }; return { name: m.name, feature, value, live: true }; }
+  const back = r.cur;
+  if (!r.ok && !fromQueue) { cache.at = 0; return wait(m, feature, value); }
+  if (!r.ok || back !== value) { cache.at = 0; throw new Error(r.ok ? `the monitor reads ${back} instead of ${value}` : 'the monitor did not answer the read-back'); }
+  // the confirmed value goes into the saved reading, so the next step does not wait for a fresh read of every monitor
+  if (m[feature]) m[feature] = { ...m[feature], value: back };
+  const seen = lastSeen.get(id); if (seen?.[feature]) lastSeen.set(id, { ...seen, [feature]: { ...seen[feature], value: back } });
+  return { name: m.name, feature, value: back };
+}
+
+function wait(m, feature, value) {
+  (waiting[m.id] ||= {})[feature] = value;
+  saveWaiting(); keepTrying();
+  // shown as made at once (the saved reading is patched; lastSeen keeps what the monitor really has)
+  if (cache.list) cache.list = cache.list.map((x) => (x.id !== m.id ? x : { ...x, waiting: Object.keys(waiting[m.id]), ...(x[feature] ? { [feature]: { ...x[feature], value } } : {}) }));
+  return { name: m.name, feature, value, waiting: true };
+}
+
+module.exports = { start(nat, dir, applied) { native = nat; backupDir = dir; if (applied) onApplied = applied; keepTrying(); }, list, set, FEATURES, _test: { vcpList } };

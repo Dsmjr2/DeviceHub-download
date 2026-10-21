@@ -1,0 +1,30 @@
+// Battery saver (19 Oct 2026, for the laptop): while the PC runs on battery, DeviceHub's background checks run 3x less
+// often (battery readings, device re-reads, reconnect scans, the camera guard, the receiver light check, cable
+// detection); on the charger, and on a PC without a battery, everything runs at full speed. The mic light keeps its
+// instant response. Off with settings.json "batterySaver": false. Checked every 30 s.
+const fs = require('fs');
+
+let call = null, settingsFile = null, onBattery = false, hasBattery = false, percent = null, timer = null;
+const listeners = new Set();
+const enabled = () => { try { return JSON.parse(fs.readFileSync(settingsFile, 'utf8')).batterySaver !== false; } catch { return true; } };
+const saving = () => onBattery && enabled();
+
+async function check() {
+  if (!call) return;
+  try {
+    const r = await call('power', {});
+    const was = saving();
+    hasBattery = !!r.hasBattery; onBattery = !!r.onBattery && hasBattery; percent = r.percent ?? null;
+    if (saving() !== was) for (const f of listeners) { try { f(saving()); } catch {} }
+  } catch { /* the helper is restarting */ }
+}
+
+module.exports = {
+  start(corsairCall, file) { call = corsairCall; settingsFile = file; check(); timer = setInterval(check, 30000); },
+  stop() { clearInterval(timer); },
+  // how much longer a background check waits now: 3 on battery with the saver on, else 1
+  factor: () => (saving() ? 3 : 1),
+  every: (ms) => ms * (saving() ? 3 : 1),
+  onChange: (f) => listeners.add(f),
+  state: () => ({ hasBattery, onBattery, percent, enabled: enabled(), saving: saving() }),
+};

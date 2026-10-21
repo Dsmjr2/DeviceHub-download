@@ -1,0 +1,15 @@
+{
+  "name": "devicehub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "One local dashboard for Shawn's Pulsar mouse, Corsair HS80 and Epomaker P75",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/check.mjs && node tests/regressions.mjs && node tests/openrgb-mock.mjs && node tests/mouse-sim.mjs && node tests/waiting.mjs && node tests/waiting-monitors.mjs && node tests/my-devices.mjs && node tests/pages.mjs",
+    "test:offline": "node tests/check.mjs && node tests/regressions.mjs && node tests/openrgb-mock.mjs && node tests/mouse-sim.mjs && node tests/waiting.mjs && node tests/waiting-monitors.mjs && node tests/my-devices.mjs"
+  },
+  "dependencies": {
+    "cue-sdk": "^4.0.84"
+  }
+}
