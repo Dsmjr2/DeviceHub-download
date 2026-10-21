@@ -1,6 +1,7 @@
 // DeviceHub shell: navigation, routing, shortcuts and the command palette.
 import { h, icon, $ } from './ui/dom.js';
 import { setCommands, openPalette, toast } from './ui/overlay.js';
+import { jumpLinks } from './ui/find-settings.js';
 import { devices, register, connect, onChange, startPolling, markMissing, setDemo, isBusy, useRemote, shownDevices } from './core/devices.js';
 import { env } from './core/env.js';
 import { setGlow, loadArtStyle } from './core/theme.js';
@@ -79,7 +80,7 @@ function buildRail() {
     h('div', { class: 'nav-label' }, 'App'),
     ...PAGES.filter((p) => !p.device && p.id !== 'overview' && !['lighting', 'monitors', 'fans'].includes(p.id)).map(navBtn),
     h('div', { class: 'rail-foot' },
-      h('button', { class: 'cmd-hint', onclick: openPalette }, icon('search'), h('span', {}, 'Search'))),
+      h('button', { class: 'cmd-hint', onclick: openPalette }, icon('search'), h('span', {}, 'Search'), h('kbd', { class: 'cmd-kbd' }, 'Ctrl K'))),
   );
   paintRail();
 }
@@ -182,8 +183,11 @@ onChange((id) => {
 });
 
 window.addEventListener('hashchange', () => render(true));
+// the jump links go on every page as it is put in place, also when a page redraws itself (the Mouse page does)
+new MutationObserver(() => { const p = $('#main > .page'); if (p && !p.querySelector(':scope > .jump')) jumpLinks(p); }).observe($('#main'), { childList: true });
 window.addEventListener('keydown', (e) => {
   if (e.altKey && /^[1-8]$/.test(e.key)) { e.preventDefault(); go(PAGES[Number(e.key) - 1].id); }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); }  // Search, from anywhere
 });
 
 loadArtStyle();  // the chosen drawing style (Settings > Appearance)

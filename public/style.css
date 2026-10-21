@@ -887,3 +887,11 @@ html[data-page="mouse"] #main input[type=range]::-webkit-slider-thumb, html[data
    tint matches the blurred look (checked side by side). The sidebar, messages and dialogs do not scroll and keep it. */
 #main :is(.panel, .bay, .hero, .profile, .banner) { -webkit-backdrop-filter: none; backdrop-filter: none; }
 #main :is(.panel, .bay, .hero, .profile) { background: var(--glass), rgba(10, 11, 17, .82); }
+
+/* Search's shortcut in the sidebar, the jump links under a long page's heading, and a setting found by Search (21 Oct 2026) */
+.cmd-kbd { margin-left: auto; font: 500 11px var(--ui); color: var(--faint); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; }
+.jump { display: flex; flex-wrap: wrap; gap: 6px; margin: -6px 0 16px; }
+.jump-link { padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); font: 500 12.5px var(--ui); cursor: pointer; }
+.jump-link:hover { color: var(--text); border-color: var(--line2); }
+.page .panel { scroll-margin-top: 16px; }
+.srow.found, .panel.found { box-shadow: 0 0 0 2px var(--signal); border-radius: 10px; transition: box-shadow .3s; }

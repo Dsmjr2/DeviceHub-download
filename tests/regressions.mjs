@@ -115,5 +115,13 @@ check(/\$_ -ne 'JOURNAL\.md'/.test(fs.readFileSync(path.join(ROOT, 'helpers/publ
 const ins = fs.readFileSync(path.join(ROOT, 'helpers/install.ps1'), 'utf8');
 check(/quitting it first/.test(ins) && /Building the device helper/.test(ins) && /Unblock-File/.test(ins), 'install.ps1 quits a running copy, builds the helper and clears the downloaded-file mark');
 
+// 13. Search finds single settings by reading the pages' own code (21 Oct 2026): every file it reads exists, and the
+//     pattern it reads still matches the way the pages write their settings
+const fsrc = fs.readFileSync(path.join(ROOT, 'public/ui/find-settings.js'), 'utf8');
+const files = [...fsrc.match(/const FILES = \{([\s\S]*?)\};/)[1].matchAll(/'?([a-z-]+)'?: '[a-z-]+'/g)].map((m) => m[1]);
+check(files.length >= 10 && files.every((f) => fs.existsSync(path.join(ROOT, 'public/pages', `${f}.js`))), `Search reads every page file it names (${files.join(', ')})`);
+const mouseSrc = fs.readFileSync(path.join(ROOT, 'public/pages/mouse.js'), 'utf8');
+check(/row\('Lift-off distance', '[^']+'/.test(mouseSrc) && /h\('h2', \{\}, 'Tracking'\)/.test(mouseSrc), 'Search finds Mouse > Lift-off distance and the Tracking section');
+
 console.log(fails.length ? `regressions: FAILED: ${fails.join('; ')}` : 'regressions (20 Oct fixes): all good');
 process.exit(fails.length ? 1 : 0);

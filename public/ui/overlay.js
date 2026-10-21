@@ -53,7 +53,7 @@ export function setCommands(fn) { commandsFn = fn; }
 
 export function openPalette() {
   if ($('.palette-back')) return;
-  const input = h('input', { class: 'palette-input', placeholder: 'Type a command: "dpi 800", "profile", "keyboard"…', 'aria-label': 'command' });
+  const input = h('input', { class: 'palette-input', placeholder: 'Find a setting or type a command: "sleep", "dpi 800"…', 'aria-label': 'command' });
   const list = h('div', { class: 'palette-list', role: 'listbox' });
   const back = h('div', { class: 'palette-back' }, h('div', { class: 'palette' }, h('div', { class: 'palette-top' }, icon('search'), input, h('kbd', {}, 'Esc')), list));
   let items = [], sel = 0;

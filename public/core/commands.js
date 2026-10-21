@@ -7,6 +7,7 @@ import { POLLING, snapDpi } from '../devices/mouse-adapter.js';
 import { toast } from '../ui/overlay.js';
 import { env } from './env.js';
 import { copyDownloadLink, copyShortReport } from './share.js';
+import { loadIndex, findSettings, showSetting } from '../ui/find-settings.js';
 
 let profiles = [];
 let loadedAt = 0;
@@ -32,6 +33,10 @@ export function commands(q, { go, pages }) {
   if (Date.now() - loadedAt > 5000) { loadedAt = Date.now(); reloadProfiles(); }
   if (Date.now() - extrasAt > 30000) { extrasAt = Date.now(); reloadExtras(); }
   const out = [];
+  // single settings by name (ui/find-settings.js)
+  loadIndex();
+  const names = Object.fromEntries(pages.map((p) => [p.id, p.title]));
+  for (const s of findSettings(q)) out.push({ dynamic: true, group: names[s.page] || s.page, icon: 'search', label: s.kind === 'section' ? `${s.name} (section)` : s.name, run: () => showSetting(s, go) });
   // dynamic: numbers typed after a word
   const num = (re) => { const m = q.match(re); return m ? Number(m[1]) : null; };
   const dpi = num(/^(?:dpi|sens)\s*(\d{2,5})$/);
