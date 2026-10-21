@@ -42,7 +42,7 @@ function monitorCard(m) {
     m.contrast ? row('Contrast', null, slider({ value: m.contrast.value, min: 0, max: m.contrast.max, unit: m.contrast.max === 100 ? '%' : '', live: live(m, 'contrast'), onCommit: (v) => set(m, 'contrast', v, `contrast ${v}`) })) : null,
     m.volume ? row('Speaker volume', 'The monitor\'s own speakers.', slider({ value: m.volume.value, min: 0, max: m.volume.max, unit: m.volume.max === 100 ? '%' : '', live: live(m, 'volume'), onCommit: (v) => set(m, 'volume', v, `speaker volume ${v}`) })) : null,
     // the standard picture settings it lists (20 Oct 2026): color preset in view, the color balance folded under More
-    m.colorPreset?.options?.length ? row('Color preset', null, segmented({ value: m.colorPreset.value, compact: true, options: m.colorPreset.options,
+    m.colorPreset?.options?.length ? row('Color preset', 'Warm, neutral or cool whites.', segmented({ value: m.colorPreset.value, compact: true, options: m.colorPreset.options,
       onCommit: (v) => set(m, 'colorPreset', v, `color preset ${m.colorPreset.options.find((o) => o.value === v)?.label || v}`) })) : null,
     colorBalance(m));
 }

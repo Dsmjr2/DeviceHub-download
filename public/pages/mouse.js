@@ -191,7 +191,7 @@ export default {
           card([h('h2', {}, 'Tracking')],
             row('Polling rate', 'Higher = smoother, uses more battery.',
               segmented({ value: v.pollingRate, compact: true, disabled: locked('pollingRate'), options: Object.keys(POLLING).map(Number).map((hz) => ({ value: hz, label: hz >= 1000 ? `${hz / 1000}K` : String(hz) })), onCommit: (hz) => set('pollingRate', hz, 'Polling rate', `${hz} Hz`) })),
-            row('Lift-off distance', null,
+            row('Lift-off distance', 'How high it tracks when lifted.',
               segmented({ value: v.liftOff, disabled: locked('liftOff'), options: [3, 1, 2].map((c) => ({ value: c, label: LIFT_OFF[c] })), onCommit: (c) => set('liftOff', c, 'Lift-off distance', LIFT_OFF[c]) })),
             row('Debounce', 'Lower = faster clicks.',
               slider({ value: v.debounce, min: 0, max: 15, unit: ' ms', disabled: locked('debounce'), grab: () => prepare('mouse'), onCommit: (ms) => set('debounce', ms, 'Debounce', `${ms} ms`) })),
@@ -200,7 +200,7 @@ export default {
             row('Ripple control', 'Smooths jitter at high DPI.', toggle({ value: v.ripple, label: 'Ripple control', disabled: locked('ripple'), onCommit: (on) => set('ripple', on, 'Ripple control', on ? 'on' : 'off') }))),
           // Power & light
           card([h('h2', {}, 'Power & light')],
-            row('Auto sleep', null, (() => { const stops = sleepStops(v.sleep); return slider({ value: v.sleep == null ? null : stops.indexOf(v.sleep), min: 0, max: stops.length - 1, step: 1, format: (i) => sleepText(stops[i]), disabled: locked('sleep'), grab: () => prepare('mouse'), onCommit: (i) => set('sleep', stops[i], 'Auto sleep', sleepText(stops[i])) }); })()),
+            row('Auto sleep', 'Idle time before it sleeps.', (() => { const stops = sleepStops(v.sleep); return slider({ value: v.sleep == null ? null : stops.indexOf(v.sleep), min: 0, max: stops.length - 1, step: 1, format: (i) => sleepText(stops[i]), disabled: locked('sleep'), grab: () => prepare('mouse'), onCommit: (i) => set('sleep', stops[i], 'Auto sleep', sleepText(stops[i])) }); })()),
             row('DPI light', null, segmented({ value: v.dpiEffect, disabled: locked('dpiEffect'), options: [{ value: 'off', label: 'Off' }, { value: 'steady', label: 'Steady' }, { value: 'breathing', label: 'Breathing' }], onCommit: (e) => set('dpiEffect', e, 'DPI light', e) })),
             // brightness applies to steady and speed to breathing, as in the Pulsar app
             v.dpiEffect === 'steady' ? row('Light brightness', null, slider({ value: v.effectBrightness, min: 1, max: 10, disabled: locked('effectBrightness'), grab: () => prepare('mouse'), onCommit: (n) => set('effectBrightness', n, 'DPI light brightness', `${n} of 10`) })) : null,

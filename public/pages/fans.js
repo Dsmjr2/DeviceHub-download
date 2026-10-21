@@ -49,9 +49,9 @@ function gpuCard(g) {
       meter({ ic: 'fan', pct: g.fanPct, value: g.fanPct == null ? '—' : g.fanPct === 0 ? 'Stopped' : `${g.fanPct}%`, label: 'fans', big: true }),
       meter({ ic: 'gauge', pct: g.loadPct, value: g.loadPct == null ? '—' : `${g.loadPct}%`, label: 'load', big: true })),
     graph(),
-    row('Power', null, h('b', {}, g.powerW == null ? '—' : `${Math.round(g.powerW)} W of ${Math.round(g.powerLimitW || 0)} W`)),
-    g.headroomC != null ? row('Headroom', null, h('b', {}, `${g.headroomC} °C`)) : null,
-    row('Video memory', null, h('b', {}, g.memUsedMB == null ? '—' : `${(g.memUsedMB / 1024).toFixed(1)} of ${(g.memTotalMB / 1024).toFixed(0)} GB`)));
+    row('Power', 'Drawing now, of its limit.', h('b', {}, g.powerW == null ? '—' : `${Math.round(g.powerW)} W of ${Math.round(g.powerLimitW || 0)} W`)),
+    g.headroomC != null ? row('Headroom', 'Degrees before it slows down.', h('b', {}, `${g.headroomC} °C`)) : null,
+    row('Video memory', 'Graphics memory in use.', h('b', {}, g.memUsedMB == null ? '—' : `${(g.memUsedMB / 1024).toFixed(1)} of ${(g.memTotalMB / 1024).toFixed(0)} GB`)));
 }
 
 export default {

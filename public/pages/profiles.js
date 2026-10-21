@@ -70,7 +70,7 @@ function autoPanel() {
   const watched = (list || []).flatMap((p) => p.games || []);
   return card([icon('bolt'), h('h2', {}, 'Auto-switch'), h('span', { class: 'sub' }, s.autoSwitch ? `watching ${watched.length} game${watched.length === 1 ? '' : 's'}${activeName() ? ` · now on "${activeName()}"` : ''}` : 'off'),
     h('span', { class: 'spacer' }), toggle({ value: !!s.autoSwitch, label: 'auto-switch', onCommit: async (on) => { await saveSettings({ autoSwitch: on }); toast(on ? 'Auto-switch on' : 'Auto-switch off', 'good', { detail: on ? 'Checked every 5 seconds while DeviceHub is open.' : null }); rerender(); } })],
-    row('When no game is running', null,
+    row('When no game is running', 'The profile used outside games.',
       h('select', { class: 'text', style: { width: '220px' }, 'aria-label': 'default profile', onchange: async (e) => { await saveSettings({ defaultProfile: e.target.value }); } },
         h('option', { value: '' }, 'Leave as is'), ...(list || []).map((p) => h('option', { value: p.name, selected: p.name === s.defaultProfile ? true : null }, p.name)))));
 }
