@@ -1,6 +1,6 @@
 // Settings: start with Windows, self-test (read-only), where files live, and what DeviceHub will never do.
 import { h, icon } from '../ui/dom.js';
-import { more, card, row, toggle, button, pill } from '../ui/controls.js';
+import { card, row, toggle, button, pill } from '../ui/controls.js';
 import { devices, isDemo, readNow } from '../core/devices.js';
 import { auto } from '../core/autoswitch.js';
 import { topbar } from './common.js';
@@ -84,8 +84,9 @@ function syncRows() {
       opts?.settingsSync === false || sy.notSetUp ? null : button(syncBusy ? 'Syncing…' : 'Sync now', async () => { syncBusy = true; rerender(); syncSt = await env.api('/api/settings-sync', {}).catch((e) => ({ error: e.message })); syncBusy = false; toast(syncSt.error ? 'Not synced' : 'Synced', syncSt.error ? 'bad' : 'good', { detail: syncSt.error || (syncSt.lastLoaded ? `Loaded ${syncSt.lastLoaded.parts.join(', ')}` : null) }); loadSyncPower(); }, { kind: 'ghost small', ic: 'refresh', disabled: syncBusy }),
       toggle({ value: opts?.settingsSync !== false, label: 'Settings sync', onCommit: (on) => setOpt('settingsSync', on) }))),
     // battery care (helpers/battery-care.mjs): the wireless devices' lights down on a low battery, back once they charge
-    row('Save device battery', 'At 20% or less: lights off, the mouse at 1000 Hz. Back once it charges.', toggle({ value: opts?.batteryCare !== false, label: 'Save device battery', onCommit: (on) => setOpt('batteryCare', on) })),
-    row('Battery saver', powerText, toggle({ value: opts?.batterySaver !== false, label: 'Battery saver', onCommit: (on) => setOpt('batterySaver', on) })),
+    row('Save device battery', 'Mouse and headset at 20% or less: their lights off, the mouse at 1000 Hz. Back once charged.', toggle({ value: opts?.batteryCare !== false, label: 'Save device battery', onCommit: (on) => setOpt('batteryCare', on) })),
+    // only a PC with a battery has anything to save (a desktop always runs at full speed)
+    powerSt && !pw.hasBattery ? null : row('Battery saver', powerText, toggle({ value: opts?.batterySaver !== false, label: 'Battery saver', onCommit: (on) => setOpt('batterySaver', on) })),
     // light window: DeviceHub inside the Chrome already running (much less memory); on by default on a PC with a battery
     row('Low-memory window', 'Opens in your Chrome, about 350 MB less.', toggle({ value: opts?.lightWindow ?? !!pw.hasBattery, label: 'Low-memory window', onCommit: (on) => setOpt('lightWindow', on) })),
   ];
@@ -254,35 +255,29 @@ export default {
     if (syncSt === null) loadSyncPower();
     // what DeviceHub always does to keep the devices safe (short, plain; 20 Oct 2026)
     const SAFETY = ['Never flashes firmware', 'Never sends reset or bootloader commands', 'Backs up before every change', 'Reads back every change to confirm it', 'Stays offline, except to check for updates'];
-    // no jump links: the page fits on about one screen (Shawn, 21 Oct 2026)
+    // one screen, no scrolling and nothing folded (Shawn, 21 Oct 2026): three columns that keep their own heights; the
+    // self-test and the safety promises share one small card. No jump links on this page.
     return h('div', { 'data-no-jump': '' },
       topbar('App', 'Settings', null),
-      // the two columns keep their own heights; More sits under Appearance, in the space beside the taller Startup card
-      // (Shawn, 21 Oct 2026: it was on its own row below, leaving an empty space there)
-      h('div', { class: 'grid two top' },
-        h('div', { class: 'stack' }, appearanceCard(), moreCards(results, SAFETY)),
-        card([h('h2', {}, 'Startup')],
+      h('div', { class: 'grid three top' },
+        h('div', { class: 'stack' }, appearanceCard(),
+          card([icon('shield'), h('h2', {}, 'Safety'), h('span', { class: 'spacer' }), button('Self-test', selfTest, { kind: 'small', ic: 'shield' })],
+            results ? h('div', { class: 'diff', style: { marginBottom: '10px' } }, ...results.map(([dev, st, msg]) => h('div', { style: { gridTemplateColumns: '120px 52px 1fr' } }, h('span', { class: 'dev' }, dev), pill(st, st === 'pass' ? 'good' : st === 'fail' ? 'bad' : st === 'warn' ? 'warn' : ''), h('span', {}, msg)))) : null,
+            h('ul', { class: 'safety' }, ...SAFETY.map((t) => h('li', {}, icon('check'), t))),
+            results ? null : h('p', { class: 'faint', style: { margin: '8px 0 0' } }, 'Self-test reads each device twice to check it.'))),
+        h('div', { class: 'stack' }, card([h('h2', {}, 'Startup')],
           selfRow(),
-          row('Share DeviceHub', 'Download link to send to people.', button('Copy link', copyDownloadLink, { kind: 'small', ic: 'external' })),
-          ...syncRows(),
           row('Start with Windows', 'Starts in the tray.',
             toggle({ value: !!startup, disabled: startup === null || isDemo(), label: 'start with windows', onCommit: async (on) => {
               const r = await (await fetch('/api/startup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: on }) })).json();
               startup = r.enabled; toast(startup ? 'DeviceHub will start with Windows' : 'DeviceHub will not start with Windows', 'good'); rerender();
             } })),
-          isDemo() ? null : row('Files', 'Where DeviceHub keeps its data.', button('Open folder', () => fetch('/api/reveal', { method: 'POST' }), { kind: 'ghost small', ic: 'external' })),
-          isDemo() ? null : row('Demo mode', 'Try it with pretend devices.', button('Open demo', () => window.open('/?demo#/overview', '_blank'), { kind: 'ghost small', ic: 'play' })),
-          isDemo() ? null : row('Uninstall', 'Removes DeviceHub. Backups are kept.', button('Uninstall', uninstall, { kind: 'ghost small danger' })))));
+          ...syncRows()), updatesCard()),
+        h('div', { class: 'stack' }, healthCard(),
+          card([h('h2', {}, 'DeviceHub')],
+            row('Share DeviceHub', 'Download link to send to people.', button('Copy link', copyDownloadLink, { kind: 'small', ic: 'external' })),
+            isDemo() ? null : row('Files', 'Where DeviceHub keeps its data.', button('Open folder', () => fetch('/api/reveal', { method: 'POST' }), { kind: 'ghost small', ic: 'external' })),
+            isDemo() ? null : row('Demo mode', 'Try it with pretend devices.', button('Open demo', () => window.open('/?demo#/overview', '_blank'), { kind: 'ghost small', ic: 'play' })),
+            isDemo() ? null : row('Uninstall', 'Removes DeviceHub. Backups are kept.', button('Uninstall', uninstall, { kind: 'ghost small danger' }))))));
   },
 };
-
-// used once in a while: folded under More (remembered), one column
-function moreCards(results, SAFETY) {
-  return more('settings', 'Health, updates, self-test, safety',
-        h('div', { class: 'stack' }, healthCard(), updatesCard(),
-              card([h('h2', {}, 'Self-test'), h('span', { class: 'spacer' }), button('Run', selfTest, { kind: 'primary small', ic: 'shield' })],
-                results ? h('div', { class: 'diff' }, ...results.map(([dev, st, msg]) => h('div', { style: { gridTemplateColumns: '150px 60px 1fr' } }, h('span', { class: 'dev' }, dev), pill(st, st === 'pass' ? 'good' : st === 'fail' ? 'bad' : st === 'warn' ? 'warn' : ''), h('span', {}, msg))))
-                  : h('p', { class: 'faint', style: { margin: 0 } }, 'Reads each device twice to check it.')),
-            card([icon('shield'), h('h2', {}, 'Safety')],
-              h('div', { class: 'files' }, ...SAFETY.map((t) => h('div', { class: 'file', style: { gridTemplateColumns: '24px 1fr', '--cc': 'var(--good)' } }, icon('check'), h('span', {}, t)))))));
-}
