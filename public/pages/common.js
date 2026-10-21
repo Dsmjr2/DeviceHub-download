@@ -48,10 +48,23 @@ export async function openVendor(app) {
   } catch { toast('DeviceHub server is not running', 'bad'); }
 }
 
+// The few things only the maker's app does. With the app not on this PC (Shawn uninstalled iCUE, 21 Oct 2026) it says
+// so, with no button that cannot open anything; an app that is a web page always keeps its button.
+let vendorApps = null;
+const vendorAppsLoad = fetch('/api/vendor-apps').then((r) => (r.ok ? r.json() : {})).then((v) => { vendorApps = v; }).catch(() => { vendorApps = {}; });
 export function vendorNote(a) {
-  return h('div', { class: 'vendor-note' }, icon('external'),
-    h('div', { class: 'grow' }, h('b', {}, `Still in ${a.vendor.label}: `), a.unsupported.join(', '), '.'),
-    button(`Open ${a.vendor.label}`, () => openVendor(a.vendor.app), { kind: 'small' }));
+  const app = a.vendor.app, label = a.vendor.label;
+  const fill = (el) => {
+    const missing = vendorApps && vendorApps[app] === false;
+    el.replaceChildren(icon('external'),
+      missing ? h('div', { class: 'grow' }, h('b', {}, `Only in ${label}, which is not on this PC: `), a.unsupported.join(', '), '. You only need it for those.')
+        : h('div', { class: 'grow' }, h('b', {}, `Still in ${label}: `), a.unsupported.join(', '), '.'),
+      ...(missing || !vendorApps ? [] : [button(`Open ${label}`, () => openVendor(app), { kind: 'small' })]));
+  };
+  const el = h('div', { class: 'vendor-note' });
+  fill(el);
+  if (!vendorApps) vendorAppsLoad.then(() => fill(el));
+  return el;
 }
 
 // Shown on a device page when the device is not connected (or asleep / failed).

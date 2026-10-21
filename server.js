@@ -350,6 +350,8 @@ async function api(req, res, url) {
     if (req.method === 'GET') return send(res, 200, readJsonFile(PROFILES, []));
     if (req.method === 'POST') { writeAtomic(PROFILES, JSON.stringify(await readBody(req), null, 2)); return send(res, 200, { ok: true }); }
   }
+  // which makers' apps are on this PC (the device pages say so instead of offering a button that cannot open one)
+  if (url.pathname === '/api/vendor-apps') return send(res, 200, Object.fromEntries(Object.entries(VENDOR_APPS).map(([k, p]) => [k, fs.existsSync(p)])));
   if (url.pathname === '/api/open' && req.method === 'POST') {
     const { app } = await readBody(req);
     // only an app that is there (20 Oct 2026: on a PC without iCUE the button crashed the server); otherwise its page
