@@ -771,6 +771,9 @@ pre.json { margin: 0; max-height: 50vh; overflow: auto; font: 12px/1.5 var(--mon
 .bc-table .bc-gap td { color: var(--faint); font-style: italic; }
 .bc-table b { color: var(--text); font-weight: 600; }
 .bc-table td { font-variant-numeric: tabular-nums; }
+.bc-table .bc-scroll { max-height: 168px; overflow-y: auto; margin-top: 6px; overscroll-behavior: contain; }
+.bc-table .bc-scroll table { margin-top: 0; }
+.bc-table thead th { position: sticky; top: 0; background: var(--panel-solid); z-index: 1; border-top: 0; }
 
 /* ---------- Settings > Health: one plain line per check, a dot that is green when normal and yellow when not ---------- */
 .health { display: grid; gap: 2px; }

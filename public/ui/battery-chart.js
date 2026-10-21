@@ -148,5 +148,5 @@ function readings(rows) {
       ? h('tr', { class: 'bc-gap' }, h('td', {}, span), h('td', {}, '—'), h('td', {}, lasted(run.to - run.from)), h('td', {}, 'no readings (off or asleep)'))
       : h('tr', {}, h('td', {}, span), h('td', {}, h('b', {}, `${run.pct}%`)), h('td', {}, lasted(run.to - run.from)), h('td', {}, `${run.charging ? 'charging · ' : ''}${run.n} reading${run.n === 1 ? '' : 's'}`)));
   }
-  return h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Time'), h('th', {}, 'Level'), h('th', {}, 'Held'), h('th', {}, ''))), h('tbody', {}, ...body));
+  return h('div', { class: 'bc-scroll' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Time'), h('th', {}, 'Level'), h('th', {}, 'Held'), h('th', {}, ''))), h('tbody', {}, ...body)));
 }
