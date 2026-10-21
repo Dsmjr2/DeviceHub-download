@@ -29,7 +29,7 @@ public static class Helper {
   class Channel {
     public string Name;
     public readonly BlockingCollection<string[]> Queue = new BlockingCollection<string[]>();
-    public HidIo Hid; public Hs80Io Hs; public Thread Events, Worker;
+    public HidIo Hid; public Hs80Io Hs; public HidWatch Watch; public Thread Events, Worker;
   }
   static readonly Dictionary<string, Channel> channels = new Dictionary<string, Channel>();
   public static string CueDll;
@@ -76,6 +76,7 @@ public static class Helper {
       try { reply = Handle(c, req[1]); }
       catch (Exception e) {
         // a broken handle (unplugged): drop it; DeviceHub reopens when the device is back
+        if (c.Watch != null) { try { c.Watch.Dispose(); } catch { } c.Watch = null; }
         if (c.Hid != null) { try { c.Hid.Dispose(); } catch { } c.Hid = null; }
         if (c.Hs != null) { try { c.Hs.Dispose(); } catch { } c.Hs = null; }
         reply = c.Name == "audio" || c.Name == "cue" || c.Name == "monitor" || c.Name == "camera" ? Json(new Dictionary<string, object> { { "ok", false }, { "error", e.Message } }) : "GONE";
@@ -157,6 +158,17 @@ public static class Helper {
         c.Hid = new HidIo(path, int.Parse(p[5]), byte.Parse(p[6]));
         return "OK";
       }
+      // WATCH <command>: reports the device sends by itself with that command byte are passed on as "<chan> EVT <cmd> 1"
+      // (21 Oct 2026: the Pulsar mouse announces a DPI button press with 0A). A second handle that only reads (it can
+      // send nothing), beside the request handle; Windows gives every handle each report. Ends with CLOSE.
+      case "WATCH": {
+        if (c.Hid == null) return "GONE";
+        if (c.Watch != null) return "OK";
+        var path = HidFind.Find(p[1], p[2], Convert.ToInt32(p[3], 16), Convert.ToInt32(p[4], 16), 0);
+        if (path == null) return "NODEVICE";
+        c.Watch = new HidWatch(path, int.Parse(p[5]) + 1, Convert.ToByte(w[1], 16), (cmd) => Say(c.Name + " EVT " + cmd.ToString("x2") + " 1"));
+        return "OK";
+      }
       case "REQ": {
         if (c.Hid == null) return "GONE";
         int echo = int.Parse(w[1]), ms = int.Parse(w[2]);
@@ -164,7 +176,7 @@ public static class Helper {
         var r = c.Hid.Req(bytes, echo, ms);
         return r == null ? "NONE" : string.Join(" ", r.Select(x => x.ToString("x2")));
       }
-      case "CLOSE": if (c.Hid != null) { c.Hid.Dispose(); c.Hid = null; } return "OK";
+      case "CLOSE": if (c.Watch != null) { c.Watch.Dispose(); c.Watch = null; } if (c.Hid != null) { c.Hid.Dispose(); c.Hid = null; } return "OK";
     }
     return "ERR unknown command";
   }

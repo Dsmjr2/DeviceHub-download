@@ -14,7 +14,7 @@ import * as weekly from './weekly-setup.mjs';
 import * as daily from './daily-check.mjs';
 import * as batteryCare from './battery-care.mjs';
 import { loadProfiles, apply } from '../public/core/profiles.js';
-import { provider, closeAll, setGoneHandler, setMovedHandler, devicesChanged, useKeyboardSpec, addSpec } from './hid-host.mjs';
+import { provider, closeAll, setGoneHandler, setMovedHandler, devicesChanged, useKeyboardSpec, addSpec, useWindowsEvents, setAnnounceHandlers } from './hid-host.mjs';
 import * as myDevices from './my-devices.mjs';
 import { useKeyboardIds } from '../public/devices/via.js';
 import { useLayout } from '../public/devices/keyboard-adapter.js';
@@ -85,6 +85,9 @@ export async function start({ port, corsairHelper }) {
     core.refresh(id, { quiet: true, full: true }).catch(() => {});
     for (const ms of [2000, 5000, 10000]) setTimeout(() => core.refresh(id, { quiet: true, full: true }).catch(() => {}), ms);
   });
+  // The mouse's DPI button (21 Oct 2026): it announces each press, so the DPI stage is read the moment it changes, and
+  // the minute check reads only the battery while the announcements are heard (public/core/devices.js refreshUnlocked)
+  setAnnounceHandlers((id) => core.refresh(id, { quiet: true, dpi: true }).catch(() => {}), (id, on) => { if (id === 'mouse') env.dpiEvents = on; });
   if (corsair) setCorsairCall(async (action, body) => corsair.handle(action, body || {}));
   mouse.levelFilter = require('./mouse-level').filter;  // the mouse's real battery level (helpers/mouse-level.js)
   // Any VIA keyboard (20 Oct 2026; helpers/via-defs.js): no P75 here but another VIA keyboard: its VIA definition gives
@@ -182,10 +185,15 @@ export async function start({ port, corsairHelper }) {
       if (on === wakeOn) return;
       wakeOn = on;
       const r = await nat.request('tray', on ? 'WAKE ON' : 'WAKE OFF', 5000).catch(() => 'NO');
-      if (r === 'OK') env.wakeEvents = true; else wakeOn = false;
+      if (r === 'OK') { env.wakeEvents = true; useWindowsEvents(true); require('./hs80-direct').useWindowsEvents(true); } else wakeOn = false;
     };
     core.onChange((id) => { if (id === 'mouse' && core.devices.mouse) wakeWatch(core.devices.mouse.status === 'asleep'); });
-    nat.onExit(() => { wakeOn = false; env.wakeEvents = false; });
+    // whether the helper's window (Windows' device messages, the mouse's wake) is there: asked a few seconds after start
+    // and after the helper restarts, then the slower fallback checks apply (hid-host.mjs, hs80-direct.js, devices.js)
+    const events = (on) => { env.wakeEvents = on; useWindowsEvents(on); require('./hs80-direct').useWindowsEvents(on); };
+    const probe = async () => { if (wakeOn) return; const r = await nat.request('tray', 'WAKE OFF', 5000).catch(() => 'NO'); if (r === 'OK') events(true); else setTimeout(probe, 30000); };
+    setTimeout(probe, 5000);
+    nat.onExit(() => { wakeOn = false; events(false); env.dpiEvents = false; setTimeout(probe, 5000); });
     nat.onEvent('input', () => {
       wakeOn = false;
       if (core.devices.mouse?.status !== 'asleep') return;

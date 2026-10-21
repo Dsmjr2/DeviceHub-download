@@ -52,10 +52,14 @@ async function standbyTick() {
     }
   } finally { standbyBusy = false; }
 }
+// every 10 s; every 60 s when Windows' device messages arrive (lookForCable then looks the moment one is plugged in)
+let windowsEvents = false;
+function useWindowsEvents(on) { windowsEvents = !!on; }
 function startStandby() {
   if (standbyTimer) return;
   standby = new Host('wired');
-  standbyTimer = setInterval(standbyTick, 10000);
+  let last = Date.now();
+  standbyTimer = setInterval(() => { if (Date.now() - last < (windowsEvents ? 60000 : 10000) - 500) return; last = Date.now(); standbyTick().catch(() => {}); }, 10000);
 }
 // a device was plugged in: look for the headset's cable now, and as Windows finishes setting it up
 function lookForCable() { if (!standbyTimer) return; for (const ms of [0, 1200, 3000]) setTimeout(() => standbyTick().catch(() => {}), ms); }
@@ -167,12 +171,14 @@ async function lightRound() {
   lights.ticks++;
   // every 10 s: give way to iCUE if it was opened
   if (lights.ticks % 20 === 1 && (await icueRunning())) { stopLights(); stopStandby(); return; }
-  // every 2 s (every second until 21 Oct 2026; battery: each question is radio the headset answers): put the headset
-  // back in software mode if it dropped out (it starts in its own white-light mode whenever it switches on or
-  // reconnects, so this check decides how long that white light shows)
-  if (lights.ticks % 4 === 1) {
+  // Put the headset back in software mode if it dropped out. It does so when it switches on or reconnects (it then
+  // starts in its own white-light mode), and that is always after a silence DeviceHub sees: so the first round it
+  // answers again checks at once, as fast as before; otherwise every 30 s as a fallback (every 1 s, then 2 s, until
+  // 21 Oct 2026; battery: each question is radio the headset answers; no other drop was ever seen)
+  if (lights.back || lights.ticks % 60 === 1) {
     const m = await get(0x03);
-    if (lastTimedOut) { lights.quietUntil = Date.now() + 5000; return; }
+    if (lastTimedOut) { lights.quietUntil = Date.now() + 5000; lights.back = true; return; }
+    lights.back = false;
     if (m && m.status === 0 && m.value !== 2) { lights.modeDrops++; lights.lastSent = null; await one('MODE 2'); }
   }
   // The mic position: the headset's own change notice comes at once (onEvent), but did not always arrive (19 Oct 2026,
@@ -180,7 +186,7 @@ async function lightRound() {
   // 2026: half the questions, for the headset's battery)
   if (lights.ticks % 2 === 0) {
     const m = await get(0xa6);
-    if (lastTimedOut) { lights.quietUntil = Date.now() + 5000; return; }
+    if (lastTimedOut) { lights.quietUntil = Date.now() + 5000; lights.back = true; return; }
     if (m && m.status === 0) lights.muted = m.value === 1;
   }
   const msg = lightMessage();
@@ -223,4 +229,4 @@ function close() { stopLights(); stopStandby(); stopHost(); }
 
 // for the light-interval test (tests that the headset keeps DeviceHub's lights with fewer messages)
 function setLightEvery(n) { if (Number.isInteger(n) && n >= 1 && n <= 40) lights.lightEvery = n; return { lightEvery: lights.lightEvery, modeDrops: lights.modeDrops }; }
-module.exports = { lookForCable, setLightEvery, lightSettings: () => ({ ...lights.settings }), setLightSettings, preview, setLog: (fn) => { log = fn; }, open, reopen, connection: () => conn, read, close, icueRunning, setLogo, set, lastFirmware, lights: () => ({ ...lights, timer: !!lights.timer }) };
+module.exports = { lookForCable, setLightEvery, useWindowsEvents, lightSettings: () => ({ ...lights.settings }), setLightSettings, preview, setLog: (fn) => { log = fn; }, open, reopen, connection: () => conn, read, close, icueRunning, setLogo, set, lastFirmware, lights: () => ({ ...lights, timer: !!lights.timer }) };

@@ -188,7 +188,7 @@ export function refresh(id, opts) {
   return withDevice(id, () => refreshUnlocked(id, opts));
 }
 
-async function refreshUnlocked(id, { quiet, first, full } = {}) {
+async function refreshUnlocked(id, { quiet, first, full, dpi } = {}) {
   const d = devices[id];
   if (!['connected', 'asleep'].includes(d.status) && !(first && d.status === 'connecting')) return;
   // still asleep? one quick question instead of a whole read (21 Oct 2026: ~25 requests a look)
@@ -199,7 +199,9 @@ async function refreshUnlocked(id, { quiet, first, full } = {}) {
     // the rest as last read. A full read at least every 10 minutes, at connect, and on Re-read.
     const quick = quiet && !first && !full && d.adapter.wakeRead && d.info && Object.keys(d.info).length && Date.now() - (fullReadAt[id] || 0) < FULL_READ_MS;
     const info = quick ? d.info : await d.adapter.info();
-    const values = quick ? await d.adapter.wakeRead() : await d.adapter.read();
+    // while the mouse's own DPI announcements are heard (env.dpiEvents, helpers/agent.mjs), the minute check reads only
+    // the battery; a press (dpi), a wake and the 10-minute full read still read the mouse
+    const values = !quick ? await d.adapter.read() : env.dpiEvents && !dpi && d.status === 'connected' ? d.values : await d.adapter.wakeRead();
     if (!quick) fullReadAt[id] = Date.now();
     const battery = d.adapter.battery ? await d.adapter.battery() : null;
     // Unchanged readings don't redraw the page (keeps sliders and inputs undisturbed).
@@ -471,8 +473,8 @@ export function startPolling() {
   repeat(() => {
     for (const d of Object.values(devices)) {
       // asleep: asked again every 5 s; when the agent hears the mouse wake by itself (env.wakeEvents: the helper
-      // passes on its first movement, helpers/agent.mjs), only every 30 s, as a fallback (21 Oct 2026)
-      if (d.status === 'asleep' && !(env.wakeEvents && d.id === 'mouse' && Date.now() - (asleepLook[d.id] || 0) < 30000)) { asleepLook[d.id] = Date.now(); refresh(d.id, { quiet: true }); }
+      // passes on its first movement, helpers/agent.mjs), only every 5 minutes, as a fallback (21 Oct 2026)
+      if (d.status === 'asleep' && !(env.wakeEvents && d.id === 'mouse' && Date.now() - (asleepLook[d.id] || 0) < 300000)) { asleepLook[d.id] = Date.now(); refresh(d.id, { quiet: true }); }
       if ((d.status === 'missing' || d.status === 'idle') && (d.adapter.autoReconnect || env.agent)) {
         // Looking for a missing mouse or keyboard costs a device scan, so the agent does it every 20 s, not every 5.
         if (env.agent && !d.adapter.pollRead && Date.now() - (lastTry[d.id] || 0) < 20000) continue;

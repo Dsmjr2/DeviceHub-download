@@ -48,3 +48,26 @@ public class HidIo : IDisposable {
 
   public void Dispose() { fs.Dispose(); }
 }
+
+// Reports a device sends by itself (21 Oct 2026: the Pulsar mouse announces a DPI button press, command 0A), on a
+// second handle opened for reading only, so nothing can be sent through it. Each report whose command byte (the one
+// after the report id) is the watched one calls onReport; the reading thread ends when the handle is closed.
+public class HidWatch : IDisposable {
+  [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+  static extern SafeFileHandle CreateFile(string n, uint a, uint s, IntPtr sa, uint d, uint f, IntPtr t);
+  readonly FileStream fs;
+  public HidWatch(string path, int reportLength, byte command, Action<byte> onReport) {
+    var h = CreateFile(path, 0x80000000, 3, IntPtr.Zero, 3, 0, IntPtr.Zero);   // GENERIC_READ only
+    if (h.IsInvalid) throw new Exception("open failed " + Marshal.GetLastWin32Error());
+    fs = new FileStream(h, FileAccess.Read, reportLength, false);
+    var t = new System.Threading.Thread(() => {
+      var b = new byte[reportLength];
+      while (true) {
+        int n; try { n = fs.Read(b, 0, b.Length); } catch { return; }
+        if (n > 1 && b[1] == command) { try { onReport(command); } catch { } }
+      }
+    }) { IsBackground = true };
+    t.Start();
+  }
+  public void Dispose() { try { fs.Dispose(); } catch { } }
+}

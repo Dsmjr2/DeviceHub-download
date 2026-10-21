@@ -10,11 +10,22 @@ const power = createRequire(import.meta.url)('./power.js');
 // the driver before it gives up and a late reply can never be mistaken for the next one.
 export const SPECS = [
   { id: 'mouse', vendorId: 0x3710, productId: 0x5406, usagePage: 0xff02, vid: '3710', pid: '5406', page: 'FF02', usage: '0002', len: 16, reportId: 8, replyMs: 900, productName: 'Pulsar 8K Dongle', echo: () => 1,
+    // it announces a DPI button press by itself (command 0A, measured 21 Oct 2026): listened for, see watch
+    watch: '0a',
     // on its USB cable (charging) the mouse is its own device, 3710:3506, with the same config collection; the dongle
     // then reports it offline. The cable is used whenever it is plugged in (measured 19 Oct 2026).
     cablePid: '3506' },
   { id: 'keyboard', vendorId: 0x342d, productId: 0xe479, usagePage: 0xff60, vid: '342D', pid: 'E479', page: 'FF60', usage: '0061', len: 32, reportId: 0, replyMs: 750, productName: 'EPOMAKER P75', echo: (b) => ECHO[b[0]] ?? 1 },
 ];
+
+// Windows' device messages reach DeviceHub (the helper's window, helpers/native/tray.cs): a cable plugged in or out is
+// then looked at the moment Windows says so (devicesChanged), and the timed look is only a fallback (21 Oct 2026)
+let windowsEvents = false;
+export function useWindowsEvents(on) { windowsEvents = !!on; }
+
+// a device's own announcement (the mouse's DPI button): onAnnounce(id); whether its listener runs: onWatching(id, on)
+let onAnnounce = () => {}, onWatching = () => {};
+export function setAnnounceHandlers(press, watching) { onAnnounce = press; onWatching = watching; }
 
 let onGone = () => {};
 export function setGoneHandler(fn) { onGone = fn; }
@@ -43,16 +54,25 @@ class HostDevice {
   async tryOpen() {
     if (this.opened) return true;
     for (const pid of [this.spec.cablePid, this.spec.pid].filter(Boolean)) {
-      if ((await native.request(this.chanFor(pid), 'OPEN', 15000)) === 'OK') { this.pid = pid; this.opened = true; this.cableCheckAt = Date.now(); this.watchCable(); return true; }
+      if ((await native.request(this.chanFor(pid), 'OPEN', 15000)) === 'OK') { this.pid = pid; this.opened = true; this.cableCheckAt = Date.now(); this.watchCable(); this.listen(); return true; }
     }
     return false;
+  }
+
+  // what the device announces by itself (spec.watch: its command byte), on the channel just opened (helpers/hidio.cs HidWatch)
+  listen() {
+    const s = this.spec;
+    if (!s.watch) return;
+    const chan = this.chan;
+    native.onEvent(chan, () => onAnnounce(s.id));
+    native.request(chan, `WATCH ${s.watch}`, 5000).then((r) => onWatching(s.id, r === 'OK')).catch(() => onWatching(s.id, false));
   }
 
   // A device with a cable mode: move to the cable when it is plugged in (looked for every 10 s), and back to the
   // dongle when it is unplugged. Returns true when the channel changed.
   async followCable() {
     const s = this.spec;
-    if (!s.cablePid || this.onCable || Date.now() - (this.cableCheckAt || 0) < 10000) return false;
+    if (!s.cablePid || this.onCable || Date.now() - (this.cableCheckAt || 0) < (windowsEvents ? 60000 : 10000)) return false;
     this.cableCheckAt = Date.now();
     if ((await native.request(this.chanFor(s.cablePid), 'OPEN', 5000)) !== 'OK') return false;
     native.request(this.chanFor(s.pid), 'CLOSE', 3000);
@@ -87,7 +107,7 @@ class HostDevice {
   // so "Charging" clears within seconds of unplugging (19 Oct 2026: it stayed for a minute, until the next read).
   watchCable() {
     if (!this.spec.cablePid || this.watch) return;
-    // every 3 s (9 s on battery with the battery saver)
+    // every 3 s (9 s on battery with the battery saver); every 30 s when Windows' device messages arrive
     const loop = () => { this.watch = setTimeout(() => this.serial(async () => {
       if (!this.opened) return;
       const s = this.spec;
@@ -96,7 +116,7 @@ class HostDevice {
         const r = await native.request(this.chan, `REQ ${probe} 200 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 49`, 3000);
         if (r === 'GONE') { if (await this.backToDongle()) onMoved(s.id); else this.gone(); }
       } else if (await this.followCable()) onMoved(s.id);
-    }).catch(() => {}).finally(() => { if (this.watch) loop(); }), power.every(3000)); };
+    }).catch(() => {}).finally(() => { if (this.watch) loop(); }), power.every(windowsEvents ? 30000 : 3000)); };
     loop();
   }
 
