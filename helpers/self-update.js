@@ -24,10 +24,23 @@ const git = (args, timeout = 30000) => new Promise((resolve, reject) => {
 // device helper, starts it again). Any failure before the installer leaves this copy exactly as it was.
 const RELEASE = process.env.DEVICEHUB_RELEASE_URL || 'https://github.com/Dsmjr2/DeviceHub-download/releases/latest/download/';  // a test points it at a local copy
 const mine = () => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'release.json'), 'utf8')); } catch { return null; } };
+// A release is believed only when its publisher signed it (21 Oct 2026, security review): version.json carries an
+// Ed25519 signature over its version, size and SHA-256 (helpers/sign-release.mjs, with a key that lives only on the
+// publishing PC), checked here with the public key this copy carries. So someone who got into the GitHub account could
+// not hand out an update: an unsigned or altered one is refused, and a merging copy merges only the signed version.
+const PUBLIC_KEY = path.join(ROOT, 'helpers', 'release-public-key.pem');
+const releasePayload = (v) => JSON.stringify([v.commit, v.builtAt, v.appCommit ?? null, v.size, v.sha256]);
 async function releaseInfo() {
   const r = await fetch(RELEASE + 'version.json', { signal: AbortSignal.timeout(20000) });
   if (!r.ok) throw new Error(`the download page answered ${r.status}`);
-  return r.json();
+  const v = await r.json();
+  if (fs.existsSync(PUBLIC_KEY)) {
+    const crypto = require('crypto');
+    let ok = false;
+    try { ok = !!v.signature && crypto.verify(null, Buffer.from(releasePayload(v)), crypto.createPublicKey(fs.readFileSync(PUBLIC_KEY)), Buffer.from(v.signature, 'base64')); } catch {}
+    if (!ok) throw new Error('the update on the download page is not signed by DeviceHub\'s publisher, so it was not used');
+  }
+  return v;
 }
 // app files changed on this PC since it was installed (release-files.json: each file's SHA-256 then): an update
 // would undo them, so it is not offered over them (21 Oct 2026)
@@ -121,18 +134,28 @@ async function status() {
   try { if ((await git(['rev-parse', '--is-inside-work-tree'], 8000)) !== 'true') throw new Error(); } catch { return zipStatus(); }
   try {
     await git(['fetch', '--quiet', 'origin'], 30000);
-    const behind = Number(await git(['rev-list', '--count', 'HEAD..@{u}'])) || 0;
+    // a copy installed on someone's PC, tied to the public download repository: its updates merge (mergeUpdate), and
+    // it follows the signed release, never whatever is newest on the branch (releaseInfo checks the signature)
+    const shared = /DeviceHub-download/.test(await git(['remote', 'get-url', 'origin']).catch(() => ''));
+    let target = '@{u}', behind;
+    if (shared) {
+      const signed = (await releaseInfo()).appCommit;
+      if (!signed || !/^[0-9a-f]{7,40}$/.test(signed)) behind = 0;
+      else {
+        await git(['cat-file', '-e', `${signed}^{commit}`]).catch(() => git(['fetch', '--quiet', 'origin', signed], 30000));
+        target = await git(['rev-parse', `${signed}^{commit}`]);
+        behind = (await git(['merge-base', '--is-ancestor', target, 'HEAD']).then(() => true, () => false)) ? 0 : Number(await git(['rev-list', '--count', `HEAD..${target}`])) || 1;
+      }
+    } else behind = Number(await git(['rev-list', '--count', 'HEAD..@{u}'])) || 0;
     const changed = (await git(['status', '--porcelain', '--untracked-files=no'])).split('\n').filter(Boolean).length;
-    const latest = behind ? await git(['log', '-1', '--format=%s', '@{u}']) : null;
+    const latest = behind ? await git(['log', '-1', '--format=%s', target]) : null;
     const at = await git(['log', '-1', '--format=%cI', 'HEAD']);
     // the newest version already crashed on start here once (helpers/keep-running.bat wrote update-failed.txt): not
     // offered again; a newer one (a fix) is
     let failed = null; try { failed = fs.readFileSync(path.join(ROOT, 'update-failed.txt'), 'utf8').trim(); } catch {}
-    // a copy installed on someone's PC, tied to the public download repository: its updates merge (mergeUpdate)
-    const shared = /DeviceHub-download/.test(await git(['remote', 'get-url', 'origin']).catch(() => ''));
-    const shownLatest = shared && behind ? `a new version from ${new Date(await git(['log', '-1', '--format=%cI', '@{u}'])).toLocaleDateString()}${changed ? '; your changes are kept' : ''}` : latest;
-    if (failed && behind && failed === (await git(['rev-parse', '@{u}']))) return { git: true, shared, behind: 0, changed, latest: null, at, skipped: shownLatest };
-    return { git: true, shared, behind, changed, latest: shownLatest, at };
+    const shownLatest = shared && behind ? `a new version from ${new Date(await git(['log', '-1', '--format=%cI', target])).toLocaleDateString()}${changed ? '; your changes are kept' : ''}` : latest;
+    if (failed && behind && failed === (await git(['rev-parse', target]))) return { git: true, shared, behind: 0, changed, latest: null, at, skipped: shownLatest };
+    return { git: true, shared, behind, changed, latest: shownLatest, at, target };
   } catch (e) { return { git: true, error: e.message }; }
 }
 
@@ -180,7 +203,9 @@ async function mergeUpdate(s) {
   if (s.changed) await git([...ME, 'commit', '-q', '-a', '-m', 'Changes made on this PC']);
   const before = await git(['rev-parse', 'HEAD']);
   step('Bringing them together with the new version');
-  try { await git([...ME, 'merge', '--no-edit', '-q', '@{u}'], 60000); }
+  // exactly the signed version (status), never the branch tip
+  if (!s.target || s.target === '@{u}') throw new Error('the new version is not signed by DeviceHub\'s publisher; nothing was changed');
+  try { await git([...ME, 'merge', '--no-edit', '-q', s.target], 60000); }
   catch (e) {
     const both = (await git(['diff', '--name-only', '--diff-filter=U']).catch(() => '')).split('\n').filter(Boolean);
     await git(['merge', '--abort']).catch(() => {});
@@ -207,4 +232,4 @@ function confirm(log) {
   setTimeout(() => { try { fs.unlinkSync(f); log && log({ kind: 'good', text: 'DeviceHub update running well' }); } catch {} }, 60000);
 }
 
-module.exports = { status, update, confirm, getProgress };
+module.exports = { status, update, confirm, getProgress, releaseInfo };

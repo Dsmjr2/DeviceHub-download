@@ -6,7 +6,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/check.mjs && node tests/regressions.mjs && node tests/openrgb-mock.mjs && node tests/mouse-sim.mjs && node tests/waiting.mjs && node tests/waiting-monitors.mjs && node tests/my-devices.mjs && node tests/battery-care.mjs && node tests/pages.mjs",
+    "test": "node tests/check.mjs && node tests/regressions.mjs && node tests/openrgb-mock.mjs && node tests/mouse-sim.mjs && node tests/waiting.mjs && node tests/waiting-monitors.mjs && node tests/my-devices.mjs && node tests/battery-care.mjs && node tests/release-signing.mjs && node tests/pages.mjs",
     "test:offline": "node tests/check.mjs && node tests/regressions.mjs && node tests/openrgb-mock.mjs && node tests/mouse-sim.mjs && node tests/waiting.mjs && node tests/waiting-monitors.mjs && node tests/my-devices.mjs && node tests/battery-care.mjs"
   },
   "dependencies": {

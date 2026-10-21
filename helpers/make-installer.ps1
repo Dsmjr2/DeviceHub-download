@@ -65,6 +65,9 @@ try {
   # the release's version file, published beside the zip: version, size and SHA-256, so an update is checked whole
   $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
   @{ commit = $commit; builtAt = $builtAt; appCommit = $appCommit; size = (Get-Item $zip).Length; sha256 = $hash } | ConvertTo-Json -Compress | Set-Content -Path (Join-Path $dist 'version.json') -Encoding ascii -NoNewline
+  # signed with the publisher's key, kept only on this PC (helpers/sign-release.mjs): copies install only what it signs
+  & (Get-Command node).Source (Join-Path $PSScriptRoot 'sign-release.mjs') (Join-Path $dist 'version.json')
+  if ($LASTEXITCODE) { throw 'the release could not be signed' }
 
   # never this PC's data
   $private = 'backups', 'profiles.json', 'settings.json', 'activity.jsonl', 'battery-history.jsonl', 'mouse-battery-study.jsonl',
