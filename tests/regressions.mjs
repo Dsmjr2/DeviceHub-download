@@ -100,6 +100,18 @@ const su = fs.readFileSync(path.join(ROOT, 'helpers/self-update.js'), 'utf8');
 check(/rel\.sha256/.test(su) && /buf\.length !== rel\.size/.test(su) && /tests', 'check\.mjs'/.test(su), 'a zip update checks size, checksum and the new version\'s own checks');
 check(/Start-Process -FilePath powershell\.exe/.test(su) && /-EncodedCommand/.test(su), 'the update installer is not a child of Node (it would end with it)');
 check(/'release\.json'/.test(fs.readFileSync(path.join(ROOT, 'helpers/make-installer.ps1'), 'utf8')) && /version\.json/.test(fs.readFileSync(path.join(ROOT, 'helpers/make-installer.ps1'), 'utf8')), 'the zip carries release.json and the release version.json');
+// 12. Changes made on a PC survive updates (21 Oct 2026): folders are merged with robocopy (Copy-Item onto an existing
+//     folder nested the new one inside it, so reinstalls kept the old code), nothing is copied over a changed file,
+//     added devices live in my-devices/ (ignored by git, never in the zip's file list), copies installed with git
+//     merge new versions with their own changes, and the journal is never published
+const ins0 = fs.readFileSync(path.join(ROOT, 'helpers/install.ps1'), 'utf8');
+check(/robocopy \$_\.FullName \$dest \/E \/IS \/IT/.test(ins0) && !/Copy-Item \$_\.FullName \(Join-Path \$Target \$_\.Name\) -Recurse/.test(ins0), 'the installer merges folders with robocopy, not Copy-Item -Recurse');
+check(/release-files\.json/.test(ins0) && /exit 3/.test(ins0) && /\[switch\]\$Overwrite/.test(ins0), 'the installer refuses to copy over files changed on the PC');
+check(/'DeviceHub-download'/.test(ins0) && /reset -q \$rel\.appCommit/.test(ins0), 'an install is tied to its published version for merging updates');
+const gi = fs.readFileSync(path.join(ROOT, '.gitignore'), 'utf8');
+check(/^my-devices\/\*$/m.test(gi) && /^!my-devices\/_example\/$/m.test(gi), 'devices added on a PC are not part of DeviceHub (only the example is)');
+check(/merge', '--no-edit'/.test(su) && /'merge', '--abort'/.test(su) && /changedFiles\(\)/.test(su), 'a shared copy merges updates, backs out of a clash, and a zip copy refuses over changed files');
+check(/\$_ -ne 'JOURNAL\.md'/.test(fs.readFileSync(path.join(ROOT, 'helpers/publish-code.ps1'), 'utf8')), 'the journal is never published');
 const ins = fs.readFileSync(path.join(ROOT, 'helpers/install.ps1'), 'utf8');
 check(/quitting it first/.test(ins) && /Building the device helper/.test(ins) && /Unblock-File/.test(ins), 'install.ps1 quits a running copy, builds the helper and clears the downloaded-file mark');
 
