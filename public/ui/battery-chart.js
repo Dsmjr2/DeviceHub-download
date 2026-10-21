@@ -107,9 +107,46 @@ export function batteryChart(id, redraw) {
     const ro = new ResizeObserver(() => { if (!box.isConnected) { ro.disconnect(); return; } draw(box, id, rows, days); });
     ro.observe(box);
     requestAnimationFrame(() => draw(box, id, rows, days));
-    const recent = rows.slice(-40).reverse();
-    table.append(h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Time'), h('th', {}, 'Level'), h('th', {}, 'Charging'))),
-      h('tbody', {}, ...recent.map((r) => h('tr', {}, h('td', {}, timeText(r.at, 2)), h('td', {}, `${r.pct}%`), h('td', {}, r.charging ? 'yes' : ''))))));
   }).catch(() => box.replaceChildren(h('div', { class: 'faint' }, 'Battery history is not available.')));
+  // the table always covers the whole 7 days, whatever the graph shows
+  load(id, 7).then((rows) => table.append(readings(rows))).catch(() => {});
   return el;
+}
+
+// The readings as changes (21 Oct 2026, Shawn: "a few days worth of readings but also want accuracy and time"): one
+// row for each stretch at one level, with its exact start and end time and how long it held, grouped by day, newest
+// first; a stretch with no readings for over 30 minutes is its own row. Nothing is averaged: every reading falls in
+// exactly one row.
+const clock = (t) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const dayKey = (t) => new Date(t).toDateString();
+const dayName = (t) => {
+  const d = new Date(t), today = new Date(); const y = new Date(today); y.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return 'Today';
+  if (d.toDateString() === y.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+};
+const lasted = (ms) => {
+  const m = Math.round(ms / 60000);
+  if (m < 1) return ms ? 'under 1 min' : 'one reading';
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`;
+};
+function readings(rows) {
+  const runs = [];
+  for (const r of rows) {
+    const cur = runs[runs.length - 1];
+    if (cur && r.at - cur.to > GAP_MS) runs.push({ gap: true, from: cur.to, to: r.at });
+    const last = runs[runs.length - 1];
+    if (last && !last.gap && last.pct === r.pct && !!last.charging === !!r.charging) { last.to = r.at; last.n++; }
+    else runs.push({ pct: r.pct, charging: !!r.charging, from: r.at, to: r.at, n: 1 });
+  }
+  const body = [];
+  let day = null;
+  for (const run of runs.reverse()) {
+    if (dayKey(run.to) !== day) { day = dayKey(run.to); body.push(h('tr', { class: 'bc-day' }, h('th', { colspan: 4 }, dayName(run.to)))); }
+    const span = clock(run.from) === clock(run.to) ? clock(run.from) : `${dayKey(run.from) !== day ? `${new Date(run.from).toLocaleDateString([], { weekday: 'short' })} ` : ''}${clock(run.from)} – ${clock(run.to)}`;
+    body.push(run.gap
+      ? h('tr', { class: 'bc-gap' }, h('td', {}, span), h('td', {}, '—'), h('td', {}, lasted(run.to - run.from)), h('td', {}, 'no readings (off or asleep)'))
+      : h('tr', {}, h('td', {}, span), h('td', {}, h('b', {}, `${run.pct}%`)), h('td', {}, lasted(run.to - run.from)), h('td', {}, `${run.charging ? 'charging · ' : ''}${run.n} reading${run.n === 1 ? '' : 's'}`)));
+  }
+  return h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Time'), h('th', {}, 'Level'), h('th', {}, 'Held'), h('th', {}, ''))), h('tbody', {}, ...body));
 }
