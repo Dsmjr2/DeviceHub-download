@@ -49,7 +49,7 @@ function pointerCard(redraw) {
     row('Enhance pointer precision', 'Mouse acceleration. Best off for gaming.', toggle({ value: p.precision, label: 'Enhance pointer precision', onCommit: (on) => setPointer('precision', on, 'Pointer precision', on ? 'on' : 'off', redraw) })),
     row('Scroll one page at a time', null, toggle({ value: page, label: 'Scroll one page', onCommit: (on) => setPointer('scrollLines', on ? -1 : 3, 'Scrolling', on ? 'one page' : '3 lines', redraw) })),
     page ? null : row('Scroll lines', null, slider({ value: p.scrollLines, min: 1, max: 20, live: livePointer('scrollLines'), onCommit: (v) => setPointer('scrollLines', v, 'Scroll lines', `${v}`, redraw) })),
-    row('Double-click speed', null, slider({ value: p.doubleClick, min: 200, max: 900, step: 10, unit: ' ms', live: livePointer('doubleClick'), onCommit: (v) => setPointer('doubleClick', v, 'Double-click speed', `${v} ms`, redraw) })));
+    row('Double-click speed', 'Max time between two clicks. Windows default: 500 ms.', slider({ value: p.doubleClick, min: 200, max: 900, step: 10, unit: ' ms', live: livePointer('doubleClick'), onCommit: (v) => setPointer('doubleClick', v, 'Double-click speed', `${v} ms`, redraw) })));
 }
 const set = (key, value, label, display) => write('mouse', key, value, { label, display }).catch(() => {});
 const locked = (key) => d().adapter.trusted && !d().adapter.trusted(key);
