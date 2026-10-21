@@ -99,6 +99,7 @@ function profileCard(p, i) {
 
 export default {
   id: 'profiles', title: 'Profiles', icon: 'profiles', accent: 'var(--signal)',
+  watches: ['mouse', 'headset', 'keyboard', 'auto'],  // what differs follows the devices; activity lines do not redraw it (21 Oct 2026)
   render() {
     rerender = () => { const el = document.querySelector('#main .page'); if (el && location.hash === '#/profiles') el.replaceWith(Object.assign(this.render(), { className: 'page no-anim' })); };
     if (!list) refreshList();

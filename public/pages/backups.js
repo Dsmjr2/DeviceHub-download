@@ -152,6 +152,7 @@ function weeklyCard() {
 
 export default {
   id: 'backups', title: 'Backups', icon: 'backups', accent: 'var(--good)',
+  watches: [],  // the list is read from the server; device readings do not redraw it (21 Oct 2026)
   render() {
     rerender = () => { const el = document.querySelector('#main .page'); if (el && location.hash === '#/backups') el.replaceWith(Object.assign(this.render(), { className: 'page no-anim' })); };
     if (!files) load();

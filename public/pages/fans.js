@@ -56,6 +56,7 @@ function gpuCard(g) {
 
 export default {
   id: 'fans', title: 'Fans', icon: 'fan', accent: 'var(--signal)',
+  watches: [],  // its own 2 s reading redraws it; a device's readings do not (21 Oct 2026)
   render() {
     rerender = () => { const el = document.querySelector('#main .page'); if (el && location.hash === '#/fans') el.replaceWith(Object.assign(this.render(), { className: 'page no-anim' })); };
     if (!gpu && !error) queueMicrotask(load);

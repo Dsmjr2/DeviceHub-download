@@ -80,8 +80,14 @@ function proxyAdapter(meta) {
   };
 }
 
+// the last state each device sent: one that comes again unchanged redraws nothing (21 Oct 2026: a same-value write
+// rebuilt the whole page for nothing)
+const lastSnap = {};
 function applyRemote(snap) {
   for (const s of snap.devices || []) {
+    const text = JSON.stringify(s);
+    if (lastSnap[s.id] === text && devices[s.id]) continue;
+    lastSnap[s.id] = text;
     const cur = devices[s.id] || (devices[s.id] = { id: s.id });
     Object.assign(cur, { status: s.status, info: s.info, battery: s.battery, values: s.values, error: s.error, readAt: s.readAt, adapter: proxyAdapter(s.adapter), seen: s.seen, waiting: s.waiting || [], undo: s.undo || null });
     emit(s.id);

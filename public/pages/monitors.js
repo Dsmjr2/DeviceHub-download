@@ -56,6 +56,7 @@ function colorBalance(m) {
 
 export default {
   id: 'monitors', title: 'Monitors', icon: 'monitor', accent: 'var(--signal)',
+  watches: [],  // monitors and the camera are read by the page itself; device readings do not redraw it (21 Oct 2026)
   render() {
     rerender = () => { const el = document.querySelector('#main .page'); if (el && location.hash === '#/monitors') el.replaceWith(Object.assign(this.render(), { className: 'page no-anim' })); };
     if (isDemo()) return h('div', {}, topbar('Displays and camera', 'Monitors', null), card([h('h2', {}, 'Monitors')], h('p', { class: 'faint' }, 'In the installed app, your monitors\' brightness, contrast and speakers are here.')));

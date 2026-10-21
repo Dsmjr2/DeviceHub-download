@@ -243,6 +243,8 @@ async function selfTest() {
 
 export default {
   id: 'settings', title: 'Settings', icon: 'settings', accent: 'var(--good)',
+  // redrawn only by its own controls, never by a device's readings (21 Oct 2026: every headset update rebuilt it)
+  watches: [],
   render() {
     rerender = () => { const el = document.querySelector('#main .page'); if (el && location.hash === '#/settings') el.replaceWith(Object.assign(this.render(), { className: 'page no-anim' })); };
     if (startup === null) loadStartup();

@@ -88,8 +88,15 @@ async function heartbeat() {
 }
 const watchdogState = () => ({ restartsLastHour: restarts.filter((t) => Date.now() - t < 3600000).length });
 
+// requests by kind (the channel's first part: hid, hs80, audio, monitor ...), counted since start: Settings > Health and
+// the daily check can see a part that keeps asking more and more (21 Oct 2026: CPU crept up over a night)
+const calls = {};
+const callCounts = () => ({ ...calls });
+
 // One request on one channel; resolves with the reply text, or 'TIMEOUT'.
 function request(chan, cmd, ms = 8000) {
+  const kind = `${chan.split(':')[0]} ${String(cmd).split(' ')[0]}`;
+  calls[kind] = (calls[kind] || 0) + 1;
   start();
   const key = `${chan} ${++seq}`;
   return new Promise((resolve) => {
@@ -111,4 +118,4 @@ const onEvent = (chan, fn) => { if (fn) eventHandlers.set(chan, fn); else eventH
 const onExit = (fn) => exitHandlers.add(fn);
 function stop() { const p = proc; proc = null; if (p) p.stdin.end(); }
 
-module.exports = { request, onEvent, onExit, stop, start, watchdogState, heartbeat };
+module.exports = { request, onEvent, onExit, stop, start, watchdogState, heartbeat, callCounts };

@@ -874,3 +874,9 @@ pre.json { margin: 0; max-height: 50vh; overflow: auto; font: 12px/1.5 var(--mon
 /* the Mouse page: the pointing hand over every control, sliders too (not the open grabbing hand; 21 Oct 2026, Shawn) */
 html[data-page="mouse"] #main :is(button, select, summary, .switch, .seg button, input[type=range], input[type=color], .swatch, .swatch-custom, a):not(:disabled) { cursor: pointer; }
 html[data-page="mouse"] #main input[type=range]::-webkit-slider-thumb, html[data-page="mouse"] #main input[type=range]:active::-webkit-slider-thumb { cursor: pointer; }
+/* The cards, tiles and banners scroll, so their frosted look comes from a matching tint, not a live blur (21 Oct 2026,
+   Shawn: "I want 0 hitches"). A live blur is drawn again for every card on every scrolled frame: frames up to 42 ms
+   while scrolling, measured on the 240 Hz screen, against 8 ms without. What is behind them is fixed and soft, so the
+   tint matches the blurred look (checked side by side). The sidebar, messages and dialogs do not scroll and keep it. */
+#main :is(.panel, .bay, .hero, .profile, .banner) { -webkit-backdrop-filter: none; backdrop-filter: none; }
+#main :is(.panel, .bay, .hero, .profile) { background: var(--glass), rgba(10, 11, 17, .82); }

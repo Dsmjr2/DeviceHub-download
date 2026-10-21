@@ -508,6 +508,8 @@ async function api(req, res, url) {
     catch (e) { serverLog({ kind: 'bad', text: `Monitor ${feature}: ${e.message}` }); return send(res, 400, { error: e.message }); }
   }
   // how far an update has got, for Settings' loading bar (helpers/self-update.js)
+  // what the server has asked the device helper for, by kind, since it started (diagnosis of a part that keeps asking more)
+  if (url.pathname === '/api/helper-calls') return send(res, 200, { uptimeS: Math.round(process.uptime()), calls: require('./helpers/native').callCounts() });
   if (url.pathname === '/api/self-update/progress') return send(res, 200, require('./helpers/self-update').getProgress() || {});
   if (url.pathname === '/api/self-update') {
     const su = require('./helpers/self-update');
