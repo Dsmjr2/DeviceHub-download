@@ -60,7 +60,7 @@ check(/slider needs min and max/.test(problem({ id: 'x-y', title: 'X', kind: 'Mo
   check(checkPlan(a, { ...v, firmware: 'fw 1' }, { firmware: '2' })?.only === null, 'other firmware: a full check');
   check(checkPlan(a, { ...v, keys: { ...v.keys, rate: { ok: false, skip: true, why: 'not to be checked', at } } }, {}, { now: now(RETRY_MS * 9) }) === null, 'a setting the driver says never to check is never retried');
   check(!writeAllowed({ status: 'read-only' }, v, 'rate').ok && /waiting/.test(writeAllowed({ status: 'read-only' }, v, 'rate').why), 'waiting = read-only for a read-only entry, and says so');
-  check(writeAllowed({ status: 'tested' }, v, 'rate').ok, 'a tested entry still writes a waiting setting (the driver refuses it while it must)');
+  check(!writeAllowed({ status: 'tested' }, v, 'rate').ok && !writeAllowed({ status: 'tested' }, { keys: {} }, 'dpi').ok && writeAllowed({ status: 'tested' }, v, 'dpi').ok, 'final audit: even a tested entry writes only a setting whose check passed (not a waiting or unchecked one)');
   check(!writeAllowed({ status: 'tested', learnedKeys: ['extra'] }, v, 'extra').ok, 'a setting the wizard added stays read-only until its check, even on a tested entry');
   check(isWaiting(Object.assign(new Error('x'), { waiting: true })) && isWaiting(new Error('G HUB is running: close it first')) && !isWaiting(new Error('refused')), 'isWaiting: the flag, or the maker app sentence');
 }
@@ -74,7 +74,9 @@ check(/slider needs min and max/.test(problem({ id: 'x-y', title: 'X', kind: 'Mo
   const proven = shipped.filter((e) => md.hasRealRecord(e.meta)).map((e) => e.name);
   check(proven.length === 0, `no shipped library entry has a real-device record yet, so every one waits for Turn on settings (${proven.join(', ')})`);
   check(shipped.some((e) => e.name === 'logitech-hidpp-mouse') && !md.hasRealRecord(shipped.find((e) => e.name === 'logitech-hidpp-mouse').meta), 'a "simulation only" record is not a real one');
-  check(md.realRecord({ by: 'Sam', date: '2026-10-23', devicehub: '0.2.0', how: 'each setting written once and read back' }) && md.realRecord({ by: 'Sam', how: 'settings read, nothing written' }), 'a person\'s record from a real device counts (written, or read only)');
+  check(md.realRecord({ by: 'Sam', date: '2026-10-23', devicehub: '0.2.0', how: 'each setting written once and read back' }) && !md.realRecord({ by: 'Sam', how: 'settings read, nothing written' })
+    && !md.realRecord({ by: 'Sam', status: 'read-only', how: 'x' }) && !md.realRecord({ by: 'Sam', how: 'x' }, 'read-only') && md.realRecord({ by: 'Sam', status: 'tested', how: 'x' }, 'read-only')
+    && !md.hasRealRecord({ status: 'read-only', tested: [{ by: 'Sam', date: 'd', devicehub: 'v' }] }), 'final audit: only a record from status "tested" counts (a read-only share never does)');
   const at = '2026-10-22T10:00:00.000Z', later = '2026-10-22T11:00:00.000Z';
   check(md.needsTurnOn({}, false, 'dpi') && !md.needsTurnOn({ settingsOn: { at } }, false, 'dpi'), 'no real record: every setting waits until Turn on settings');
   check(!md.needsTurnOn({}, true, 'dpi') && md.needsTurnOn({ learnedKeys: ['x'] }, true, 'x'), 'a real record: only learned settings wait');
@@ -114,6 +116,45 @@ check(/slider needs min and max/.test(problem({ id: 'x-y', title: 'X', kind: 'Mo
   const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (/\.(mjs|js|json)$/.test(e.name) && /batteryCare/.test(fs.readFileSync(p, 'utf8'))) declaring.push(path.relative(libDir, p)); } };
   walk(libDir);
   check(declaring.length === 0, `no shipped library driver declares batteryCare yet (${declaring.join(', ')})`);
+}
+
+// final audit (22 Oct 2026; docs/handoff/final-safety.md)
+{
+  const md = await import('../helpers/my-devices.mjs');
+  // 3. a person's own driver (no library.json) on an id DeviceHub's own drivers run is not loaded, whichever way it says so
+  put('own-hs80', dev("hid: { vid: '1b1c', pid: '1bf0', cablePid: '0A6B', page: 'FF42', len: 64 },").replace("'test-mouse'", "'own-hs80'"));
+  put('own-pulsar', dev().replace("'test-mouse'", "'own-pulsar'"));
+  fs.writeFileSync(path.join(root, 'my-devices', 'own-pulsar', 'device.json'), JSON.stringify({ vid: '3710', pids: ['3506'] }));
+  put('own-fine', dev("hid: { vid: '1b1c', pid: '1bf0', page: 'FF42', len: 64 },").replace("'test-mouse'", "'own-fine'"));
+  registered.length = 0; specs.length = 0;
+  const rr = Object.fromEntries((await run()).map((x) => [x.name, x]));
+  check(/1b1c:0a6b/.test(rr['own-hs80']?.error || '') && /own driver/.test(rr['own-hs80']?.error || ''), `a hand-made driver on an HS80 id is refused with a plain reason (${JSON.stringify(rr['own-hs80'])})`);
+  check(/3710:3506/.test(rr['own-pulsar']?.error || ''), `its device.json's ids count too (${JSON.stringify(rr['own-pulsar'])})`);
+  check(rr['own-fine']?.id === 'own-fine' && !registered.some((a) => /^own-(hs80|pulsar)$/.test(a.id)) && !specs.some((s) => s.id === 'own-hs80'), 'another Corsair id loads; the refused ones get no channel and no page');
+  for (const n of ['own-hs80', 'own-pulsar', 'own-fine']) fs.rmSync(path.join(root, 'my-devices', n), { recursive: true, force: true });
+
+  // 1. the maker's app is asked before EVERY guarded write (kept MAKER_CACHE_MS), even when the driver's own check says none
+  const folder = path.join(root, 'guarded-maker');
+  fs.mkdirSync(folder, { recursive: true });
+  const at = new Date().toISOString();
+  fs.writeFileSync(path.join(folder, 'verified.json'), JSON.stringify({ checkedAt: at, keys: { dpi: { ok: true, value: 800, readBack: 800, at } } }));
+  let app = 'lghub.exe', fail = false, asked = 0, wrote = 0;
+  const a = { id: 'maker-mouse', title: 'Maker mouse', kind: 'Mouse', hid: { vid: '046d', pid: 'c0de' }, settings: [{ key: 'dpi', label: 'DPI', type: 'slider', min: 100, max: 3200 }],
+    async connect() { return true; }, async info() { return {}; }, async read() { return { dpi: 800 }; }, async write(k, v) { wrote++; return v; },
+    async vendorApp() { return null; } };   // a driver whose tasklist failed answers "no app"
+  md.guard(a, folder, { status: 'read-only', settingsOn: { at } }, { makerApp: async () => { asked++; if (fail) throw new Error('tasklist did not answer'); return app; }, backup: async () => {}, log() {} });
+  const tryWrite = async () => { try { await a.write('dpi', 800); return null; } catch (e) { return e; } };
+  let e = await tryWrite();
+  check(e?.waiting && /lghub/.test(e.message) && wrote === 0, `a passed setting is not written while the maker's app is open, though the driver said none (${e?.message})`);
+  app = null; fail = true;
+  e = await tryWrite();
+  check(e?.waiting && /could not check/.test(e.message) && wrote === 0, `"could not check" refuses the write (${e?.message})`);
+  fail = false;
+  e = await tryWrite();
+  const n = asked;
+  check(!e && wrote === 1, `with the app closed it writes (${e?.message})`);
+  e = await tryWrite();
+  check(!e && wrote === 2 && asked === n && md.MAKER_CACHE_MS >= 10000 && md.MAKER_CACHE_MS <= 20000, `a second write within ${md.MAKER_CACHE_MS / 1000} s uses the kept answer (asked ${asked - n} more)`);
 }
 
 // profiles for added devices (tests/profiles-added.mjs; it runs here so test:offline covers it)

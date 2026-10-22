@@ -13,9 +13,12 @@ asked for each part; stop only where a step below says to ask. Say in a line or 
 "hundreds of times"). After step 3's report, put every question in ONE message, as a short numbered list with a
 suggested answer for each, so one reply ("yes to all", or "1 yes, 2 no") covers the whole setup:
 - each optional install the report names (Equalizer APO for the EQ, USBPcap for a learning session, OpenRGB and
-  PawnIO for PC lights): name, official link and size, and what it adds. For Equalizer APO, ReaPlugs and USBPcap,
-  point the person to Settings > Optional tools > Show (or the Equalizer card's button): DeviceHub shows the file,
-  source, size and check, and runs the maker's installer itself after their click, so Claude downloads nothing;
+  PawnIO for the motherboard's and RAM's lights): name, official link and size, and what it adds. Equalizer APO and
+  OpenRGB ship inside DeviceHub, so nothing is downloaded for them: Equalizer APO's installer is in the zip and still
+  needs the person's click to install, and the built-in OpenRGB 1.1 reaches USB lights only (the motherboard and RAM
+  need the person's own OpenRGB and PawnIO). For Equalizer APO, ReaPlugs and USBPcap, point the person to Settings >
+  Optional tools > Show (or the Equalizer card's button): DeviceHub shows the file, source, size and check, and runs
+  the maker's installer itself after their click, so Claude downloads nothing;
 - for each device that still needs a learning session: OK to run it, with Claude changing the settings in the maker's
   app itself (step 3 of "Adding your own devices"), and roughly how long it needs them nearby;
 - sharing each driver that ends up working (step 7);
@@ -52,7 +55,12 @@ not covered (a new device, a download nobody named), or when a step fails and th
    on settings on its page or the Set up card; DeviceHub then writes each setting's current value back once. "Could
    not check whether the maker's app is open" counts as waiting. The never list is checked in the HID send path for
    every library and my-devices driver (`helpers/never-guard.mjs`); DeviceHub's own Pulsar, P75 and HS80 paths are not.
-   No library driver installs, self-checks or writes when ANY id it declares is in `helpers/pc-map.js` RUNS.
+   No library driver installs, self-checks or writes when ANY id it declares is in `helpers/pc-map.js` RUNS, and a
+   my-devices driver on such an id is not loaded. Every write of a library or learned driver asks for the maker's app
+   first (kept 15 s when none is open); an open app or "could not check" refuses it. Only a record shared with status
+   tested counts as a real-device record, and no setting is written before its own self-check passed. The Corsair
+   library drivers' bragi channels pass `helpers/bragi-guard.js`; the HS80's own helper path refuses SET 0d / 46 / 47
+   and the bragi tag (docs/handoff/final-safety.md).
    The report lists what works now, what is optional and
    what still needs a learning session: do only what it lists. For more detail, these are GET requests to
    `http://127.0.0.1:5577`:

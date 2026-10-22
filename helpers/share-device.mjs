@@ -133,7 +133,7 @@ export async function shareDevice(folder, opts = {}) {
     works: listArg(opts.works, ';') || a.settings.map((s) => s.label),
     doesNotWork: Array.isArray(a.unsupported) ? a.unsupported : (old.doesNotWork || []),
     status,
-    tested: [...(Array.isArray(old.tested) ? old.tested : []), { by: opts.by || 'not given', date: new Date().toISOString().slice(0, 10), devicehub: devicehubVersion(root), how: opts.how || (status === 'tested' ? 'each setting written once and read back' : status === 'read-only' ? 'settings read, nothing written' : 'not tested yet') }],
+    tested: [...(Array.isArray(old.tested) ? old.tested : []), { by: opts.by || 'not given', date: new Date().toISOString().slice(0, 10), devicehub: devicehubVersion(root), status, how: opts.how || (status === 'tested' ? 'each setting written once and read back' : status === 'read-only' ? 'settings read, nothing written' : 'not tested yet') }],
   };
   const bad = validateMeta(meta);
   if (bad) return { ok: false, error: `device.json: ${bad}`, refused: [] };

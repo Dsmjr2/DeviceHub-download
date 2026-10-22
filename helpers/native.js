@@ -5,6 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn, execFileSync } = require('child_process');
+const bragiGuard = require('./bragi-guard');
 
 const EXE = path.join(__dirname, 'bin', 'DeviceHubHelper.exe');
 const SOURCES = ['native/helper.cs', 'native/hs80io.cs', 'native/tray.cs', 'native/winbrand.cs','hidio.cs', 'audio.cs', 'audio-topology.cs', 'audio-default.cs', 'audio-apps.cs', 'mic-rec.cs', 'mic-guard.cs', 'monitors.cs', 'camera.cs', 'pointer.cs'].map((f) => path.join(__dirname, f));
@@ -96,6 +97,9 @@ const callCounts = () => ({ ...calls });
 
 // One request on one channel; resolves with the reply text, or 'TIMEOUT'.
 function request(chan, cmd, ms = 8000) {
+  // a library driver's Corsair Bragi channel ("bragi" tag): the never list first, before the helper even starts
+  // (helpers/bragi-guard.js, final audit 22 Oct 2026). DeviceHub's own HS80 channels have no tag and are not checked.
+  if (bragiGuard.isBragi(chan)) { const no = bragiGuard.refusal(chan, cmd); if (no) { console.log(`[never] ${chan} ${String(cmd).split(' ')[0]}: ${no}`); return Promise.resolve(`ERR ${no}`); } }
   // a device channel by its device too (hid:3710 the mouse, hid:342D the keyboard), the rest by kind
   // (a HID request by its command byte too: REQ <echo> <ms> <command> ...)
   const c = chan.split(':'), w = String(cmd).split(' ');

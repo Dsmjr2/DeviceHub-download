@@ -34,7 +34,7 @@ batteryCare: { lowBattery: { key: 'lights', value: false }, charging: { key: 'li
   reading (`display`), or the value is not one the setting takes. A setting listed only once a model connects is
   checked again before every change.
 - **No shipped library driver declares it**, so nothing changes for any of them (a test checks the library for it).
-  `driver.json` drivers cannot declare it yet (that format refuses keys it does not know).
+  `driver.json` drivers declare it too since later on 22 Oct (docs/DRIVER-FORMAT.md, docs/handoff/final-docs.md).
 - Same thresholds as the mouse: at 20% or less and not charging, the setting goes to the driver's value; back at 30%,
   on charging, or when Save device battery is switched off. While charging: its value, back when unplugged. Like the
   HS80's lights, the charging rule follows the driver whatever the switch says. The low-battery rule leaves the
@@ -89,7 +89,7 @@ charging, 30% yellow, 75% green; asleep keeps the level dim; plain `?demo` shows
 
 ## Not done
 
-- `driver.json` cannot declare `batteryCare` yet (needs `KNOWN.top` and `fromJson` in
+- (done later on 22 Oct, final-docs.md) `driver.json` could not declare `batteryCare` (needs `KNOWN.top` and `fromJson` in
   `helpers/declarative-driver.mjs`, and the format doc).
 - `ADD-YOUR-DEVICES.md`, `my-devices/_example` and the Settings line "Mouse and headset at 20% or less..." do not
   mention added devices yet.

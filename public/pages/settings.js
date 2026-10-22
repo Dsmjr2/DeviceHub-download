@@ -310,7 +310,8 @@ async function selfTest() {
     const check = async (name, f) => { try { results.push([name, ...(await f())]); } catch (e) { results.push([name, 'fail', e.message]); } rerender(); };
     await check('Monitors', async () => { const m = await env.api('/api/monitors?fresh=1'); const ddc = m.filter((x) => x.ddc); return [ddc.length ? 'pass' : 'warn', ddc.length ? `${ddc.map((x) => x.name).join(', ')} answer over DDC/CI` : 'no monitor answers over DDC/CI']; });
     await check('Camera', async () => { const c = await env.api('/api/cameras?fresh=1'); return c.length ? ['pass', `${c[0].name}: ${Object.keys(c[0].controls).length} picture settings read`] : ['skip', 'no camera']; });
-    await check('PC lights', async () => { const o = await env.api('/api/openrgb?fresh=1'); return o.running ? ['pass', `OpenRGB protocol ${o.protocol}: ${o.controllers.length} lights`] : ['skip', 'OpenRGB is not running']; });
+    // never ?fresh=1 here: that starts the OpenRGB inside DeviceHub; the self-test only reads what is running
+    await check('PC lights', async () => { const o = await env.api('/api/openrgb'); return o.running ? ['pass', `OpenRGB protocol ${o.protocol}: ${o.controllers.length} lights`] : ['skip', 'OpenRGB is not running']; });
     await check('This PC', async () => { const pc = await env.api('/api/pc?fresh=1'); return ['pass', `${pc.cpu}; ${pc.gpus.map((g) => g.name).join(', ')}; ${pc.usb.length} USB devices`]; });
   }
   const fails = results.filter((r) => r[1] === 'fail').length;

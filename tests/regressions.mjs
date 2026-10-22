@@ -163,6 +163,13 @@ check(/row\('Lift-off distance', '[^']+'/.test(mouseSrc) && /h\('h2', \{\}, 'Tra
   check(await h.connect() && h.mode === 'direct' && !calls.includes('usb-headsets'), 'no pick: the HS80 connects exactly as before (no extra look first)');
   await h.read();
   check(h.picked === 'hs80' && hp.showPicker(h.headsets), 'HS80 running with a second headset: the picker shows, on the HS80');
+  // final audit (22 Oct 2026): nothing picked, so no other headset to switch to: the list is not read again every 30 s
+  {
+    const realNow = Date.now, n0 = calls.filter((c) => c === 'usb-headsets').length;
+    Date.now = () => realNow() + 31000;
+    try { await h.read(); Date.now = () => realNow() + 62000; await h.read(); } finally { Date.now = realNow; }
+    check(calls.filter((c) => c === 'usb-headsets').length === n0 && n0 === 1, `no pick: Windows' USB headset list is read once, not every 30 s (${calls.filter((c) => c === 'usb-headsets').length} reads)`);
+  }
   ad.setHeadsetPick('VID_1038&PID_12E0');
   let threw = null; try { await h.read(); } catch (e) { threw = e; }
   check(threw?.gone, 'another headset picked: the HS80 read lets go so it can switch');

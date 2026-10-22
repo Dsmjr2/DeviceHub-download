@@ -126,6 +126,7 @@ function setupCard(redraw) {
   const dismiss = () => { setupHidden = true; redraw(); fetch('/api/setup/dismiss', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ signature: s.signature }) }).catch(() => {}); };
   return h('div', { class: 'panel setup-card', style: { marginBottom: '16px' } },
     h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } }, h('h2', { style: { margin: 0 } }, 'Set up'), h('span', { class: 'spacer', style: { flex: 1 } }), button('Dismiss', dismiss, { kind: 'ghost small' })),
+    h('p', { class: 'faint', style: { margin: '4px 0 8px' } }, 'A ready-made driver reads your device at once. Press Turn on settings and DeviceHub tests each setting, then lets you change it.'),
     part('Installed from the device library', s.installed),
     part('Works now', s.works),
     part('Still to do', s.learn),

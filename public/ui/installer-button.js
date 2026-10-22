@@ -52,11 +52,20 @@ function planBody(p) {
       : h('p', { class: 'faint', style: { margin: '10px 0 0', fontSize: '12.5px' } }, `Download ${p.file} there and open it. ${p.after}`));
 }
 
-async function follow(id, redraw) {
+// polls every 400 ms until the install is done; gives up after FOLLOW_MS or FOLLOW_ERRORS failed reads in a row
+// (final audit, 22 Oct 2026: it polled forever when DeviceHub stopped answering)
+export const FOLLOW_MS = 10 * 60 * 1000, FOLLOW_ERRORS = 5;
+export async function follow(id, redraw, { wait = (ms) => new Promise((r) => setTimeout(r, ms)), now = () => Date.now(), api = (p) => env.api(p) } = {}) {
+  const until = now() + FOLLOW_MS;
+  let errors = 0;
   for (;;) {
-    await new Promise((r) => setTimeout(r, 400));
+    await wait(400);
+    if (now() > until) return { ok: false, text: 'DeviceHub stopped waiting for the installer after 10 minutes. Look in Windows Settings > Apps whether it finished.' };
     let p;
-    try { p = await env.api('/api/installers/progress'); } catch { continue; }  // DeviceHub busy for a moment
+    try { p = await api('/api/installers/progress'); errors = 0; } catch (e) {   // DeviceHub busy for a moment
+      if (++errors >= FOLLOW_ERRORS) return { ok: false, text: `DeviceHub did not answer about the installer (${e.message}). Look in Windows Settings > Apps whether it finished.` };
+      continue;
+    }
     if (p.tool !== id) continue;
     if (p.done) return p;
     if (p.text !== state[id].text || p.pct !== state[id].pct) {

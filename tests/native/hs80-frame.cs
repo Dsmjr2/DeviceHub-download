@@ -93,6 +93,20 @@ public static class Hs80FrameTest {
     foreach (var id in new[] { 0x03, 0x1e, 0x1f, 0x37, 0x46, 0x47, 0x07, 0x06, 0x52, 0xb0, 0x14, 0x15, 0x16 })
       for (int v = -2; v <= 8; v++) Check(!Hs80Io.PeripheralAllows(id, v), "peripheral never sets " + id.ToString("x2"));
 
+    // 6. DeviceHub's own HS80 (final audit, 22 Oct 2026; helper.cs HandleHs80 asks Hs80OwnRefusal first): every request
+    // its own code makes passes unchanged; SET 0d / 46 / 47 and the library "bragi" tag are refused on its ids only
+    foreach (var n in new[] { "hs80:0A69:8:wired1", "hs80:0A6B:9:receiver2", "hs80:0A6B:8:rx", "hs80:0a71:9:receiver3" }) {
+      foreach (var verb in new[] { "OPEN", "CLOSE", "GET", "MODE", "LIGHT", "OPENLIGHT", "FRAME" })
+        for (int id = -1; id < 0x100; id++) Check(Hs80Io.Hs80OwnRefusal(n, verb, id) == null, n + " " + verb + " " + id + " passes as before");
+      foreach (var id in new[] { -1, 0x02, 0x03, 0x0e, 0x0f, 0x13, 0x53, 0xa6 }) Check(Hs80Io.Hs80OwnRefusal(n, "SET", id) == null, n + " SET " + id + " passes as before");
+      foreach (var id in new[] { 0x0d, 0x46, 0x47 }) Check(Hs80Io.Hs80OwnRefusal(n, "SET", id) != null, n + " SET " + id.ToString("x2") + " is refused on the HS80");
+    }
+    foreach (var verb in new[] { "OPEN", "GET", "SET", "MODE", "LIGHT", "OPENLIGHT" }) {
+      Check(Hs80Io.Hs80OwnRefusal("hs80:0A6B:9:bragi", verb, 0x0f) != null && Hs80Io.Hs80OwnRefusal("hs80:0A69:8:bragi:frame=peripheral", verb, 0x02) != null, "the bragi tag is refused on an HS80 id: " + verb);
+      Check(Hs80Io.Hs80OwnRefusal("hs80:0A97:9:bragi", verb, 0x0d) == null && Hs80Io.Hs80OwnRefusal("hs80:1B81:9:bragi:frame=peripheral", verb, 0x46) == null, "other Corsair ids are not touched by it: " + verb);
+    }
+    Check(Hs80Io.Hs80OwnRefusal("hs80:0A6B:9:bragi", "CLOSE", -1) == null, "CLOSE always closes");
+
     Console.WriteLine(fails.Count == 0 ? "hs80-frame (" + checks + " checks): all good" : "hs80-frame: FAILED (" + fails.Count + "):\n- " + string.Join("\n- ", fails));
     return fails.Count == 0 ? 0 : 1;
   }

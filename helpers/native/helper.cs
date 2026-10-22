@@ -305,6 +305,9 @@ public static class Helper {
     var p = c.Name.Split(':');  // hs80 pid ep [tag]
     var w = rest.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
     Func<int, string> st = (x) => x < 0 ? "NONE" : x.ToString("x2");
+    // DeviceHub's own HS80: no SET 0d / 46 / 47 and no library ("bragi") channel, before anything opens or is sent
+    { int sid = -1; if (w.Length > 1 && w[0] == "SET") { try { sid = Convert.ToInt32(w[1], 16); } catch { } }
+      var no = Hs80Io.Hs80OwnRefusal(c.Name, w.Length > 0 ? w[0] : "", sid); if (no != null) return "ERR " + no; }
     switch (w[0]) {
       case "OPEN": {
         if (c.Hs != null && !c.Hs.Broken) return "OK";

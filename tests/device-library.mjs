@@ -71,7 +71,9 @@ fs.rmSync(path.join(root, 'device-library', 'acme-hs'), { recursive: true, force
 {
   const { installNote } = await import('../helpers/device-library.mjs');
   const rec = [{ by: 'Sam', date: '2026-10-22', devicehub: '0.1.0', how: 'each setting written once and read back' }];
-  check(/change normally/.test(installNote({ status: 'tested', tested: rec })) && /when the device connects/.test(installNote({ status: 'read-only', tested: rec })) && /Turn on settings/.test(installNote({ status: 'tested', tested: [{ ...rec[0], how: 'simulation only' }] })), 'installNote follows the real-device record');
+  check(/change normally/.test(installNote({ status: 'tested', tested: rec })) && /when the device connects/.test(installNote({ status: 'read-only', tested: [{ ...rec[0], status: 'tested' }] })) && /Turn on settings/.test(installNote({ status: 'tested', tested: [{ ...rec[0], how: 'simulation only' }] })), 'installNote follows the real-device record');
+  // final audit: a "read-only" share's record ("settings read, nothing written") is not a real-device record
+  check(/Turn on settings/.test(installNote({ status: 'read-only', tested: rec })) && /Turn on settings/.test(installNote({ status: 'read-only', tested: [{ ...rec[0], status: 'read-only', how: 'settings read, nothing written' }] })), 'a read-only share waits for Turn on settings');
 }
 
 // install, then it loads as a my-devices driver
@@ -110,6 +112,15 @@ check(made && made.vid === '1234' && made.pids[0] === 'abcd' && made.status === 
 check(r.ok && fs.readdirSync(path.join(lib, r.name)).sort().join() === 'device.json,device.mjs' && r.leftOut.includes('notes.txt'), 'only device.mjs and device.json are written; other files are left out and listed');
 const again = await shareDevice(path.join(root, 'my-devices', 'clean-mouse'), { root, status: 'tested', names: ['alicetest'] });
 check(!again.ok && /already exists/.test(again.error), 'sharing never writes over a library entry');
+// final audit: each record keeps the status it was shared with; only a "tested" share is a real-device record
+{
+  const { hasRealRecord } = await import('../helpers/my-devices.mjs');
+  check(made && made.tested.at(-1).status === 'tested' && hasRealRecord(made), 'a "tested" share is a real-device record');
+  const ro = await shareDevice(path.join(root, 'my-devices', 'clean-mouse'), { root, status: 'read-only', name: 'acme-clean-ro', by: 'tester', names: ['alicetest'] });
+  const rm = ro.ok && JSON.parse(fs.readFileSync(path.join(lib, ro.name, 'device.json'), 'utf8'));
+  check(rm && rm.tested.at(-1).status === 'read-only' && !hasRealRecord(rm) && !hasRealRecord({ ...rm, status: 'tested' }), `a "read-only" share never counts as tested on a real device, so it waits for Turn on settings (${ro.error || JSON.stringify(rm.tested)})`);
+  if (ro.ok) fs.rmSync(path.join(lib, ro.name), { recursive: true, force: true });
+}
 
 // share back: anything personal is refused, and every reason is listed
 const p = 'my-devices/personal-mouse';

@@ -1,7 +1,7 @@
 // Learn a device (22 Oct 2026; helpers/learn-wizard.mjs, docs/handoff/learn-wizard.md): someone whose device DeviceHub
 // does not run gets a driver for it without Claude. DeviceHub listens (USBPcap) while the person changes one setting in
-// the maker's app, finds the bytes that carry it, and makes a driver.json that is saved read-only until DeviceHub's own
-// self-check passes. Nothing here sends anything to the device. One step on screen at a time; plain words; no pop-ups.
+// the maker's app, finds the bytes that carry it, and makes a driver.json that is saved read-only until the person
+// presses Turn on settings and DeviceHub's check then passes. Nothing here sends anything to the device. One step on screen at a time; plain words; no pop-ups.
 // Reached from the sidebar (under App), the Overview's Set up card and Lighting > This PC ("Learn it", which puts that
 // device first here: learnThis(vid, pid)).
 // Readings (22 Oct 2026, docs/handoff/learn-readings.md): a value the device reports that the person cannot set

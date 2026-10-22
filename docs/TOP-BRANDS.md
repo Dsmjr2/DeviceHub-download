@@ -44,7 +44,7 @@ current value back once to make sure it works).
 | `hyperx-peripherals` | HyperX | Pulsefire mice and Alloy / Origins keyboards (info only) | untested |
 | `keychron-via` | Keychron | Keychron's own settings on top of VIA (a driver.json) | untested |
 | `logitech-hidpp-headset` | Logitech | G headsets (HID++ 2.0; PRO X 2 over Centurion) | untested |
-| `logitech-hidpp-keyboard` | Logitech | G keyboards (HID++ 2.0, cable or Lightspeed) | untested |
+| `logitech-hidpp-keyboard` | Logitech | G keyboards (HID++ 2.0, cable or Lightspeed; the G915 TKL also over Bluetooth) | untested |
 | `logitech-hidpp-mouse` | Logitech | G mice (HID++ 2.0, Lightspeed / Bolt or cable) | read-only |
 | `razer-keyboard` | Razer | keyboards (90-byte report) | untested |
 | `razer-mouse` | Razer | mice (90-byte report) | read-only |

@@ -8,8 +8,11 @@
 //   neverHit({ vid, pid, page, reportId, bytes })   the never-list entry these bytes match, or null
 //     bytes: the data bytes after the report id (as the list describes them); a pattern longer than the bytes is
 //     matched against zeros, because the helper pads every report to its length.
-//     page: the channel's usage page; '*' or null = any page: then entries limited to one page (the VIA FF60 ones)
-//     are not applied, because the byte that starts a VIA command means something else on other pages.
+//     page: the channel's usage page (a routed report: its route's own page, hid-host sendNow); '*' or null = any
+//     page: then entries limited to one page are not applied, because the byte that starts a VIA command means
+//     something else on other pages, EXCEPT the VIA (FF60) ones for a vendor that makes VIA keyboards (VIA_MAKERS,
+//     final audit 22 Oct 2026): on such a device a '*' channel may well be the VIA one. Only library and my-devices
+//     channels are checked at all; DeviceHub's own P75 path never is.
 //   refusal(hit, productName)   the plain error a refused send throws (e.never === true)
 import fs from 'node:fs';
 import path from 'node:path';
@@ -43,6 +46,9 @@ export function neverRules() {
   return rules;
 }
 
+// vendors whose keyboards speak VIA (usage page FF60): Keychron (3434) and Epomaker (342D, the P75's maker)
+export const VIA_MAKERS = ['3434', '342D'];
+
 export function neverHit({ vid, pid, page = null, reportId = 0, bytes = [] } = {}) {
   const v = up4(vid), p = up4(pid);
   const pg = page == null || page === '*' ? null : up4(page);
@@ -50,7 +56,7 @@ export function neverHit({ vid, pid, page = null, reportId = 0, bytes = [] } = {
   for (const r of neverRules()) {
     if (r.vids && !r.vids.includes(v)) continue;
     if (r.pidList && !r.pidList.includes(p)) continue;
-    if (r.pageOnly && r.pageOnly !== pg) continue;
+    if (r.pageOnly && r.pageOnly !== pg && !(pg == null && r.pageOnly === 'FF60' && VIA_MAKERS.includes(v))) continue;
     if (r.reportId != null && Number(r.reportId) !== Number(reportId)) continue;
     for (let start = 0; start <= (r.within || 0); start++) {
       if (r.pat.every((n, i) => nibbleOk(n, b[start + i] ?? 0))) return r;

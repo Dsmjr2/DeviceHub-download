@@ -110,6 +110,16 @@ public class Hs80Io : IDisposable {
   }
   // DeviceHub's own HS80 RGB Wireless (device-library/corsair-bragi-peripherals HS80_OWN_PIDS): never on the peripheral frame
   public static bool IsHs80Pid(string pid) { var u = pid.ToUpper(); return u == "0A69" || u == "0A6B" || u == "0A71"; }
+  // DeviceHub's own HS80 (final audit, 22 Oct 2026; helper.cs HandleHs80 asks this first): its own code sends only SET
+  // 02, 03 and 0E (helpers/hs80-direct.js), so the SETs added for the other Bragi headsets (0D, 46, 47) and any channel
+  // with the library drivers' "bragi" tag are refused on an HS80 product id. null = allowed (the HS80's own requests).
+  public static string Hs80OwnRefusal(string name, string verb, int id) {
+    var p = name.Split(':');
+    if (p.Length < 2 || !IsHs80Pid(p[1])) return null;
+    for (int i = 3; i < p.Length; i++) if (p[i] == "bragi" && verb != "CLOSE") return "the HS80 is DeviceHub's own headset: a library driver never talks to it";
+    if (verb == "SET" && (id == 0x0d || id == 0x46 || id == 0x47)) return "DeviceHub's own HS80 code never sets " + id.ToString("x2");
+    return null;
+  }
 
   byte[] Send(byte[] o, int waitMs) {
     byte[] old; while (Replies.TryTake(out old)) {}

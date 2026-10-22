@@ -43,14 +43,18 @@ const IPV4 = /(?<![\w.])(?!127\.0\.0\.1(?![\w]|\.\d))(?!0\.0\.0\.0(?![\w]|\.\d))
 const IPV6 = /(?<![\w:])(?:(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:)+:(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4})*)?)(?![\w:])/gi;
 const EXTRA = [[new RegExp(IPV4.source), 'an IP address'], [new RegExp(IPV6.source, 'i'), 'an IP address']];
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const SEG = '[^\\\\/\'"`\\s:*?<>|]+';   // one path part without spaces (a regex source; Windows never allows : * ? < > | in one)
 
 // replaces each personal thing with a plain stand-in; { text, removed: { why: count } }
 export function strip(text, names = []) {
   let t = String(text ?? '');
   const removed = {};
   const rep = (re, to, why) => { t = t.replace(re, (...m) => { removed[why] = (removed[why] || 0) + 1; return typeof to === 'function' ? to(...m) : to; }); };
-  rep(/[A-Za-z]:[\\/]+Users[\\/]+(?!(?:Public|Default)\b)[^\\/'"`\s]+/gi, '%USERPROFILE%', 'your Windows user folder');
-  rep(/\/(?:Users|home)\/[A-Za-z0-9._-]+/g, '/<user folder>', 'your user folder');
+  // the WHOLE path after the user folder goes (final audit, 22 Oct 2026: folder and file names can be personal too);
+  // a folder name with spaces is taken while another \ follows it, a last name with spaces while it ends in .ext
+  rep(new RegExp(`[A-Za-z]:[\\\\/]+Users[\\\\/]+(?!(?:Public|Default)\\b)${SEG}(?:[\\\\/]+(?:${SEG}(?: ${SEG})*(?=[\\\\/])|${SEG}(?: ${SEG})*\\.[A-Za-z0-9]{1,6}(?![\\w.])|${SEG})?)*`, 'gi'),
+    (m) => (/^[A-Za-z]:[\\/]+Users[\\/]+[^\\/]+$/i.test(m) ? '%USERPROFILE%' : '%USERPROFILE%\\<path>'), 'your Windows user folder');
+  rep(/\/(?:Users|home)\/[A-Za-z0-9._-]+(?:\/[^/'"`\s]*)*/g, (m) => (/^\/(?:Users|home)\/[^/]+$/.test(m) ? '/<user folder>' : '/<user folder>/<path>'), 'your user folder');
   rep(/(VID_[0-9A-F]{4}&PID_[0-9A-F]{4})(?:&MI_[0-9A-F]{2})?[\\#]+[^\s'"`\\#]{4,}/gi, (m, a) => `${a} (instance id removed)`, 'a device serial number');
   rep(/(serial(?:\s*(?:number|no|#))?['"`]?\s*[:=]\s*['"`]?)[A-Za-z0-9-]{4,}/gi, (m, a) => `${a}<removed>`, 'a serial number');
   rep(/\b(?:[0-9A-F]{2}[:-]){5}[0-9A-F]{2}\b/gi, '<address>', 'a MAC address');
@@ -220,7 +224,23 @@ async function liveSpecs() {
   try { return (await import('./hid-host.mjs')).SPECS; } catch { return []; }
 }
 
-// deps (tests and the real run): port, version, windows, state, usb, diagnose, log, specs
+// Bluetooth device names are often the person's own ("Sam's AirPods"), so they come out of the log lines (final audit,
+// 22 Oct 2026): each name Windows knows (helpers/std-battery.js, read-only, its cached list) becomes "<Bluetooth device>".
+// When the names cannot be read, every log line that mentions Bluetooth is left out instead.
+export function dropBluetooth(lines, names) {
+  if (!Array.isArray(names)) return lines.filter((l) => !/bluetooth/i.test(l));
+  const res = [...new Set(names.filter((n) => typeof n === 'string' && n.trim().length >= 3).map((n) => n.trim()))]
+    .sort((a, b) => b.length - a.length).map((n) => new RegExp(`(^|[^A-Za-z0-9])${esc(n)}(?=[^A-Za-z0-9]|$)`, 'gi'));
+  return lines.map((l) => res.reduce((t, re) => t.replace(re, (m, a) => `${a}<Bluetooth device>`), l));
+}
+async function bluetoothNames(deps) {
+  try {
+    const list = await within(deps.bluetooth ? deps.bluetooth() : require('./std-battery.js').read({}), 15000);
+    return Array.isArray(list) ? list.map((d) => d?.name).filter(Boolean) : null;
+  } catch { return null; }
+}
+
+// deps (tests and the real run): port, version, windows, state, usb, diagnose, log, specs, bluetooth (the names' list)
 export async function gather(id, deps = {}) {
   const root = deps.root || options.root;
   const port = deps.port || PORT;
@@ -236,7 +256,7 @@ export async function gather(id, deps = {}) {
     f.title = `Help: DeviceHub ${devicehubVersion(root)}`;
     f.devices = devs.map((x) => ({ id: x.id, title: x.adapter?.title || x.id, status: x.status, error: x.error || null }));
     if (!state) f.findings = [{ problem: "DeviceHub's background part did not answer", why: 'Its device list could not be read.', fix: 'Quit DeviceHub from its tray icon and start it again.' }];
-    f.log = relevantLog(deps.log ? await deps.log() : logTail(root), null);
+    f.log = dropBluetooth(relevantLog(deps.log ? await deps.log() : logTail(root), null), await bluetoothNames(deps));
     return f;
   }
   const snap = devs.find((x) => x.id === id);
@@ -259,7 +279,7 @@ export async function gather(id, deps = {}) {
   f.title = `Help: ${f.device.title}${profile.usb[0] ? ` (${profile.usb[0].id})` : ''}, ${snap.status === 'connected' ? 'connected' : snap.status === 'asleep' ? 'asleep' : 'not connected'}`;
   f.findings = (dg?.findings || []).map((x) => ({ problem: x.problem, why: x.why, fix: x.fix }));
   if (!dg) f.findings = [{ problem: 'The checks did not finish', why: 'DeviceHub could not finish looking for the cause in time.', fix: 'Try Get help again in a minute.' }];
-  f.log = relevantLog(deps.log ? await deps.log() : logTail(root), { id, plugin: a.plugin, title: a.title, vids: profile.vids });
+  f.log = dropBluetooth(relevantLog(deps.log ? await deps.log() : logTail(root), { id, plugin: a.plugin, title: a.title, vids: profile.vids }), await bluetoothNames(deps));
   return f;
 }
 

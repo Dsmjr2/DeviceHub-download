@@ -227,6 +227,27 @@ try { fromJson(mini({ settings: [{ key: 'x', label: 'X', type: 'slider', write: 
 ok(validate(asus()).ok, `the ASUS driver.json passes (${validate(asus()).problems.join('; ')})`);
 ok(parseTemplate('51 31 {value:u16le} {c?}').length === 4, 'templates parse');
 
+// batteryCare (22 Oct 2026): the one setting DeviceHub may change for the battery; keys must be the file's own settings
+{
+  const cared = (care, over = {}) => mini({ fields: { brightness: { from: 'state', offset: 1 }, level: { from: 'state', offset: 2 } },
+    battery: { from: 'state', percent: 'level' }, batteryCare: care, ...over });
+  const good = cared({ lowBattery: { key: 'brightness', value: 10 }, charging: { key: 'brightness', value: 0 } });
+  ok(validate(good).ok, `batteryCare naming its own slider, in range, is accepted (${validate(good).problems.join('; ')})`);
+  const d = fromJson(good);
+  ok(d.batteryCare?.lowBattery?.key === 'brightness' && d.batteryCare.lowBattery.value === 10 && d.batteryCare.charging.value === 0, 'fromJson hands batteryCare to the driver');
+  const { batteryCareProblem } = await import('../helpers/my-devices.mjs');
+  ok(batteryCareProblem(d) === null, `my-devices accepts the driver's batteryCare (${batteryCareProblem(d)})`);
+  ok(!('batteryCare' in fromJson(mini())), 'a file without batteryCare gives a driver without it');
+  refuses('batteryCare naming a setting the file does not have', cared({ lowBattery: { key: 'lights', value: false } }), /"lights", which is not one of its settings/);
+  refuses('batteryCare with a value out of range', cared({ lowBattery: { key: 'brightness', value: 101 } }), /101 is not a value brightness takes/);
+  refuses('batteryCare with a value of the wrong kind', cared({ charging: { key: 'brightness', value: false } }), /false is not a value brightness takes/);
+  refuses('batteryCare with a rule it does not know', cared({ sleeping: { key: 'brightness', value: 0 } }), /batteryCare has "sleeping"/);
+  refuses('batteryCare with extra parts', cared({ lowBattery: { key: 'brightness', value: 0, bytes: '21 00' } }), /batteryCare\.lowBattery must be \{ key, value \}/);
+  refuses('batteryCare on a reading', cared({ lowBattery: { key: 'level', value: 0 } }, { settings: [{ key: 'brightness', label: 'Brightness', type: 'slider', min: 0, max: 100, write: { message: 'set' } }, { key: 'level', label: 'Battery', type: 'display' }] }), /level is a reading/);
+  refuses('batteryCare without a battery', mini({ batteryCare: { lowBattery: { key: 'brightness', value: 0 } } }), /batteryCare needs "battery"/);
+  refuses('batteryCare that is empty', cared({}), /batteryCare is empty/);
+}
+
 // ---- 3. feature reports and a checksum, on a pretend device (FFFF is not a real vendor) ----
 {
   const file = mini({ id: 'pretend-feature', pids: ['FFE1'], models: [{ name: 'Pretend', pids: { usb: ['FFE1'] } }],

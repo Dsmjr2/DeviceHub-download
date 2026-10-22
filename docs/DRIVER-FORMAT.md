@@ -99,6 +99,7 @@ byte-for-byte equal to its `device.mjs` by `tests\declarative-driver.mjs`.
   ],
   "battery": { "from": "status", "percent": "battery", "charging": "charging", "when": { "model.battery": true },
                "awake": true },          awake: offer awake() (one quick status read) on wireless links
+  "batteryCare": { "lowBattery": { "key": "sleep", "value": 1 } },   optional: the one setting to change for the battery
   "info": [ { "label": "Button response", "field": "debounce", "text": "code {value}" },
             { "label": "8K booster", "field": "probe.booster", "map": { "true": "on", "false": "off" } } ],
   "stepBack": { "processes": ["^armourycrate.*\\.exe$"] },   refuse to read or write while the maker's app runs
@@ -163,6 +164,17 @@ more is sent. Only on a match is `then` (a save) sent. Wireless links say "aslee
 driver's `battery()` on as it is). `from` is the read the level comes in, `percent` the field with the level (0-100),
 `charging` an optional field (any value other than 0 / false counts as charging). The fields may come from any read,
 a notice included; `awake` needs `from` to be a read DeviceHub asks for. Nothing is ever written for it.
+
+### Battery care (22 Oct 2026)
+
+`batteryCare` is optional: `{ "lowBattery": { "key", "value" }, "charging": { "key", "value" } }`, either or both.
+It names the ONE setting DeviceHub may change to save the battery, and to what: `lowBattery` at 20% or less and not
+charging (put back at 30% or when it charges), `charging` while it charges (put back when unplugged)
+(`helpers/battery-care.mjs`). Without it DeviceHub changes nothing on the device for its battery. `key` must be a
+setting this file defines and writes (every variant of it, not a `display`), and `value` one that setting takes on
+every model (a slider's range and step, a choice's options, on/off for a toggle). The file needs `battery`. The write
+goes the normal way: a library driver only after Turn on settings and its check, the maker's app closed, a backup
+first, then read back.
 
 ### Notices (22 Oct 2026)
 
@@ -231,6 +243,8 @@ Every refusal says what is wrong in a sentence. A file is refused when:
 7. **A numeric write has no range**: a slider without `min` and `max` (for every model it shows on), or a value the
    page allows that does not encode into its placeholder.
 8. **A setting looks like a firmware, reset, flash or pairing control** by its key or label.
+9. **batteryCare is wrong**: a rule other than `lowBattery` / `charging`, a part other than `key` and `value`, a key
+   that is not one of the file's settings or is a reading, a value that setting does not take, or no `battery`.
 
 ## What it cannot express (then a device.mjs is still the way)
 

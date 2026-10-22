@@ -325,6 +325,24 @@ const since = (n) => lines.slice(n);
   check(neverHit({ vid: '1234', pid: '0001', page: 'FF60', bytes: [0x0b] })?.brand.startsWith('VIA') && !neverHit({ vid: '1234', pid: '0001', page: 'FF00', bytes: [0x0b] }) && !neverHit({ vid: '1234', pid: '0001', page: '*', bytes: [0x0b] }), 'a page entry (VIA FF60) applies only on that page');
   check(neverHit({ vid: '1038', pid: '183A', bytes: [0x11] }) && !neverHit({ vid: '1038', pid: '1234', bytes: [0x11] }), 'a pids entry applies only to its product ids; missing bytes count as the zeros the helper pads with');
   check(neverHit({ vid: '2516', pid: '0173', bytes: [0x00, 0x00, 0xb0] }) && !neverHit({ vid: '2516', pid: '0173', bytes: [0x00, 0x00, 0x00, 0x00, 0xb0] }), '"within" lets a pattern start a few bytes later, no further');
+  // final audit (22 Oct 2026): the VIA entries on an "any page" channel of a VIA maker (Keychron 3434, Epomaker 342D)
+  check(neverHit({ vid: '3434', pid: '0a50', page: '*', bytes: [0x0b] })?.brand.startsWith('VIA') && neverHit({ vid: '342d', pid: '0001', page: null, bytes: [0x0a] }) && !neverHit({ vid: '3434', pid: '0a50', page: 'FF00', bytes: [0x0b] }) && !neverHit({ vid: '0951', pid: '16e6', page: '*', bytes: [0x0b] }), 'the VIA entries apply on a VIA maker\'s "any page" channel, not on its other pages or other makers\'');
+  host.addSpec({ id: 'never-keychron-any', vid: '3434', pid: '0A50', page: '*', usage: '*', iface: 1, len: 32, reportId: 0 });
+  const kc = await host.provider([{ vendorId: 0x3434, productId: 0x0a50 }]);
+  n = lines.length;
+  const e4 = await throws(() => kc.sendReport(0, [0x0b, 0x00]));
+  check(e4?.never && !since(n).some((l) => /REQ/.test(l)), `a VIA bootloader jump on a Keychron "any page" library channel is refused (${e4?.message})`);
+  // a routed report is checked against its route's OWN page, before the route's collection is even opened
+  host.addSpec({ id: 'never-routed', vid: '1234', pid: '0B0B', page: 'FF60', usage: '0061', len: 32, reportId: 0, routes: { 7: { page: 'FF00', usage: '0001', col: 2 }, 9: { page: 'FF60', usage: '0061', col: 3 } } });
+  host.addSpec({ id: 'never-routed2', vid: '1234', pid: '0B0C', page: 'FF00', usage: '0001', len: 32, reportId: 0, routes: { 9: { page: 'FF60', usage: '0061', col: 3 } } });
+  const rt = await host.provider([{ vendorId: 0x1234, productId: 0x0b0b }]);
+  n = lines.length;
+  await rt.sendReport(7, [0x0b, 0x00]);
+  check(since(n).some((l) => /:FF00:0001:.* REQ .*0b 00$/.test(l)), `a report routed to an FF00 collection is not refused by its parent's FF60 page (${since(n).join(' | ')})`);
+  const rt2 = await host.provider([{ vendorId: 0x1234, productId: 0x0b0c }]);
+  n = lines.length;
+  const e5 = await throws(() => rt2.sendReport(9, [0x0b, 0x00]));
+  check(e5?.never && !since(n).some((l) => /OPEN|REQ/.test(l)), `a report routed to an FF60 collection is refused on that page, before anything opens (${e5?.message}; ${since(n).join(' | ')})`);
 }
 
 // ---- 9. the Corsair peripheral frame (22 Oct 2026, docs/handoff/corsair-peripheral-frame.md) is opt-in: the HS80's
@@ -349,6 +367,10 @@ const since = (n) => lines.slice(n);
   check(/public static string FrameOf\(string name\) \{\r?\n\s+var p = name\.Split\(':'\); string f = "hs80";/.test(io), 'FrameOf: a name with no frame part is the HS80 frame');
   check(p2('case "SET"', 'case "MODE"').includes('c.Hs.Set(') && !p2('case "GET"', 'case "SET"').includes('Peripheral'), 'GET and SET answer as before (the frame lives in Hs80Io)');
   check(cs.includes('\r\n') && !/[^\r]\n/.test(cs) && io.includes('\r\n') && !/[^\r]\n/.test(io), 'helper.cs and hs80io.cs keep CRLF line endings');
+  // final audit (22 Oct 2026): HandleHs80 asks Hs80OwnRefusal before anything opens or is sent (tested in the harness),
+  // and DeviceHub's own HS80 code only ever sets 02, 03 and 0e (so the refused 0d / 46 / 47 change nothing for it)
+  check(hs.indexOf('Hs80Io.Hs80OwnRefusal(c.Name') > 0 && hs.indexOf('Hs80Io.Hs80OwnRefusal(c.Name') < hs.indexOf('case "OPEN"'), 'HandleHs80 checks the HS80 own-device refusal first');
+  check(/const PROPS = \{ brightness: 0x02, lightMode: 0x03, autoOff: 0x0e, battery: 0x0f, firmware: 0x13, voltage: 0x53, micMuted: 0xa6 \};/.test(direct) && !/0x0d|0x46|0x47|SET (0?d|46|47)\b/i.test(direct) && !/SET /.test(rx) && !/bragi/.test(direct + rx), "the HS80's own code never sets 0d, 46 or 47 and never uses the bragi tag");
   // the C# harness: the HS80's requests, replies and SET list against the old code, word for word (tests/native/hs80-frame.cs)
   const csc = path.join(process.env.WINDIR || 'C:\\Windows', 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe');
   if (process.platform === 'win32' && fs.existsSync(csc)) {

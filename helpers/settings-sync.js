@@ -24,7 +24,7 @@ const OPTIONS = ['autoSwitch', 'defaultProfile', 'hotkeys', 'artStyle', 'ankerGu
 
 const git = (args, cwd = DIR, timeout = 45000) => new Promise((resolve, reject) => {
   // never a sign-in window or prompt: cached credentials still work, anything else fails quietly (no pop-ups)
-  execFile('git', args, { cwd, windowsHide: true, timeout, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', GIT_ASKPASS: '', SSH_ASKPASS: '' } }, (e, out, err) => (e ? reject(new Error((err || e.message).trim().split('\n').pop())) : resolve(out.trim())));
+  execFile('git', args, { cwd, windowsHide: true, timeout, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', GIT_ASKPASS: '', SSH_ASKPASS: '', GIT_SSH_COMMAND: 'ssh -o BatchMode=yes' } }, (e, out, err) => (e ? reject(new Error((err || e.message).trim().split('\n').pop())) : resolve(out.trim())));
 });
 const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
 const hash = (o) => crypto.createHash('sha1').update(JSON.stringify(o)).digest('hex');

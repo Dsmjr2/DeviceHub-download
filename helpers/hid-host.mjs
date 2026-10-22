@@ -144,22 +144,25 @@ class HostDevice {
   // The never list (22 Oct 2026, safety round 2; helpers/never-guard.mjs): on a channel a library or my-devices driver
   // asked for (spec.never, set by addSpec), every report is checked before any byte goes out. DeviceHub's own channels
   // (SPECS above, useKeyboardSpec) have no spec.never and are never checked, so their bytes are exactly as before.
-  checkNever(id, bytes) {
+  // page: the page the report really goes out on (a routed report: its route's own collection, final audit 22 Oct 2026)
+  checkNever(id, bytes, page = this.spec.page) {
     const s = this.spec;
     if (!s.never) return;
-    const hit = neverHit({ vid: s.vid, pid: this.pid || s.pid, page: s.page, reportId: id, bytes });
+    const hit = neverHit({ vid: s.vid, pid: this.pid || s.pid, page, reportId: id, bytes });
     if (hit) throw refusal(hit, this.productName);
   }
 
   async sendReport(id, data) { return this.serial(() => this.sendNow(id, data)); }
   async sendNow(id, data) {
     const bytes = Array.from(data);
-    this.checkNever(id, bytes);
-    if (!this.opened) throw Object.assign(new Error(`${this.productName} was unplugged`), { gone: true });
     const s = this.spec;
+    const route = s.routes && id !== s.reportId ? s.routes[id] : null;
+    // a routed report is checked against its route's own page (its collection checks again when it sends)
+    this.checkNever(id, bytes, route ? (route.page != null ? pageOf(route.page) : s.page) : s.page);
+    if (!this.opened) throw Object.assign(new Error(`${this.productName} was unplugged`), { gone: true });
     // library options (22 Oct 2026), each off unless the spec asks: a report id owned by another collection
     // (spec.routes), a raw channel (spec.reply 'raw'), another report id on this collection (spec.reportIds)
-    if (s.routes && id !== s.reportId && s.routes[id]) return this.viaRoute(id, bytes);
+    if (route) return this.viaRoute(id, bytes);
     if (s.reply === 'raw') return this.sendRaw(id, bytes);
     await this.followCable();
     const other = id !== s.reportId && Array.isArray(s.reportIds) && s.reportIds.includes(id);

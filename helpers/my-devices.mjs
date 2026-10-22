@@ -65,6 +65,7 @@ const reading = (v) => v === null || typeof v === 'string' || typeof v === 'bool
 export const writable = (s) => s?.type !== 'display';
 export const LIBRARY_FILE = 'library.json';
 export const VERIFIED_FILE = 'verified.json';
+export const MAKER_CACHE_MS = 15000;  // a maker's-app answer is kept this long before a guarded write asks again
 const STEP_MS = 10000;  // one read or write of the self-check; longer = stop, nothing more is written
 
 // what is wrong with one, or null
@@ -192,8 +193,13 @@ const vidOf = (a) => { const d = declaredIds(a)[0]; return d ? hex4(d.vid) : nul
 // settings" for that device. A real-device record is an entry in device.json `tested` that is not a simulation: not
 // marked `simulation: true`, and its by / how do not say it was simulated, a test file's, or not tested yet.
 const SIMULATED = /simulat|never run on a real|not run on a real|nobody yet|not tested yet|\btests[\\/]/i;
-export const realRecord = (t) => !!t && typeof t === 'object' && t.simulation !== true && !SIMULATED.test(`${t.by || ''} ${t.how || ''}`);
-export const hasRealRecord = (meta) => Array.isArray(meta?.tested) && meta.tested.some(realRecord);
+// Final audit (22 Oct 2026): only a record made under status "tested" counts. A record carries the status it was
+// shared with (share-device.mjs); an older one without it takes the entry's status. A "read-only" share ("settings
+// read, nothing written") never counts, so it cannot skip Turn on settings.
+const READ_ONLY_HOW = /nothing written|settings read|read[- ]only/i;
+export const realRecord = (t, status) => !!t && typeof t === 'object' && t.simulation !== true && !SIMULATED.test(`${t.by || ''} ${t.how || ''}`)
+  && (t.status ?? status ?? 'tested') === 'tested' && !READ_ONLY_HOW.test(String(t.how || ''));
+export const hasRealRecord = (meta) => Array.isArray(meta?.tested) && meta.tested.some((t) => realRecord(t, meta.status));
 // a my-devices copy: does it keep today's behaviour (a real-device record, not learned on this PC)?
 export function provenCopy(folder, mark) {
   if (!mark || mark.learned) return false;
@@ -304,11 +310,8 @@ export function writeAllowed(mark, verified, key) {
   const v = verified?.keys?.[key];
   if (v && v.ok === false) return { ok: false, why: `its self-check did not pass (${v.why})` };
   if (v?.ok === true) return { ok: true };
-  if (v?.waiting) {
-    if (mark.status === 'tested' && !(mark.learnedKeys || []).includes(key)) return { ok: true };
-    return { ok: false, why: `its self-check is waiting: ${v.why}` };
-  }
-  if (mark.status === 'tested' && !(mark.learnedKeys || []).includes(key)) return { ok: true };
+  // final audit (22 Oct 2026): no write before THIS setting's check has passed, whatever the entry's status
+  if (v?.waiting) return { ok: false, why: `its self-check is waiting: ${v.why}` };
   return { ok: false, why: `this library driver is "${mark.status || 'unknown'}" and the setting has not passed its self-check yet` };
 }
 
@@ -413,8 +416,6 @@ export function guard(a, folder, mark, deps = null) {
   const anyGated = () => a.settings.some((s) => writable(s) && gated(s.key));
   // a tested entry without a real-device record writes like a read-only one: only what passed its check
   const writeMark = () => (proven || mark.status !== 'tested' ? mark : { ...mark, status: 'read-only' });
-  // the maker's app could not be checked: no writes until a check succeeds (safety round 2, rule 3)
-  let makerUnknown = null;
   // a driver.json driver (helpers/declarative-driver.mjs) builds its settings list fresh on every read (a getter), so
   // the read-only marks are kept here and laid over each list it builds (22 Oct 2026, the learning wizard)
   const marks = {};
@@ -449,17 +450,24 @@ export function guard(a, folder, mark, deps = null) {
   a.library = { source: mark.source || null, status: mark.status || null, folder: path.basename(folder), proven, turnOn: false, turnOnLine: TURN_ON_LINE };
   relabel();
   const depsNow = async () => ({ ...(await agentDeps()), ...(deps || {}) });
+  let makerSeen = null;   // { at, m }: the last "no maker's app open" answer (an open app or "could not check" is asked again)
+  const makerNow = async () => {
+    if (makerSeen && Date.now() - makerSeen.at < MAKER_CACHE_MS) return makerSeen.m;
+    const m = await makerAppOf(a, (await depsNow()).makerApp);
+    makerSeen = m.unknown || m.app ? null : { at: Date.now(), m };
+    return m;
+  };
   a.write = async function (key, value) {
     const st = a.settings.find((x) => x.key === key);
     if (st && !writable(st)) throw new Error(`${st.label} is a reading: DeviceHub never writes it`);
     const w = allowed(key);
     if (!w.ok) throw new Error(`${key} is read-only: ${w.why}`);
-    if (makerUnknown) {
-      const m = await makerAppOf(a, (await depsNow()).makerApp);
-      if (m.unknown) throw Object.assign(new Error(`${key} was not written: DeviceHub could not check whether the maker's app is open (${m.unknown}); it checks again on the next change`), { waiting: true });
-      makerUnknown = null;
-      if (m.app) throw Object.assign(new Error(`${key} was not written: ${m.app} (the maker's app) is running: close it first`), { waiting: true });
-    }
+    // the maker's app before EVERY guarded write (final audit, 22 Oct 2026): the driver's own tasklist may answer "no
+    // app" when it failed, so DeviceHub's own list is asked too (makerAppOf). Only "none open" is kept (MAKER_CACHE_MS); an
+    // open app or "could not check" is asked again on the next write.
+    const m = await makerNow();
+    if (m.unknown) throw Object.assign(new Error(`${key} was not written: DeviceHub could not check whether the maker's app is open (${m.unknown}); it checks again on the next change`), { waiting: true });
+    if (m.app) throw Object.assign(new Error(`${key} was not written: ${m.app} (the maker's app) is running: close it first`), { waiting: true });
     return write.call(this, key, value);
   };
   // one self-check run: only = the keys to check (null = all); the result laid over what was known. Settings still
@@ -474,7 +482,7 @@ export function guard(a, folder, mark, deps = null) {
     if (!keys.length) return { ran: false, why: 'its settings are not turned on yet: press Turn on settings first' };
     const all = keys.length === a.settings.filter(writable).length;
     const r = await selfCheck(a, write, { folder, mark, ...rest, version, only: only || !all ? keys : null, previous: verified, log: (t, kind) => say?.(t, kind, a.id) });
-    makerUnknown = r.unknown ? r.why : r.ran || (r.waiting && !r.unknown) ? null : makerUnknown;
+    makerSeen = null;   // the check just asked; the next write asks again
     if (r.ran) verified = r; else say?.(`${a.title}: library self-check not run: ${r.why}`, 'info', a.id);
     relabel();
     return r;
@@ -569,6 +577,14 @@ async function loadOne(dir, name, { register, addSpec, taken, selfCheck: deps })
     if (why) return { name, error: why };
     a.plugin = name;
     const mark = libraryMark(folder);
+    // a person's own driver (no library.json) is never guarded, so an id DeviceHub's own drivers run refuses it here
+    // (final audit, 22 Oct 2026): two drivers on the HS80, the Pulsar or the P75 would fight over it
+    if (!mark) {
+      const meta = readJson(path.join(folder, 'device.json'));
+      const ids = [...declaredIds(a), ...(meta?.vid && Array.isArray(meta.pids) ? [{ vid: meta.vid, pids: meta.pids }] : [])];
+      const clash = [...new Set(ids.flatMap((d) => ownClash(d.vid, d.pids)))];
+      if (clash.length) return { name, error: `not loaded: ${clash.join(', ')} is a USB id DeviceHub's own driver already runs (the mouse, headset or keyboard page), and two programs driving one device fight` };
+    }
     if (mark) guard(a, folder, mark, deps);
     for (const s of hidSpecs(a)) addSpec(s);
     register(a);

@@ -266,7 +266,7 @@ export function viaFileNote(vid, pid, maker) {
   const file = `${vid}${pid}`.toUpperCase() + '.json';
   const site = maker ? `${maker}'s website` : 'the maker\'s website';
   const line = h('p', { class: 'faint', style: { margin: '6px 0' } });
-  const actions = h('div', { class: 'actions' }, button('Open folder', () => fetch('/api/reveal', { method: 'POST' }).catch(() => {}), { kind: 'ghost small', ic: 'external' }));
+  const actions = h('div', { class: 'actions' }, button('Open folder', () => fetch('/api/reveal?folder=via-definitions', { method: 'POST' }).catch(() => {}), { kind: 'ghost small', ic: 'external' }));
   // "Get the layout" (helpers/via-fetch.mjs): only for a keyboard whose official VIA file DeviceHub knows; the click
   // is the person's yes for that one file, which is checked before it is saved
   if (!isDemo()) fetch(`/api/via-fetch?vid=${encodeURIComponent(vid)}&pid=${encodeURIComponent(pid)}`).then((r) => r.json()).then((p) => {

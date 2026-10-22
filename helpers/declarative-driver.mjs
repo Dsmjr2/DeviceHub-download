@@ -173,7 +173,7 @@ function check(s, v) {
 
 // ---------------------------------------------------------------- validate
 const KNOWN = {
-  top: ['format', 'id', 'title', 'kind', 'vendor', 'about', 'source', 'note', 'vid', 'pids', 'hid', 'transport', 'links', 'models', 'replies', 'messages', 'reads', 'fields', 'settings', 'battery', 'info', 'stepBack', 'unsupported', 'never', 'byPid'],
+  top: ['format', 'id', 'title', 'kind', 'vendor', 'about', 'source', 'note', 'vid', 'pids', 'hid', 'transport', 'links', 'models', 'replies', 'messages', 'reads', 'fields', 'settings', 'battery', 'batteryCare', 'info', 'stepBack', 'unsupported', 'never', 'byPid'],
   notice: ['reportId', 'starts', 'len', 'note'],
   byPid: ['transport', 'replies', 'messages', 'fields', 'notices', 'encode', 'note'],
   transport: ['report', 'len', 'reportId', 'usagePage', 'timeoutMs', 'tries', 'waitMs', 'checksum', 'note'],
@@ -188,6 +188,7 @@ const KNOWN = {
   target: ['value', 'label', 'note'],
   write: ['message', 'needs', 'then', 'keep', 'encode', 'note'],
   battery: ['from', 'percent', 'charging', 'when', 'awake', 'note'],
+  batteryCare: ['lowBattery', 'charging'],
 };
 
 export function validate(obj) {
@@ -504,7 +505,35 @@ export function validate(obj) {
       if (b.awake && readByName[b.from]?.notice) no('battery.awake asks the device once, so its "from" must be a read DeviceHub asks for, not a notice');
     }
   }
-  const notices = reads.some((r) => isObj(r) && r.notice != null);
+  // batteryCare (22 Oct 2026; helpers/battery-care.mjs, my-devices.mjs batteryCareProblem): the one setting DeviceHub
+  // may change to save the battery, and to what. The key must be a setting this file defines and writes (every variant
+  // of it), and the value one that setting takes on every model.
+  if (obj.batteryCare != null) {
+    const c = obj.batteryCare;
+    if (!isObj(c)) no('batteryCare must be { lowBattery: { key, value }, charging: { key, value } }');
+    else {
+      unknown(c, 'batteryCare', 'batteryCare');
+      if (!Object.keys(c).length) no('batteryCare is empty: give lowBattery, charging or both');
+      if (obj.battery == null) no('batteryCare needs "battery": DeviceHub must read the battery to act on it');
+      for (const n of Object.keys(c).filter((k) => KNOWN.batteryCare.includes(k))) {
+        const r = c[n];
+        if (!isObj(r) || typeof r.key !== 'string' || !r.key || r.value === undefined || Object.keys(r).some((k) => k !== 'key' && k !== 'value')) { no(`batteryCare.${n} must be { key, value }`); continue; }
+        const variants = settings.filter((s) => isObj(s) && s.key === r.key);
+        if (!variants.length) { no(`batteryCare.${n} names "${r.key}", which is not one of its settings`); continue; }
+        if (variants.some((s) => s.type === 'display' || !s.write)) { no(`batteryCare.${n}: ${r.key} is a reading or has no write, so DeviceHub cannot change it`); continue; }
+        let bad = null;
+        for (const s of variants) {
+          for (const ctx of ctxs.length ? ctxs : [{}]) {
+            const p = { ...s };
+            for (const k of ['min', 'max', 'step', 'options']) if (s[k] !== undefined) p[k] = resolve(s[k], ctx);
+            try { check(p, r.value); } catch (e) { bad ||= e.message; }
+          }
+        }
+        if (bad) no(`batteryCare.${n}: ${JSON.stringify(r.value)} is not a value ${r.key} takes (${bad})`);
+      }
+    }
+  }
+  const notices =reads.some((r) => isObj(r) && r.notice != null);
   if (notices && isObj(obj.hid) && obj.hid.reply !== 'raw') no('a file with a notice needs hid.reply "raw", so the reports the device sends by itself reach it');
   if (obj.info != null && !(Array.isArray(obj.info) && obj.info.every((x) => isObj(x) && typeof x.label === 'string' && typeof x.field === 'string'))) no('"info" must be a list of { label, field }');
   if (obj.stepBack != null) {
@@ -652,6 +681,7 @@ function makeDriver(base) {
     kind: def.kind,
     ...(def.vendor ? { vendor: def.vendor } : {}),
     unsupported: [...(def.unsupported || [])],
+    ...(base.batteryCare ? { batteryCare: JSON.parse(JSON.stringify(base.batteryCare)) } : {}),
     declarative: true,
     ...(base.hid ? { hid: { ...base.hid } } : { hid: derivedHid }),
 

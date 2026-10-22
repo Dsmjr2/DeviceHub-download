@@ -10,12 +10,11 @@ with Claude Code (further down). Either way it never flashes firmware.
    SteelSeries and Corsair mice; Logitech, SteelSeries Arctis, Corsair, HyperX and Turtle Beach headsets; Logitech,
    Razer, Corsair, Keychron and Wooting keyboards; HyperX mice and keyboards). It installs a matching driver by itself
    when it is "tested" or "read-only"; the Overview's Set up card lists the others, with an Install button, and says
-   what works now and what is left. What a driver does once installed:
-   - one that has run on a real device: it reads, then tests each setting once by writing back its current value and
-     reading it the same, when the device connects; each one that passes can then be changed;
-   - one that has not run on a real device yet (most of the library today, and every driver Learn a device makes): it
-     only reads. Its settings stay read-only until you press **Turn on settings** on its page or on the Set up card.
-     DeviceHub writes each setting's current value back once to make sure it works.
+   what works now and what is left. What a driver does once installed: no driver in the library has run on a real
+   device yet, and neither has one Learn a device makes, so every one of them only reads at first. Its settings stay
+   read-only until you press **Turn on settings** on its page or on the Set up card. DeviceHub then writes each
+   setting's current value back once and reads it the same to make sure it works; each one that passes can then be
+   changed. (A driver whose device.json records a run on a real device does that check by itself when it connects.)
    Nothing is installed for a device DeviceHub already runs itself.
 2. **What needs no setup at all:** sound for any USB headset (volume, mic, EQ), monitors over DDC/CI, webcams,
    batteries Windows knows (Bluetooth), Windows Dynamic Lighting devices, and most VIA keyboards.
@@ -23,8 +22,9 @@ with Claude Code (further down). Either way it never flashes firmware.
    nothing covers yet. Open the maker's app; DeviceHub listens while you change one setting at a time (a number, an on
    or off, or a choice), finds the bytes that carry it, and makes a driver. It sends nothing to the device while it
    learns. Colors, button remaps, macros and EQ cannot be learned this way yet.
-4. **Settings > Optional tools** installs the extra tools when you want them: USBPcap (needed to learn a device),
-   Equalizer APO (EQ and mic filters) and ReaPlugs (the mic's Even volume).
+4. **Settings > Optional tools > Show** installs the extra tools when you want them: USBPcap (needed to learn a
+   device), Equalizer APO (EQ and mic filters; it comes inside DeviceHub, so nothing is downloaded, and the Equalizer
+   card has the same button) and ReaPlugs (the mic's Even volume).
 5. **Share** what you learned: once the device works, its page has a Share this driver button. It needs a free GitHub
    account and opens a GitHub page that offers the driver to the shared library; nothing leaves your PC until you
    press Submit there. The next person with that device then gets it by itself.
@@ -42,8 +42,13 @@ listening while you change settings in the maker's own app. It asks before insta
 - Your devices' own apps installed for now (Claude learns from what they send). You can remove them afterwards.
 - Google Chrome (or Edge) for DeviceHub's window.
 
+Inside DeviceHub already (nothing to download):
+- **Equalizer APO** (sourceforge.net/projects/equalizerapo): the headset EQ, monitor EQ and mic filters. Its installer
+  is in the zip; it installs when you press its button in Settings > Optional tools > Show, or on the Equalizer card.
+- **OpenRGB 1.1** (openrgb.org): PC lights on USB. The motherboard's and RAM's lights need your own OpenRGB and its
+  PawnIO driver.
+
 Not in the zip, installed only if you want them (Settings > Optional tools installs or links them; Claude asks first):
-- **Equalizer APO** (sourceforge.net/projects/equalizerapo): the headset EQ, monitor EQ and mic filters.
 - **ReaPlugs** (reaper.fm/reaplugs): the mic's Even volume.
 - **USBPcap** (desowin.org/usbpcap): only to learn a device whose protocol is not known.
 
@@ -76,8 +81,12 @@ Claude reports after each step and tells you when it needs you to change somethi
 
 - **docs/BRANDS.md** lists the 10 most popular brands for headsets, mice, keyboards, cases, graphics cards, CPU
   coolers, RAM and motherboards: how each talks, which open projects already know it, and how risky it is. Start there.
-- **PC lights** (motherboard, RAM, fans, many graphics cards) work through OpenRGB, a free app you install yourself;
-  DeviceHub talks to it and never writes to that hardware directly.
+- **PC lights** work through OpenRGB. USB lights work with the OpenRGB 1.1 built into DeviceHub. The motherboard, RAM
+  and many graphics cards need your own OpenRGB (openrgb.org) and its PawnIO driver. DeviceHub talks to OpenRGB
+  and never writes to that hardware directly.
+- **Writing a driver?** A driver (device.mjs or driver.json) may add `batteryCare: { lowBattery: { key, value },
+  charging: { key, value } }` to name the one setting DeviceHub turns down on a low battery or while charging
+  (docs/DRIVER-FORMAT.md, Battery care).
 
 - A keyboard that works with **VIA** needs nothing: plug it in and DeviceHub finds it and its layout (from VIA's
   library of about 1,500 keyboards). The exception: boards that are not in that library, which include **Keychron's

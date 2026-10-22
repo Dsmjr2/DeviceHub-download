@@ -36,7 +36,8 @@ const mark = (status) => JSON.stringify({ source: 'device-library/x', name: 'x',
 // device.json with a real-device record (safety round 2: such a driver keeps the self-check on connect), or with only
 // a simulation record (then nothing is written until the person presses Turn on settings)
 const meta = (id, status, tested, { vid = '1234', pids = ['abcd'] } = {}) => JSON.stringify({ id, vendor: 'Acme', product: id, kind: 'Mouse', vid, pids, models: [id], works: [], status, tested });
-const REAL_RECORD = [{ by: 'someone', date: '2026-10-22', devicehub: '0.1.0', how: 'each setting written once and read back' }];
+// status: the share it came from (final audit: only a record from a "tested" share counts, whatever the entry's status now)
+const REAL_RECORD = [{ by: 'someone', date: '2026-10-22', devicehub: '0.1.0', status: 'tested', how: 'each setting written once and read back' }];
 const SIM_RECORD = [{ by: 'DeviceHub (simulation only)', date: '2026-10-22', devicehub: '0.1.0', how: 'tests/sim-acme.mjs: a simulated mouse. Never run on a real mouse.' }];
 put('my-devices/ro-mouse/device.mjs', driver('ro-mouse'));
 put('my-devices/ro-mouse/library.json', mark('read-only'));
@@ -108,10 +109,13 @@ await ro.connect();
 const v2 = json('my-devices/ro-mouse/verified.json');
 check(backups.length === 2 && v2.firmware === 'Firmware 1.1' && v2.keys.mode?.ok === true, `a firmware change runs it again (${JSON.stringify(v2.keys.mode)})`);
 
-// a tested entry writes before its check; a failure makes that one setting read-only
-check((await reg['tested-mouse'].write('dpi', 900)) === 900, 'a tested library driver writes before its self-check');
+// final audit (22 Oct 2026): even a tested entry with a real record writes nothing before that setting's check passed;
+// a failure makes that one setting read-only
+err = null; try { await reg['tested-mouse'].write('dpi', 900); } catch (e) { err = e.message; }
+check(/not passed its self-check/.test(err || '') && st('tested-mouse').writes.length === 0, `a tested library driver does not write before its self-check (${err})`);
 st('tested-mouse').failWrite.lights = true;
 await reg['tested-mouse'].connect();
+check((await reg['tested-mouse'].write('dpi', 900)) === 900, 'once its check passed, the setting writes');
 err = null; try { await reg['tested-mouse'].write('lights', false); } catch (e) { err = e.message; }
 check(/self-check did not pass.*refused/.test(err || ''), `a tested driver's failed setting turns read-only (${err})`);
 
@@ -274,7 +278,7 @@ backupFails = false;
 // ---------- auto setup ----------
 const entry = (name, status, pids, id = name) => {
   put(`device-library/${name}/device.mjs`, driver(id, { pid: pids[0] }));
-  put(`device-library/${name}/device.json`, JSON.stringify({ id, vendor: 'Acme', product: name, kind: 'Mouse', vid: '1234', pids, models: [name], works: ['DPI'], status, tested: status === 'untested' ? [{ by: 'nobody', date: '2026-10-22', devicehub: '0.1.0', how: 'not tested yet' }] : [{ by: 'test', date: '2026-10-22', devicehub: '0.1.0' }] }));
+  put(`device-library/${name}/device.json`, JSON.stringify({ id, vendor: 'Acme', product: name, kind: 'Mouse', vid: '1234', pids, models: [name], works: ['DPI'], status, tested: status === 'untested' ? [{ by: 'nobody', date: '2026-10-22', devicehub: '0.1.0', how: 'not tested yet' }] : [{ by: 'test', date: '2026-10-22', devicehub: '0.1.0', status: 'tested' }] }));
 };
 entry('acme-tested', 'tested', ['aa01']);
 entry('acme-reader', 'read-only', ['aa02']);

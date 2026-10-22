@@ -360,7 +360,10 @@ async function api(req, res, url) {
     return send(res, 200, { enabled: fs.existsSync(lnk) });
   }
   if (url.pathname === '/api/reveal' && req.method === 'POST') {
-    spawn('explorer.exe', [ROOT], { detached: true, stdio: 'ignore' }).unref();
+    // ?folder=via-definitions (the Keyboard page's VIA file note) opens that folder, made first if missing; else DeviceHub's
+    let dir = ROOT;
+    if (url.searchParams.get('folder') === 'via-definitions') { dir = path.join(ROOT, 'via-definitions'); fs.mkdirSync(dir, { recursive: true }); }
+    spawn('explorer.exe', [dir], { detached: true, stdio: 'ignore' }).unref();
     return send(res, 200, { ok: true });
   }
   if (url.pathname === '/api/settings') {

@@ -60,6 +60,12 @@ async function findGeneric() {
 // the HS80 is running: the picker's list (at most every 30 s, inside the usual read), and a switch when another
 // headset was picked and is plugged in
 async function hs80Pick() {
+  // nothing picked, or the HS80 itself: no other headset to switch to, so Windows' USB headset list is not read every
+  // 30 s (final audit, 22 Oct 2026); it is read once, so the Headset page's picker can show a second headset
+  if (!pick || pick === 'hs80') {
+    if (!listAt) await Promise.race([listHeadsets(), new Promise((r) => setTimeout(() => r(null), 3000))]);
+    return;
+  }
   // capped at 3 s, so a slow Windows answer never holds up the HS80's own read
   const list = await Promise.race([listHeadsets(30000), new Promise((r) => setTimeout(() => r(null), 3000))]);
   const other = list && chosenOther(list, pick, { asGeneric: forceGeneric() });

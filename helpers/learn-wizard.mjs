@@ -12,13 +12,14 @@
 //   d. driver.json: built from those messages, checked by declarative-driver validate(), and proven to rebuild every
 //      captured message byte for byte (a template that would send anything not seen in the recording is refused)
 //   e. save: my-devices\<name>\driver.json with a library.json marker "read-only": helpers/my-devices.mjs loads it
-//      GUARDED, so no setting is written until it passes DeviceHub's self-check (read, write the same value, read back)
+//      GUARDED, so no setting is written until the person presses Turn on settings and it passes DeviceHub's check
+//      (read, write the same value, read back)
 //
 // A device that already has a driver (22 Oct 2026, docs/handoff/setup-gaps.md) is listed with "already has a driver;
 // Learn adds settings it lacks". For a driver.json driver the learned settings are added to its copy in my-devices
 // (installed from the library first when it is not there yet; the old files backed up to backups\ first); the library's
-// own copy is never edited. Added settings are listed in library.json learnedKeys and stay read-only until each passes
-// the self-check, whatever the entry's status. Refused at begin, in plain words: a chip maker's shared vendor id where a
+// own copy is never edited. Added settings are listed in library.json learnedKeys and stay read-only until the person
+// presses Turn on settings and each passes the check, whatever the entry's status. Refused at begin, in plain words: a chip maker's shared vendor id where a
 // wrong write has bricked devices (SHARED_CHIPS), a vendor DeviceHub never takes as a driver.json (never-commands.json
 // refuseVendors), a device whose driver refuses every write, and a device whose driver is code (device.mjs).
 //

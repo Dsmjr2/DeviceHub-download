@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { strip, findPersonal, makeIssue, gather, report, open, relevantLog, driverOf, issueUrl, options, handle, MAX_URL, ISSUES } from '../helpers/get-help.mjs';
+import { strip, dropBluetooth, findPersonal, makeIssue, gather, report, open, relevantLog, driverOf, issueUrl, options, handle, MAX_URL, ISSUES } from '../helpers/get-help.mjs';
 
 const fails = [];
 const ok = (cond, what) => { if (!cond) fails.push(what); };
@@ -35,7 +35,7 @@ try {
   const s = strip(raw, NAMES);
   ok(findPersonal(s.text, NAMES).length === 0, `nothing personal left after taking it out: ${JSON.stringify(findPersonal(s.text, NAMES))}\n${s.text}`);
   ok(!/zorblax|QUUXPC|AB12CD34EF|XYZ-98765|0C:1D|gmail|192\.168|fe80|2001:0db8|2a1b3c4d/i.test(s.text), `every personal piece gone:\n${s.text}`);
-  ok(s.text.includes('%USERPROFILE%\\DeviceHub\\backups') && s.text.includes('VID_3710&PID_5406 (instance id removed)'), 'stand-ins keep the rest readable');
+  ok(s.text.includes('saved %USERPROFILE%\\<path> and') && !/backups|x\.json|server\.js/.test(s.text.split('\n')[0]) &&s.text.includes('VID_3710&PID_5406 (instance id removed)'), 'stand-ins keep the rest readable');
   ok(s.text.includes('127.0.0.1:5577') && s.text.includes('5.8.48') && s.text.includes('10.0.22631') && s.text.includes('11:40:00') && s.text.includes('C:\\Users\\Public') && s.text.includes('test@example.com'), `harmless text kept:\n${s.text.split('\n').at(-1)}`);
   for (const why of ['your Windows user folder', 'a device serial number', 'a serial number', 'a MAC address', 'an e-mail address', 'an IP address', "this PC's user or computer name"]) ok(s.removed[why] > 0, `counted: ${why}`);
 
@@ -58,12 +58,14 @@ try {
     '[acme-mouse] open failed 32 on HID\\VID_1234&PID_ABCD\\8&aaaa&0&0000',
     '[acme-mouse] open failed 32 on HID\\VID_1234&PID_ABCD\\8&aaaa&0&0000',
     '[watchdog] 2026-10-22T11:40:00.000Z helper restarted: no heartbeat (1 in the last hour)',
+    '[battery] Zorb Buds Pro: could not read the Bluetooth battery',
   ];
   const deps = {
     root, version: async () => 'abc123.def', windows: async () => 'Windows 11 23H2 (build 22631)', state: async () => STATE,
     usb: async () => [{ id: '1234:abcd', name: 'Acme Glide Receiver' }, { id: '342d:e479', name: 'P75' }],
     diagnose: async () => ({ findings: [{ code: 'held', problem: 'Another program holds the mouse\'s channel', why: 'Windows refused to open it for DeviceHub (sharing violation).', fix: 'Close any lighting app, then press Connect.' }] }),
     log: async () => LOG.join('\n').split('\n'),
+    bluetooth: async () => [{ name: 'Zorb Buds Pro', percent: 80 }, { name: 'X' }],
   };
   const f = await gather('acme-mouse', deps);
   ok(f.device.usb[0].id === '1234:abcd' && f.device.usb[0].name === 'Acme Glide Receiver' && f.device.usb[0].present === true, `USB id and Windows' name (${JSON.stringify(f.device.usb)})`);
@@ -91,6 +93,13 @@ try {
   // ---- general report (Settings > Health): every device, problem lines
   const g = await report('', deps);
   ok(g.ok && g.title.startsWith('Help: DeviceHub') && g.body.includes('- Acme Glide (acme-mouse): missing') && g.body.includes('brightness=253'), `general report (${g.title})`);
+  // final audit (22 Oct 2026): the whole path after the user folder, and Bluetooth device names, are taken out
+  ok(g.body.includes('[battery] <Bluetooth device>: could not read the Bluetooth battery') && !/Zorb Buds/.test(g.body), `a Bluetooth device's name is not in the log lines (${g.body.split('\n').filter((l) => /battery\]/.test(l)).join(' | ')})`);
+  ok(!/my-devices\\acme|DeviceHub\\my-devices/.test(r.body) && r.body.includes('%USERPROFILE%\\<path>'), 'the path after %USERPROFILE% is blanked, not only the user name');
+  const nb = await report('', { ...deps, bluetooth: async () => { throw new Error('no list'); } });
+  ok(nb.ok && !/Bluetooth|Zorb/.test(nb.body), 'Bluetooth names that cannot be read: every log line about Bluetooth is left out');
+  ok(dropBluetooth(['a Pad Pro b', 'Pad Prox'], ['Pad Pro']).join('|') === 'a <Bluetooth device> b|Pad Prox' && dropBluetooth(['x Bluetooth y', 'z'], null).join() === 'z', 'dropBluetooth: whole names only; no list = no Bluetooth lines');
+  ok(strip('C:\\Users\\zorblax\\Documents\\My Secret Project\\notes for sam.txt (read)').text === '%USERPROFILE%\\<path> (read)' && strip('saved C:\\Users\\zorblax\\a b\\x.json and more').text === 'saved %USERPROFILE%\\<path> and more',`folder and file names with spaces go too (${strip('C:\\Users\\zorblax\\Documents\\My Secret Project\\notes for sam.txt (read)').text})`);
 
   // ---- open: only a link DeviceHub made, checked again
   ok((await open('nope')).ok === false && opened.length === 0, 'an unknown token opens nothing');
