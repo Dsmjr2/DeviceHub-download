@@ -19,6 +19,16 @@
 // name function codes were not pulled from a source"): the mouse's own name and firmware version, and the receiver's
 // pairing table (wpid). info() names the model from the USB product id for a wired mouse instead.
 //
+// RECEIVER SLOTS (22 Oct 2026, docs/handoff/logitech-c539.md; problem report Dsmjr2/DeviceHub-support#2): connect()
+// used to take the first slot that answered a ping and threw an error when that device had no 0x2201, so a keyboard
+// paired to the same receiver left the mouse driver "in an error" for good. Now every slot 1-6 is asked, read-only (ping,
+// getFeature 0x2201, DEVICE_NAME fn 0x20 for the kind), and only a slot whose device has 0x2201 is run. A receiver whose
+// answering devices are all something else: the driver closes it and steps aside (`notMine`, helpers/my-devices.mjs
+// stepAside: shown as not connected, no error, no problem report). No slot answering: the asleep state (the receiver stays
+// open; awake() asks the slots again at most every 30 s). The receiver's own pairing table (HID++ 1.0 register 0xB5) is
+// still not read: Linux, libratbag and Solaar send it as a SHORT report (0x10), which goes out on the receiver's
+// short-report collection this driver does not open, and the never list names "receiver pairing registers".
+//
 // Safety (CLAUDE.md "Rules that are never broken"; sheet section 4 "Never touch"): every request goes through call(),
 // which only sends the feature ids and function codes in ALLOWED. DFU (0x00C0-0x00C3, 0x00D0, 0x010A), reset (0x1802),
 // OOB state (0x1805), force pairing (0x1500), receiver pairing registers and onboard-profile MEMORY (0x8100 functions
@@ -87,12 +97,17 @@ const SW_ID = 0x0b;
 const DEV_WIRED = 0xff;                       // section 2 "Device index": 0xFF = a wired (or Bluetooth) device directly
 const SLOTS = [1, 2, 3, 4, 5, 6];             // 0x01-0x06 = paired devices (Bolt holds 6; Lightspeed usually 1)
 
-// feature ids (sheet section 3 settings map; section 2 for 0x0000 / 0x0001)
-export const F = { ROOT: 0x0000, FEATURE_SET: 0x0001, BATTERY_STATUS: 0x1000, BATTERY_VOLTAGE: 0x1001, UNIFIED_BATTERY: 0x1004, ADJUSTABLE_DPI: 0x2201, EXT_ADJUSTABLE_DPI: 0x2202, REPORT_RATE: 0x8060, EXT_REPORT_RATE: 0x8061, ONBOARD_PROFILES: 0x8100 };
+// feature ids (sheet section 3 settings map; section 2 for 0x0000 / 0x0001; 0x0005 DEVICE_NAME from Solaar
+// hidpp20_constants.py SupportedFeature @ e7304c4c451cc9bb4f206a914844525e67856a28)
+export const F = { ROOT: 0x0000, FEATURE_SET: 0x0001, DEVICE_NAME: 0x0005, BATTERY_STATUS: 0x1000, BATTERY_VOLTAGE: 0x1001, UNIFIED_BATTERY: 0x1004, ADJUSTABLE_DPI: 0x2201, EXT_ADJUSTABLE_DPI: 0x2202, REPORT_RATE: 0x8060, EXT_REPORT_RATE: 0x8061, ONBOARD_PROFILES: 0x8100 };
 // the only (feature, function) pairs call() will send. Function = byte 3's high nibble, written as fn << 4.
 export const ALLOWED = {
   [F.ROOT]: [0x00, 0x10],                     // getFeature, ping (section 2 "Feature lookup")
   [F.FEATURE_SET]: [0x00, 0x10],              // count, feature at index (section 2 "IFeatureSet 0x0001")
+  // device type only (22 Oct 2026, docs/handoff/logitech-c539.md): Solaar hidpp20.py get_kind() sends DEVICE_NAME fn 0x20
+  // and reads byte 0 as hidpp20_constants.py DEVICE_KIND (@ e7304c4c). A read: it tells which kind of device answered on a
+  // receiver slot, so a keyboard there is left alone. The name functions are still not sent.
+  [F.DEVICE_NAME]: [0x20],
   [F.BATTERY_STATUS]: [0x00],                 // "Battery (old)" row: status
   [F.BATTERY_VOLTAGE]: [0x00],                // "Battery voltage" row
   [F.UNIFIED_BATTERY]: [0x00, 0x10],          // "Battery (unified)" row: caps 0x00, status 0x10
@@ -132,6 +147,23 @@ export const isReplyToBle = (sent, r) => (r[0] === sent[0] || r[0] === (sent[0] 
 // usage) and on 0xFF00 usage 2 ("mice, the collection Solaar drives them on"). So any page / usage, chosen by 19-byte
 // input and output reports (helpers/hid-host.mjs channelOpts il / ol).
 export const BLE_HID = { page: '*', usage: '*', inputLen: LEN, outputLen: LEN };
+
+// HID++ 2.0 device kinds: Solaar hidpp20_constants.py DEVICE_KIND @ e7304c4c (the reply byte of DEVICE_NAME fn 0x20)
+export const KIND = { 0: 'keyboard', 1: 'remote control', 2: 'numpad', 3: 'mouse', 4: 'touchpad', 5: 'trackball', 6: 'presenter', 7: 'receiver' };
+
+// One owner per receiver slot (22 Oct 2026, docs/handoff/logitech-c539.md). The Logitech library drivers each open their
+// own handle on a receiver (Windows hands every handle every input report), so two of them on one receiver do not take
+// each other's replies; they only fight when both drive the SAME slot. This table, shared by every Logitech driver in
+// the process (each folder is self-contained, so it lives on globalThis), records which driver runs which slot:
+// key '<pid>:<slot>' -> driver id. A driver skips a slot another one holds and frees its own on every connect.
+export const SLOT_OWNERS = (globalThis[Symbol.for('devicehub.logitech.slots')] ||= new Map());
+const slotKey = (pid, slot) => `${hex4(pid)}:${slot}`;
+const releaseSlots = (id) => { for (const [k, v] of SLOT_OWNERS) if (v === id) SLOT_OWNERS.delete(k); };
+// "this is not a device this driver runs": helpers/my-devices.mjs stepAside() turns it into "not this driver's" (the
+// device shows as not connected, no error, nothing reported) instead of an error
+const notMine = (message) => Object.assign(new Error(message), { notMine: true, gone: true });
+const asleepError = (pid) => new Error(`the mouse is asleep or switched off: no device on receiver ${hex4(pid)} answered (move it or switch it on)`);
+const WAKE_PING_MS = 1000, WAKE_EVERY_MS = 30000;
 
 // 0x8061 index -> Hz (settings map "Report rate (8K)": 0=8 ms, 1=4 ms, 2=2 ms, 3=1 ms, 4=500 us, 5=250 us, 6=125 us)
 export const EXT_RATES_HZ = [125, 250, 500, 1000, 2000, 4000, 8000];
@@ -196,10 +228,12 @@ const adapter = {
     return null;
   },
 
-  dev: null, chan: null, index: DEV_WIRED, features: {}, caps: {},
+  dev: null, chan: null, index: DEV_WIRED, features: {}, caps: {}, asleep: false, usbId: null,
+  pingMs: 2600,   // how long a slot's ping waits (tests shorten it)
 
   async connect(prompt) {
-    this.dev = null; this.features = {}; this.caps = {}; this.profileReadBase = undefined;
+    releaseSlots(this.id);
+    this.dev = null; this.chan = null; this.features = {}; this.caps = {}; this.profileReadBase = undefined; this.asleep = false; this.usbId = null; this.wokeAt = 0; this.pendingNotMine = null;
     let dev = injected;
     if (!dev) {
       for (const pid of [...RECEIVERS, ...Object.keys(WIRED).map(Number)]) {
@@ -217,15 +251,93 @@ const adapter = {
     // sheet section 5 step 2: 0xC500-0xC5FF = receiver, anything else = a direct device at index 0xFF
     this.receiver = this.pid >= 0xc500 && this.pid <= 0xc5ff;
     this.ble = !!BLE[this.pid];
+    this.usbId = `046d:${hex4(this.pid).toLowerCase()}`;
     this.chan = new HidChannel(dev, { reportId: REPORT_LONG, length: LEN, match: this.ble ? isReplyToBle : isReplyTo });
-    // receiver: ping slots 1-6 and take the first that answers (section 5 step 3); wired: index 0xFF
-    let ver = null;
-    for (const idx of this.receiver ? SLOTS : [DEV_WIRED]) {
-      this.index = idx;
-      try { ver = await this.ping(); break; } catch (e) { if (e instanceof HidppError) throw e; }
+    if (!this.receiver) {
+      // wired / Bluetooth: index 0xFF
+      this.index = DEV_WIRED;
+      let ver = null;
+      try { ver = await this.ping(); } catch (e) { if (e instanceof HidppError) throw e; }
+      if (!ver) throw new Error('no reply from the mouse');
+      this.protocol = ver;
+      return this.finishConnect();
     }
-    if (!ver) throw new Error(this.receiver ? 'no reply from a mouse on the receiver (asleep, switched off or not paired)' : 'no reply from the mouse');
-    this.protocol = ver;
+    // receiver (22 Oct 2026, docs/handoff/logitech-c539.md): every slot is asked, read-only, and only a slot whose device
+    // has 0x2201 is run. A keyboard (or anything else) there is left alone; nothing answering = asleep, not an error.
+    const found = await this.probeSlots(this.pingMs);
+    if (found.mouse) return this.finishConnect();
+    if (found.others.length) { this.stepAside(); throw notMine(this.notMineText(found.others)); }
+    // no slot answered: a sleeping or switched-off mouse (or nothing paired). The receiver stays open, and the mouse is
+    // looked for again when DeviceHub asks whether it woke (awake()) and on every read.
+    this.asleep = true; this.index = null; this.wokeAt = Date.now();
+    return true;
+  },
+
+  // ask each receiver slot, read-only: ping (IRoot fn 0x10), then getFeature 0x2201, and for a device without it its kind
+  // (DEVICE_NAME fn 0x20). Stops at the first slot with 0x2201 and claims it. Slots another Logitech driver holds are
+  // skipped. Returns { mouse: slot | null, others: [{ slot, kind }] }.
+  async probeSlots(pingMs) {
+    const others = [];
+    for (const slot of SLOTS) {
+      const owner = SLOT_OWNERS.get(slotKey(this.pid, slot));
+      if (owner && owner !== this.id) continue;
+      this.index = slot;
+      let ver = null;
+      try { ver = await this.ping(pingMs); } catch { continue; }   // empty, asleep or off: the receiver's answer is a short report this channel does not read
+      if (!ver) continue;
+      this.features = {};
+      let dpi;
+      try { dpi = await this.getFeature(F.ADJUSTABLE_DPI); } catch (e) { if (!(e instanceof HidppError)) continue; dpi = null; }   // gone quiet again: treated as asleep
+      if (dpi) { this.protocol = ver; SLOT_OWNERS.set(slotKey(this.pid, slot), this.id); return { mouse: slot, others }; }
+      others.push({ slot, kind: await this.deviceKind() });
+    }
+    this.features = {}; this.index = null;
+    return { mouse: null, others };
+  },
+  // Solaar hidpp20.py get_kind(): DEVICE_NAME fn 0x20, byte 0 = DEVICE_KIND; null when the device has no 0x0005
+  async deviceKind() {
+    try {
+      const f = await this.getFeature(F.DEVICE_NAME);
+      if (!f) return null;
+      this.features = { [F.DEVICE_NAME]: f };
+      const p = await this.call(F.DEVICE_NAME, 0x20);
+      return KIND[p[0]] || `kind ${p[0]}`;
+    } catch { return null; } finally { this.features = {}; }
+  },
+  notMineText(others) {
+    const o = others[0];
+    const what = o.kind && o.kind !== 'mouse' ? `a ${o.kind}` : o.kind === 'mouse' ? 'a mouse without the DPI feature 0x2201 this driver reads' : 'a device without the DPI feature 0x2201';
+    return `the Logitech device on receiver ${hex4(this.pid)} (slot ${o.slot}) is ${what}, not a mouse this driver runs: the mouse driver leaves it alone`;
+  },
+  // let go of the receiver, so another driver can open it
+  stepAside() {
+    releaseSlots(this.id);
+    try { this.dev?.close?.(); } catch {}
+    this.dev = null; this.chan = null; this.features = {}; this.asleep = false;
+  },
+  // asleep at connect: is the mouse back? (public/core/devices.js asks before each look at an asleep device). Asks the slots
+  // at most every 30 s, 1 s each; true = read now (the mouse answered, or something else did and read() says so).
+  async awake() {
+    if (!this.asleep) return true;
+    if (Date.now() - (this.wokeAt || 0) < WAKE_EVERY_MS) return false;
+    this.wokeAt = Date.now();
+    const found = await this.probeSlots(Math.min(this.pingMs, WAKE_PING_MS)).catch(() => ({ mouse: null, others: [] }));
+    if (found.mouse) {
+      try { await this.finishConnect(); } catch (e) { if (e.notMine) { this.pendingNotMine = e.message; return true; } releaseSlots(this.id); this.index = null; return false; }
+      this.asleep = false;
+      return true;
+    }
+    if (found.others.length) { this.pendingNotMine = this.notMineText(found.others); return true; }
+    return false;
+  },
+  async needAwake() {
+    if (this.pendingNotMine) { const t = this.pendingNotMine; this.pendingNotMine = null; this.stepAside(); throw notMine(t); }
+    if (!this.chan) throw Object.assign(new Error('the mouse is not connected'), { gone: true });
+    if (this.asleep && !(await this.awake())) throw asleepError(this.pid);
+    if (this.pendingNotMine) return this.needAwake();
+  },
+
+  async finishConnect() {
     // feature lookup through IRoot getFeature (section 2), cached per connect (indexes change between models/firmware)
     // Bluetooth: the report rate is the USB / Lightspeed polling rate; over Bluetooth the link sets it and no source
     // documents 0x8060 / 0x8061 there, so it is not looked up (and so not read, offered or written)
@@ -234,31 +346,31 @@ const adapter = {
       const f = await this.getFeature(id);
       if (f) this.features[id] = f;
     }
-    // a receiver also runs keyboards (0xC541/0xC547/0xC545 are G915 receivers, section 1): no DPI feature = not a mouse
-    if (!this.features[F.ADJUSTABLE_DPI]) throw new Error('this Logitech device has no DPI feature (0x2201): it is not a mouse this driver runs');
+    // only reached for a slot whose device answered 0x2201, or a wired / Bluetooth mouse; one without it is stepped aside from
+    if (!this.features[F.ADJUSTABLE_DPI]) { this.stepAside(); throw notMine(`this Logitech device (${hex4(this.pid)}) has no DPI feature (0x2201): it is not a mouse this driver runs, so the mouse driver leaves it alone`); }
     await this.readCaps();
     return true;
   },
 
   // one HID++ 2.0 request: [dev, feature index, fn | swid, params...] (section 2 "Message format"); returns the 16
   // parameter bytes of the reply. Only ALLOWED pairs are sent. A read is retried once after no reply (a sleeping mouse).
-  async call(featureId, fn, params = [], { retry = true } = {}) {
+  async call(featureId, fn, params = [], { retry = true, timeoutMs = 2600 } = {}) {
     if (NEVER.includes(featureId) || (NEVER_FN[featureId] || []).includes(fn) || !(ALLOWED[featureId] || []).includes(fn)) throw new Error(`refused: feature 0x${hex4(featureId)} function 0x${fn.toString(16)} is not one this driver sends`);
     const index = featureId === F.ROOT ? 0 : this.features[featureId]?.index;
     if (!index && featureId !== F.ROOT) throw new Error(`the mouse has no feature 0x${hex4(featureId)}`);
     const out = [this.index, index, (fn & 0xf0) | SW_ID, ...params];
     const what = `0x${hex4(featureId)} fn 0x${fn.toString(16).padStart(2, '0')}`;
     let r;
-    try { r = await this.chan.request(out, { timeoutMs: 2600 }); }
-    catch (e) { if (!retry || /refused/.test(e.message)) throw e; r = await this.chan.request(out, { timeoutMs: 2600 }); }
+    try { r = await this.chan.request(out, { timeoutMs }); }
+    catch (e) { if (!retry || /refused/.test(e.message)) throw e; r = await this.chan.request(out, { timeoutMs }); }
     if (r[1] === 0xff && r[2] === index && r[3] === out[2]) throw new HidppError(r[4], what);
     return r.slice(3, 19);
   },
 
   // IRoot ping, function 0x10, params 00 00 <mark>: reply b0 major, b1 minor, b2 the mark (section 2)
-  async ping() {
+  async ping(timeoutMs = this.pingMs) {
     const mark = 0x5a;
-    const p = await this.call(F.ROOT, 0x10, [0x00, 0x00, mark], { retry: false });
+    const p = await this.call(F.ROOT, 0x10, [0x00, 0x00, mark], { retry: false, timeoutMs });
     if (p[2] !== mark) throw new Error('the ping came back without its mark');
     return `${p[0]}.${p[1]}`;
   },
@@ -373,6 +485,8 @@ const adapter = {
   },
 
   async info() {
+    // asleep at connect: only what is known without the mouse
+    if (this.asleep) return { Model: `Logitech mouse on receiver ${hex4(this.pid)} (not answering yet)`, Connection: this.pid === 0xc548 ? 'Bolt receiver' : 'Lightspeed receiver' };
     const bat = this.features[F.UNIFIED_BATTERY] ? '0x1004 unified' : this.features[F.BATTERY_STATUS] ? '0x1000 status' : this.features[F.BATTERY_VOLTAGE] ? '0x1001 voltage' : 'none reported';
     const mode = await this.readMode().catch(() => undefined);
     const out = {
@@ -390,6 +504,7 @@ const adapter = {
   },
 
   async read() {
+    await this.needAwake();
     const v = {};
     v.dpi = (await this.readDpi()).dpi;
     const rate = await this.readRate();
@@ -408,6 +523,7 @@ const adapter = {
   // one setting, then read back; a read-back that differs throws (CLAUDE.md: reported as failed)
   async write(key, value) {
     if (!this.chan) throw new Error('the mouse is not connected');
+    if (this.asleep) throw Object.assign(asleepError(this.pid), { waiting: true });
     if (!settings.some((s) => s.key === key)) throw new Error(`${key} is not a setting`);
     // waiting: true = refused only because of how things are right now (helpers/my-devices.mjs isWaiting): the library
     // self-check records it as waiting and tries again later, instead of failing it
@@ -469,6 +585,7 @@ const adapter = {
   },
 
   async battery() {
+    if (this.asleep) return null;
     if (this.features[F.UNIFIED_BATTERY]) {
       // "Battery (unified)" row: fn 0x10 -> b0 %, b1 level bits (1 critical, 2 low, 4 good, 8 full), b2 charging
       // 0 discharging / 1 charging / 2 slow / 3 complete / 4 error, b3 external power
@@ -492,6 +609,7 @@ const adapter = {
 
   // everything read, for DeviceHub's backup before a write
   async rawBackup() {
+    await this.needAwake();
     const dpi = await this.readDpi();
     return {
       pid: hex4(this.pid), index: this.index, protocol: this.protocol,

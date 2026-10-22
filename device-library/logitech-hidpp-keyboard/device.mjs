@@ -45,13 +45,14 @@ const REPORT_LONG = 0x11, LEN = 19, SW_ID = 0x0b, DEV_WIRED = 0xff, SLOTS = [1, 
 
 // feature ids (Solaar hidpp20_constants.py SupportedFeature)
 export const F = {
-  ROOT: 0x0000, BATTERY_STATUS: 0x1000, BATTERY_VOLTAGE: 0x1001, UNIFIED_BATTERY: 0x1004, ADJUSTABLE_DPI: 0x2201,
+  ROOT: 0x0000, DEVICE_NAME: 0x0005, BATTERY_STATUS: 0x1000, BATTERY_VOLTAGE: 0x1001, UNIFIED_BATTERY: 0x1004, ADJUSTABLE_DPI: 0x2201,
   FN_INVERSION: 0x40a0, NEW_FN_INVERSION: 0x40a2, DISABLE_KEYS: 0x4521, BRIGHTNESS: 0x8040, REPORT_RATE: 0x8060,
   EXT_REPORT_RATE: 0x8061, ONBOARD_PROFILES: 0x8100,
 };
 // the only (feature, function) pairs call() sends; function = byte 3's high nibble, written as fn << 4
 export const ALLOWED = {
   [F.ROOT]: [0x00, 0x10],                 // getFeature, ping (sheet section 2 "Feature lookup")
+  [F.DEVICE_NAME]: [0x20],                // device kind only: Solaar hidpp20.py get_kind() (DEVICE_NAME fn 0x20, byte 0)
   [F.BATTERY_STATUS]: [0x00],             // sheet section 3 "Battery (old)"
   [F.BATTERY_VOLTAGE]: [0x00],            // sheet section 3 "Battery voltage"
   [F.UNIFIED_BATTERY]: [0x00, 0x10],      // sheet section 3 "Battery (unified)": caps, status
@@ -84,6 +85,19 @@ export const isReplyToBle = (sent, r) => (r[0] === sent[0] || r[0] === (sent[0] 
 // usage 2, so the page differs by model: the channel takes any page and usage and picks the collection whose input and
 // output reports are 19 data bytes (helpers/hid-host.mjs channelOpts il / ol; the helper adds the report id byte).
 export const BLE_HID = { page: '*', usage: '*', inputLen: LEN, outputLen: LEN };
+
+// Receiver slots (22 Oct 2026, docs/handoff/logitech-c539.md), the same rules as device-library/logitech-hidpp-mouse:
+// every slot is asked read-only (ping, getFeature 0x2201, DEVICE_NAME fn 0x20) and only a keyboard's slot is run; a mouse
+// there is left to the mouse driver (notMine: helpers/my-devices.mjs stepAside, no error, no problem report); nothing
+// answering = asleep. HID++ 2.0 kinds: Solaar hidpp20_constants.py DEVICE_KIND @ e7304c4c.
+export const KIND = { 0: 'keyboard', 1: 'remote control', 2: 'numpad', 3: 'mouse', 4: 'touchpad', 5: 'trackball', 6: 'presenter', 7: 'receiver' };
+const KEYBOARD_KINDS = ['keyboard', 'numpad'];
+// one owner per receiver slot, shared by every Logitech driver in the process (the mouse driver's SLOT_OWNERS)
+export const SLOT_OWNERS = (globalThis[Symbol.for('devicehub.logitech.slots')] ||= new Map());
+const slotKey = (pid, slot) => `${hex4(pid)}:${slot}`;
+const releaseSlots = (id) => { for (const [k, v] of SLOT_OWNERS) if (v === id) SLOT_OWNERS.delete(k); };
+const notMine = (message) => Object.assign(new Error(message), { notMine: true, gone: true });
+const WAKE_PING_MS = 1000, WAKE_EVERY_MS = 30000;
 
 // Solaar ExtendedReportRate choices_universe: index 0 = 8 ms ... 6 = 125 us
 export const EXT_RATES_HZ = [125, 250, 500, 1000, 2000, 4000, 8000];
@@ -126,7 +140,8 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
     hid: { vid: '046D', pid: 'C33E', pids: PIDS.map(hex4), page: 'FF00', usage: '0002', len: LEN, reportId: REPORT_LONG, replyMs: 2000, reply: 'raw',
       byPid: Object.fromEntries(Object.keys(BLE).map((p) => [hex4(Number(p)), { ...BLE_HID }])) },
     unsupported: ['editing onboard profiles (keys, macros, lights)', 'lighting colours and effects (no read-back)', 'G-key and M-key remaps', 'game mode beyond the key locks', 'firmware updates', 'pairing'],
-    dev: null, chan: null, index: DEV_WIRED, features: {}, caps: {},
+    dev: null, chan: null, index: DEV_WIRED, features: {}, caps: {}, asleep: false, usbId: null,
+    pingMs: 2600,   // how long a slot's ping waits (tests shorten it)
 
     get settings() {
       const c = this.caps, out = [];
@@ -151,7 +166,8 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
     },
 
     async connect() {
-      this.dev = null; this.chan = null; this.features = {}; this.caps = {};
+      releaseSlots(this.id);
+      this.dev = null; this.chan = null; this.features = {}; this.caps = {}; this.asleep = false; this.usbId = null; this.wokeAt = 0; this.pendingNotMine = null;
       let dev = null;
       for (const pid of PIDS) { dev = await open(pid); if (dev) break; }
       if (!dev) return false;
@@ -160,14 +176,85 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
       this.pid = typeof dev.pid === 'string' ? parseInt(dev.pid, 16) : dev.productId;
       this.receiver = !!RECEIVERS[this.pid];
       this.ble = !!BLE[this.pid];
+      this.usbId = `046d:${hex4(this.pid).toLowerCase()}`;
       this.chan = new HidChannel(dev, { reportId: REPORT_LONG, length: LEN, match: this.ble ? isReplyToBle : isReplyTo });
-      let ver = null;
-      for (const idx of this.receiver ? SLOTS : [DEV_WIRED]) {    // sheet section 5 step 3: ping slots 1-6
-        this.index = idx;
-        try { ver = await this.ping(); break; } catch (e) { if (e instanceof HidppError) throw e; }
+      if (this.receiver) {
+        const found = await this.probeSlots(this.pingMs);
+        if (found.keyboard) return this.finishConnect();
+        if (found.others.length) { this.stepAside(); throw notMine(this.notMineText(found.others)); }
+        this.asleep = true; this.index = null; this.wokeAt = Date.now();   // nothing answered: asleep or switched off
+        return true;
       }
-      if (!ver) throw new Error(this.receiver ? 'no reply from a keyboard on the receiver (asleep, switched off or not paired)' : 'no reply from the keyboard');
+      this.index = DEV_WIRED;
+      let ver = null;
+      try { ver = await this.ping(); } catch (e) { if (e instanceof HidppError) throw e; }
+      if (!ver) throw new Error('no reply from the keyboard');
       this.protocol = ver;
+      return this.finishConnect();
+    },
+
+    // every receiver slot, read-only: ping, getFeature 0x2201 (a mouse has it), and the kind (DEVICE_NAME fn 0x20, when
+    // the device has it). The first keyboard (or a device without 0x2201 whose kind is not known) is claimed.
+    async probeSlots(pingMs) {
+      const others = [];
+      for (const slot of SLOTS) {
+        const owner = SLOT_OWNERS.get(slotKey(this.pid, slot));
+        if (owner && owner !== this.id) continue;
+        this.index = slot;
+        let ver = null;
+        try { ver = await this.ping(pingMs); } catch { continue; }
+        this.features = {};
+        let dpi;
+        try { dpi = await this.getFeature(F.ADJUSTABLE_DPI); } catch (e) { if (!(e instanceof HidppError)) continue; dpi = null; }
+        const kind = dpi ? 'mouse' : await this.deviceKind();
+        if (!dpi && (kind === null || KEYBOARD_KINDS.includes(kind))) { this.protocol = ver; SLOT_OWNERS.set(slotKey(this.pid, slot), this.id); return { keyboard: slot, others }; }
+        others.push({ slot, kind });
+      }
+      this.features = {}; this.index = null;
+      return { keyboard: null, others };
+    },
+    async deviceKind() {
+      try {
+        const f = await this.getFeature(F.DEVICE_NAME);
+        if (!f) return null;
+        this.features = { [F.DEVICE_NAME]: f };
+        const p = await this.call(F.DEVICE_NAME, 0x20);   // Solaar hidpp20.py get_kind: byte 0
+        return KIND[p[0]] || `kind ${p[0]}`;
+      } catch { return null; } finally { this.features = {}; }
+    },
+    notMineText(others) {
+      const o = others[0];
+      return o.kind === 'mouse'
+        ? `the Logitech device on receiver ${hex4(this.pid)} (slot ${o.slot}) has a DPI feature (0x2201): it is a mouse, not a keyboard this driver runs, so the keyboard driver leaves it to the mouse driver`
+        : `the Logitech device on receiver ${hex4(this.pid)} (slot ${o.slot}) is a ${o.kind}, not a keyboard this driver runs: the keyboard driver leaves it alone`;
+    },
+    stepAside() {
+      releaseSlots(this.id);
+      try { this.dev?.close?.(); } catch {}
+      this.dev = null; this.chan = null; this.features = {}; this.caps = {}; this.asleep = false;
+    },
+    // asleep at connect: asks the slots again at most every 30 s (public/core/devices.js asks before each look)
+    async awake() {
+      if (!this.asleep) return true;
+      if (Date.now() - (this.wokeAt || 0) < WAKE_EVERY_MS) return false;
+      this.wokeAt = Date.now();
+      const found = await this.probeSlots(Math.min(this.pingMs, WAKE_PING_MS)).catch(() => ({ keyboard: null, others: [] }));
+      if (found.keyboard) {
+        try { await this.finishConnect(); } catch (e) { if (e.notMine) { this.pendingNotMine = e.message; return true; } releaseSlots(this.id); this.index = null; return false; }
+        this.asleep = false;
+        return true;
+      }
+      if (found.others.length) { this.pendingNotMine = this.notMineText(found.others); return true; }
+      return false;
+    },
+    async needAwake() {
+      if (this.pendingNotMine) { const t = this.pendingNotMine; this.pendingNotMine = null; this.stepAside(); throw notMine(t); }
+      if (!this.chan) throw Object.assign(new Error('the keyboard is not connected'), { gone: true });
+      if (this.asleep && !(await this.awake())) throw new Error(`the keyboard is asleep or switched off: no device on receiver ${hex4(this.pid)} answered`);
+      if (this.pendingNotMine) return this.needAwake();
+    },
+
+    async finishConnect() {
       // Bluetooth: the report rate is the USB / Lightspeed polling rate (Solaar ReportRate: "Frequency of device movement
       // reports"); over Bluetooth the link sets it and no source documents 0x8060 / 0x8061 there, so it is not looked up
       const rateIds = this.ble ? [] : [F.EXT_REPORT_RATE, F.REPORT_RATE];
@@ -175,26 +262,26 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
         const f = await this.getFeature(id);
         if (f) this.features[id] = f;
       }
-      // a mouse on the same receiver has the DPI feature; this driver leaves it to the mouse driver
-      if (this.features[F.ADJUSTABLE_DPI]) throw new Error('this Logitech device has a DPI feature (0x2201): it is a mouse, not a keyboard this driver runs');
+      // a mouse has the DPI feature; this driver leaves it to the mouse driver (a wired or Bluetooth id here is a keyboard's)
+      if (this.features[F.ADJUSTABLE_DPI]) { this.stepAside(); throw notMine(`this Logitech device (${hex4(this.pid)}) has a DPI feature (0x2201): it is a mouse, not a keyboard this driver runs, so the keyboard driver leaves it to the mouse driver`); }
       await this.readCaps();
       return true;
     },
 
-    async call(featureId, fn, params = [], { retry = true } = {}) {
+    async call(featureId, fn, params = [], { retry = true, timeoutMs = 2600 } = {}) {
       if (NEVER.includes(featureId) || (NEVER_FN[featureId] || []).includes(fn) || !(ALLOWED[featureId] || []).includes(fn)) throw new Error(`refused: feature 0x${hex4(featureId)} function 0x${hex2(fn)} is not one this driver sends`);
       const index = featureId === F.ROOT ? 0 : this.features[featureId]?.index;
       if (!index && featureId !== F.ROOT) throw new Error(`the keyboard has no feature 0x${hex4(featureId)}`);
       const out = [this.index, index, (fn & 0xf0) | SW_ID, ...params];
       const what = `0x${hex4(featureId)} fn 0x${hex2(fn)}`;
       let r;
-      try { r = await this.chan.request(out, { timeoutMs: 2600 }); }
-      catch (e) { if (!retry || /refused/.test(e.message)) throw e; r = await this.chan.request(out, { timeoutMs: 2600 }); }
+      try { r = await this.chan.request(out, { timeoutMs }); }
+      catch (e) { if (!retry || /refused/.test(e.message)) throw e; r = await this.chan.request(out, { timeoutMs }); }
       if (r[1] === 0xff && r[2] === index && r[3] === out[2]) throw new HidppError(r[4], what);
       return r.slice(3, 19);
     },
     // ping: Root fn 0x10 [00 00 mark] -> major, minor, mark (sheet section 2)
-    async ping() { const p = await this.call(F.ROOT, 0x10, [0, 0, 0x5a], { retry: false }); if (p[2] !== 0x5a) throw new Error('the ping came back without its mark'); return `${p[0]}.${p[1]}`; },
+    async ping(timeoutMs = this.pingMs) { const p = await this.call(F.ROOT, 0x10, [0, 0, 0x5a], { retry: false, timeoutMs }); if (p[2] !== 0x5a) throw new Error('the ping came back without its mark'); return `${p[0]}.${p[1]}`; },
     // getFeature: Root fn 0x00 [id hi, lo] -> index (0 = absent), flags, version (sheet section 2)
     async getFeature(id) { if (NEVER.includes(id)) return null; const p = await this.call(F.ROOT, 0x00, [id >> 8, id & 0xff]); return p[0] ? { index: p[0], flags: p[1], version: p[2] } : null; },
 
@@ -270,6 +357,7 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
     },
 
     async info() {
+      if (this.asleep) return { Model: `Logitech keyboard on ${RECEIVERS[this.pid]} ${hex4(this.pid)} (not answering yet)`, Connection: 'Lightspeed receiver' };
       const mode = await this.readMode().catch(() => undefined);
       const out = {
         Model: this.receiver ? `Logitech keyboard on ${RECEIVERS[this.pid]} ${hex4(this.pid)} (slot ${this.index})` : `Logitech ${WIRED[this.pid] || BLE[this.pid] || `keyboard ${hex4(this.pid)}`}`,
@@ -286,6 +374,7 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
 
     async read() {
       if (!this.chan) throw Object.assign(new Error('the keyboard is not connected'), { gone: true });
+      await this.needAwake();
       const v = {};
       const rate = await this.readRate(); if (rate !== undefined) v.reportRate = rate;
       const mode = await this.readMode(); if (mode) v.mode = mode;
@@ -299,6 +388,7 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
     // one setting, checked, written, read back; refused while G HUB runs
     async write(key, value) {
       if (!this.chan) throw new Error('the keyboard is not connected');
+      if (this.asleep) throw Object.assign(new Error('the keyboard is asleep or switched off'), { waiting: true });
       const s = this.settings.find((x) => x.key === key);
       if (!s) throw new Error(`${key} is not a setting of this keyboard`);
       if (s.type === 'toggle' && typeof value !== 'boolean') throw new Error(`${s.label} is on or off (true / false)`);
@@ -339,6 +429,7 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
     },
 
     async battery() {
+      if (this.asleep) return null;
       if (this.features[F.UNIFIED_BATTERY]) {
         const p = await this.call(F.UNIFIED_BATTERY, 0x10);      // sheet "Battery (unified)": b0 %, b2 1 / 2 charging, 3 complete
         return { percent: this.caps.batteryPercent ? p[0] : null, charging: p[2] === 1 || p[2] === 2, full: p[2] === 3 };
@@ -355,6 +446,7 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
     },
 
     async rawBackup() {
+      await this.needAwake();
       return { pid: hex4(this.pid), index: this.index, protocol: this.protocol, caps: this.caps,
         features: Object.fromEntries(Object.entries(this.features).map(([id, f]) => [`0x${hex4(Number(id))}`, f])),
         values: await this.read(), profileSector: await this.readProfileSector().catch(() => undefined) };

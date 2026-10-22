@@ -87,7 +87,13 @@ function compose(f, { logs, whyMax = 400, findingsMax = 8 }) {
   if (d) {
     L.push('### The device', `- Name: ${d.title} (${d.kind})`, `- Status: ${d.status}`);
     if (d.error) L.push(`- Error: ${d.error}`);
-    L.push(`- USB: ${d.usb.length ? d.usb.map((u) => `${u.id} ${u.name || u.label}${u.present === true ? ', plugged in' : u.present === false ? ', not plugged in' : ''}`).join('; ') : 'no USB ids known for it'}`);
+    // a driver with many ids (the Logitech receivers and cables): the ones plugged in, else the first and a count
+    // (22 Oct 2026, Dsmjr2/DeviceHub-support#2: one id shown "not plugged in" read as if nothing was)
+    const usbOne = (u) => `${u.id} ${u.name || u.label}${u.present === true ? ', plugged in' : u.present === false ? ', not plugged in' : ''}`;
+    const usbIn = d.usb.filter((u) => u.present === true), usbShown = d.usb.length > 3 ? (usbIn.length ? usbIn : d.usb.slice(0, 1)) : d.usb;
+    const usbMore = d.usb.length - usbShown.length;
+    L.push(`- USB: ${d.usb.length ? `${usbShown.map(usbOne).join('; ')}${usbMore ? ` (and ${usbMore} more id${usbMore === 1 ? '' : 's'} its driver knows${usbIn.length || d.usb[0].present == null ? '' : ', none plugged in'})` : ''}` : 'no USB ids known for it'}`);
+    if (d.notMine) L.push(`- Its driver stepped aside: ${d.notMine}`);
     L.push(`- Driver: ${d.driver}`);
     for (const [k, v] of d.info) L.push(`- ${k}: ${v}`);
     L.push('');
@@ -122,7 +128,7 @@ export function makeIssue(f, { names = [], max = MAX_URL } = {}) {
   g.log = (g.log || []).map((l) => add(s(l)));
   for (const x of g.findings || []) for (const k of ['problem', 'why', 'fix']) x[k] = add(s(x[k]));
   if (g.device) {
-    for (const k of ['title', 'kind', 'status', 'error', 'driver']) if (g.device[k]) g.device[k] = add(s(g.device[k]));
+    for (const k of ['title', 'kind', 'status', 'error', 'driver', 'notMine']) if (g.device[k]) g.device[k] = add(s(g.device[k]));
     g.device.usb = g.device.usb.map((u) => ({ ...u, name: u.name ? add(s(u.name)) : u.name, label: add(s(u.label || '')) }));
     g.device.info = g.device.info.map(([k, v]) => [add(s(k)), add(s(v))]);
   }
@@ -272,6 +278,7 @@ export async function gather(id, deps = {}) {
   const kind = String(a.kind || 'device').toLowerCase();
   f.device = {
     id, title: a.title || id, kind, status: snap.status, error: snap.error || null,
+    notMine: a.notMine || null,
     usb: profile.usb.map((u) => ({ id: u.id, label: u.label, name: byId.get(u.id) || null, present: usbList ? byId.has(u.id) : null })),
     driver: driverOf(snap, root),
     info: infoOf(snap.info),

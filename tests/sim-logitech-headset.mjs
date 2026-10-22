@@ -328,5 +328,14 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
   check(never.commands.some((c) => c.vid === '046D' && /0x0309/.test(c.what) && /0x1816/.test(c.what)), 'the shared never list names Lightspeed pairing 0x0309 and BLE pre-pairing 0x1816');
 }
 
+// receiver slots (22 Oct 2026, docs/handoff/logitech-c539.md): the headset driver never opens a Lightspeed / Bolt /
+// Unifying receiver (0xC500-0xC5FF; Solaar base_usb.py), so a headset can never fight the mouse or keyboard driver for a
+// receiver slot; a headset's own dongle is addressed at 0xFF only
+{
+  const mouseRx = (await import('../device-library/logitech-hidpp-mouse/device.mjs')).RECEIVERS;
+  const kbRx = Object.keys((await import('../device-library/logitech-hidpp-keyboard/device.mjs')).RECEIVERS).map(Number);
+  check(PIDS.every((p) => { const n = parseInt(p, 16); return n < 0xc500 || n > 0xc5ff; }) && !PIDS.some((p) => [...mouseRx, ...kbRx].includes(parseInt(p, 16))), 'no headset id is a receiver id (C539 and the rest stay with the mouse and keyboard drivers)');
+}
+
 console.log(fails.length ? `sim-logitech-headset: FAILED: ${fails.join('; ')}` : 'sim-logitech-headset (Logitech HID++ / Centurion headset driver, simulated): all good');
 process.exit(fails.length ? 1 : 0);

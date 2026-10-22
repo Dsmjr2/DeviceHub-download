@@ -362,3 +362,23 @@ including the Windows key (0x4521, Solaar `DisableKeyboardKeys`, bits from `spec
 0x40A0, backlight 0x8040 (Solaar `BrightnessControl`, in the keyboard's own halving steps when it has them). Not
 covered: profile editing, lights, G-key / M-key remaps, the C547 receiver (see the handoff), PRO X TKL and G915 X ids.
 Lightspeed pairing 0x0309 and BLE pre-pairing 0x1816 are now on helpers/never-commands.json and in both drivers' NEVER.
+
+## Receiver slots and the pairing table (22 Oct 2026, docs/handoff/logitech-c539.md)
+
+- **Which devices sit on which receiver:** Solaar `base_usb.py` lists 0xC539, 0xC53A, 0xC53D, 0xC53F, 0xC541, 0xC545,
+  0xC547, 0xC54D as Lightspeed (interface 2) and 0xC548 as Bolt; Linux `hid-logitech-dj.c` names 0xC539 "Logitech
+  lightspeed receiver" (gaming HID++) and 0xC53A the POWERPLAY receiver. No source ties a receiver id to one kind of
+  device: a Lightspeed receiver can hold a keyboard as well as a mouse, a Bolt receiver up to six of either.
+- **Device index:** 0xFF = the receiver itself; 0x01-0x06 = paired slots (Linux `DJ_DEVICE_INDEX_MIN 1`, `MAX 7`).
+- **Pairing table, read-only:** HID++ 1.0 "get long register" (sub id 0x83) of register 0xB5 with parameter 0x20 + slot - 1,
+  sent to index 0xFF as a SHORT report (0x10); the answer is a LONG report `FF 83 B5 <2N> ...` with the wpid in bytes 3-4
+  (big-endian) and the device kind in the low nibble of byte 7 (1 keyboard, 2 mouse, 0x0D headset), counting the echoed 2N as byte 0
+  (Solaar `receiver.py` device_pairing_information @ e7304c4c, `hidpp10_constants.py` DEVICE_KIND / InfoSubRegisters;
+  libratbag `hidpp10.c` hidpp10_get_pairing_information @ 8235b5bb; Linux `hid-logitech-dj.c` unifying_pairing_query).
+  Bolt uses 0x50 + slot instead (Solaar BoltReceiver). DeviceHub does not send it yet: see the handoff.
+- **Device kind over HID++ 2.0, read-only:** feature 0x0005 DEVICE_NAME, function 0x20, byte 0 (Solaar `hidpp20.py`
+  get_kind; `hidpp20_constants.py` DEVICE_KIND: 0 keyboard, 1 remote control, 2 numpad, 3 mouse, 4 touchpad,
+  5 trackball, 6 presenter, 7 receiver).
+- An empty slot and a sleeping device both get an HID++ 1.0 error from the receiver (short report `<slot> 8F ...`,
+  0x08 unknown device / 0x09 resource error, Solaar `base.py` ping); on Windows that arrives on the short-report
+  collection, so a driver reading only the long one sees no reply for both.

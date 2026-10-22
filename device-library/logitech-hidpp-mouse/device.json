@@ -88,11 +88,12 @@
     "lift-off distance low / medium / high on mice with 0x2202 and its LOD bit (Solaar ExtendedAdjustableDpi), the DPI rewritten as read",
     "never looked up or sent: DFU, reset, OOB state, force pairing, and since 22 Oct 2026 BLE pre-pairing 0x1816 and Lightspeed pairing 0x0309 (Solaar hidpp20_constants.py)",
     "every write read back; DPI, report rate and lift-off written only in host mode; every write refused while G HUB (lghub*.exe) runs",
-    "22 Oct 2026: models covered by their libratbag ids alone (data/devices @ 8235b5bb): USB ids in WIRED, Bluetooth ids G603 b01c, G604 b024, G705 b02e; every feature is still found at connect, so a setting appears only if the mouse answers it. G502 HERO, G502 Proteus Spectrum and G604 read their profile 1-based (libratbag INDEX_OFFSET)"
+    "22 Oct 2026: models covered by their libratbag ids alone (data/devices @ 8235b5bb): USB ids in WIRED, Bluetooth ids G603 b01c, G604 b024, G705 b02e; every feature is still found at connect, so a setting appears only if the mouse answers it. G502 HERO, G502 Proteus Spectrum and G604 read their profile 1-based (libratbag INDEX_OFFSET)",
+    "22 Oct 2026 (problem report DeviceHub-support#2): on a receiver every slot 1-6 is asked read-only (ping, getFeature 0x2201, the kind from DEVICE_NAME 0x0005 fn 0x20 per Solaar hidpp20.py get_kind) and only a slot whose device has 0x2201 is run; a keyboard or other device there is left alone with no error (the driver lets go of the receiver), nothing answering is the normal asleep state, and one driver owns each slot when several Logitech drivers share a receiver"
   ],
   "doesNotWork": [
     "mouse name and firmware version (0x0005 / 0x0003 function codes not in the sheet)",
-    "which model is on a receiver (pairing table registers not in the sheet)",
+    "which model is on a receiver: the pairing table (HID++ 1.0 register 0xB5, Solaar receiver.py / libratbag hidpp10.c / Linux hid-logitech-dj.c) is requested with a SHORT report on the receiver's short-report collection, which this driver does not open, and the never list names receiver pairing registers; an empty slot and a sleeping mouse both read as asleep",
     "firmware updates, DFU, resets and pairing (never: they stay in Logitech's own app)",
     "receivers C541 / C545 / C547: the sheet names them G915 keyboard receivers (OpenRGB), so they are not offered for a mouse",
     "editing onboard profiles (the DPI of each stage, buttons, sleep timer, lights): profile memory writes rewrite flash and are never sent",

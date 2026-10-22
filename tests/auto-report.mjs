@@ -115,8 +115,31 @@ try {
     const n = ar.checkDevices(dev(status, error), t + 60 * 60e3).length;
     ok(n === 0, `never reported: ${status} ${error || ''}`);
   }
+  // 22 Oct 2026 (Dsmjr2/DeviceHub-support#2): a driver that found a device that is not its own and stepped aside, or a
+  // receiver whose mouse sleeps, is never a fault: the report's own wording, the new wordings, and a stepped-aside
+  // adapter (a.notMine) whatever its status and error say
+  const aside = [['error', 'this Logitech device has no DPI feature (0x2201): it is not a mouse this driver runs'],
+    ['error', 'the Logitech device on receiver C539 (slot 1) is a keyboard, not a mouse this driver runs: the mouse driver leaves it alone'],
+    ['error', 'the Logitech device on receiver C545 (slot 1) has a DPI feature (0x2201): it is a mouse, not a keyboard this driver runs, so the keyboard driver leaves it to the mouse driver'],
+    ['error', 'the mouse is asleep or switched off: no device on receiver C539 answered (move it or switch it on)'], ['asleep', 'the mouse is asleep or switched off']];
+  for (const [status, error] of aside) {
+    ar._episodes.clear();
+    ar.checkDevices(dev(status, error), t);
+    ok(ar.checkDevices(dev(status, error), t + 60 * 60e3).length === 0, `never reported: ${error}`);
+  }
+  const stepped = (status, error) => [{ id: 'logitech-hidpp-mouse', status, error, adapter: { title: 'Logitech mouse', notMine: { why: 'x', at: t } } }];
+  ar._episodes.clear();
+  ar.checkDevices(stepped('error', 'HID read failed (code 31)'), t);
+  ok(ar.checkDevices(stepped('error', 'HID read failed (code 31)'), t + 60 * 60e3).length === 0 && !ar._episodes.has('logitech-hidpp-mouse'), 'a stepped-aside driver never starts an episode');
   await ar.settle();
   ok(calls.length === 0, `no ordinary state sent anything (${calls.length})`);
+  // diagnose's not-mine finding is ordinary too
+  findings = [{ code: 'not-mine', problem: 'What is on its receiver is not a mouse this driver runs', why: 'x', fix: 'Nothing.' }];
+  ar._episodes.clear();
+  ar.checkDevices(dev('error', 'HID read failed (code 31)'), t);
+  ar.checkDevices(dev('error', 'HID read failed (code 31)'), t + 11 * 60e3);
+  await ar.settle();
+  ok(calls.length === 0, 'diagnose finding a stepped-aside driver: not sent');
   // a fault, but diagnose finds the maker's app: an ordinary state after all
   findings = [{ code: 'maker-app', problem: 'Acme Hub is running', why: 'x', fix: 'Close it.' }];
   ar._episodes.clear();

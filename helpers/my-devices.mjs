@@ -23,6 +23,14 @@
 //        pids: [...] + byPid: { pid: overrides } = one channel per product id (hidSpecs below); the options for
 //        choosing and driving a collection (iface, col, lengths, featureOnly, reply 'raw', reportIds, routes,
 //        refusals) are in helpers/hid-host.mjs and docs/handoff/hid-core.md
+//   not this driver's device (22 Oct 2026, docs/handoff/logitech-c539.md): connect() (or a read) that finds the device on
+//        its channel is not one it runs (a keyboard on the receiver a mouse driver opened) throws an error with
+//        `notMine: true` and lets go of the channel. stepAside() below turns that into "not connected": connect() returns
+//        false (status missing, no error, so no problem report), a.notMine = { why, at } for diagnose and Get help, and
+//        the next automatic connect waits NOT_MINE_REST_MS (a Connect click or a Windows device change tries at once).
+//   asleep at connect: connect() may return true with `asleep = true` when the channel is open but the device behind it
+//        does not answer (a receiver whose mouse sleeps); read() then throws an "asleep" error (status asleep) until it
+//        answers, and the library self-check waits for a connect where the device answered.
 //   batteryCare: { lowBattery: { key, value }, charging: { key, value } }   optional (22 Oct 2026): the one setting
 //        DeviceHub may change to save its battery, and to what (helpers/battery-care.mjs; batteryCareProblem below)
 //
@@ -542,7 +550,8 @@ export function guard(a, folder, mark, deps = null) {
   let saidGated = false;
   a.connect = async function (...args) {
     const ok = await connect.apply(this, args);
-    if (!ok || ownDevice(a)) return ok;
+    // asleep at connect: nothing to check against yet (a later connect where the device answers runs it)
+    if (!ok || ownDevice(a) || a.asleep) return ok;
     try {
       relabel();   // a driver whose settings depend on the model connected (Corsair) lists them only now
       let info = {};
@@ -593,6 +602,32 @@ export function guard(a, folder, mark, deps = null) {
   return a;
 }
 
+// "not this driver's device" (see the header): connect() and read() errors with notMine become a quiet "not connected".
+// Returns the adapter (the same object). The rest stops the driver asking a device that is not its own every 20 s.
+export const NOT_MINE_REST_MS = 10 * 60 * 1000;
+export function stepAside(a, { now = () => Date.now(), log = (t) => console.log(t) } = {}) {
+  const connect = a.connect, read = a.read;
+  let said = null;
+  const note = (e) => {
+    a.notMine = { why: String(e.message || e).split(/\r?\n/)[0], at: now() };
+    if (said !== a.notMine.why) { said = a.notMine.why; log(`[my-devices] ${a.id}: not this driver's device: ${a.notMine.why}`); }
+  };
+  a.connect = async function (prompt, ...rest) {
+    if (a.notMine && !prompt && !a.notMine.retry && now() - a.notMine.at < NOT_MINE_REST_MS) return false;
+    try {
+      const ok = await connect.call(this, prompt, ...rest);
+      if (ok) a.notMine = null;
+      return ok;
+    } catch (e) { if (!e?.notMine) throw e; note(e); return false; }
+  };
+  a.read = async function (...args) {
+    try { return await read.apply(this, args); } catch (e) { if (e?.notMine) note(e); throw e; }
+  };
+  // a Windows device change (something plugged in or out) is worth one look at once
+  a.notMineRetry = () => { if (a.notMine) a.notMine.retry = true; };
+  return a;
+}
+
 // The HID channels a driver's `hid` asks for (22 Oct 2026): without `pids`, the one channel it always was
 // ({ id, ...hid }); with `pids: [...]`, one per product id (hid.pid first, each id once), each with that id's overrides
 // from `byPid: { '<PID>': { iface, col, page, usage, len, reportId, ... } }` (helpers/hid-host.mjs channelOpts).
@@ -631,6 +666,7 @@ async function loadOne(dir, name, { register, addSpec, taken, selfCheck: deps })
       if (clash.length) return { name, error: `not loaded: ${clash.join(', ')} is a USB id DeviceHub's own driver already runs (the mouse, headset or keyboard page), and two programs driving one device fight` };
     }
     if (mark) guard(a, folder, mark, deps);
+    stepAside(a);
     for (const s of hidSpecs(a)) addSpec(s);
     register(a);
     return mark ? { name, id: a.id, library: mark.status || 'unknown' } : { name, id: a.id };

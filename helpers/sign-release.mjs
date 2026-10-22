@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { keyAvailable, loadKey } from './signing-key.mjs';   // locked to this Windows login since 22 Oct 2026
 
 const dir = path.join(process.env.APPDATA || '', 'DeviceHub-signing');
 const priv = path.join(dir, 'release-key.pem');
@@ -16,7 +17,7 @@ const pub = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\
 export const payload = (v) => JSON.stringify([v.commit, v.builtAt, v.appCommit ?? null, v.size, v.sha256]);
 
 if (process.argv[2]) {
-  if (!fs.existsSync(priv)) {
+  if (!keyAvailable()) {
     if (fs.existsSync(pub)) { console.error(`no signing key at ${priv}, but a public key is in the app: put the key back (or make a new pair and ship the new public key first)`); process.exit(1); }
     const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
     fs.mkdirSync(dir, { recursive: true });
@@ -27,7 +28,7 @@ if (process.argv[2]) {
   const file = process.argv[2];
   const v = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^﻿/, ''));
   delete v.signature;
-  v.signature = crypto.sign(null, Buffer.from(payload(v)), crypto.createPrivateKey(fs.readFileSync(priv))).toString('base64');
+  v.signature = crypto.sign(null, Buffer.from(payload(v)), loadKey()).toString('base64');
   // check it with the public key the app carries before it is published
   if (!crypto.verify(null, Buffer.from(payload(v)), crypto.createPublicKey(fs.readFileSync(pub)), Buffer.from(v.signature, 'base64'))) { console.error('the signature does not match the app\'s public key'); process.exit(1); }
   fs.writeFileSync(file, JSON.stringify(v));

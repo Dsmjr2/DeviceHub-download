@@ -72,7 +72,8 @@ function simKeyboard({ pid, slot, features, state, rateExt, rateMask, profiles, 
   return dev;
 }
 const lookedUp = (dev) => dev.sent.filter((b) => b[1] === 0 && (b[2] & 0xf0) === 0x00).map((b) => (b[3] << 8) | b[4]);
-const make = (dev, app = { name: null }) => createLogitechKeyboard({ open: async (p) => (p === dev.productId ? dev : null), vendorApp: async () => app.name });
+// pingMs: an empty slot never answers, so a short wait keeps the test quick
+const make = (dev, app = { name: null }) => Object.assign(createLogitechKeyboard({ open: async (p) => (p === dev.productId ? dev : null), vendorApp: async () => app.name }), { pingMs: 150 });
 
 // ---- the library self-check (helpers/my-devices.mjs selfCheck): every writable setting written with its own value and
 // read back, a backup first, nothing moved ----
@@ -350,6 +351,56 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
   e = await refusal(() => d.write('fnSwap', false));
   check(e instanceof HidppError && e.code === 5 && bt.state.fnSwap === 1, `Bluetooth: an error reply with index 0x00 is reported with its code (${e?.message})`);
   await selfChecked(d, bt.state);
+}
+
+// ---- 6. receiver slots (22 Oct 2026, docs/handoff/logitech-c539.md): a G915 receiver with a mouse in slot 1 and the
+// keyboard in slot 2; a mouse alone (stepped aside, no error); nothing answering (asleep); one owner per slot ----
+{
+  const { SLOT_OWNERS } = await import('../device-library/logitech-hidpp-keyboard/device.mjs');
+  const mouseOwners = (await import('../device-library/logitech-hidpp-mouse/device.mjs')).SLOT_OWNERS;
+  const { NOT_A_FAULT } = await import('../helpers/auto-report.mjs');
+  check(SLOT_OWNERS === mouseOwners, 'the keyboard and mouse drivers share one slot-owner table');
+  const simReceiver = (pid, kids) => ({
+    opened: false, productId: pid, sent: [], closed: 0, kids,
+    async open() { this.opened = true; },
+    close() { this.closed++; },
+    addEventListener(t, fn) { for (const k of Object.values(kids)) k.addEventListener(t, fn); },
+    removeEventListener(t, fn) { for (const k of Object.values(kids)) k.removeEventListener(t, fn); },
+    async sendReport(id, data) { this.sent.push(Array.from(data)); const k = kids[data[0]]; if (k && !k.asleep) return k.sendReport(id, data); },
+  });
+  const kit = { state: { percent: 80, charge: 0, mode: 2 }, rateMask: 0, profiles: 0, disableMask: 0, bright: {} };
+  const mouse = (pid, slot) => simKeyboard({ pid, slot, features: { [F.ADJUSTABLE_DPI]: 3 }, ...kit });
+  const board = (pid, slot) => simKeyboard({ pid, slot, features: { [F.UNIFIED_BATTERY]: 2 }, ...kit });
+
+  let rx = simReceiver(0xc541, { 1: mouse(0xc541, 1), 2: board(0xc541, 2) });
+  let d = make(rx);
+  check(await d.connect() && d.index === 2 && !d.asleep && SLOT_OWNERS.get('C541:2') === d.id, `G915 receiver: mouse in slot 1 left alone, keyboard in slot 2 run (slot ${d.index})`);
+  check(rx.sent.filter((b) => b[0] === 1).every((b) => b[1] === 0 && [0x00, 0x10].includes(b[2] & 0xf0)), 'the mouse in slot 1 got only ping and getFeature');
+  check((await d.battery())?.percent === 80, 'the keyboard in slot 2 reads');
+
+  rx = simReceiver(0xc545, { 1: mouse(0xc545, 1) });
+  d = make(rx);
+  let e = await refusal(() => d.connect());
+  check(e?.notMine === true && /mouse/.test(e.message) && rx.closed === 1 && d.chan === null && NOT_A_FAULT.test(e.message), `a mouse alone: stepped aside, receiver let go, not a fault (${e?.message})`);
+
+  const sleepy = board(0xc541, 1); sleepy.asleep = true;
+  rx = simReceiver(0xc541, { 1: sleepy });
+  d = make(rx);
+  check((await d.connect()) === true && d.asleep && rx.sent.length === 6, 'nothing answering: asleep, one ping per slot');
+  e = await refusal(() => d.read());
+  check(/asleep/.test(e?.message || '') && NOT_A_FAULT.test(e.message), `asleep: read says so (${e?.message})`);
+  e = await refusal(() => d.write('fnSwap', true));
+  check(e?.waiting === true, 'asleep: a write waits');
+  sleepy.asleep = false; d.wokeAt = 0;
+  check((await d.awake()) === true && d.index === 1 && !d.asleep, 'switched on: found in slot 1');
+
+  // one owner per slot: slot 1 held by the mouse driver is never asked
+  SLOT_OWNERS.clear();
+  SLOT_OWNERS.set('C541:1', 'logitech-hidpp-mouse');
+  rx = simReceiver(0xc541, { 1: board(0xc541, 1), 2: board(0xc541, 2) });
+  d = make(rx);
+  check(await d.connect() && d.index === 2 && !rx.sent.some((b) => b[0] === 1), 'a slot the mouse driver holds is skipped');
+  SLOT_OWNERS.clear();
 }
 
 console.log(fails.length ? `sim-logitech-keyboard: FAILED: ${fails.join('; ')}` : 'sim-logitech-keyboard (Logitech HID++ keyboard driver, simulated): all good');

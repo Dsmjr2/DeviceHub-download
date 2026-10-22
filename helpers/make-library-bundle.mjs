@@ -52,8 +52,8 @@ export function makeBundle({ root = ROOT, privateKey, now = () => new Date() } =
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const out = path.resolve(process.argv[2] || path.join(ROOT, 'dist', 'device-library.json'));
-  if (!fs.existsSync(KEY_FILE)) { console.error(`no signing key at ${KEY_FILE}: the library bundle is signed only on the publishing PC`); process.exit(1); }
-  const { bundle, skipped } = makeBundle({ privateKey: fs.readFileSync(KEY_FILE) });
+  if (!(await import('./signing-key.mjs')).keyAvailable()) { console.error(`no signing key at ${KEY_FILE}: the library bundle is signed only on the publishing PC`); process.exit(1); }
+  const { bundle, skipped } = makeBundle({ privateKey: (await import('./signing-key.mjs')).loadKey() });
   // check it with the public key the app carries before it is published
   const pub = crypto.createPublicKey(fs.readFileSync(path.join(ROOT, 'helpers', 'release-public-key.pem')));
   if (!crypto.verify(null, Buffer.from(payload(bundle)), pub, Buffer.from(bundle.signature, 'base64'))) { console.error('the library bundle\'s signature does not match the app\'s public key'); process.exit(1); }

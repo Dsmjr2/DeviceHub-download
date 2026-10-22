@@ -135,10 +135,11 @@ export const fingerprint = (code, where) => `${code}:${String(where || 'devicehu
 
 // ---------- what counts ----------
 // a device error that is not a fault: asleep, off, out of range, unplugged, the maker's (or another) app holding it,
-// the battery, waiting
-export const NOT_A_FAULT = /asleep|sleep|out of range|no reply|did not answer|not answering|is it on|switched off|turned off|powered off|\boff\b|not plugged|unplugged|not connected|maker'?s app|is open\b|is running|close (?:it|[^.]+?) first|\biCUE\b|G HUB|Synapse|another program|being used|in use\b|sharing violation|access (?:is )?denied|battery|charging|waiting|turn on settings/i;
+// the battery, waiting; and a driver that found a device that is not its own on its channel and steps aside (22 Oct 2026,
+// Dsmjr2/DeviceHub-support#2: "it is not a mouse this driver runs" was reported as a fault)
+export const NOT_A_FAULT = /not a (?:mouse|keyboard|headset)\b|not (?:a device )?this driver(?:'s)? (?:runs|device)|leaves it alone|steps? aside|asleep|sleep|out of range|no reply|did not answer|not answering|is it on|switched off|turned off|powered off|\boff\b|not plugged|unplugged|not connected|maker'?s app|is open\b|is running|close (?:it|[^.]+?) first|\biCUE\b|G HUB|Synapse|another program|being used|in use\b|sharing violation|access (?:is )?denied|battery|charging|waiting|turn on settings/i;
 // diagnose() findings that mean the device is in an ordinary state, not broken
-const ORDINARY = new Set(['maker-app', 'held', 'asleep', 'off', 'unplugged', 'bt']);
+const ORDINARY = new Set(['maker-app', 'held', 'asleep', 'off', 'unplugged', 'bt', 'not-mine']);
 // a write's read-back that did not match (public/devices/*, helpers/declarative-driver.mjs, helpers/lamparray.mjs)
 export const READ_BACK = /\bafter writing\b|did not read back as written/i;
 // a write that only waited (the device went to sleep or away mid-change, the maker's app took it): not a read-back fault
@@ -298,6 +299,8 @@ export function checkDevices(list, now = options.now()) {
   for (const d of list || []) {
     if (!d?.id) continue;
     if (d.status === 'connecting') continue;
+    // a driver that stepped aside (helpers/my-devices.mjs stepAside) is not in an error, whatever its status says
+    if (d.adapter?.notMine) { episodes.delete(d.id); continue; }
     if (d.status !== 'error') { episodes.delete(d.id); continue; }
     let e = episodes.get(d.id);
     if (!e) episodes.set(d.id, e = { since: now, reported: false });

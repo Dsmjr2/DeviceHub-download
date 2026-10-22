@@ -145,6 +145,33 @@ const p = deviceProfile(dev('keyboard', 'missing'), [{ id: 'keyboard', vid: '343
 check(p.usb.length === 1 && p.usb[0].id === '3434:0361' && p.hid.vid === '3434', `another VIA keyboard -> its own ids (${JSON.stringify(p.usb)})`);
 check(deviceProfile(dev('headset', 'missing', { adapter: { kind: 'Headset', mode: 'generic' } })).usb.length === 0, 'a generic USB headset has no known ids');
 
+// 22 Oct 2026 (Dsmjr2/DeviceHub-support#2): a library driver with many product ids (the Logitech mouse: receivers and
+// cables). Only its first id, C539, was listed, so a mouse driver working through a Bolt receiver read "not plugged in".
+{
+  const logiSpecs = [{ id: 'logitech-hidpp-mouse', vid: '046D', pid: 'C539', page: 'FF00', usage: '0002', pids: ['C539', 'C53A', 'C548', 'C094', 'C09B'] }];
+  const logi = (status, more = {}) => dev('logitech-hidpp-mouse', status, { ...more, adapter: { id: 'logitech-hidpp-mouse', title: 'Logitech mouse', kind: 'Mouse', plugin: 'logitech-hidpp-mouse', ...(more.adapter || {}) } });
+  const lp = deviceProfile(logi('missing'), logiSpecs);
+  check(lp.usb.map((u) => u.id).join() === '046d:c539,046d:c53a,046d:c548,046d:c094,046d:c09b', `every id of a many-id driver is listed (${lp.usb.map((u) => u.id)})`);
+  const lv = deviceProfile(logi('asleep', { adapter: { usbId: '046d:c548' } }), logiSpecs);
+  check(lv.usb[0].id === '046d:c548' && /connected through/.test(lv.usb[0].label) && lv.usb.filter((u) => u.id === '046d:c548').length === 1 && lv.hid.pid === 'C548', `the id it is connected through comes first, once (${JSON.stringify(lv.usb[0])}, hid ${lv.hid.pid})`);
+  // the report's case: the driver connected through a Bolt receiver (C548): not "not plugged in"
+  let rr = await diagnose('logitech-hidpp-mouse', base([logi('error', { error: 'this Logitech device has no DPI feature (0x2201): it is not a mouse this driver runs' })], { usb: USB('046d:c548'), specs: logiSpecs, probe: () => ({ err: 0 }) }));
+  check(!rr.findings.some((x) => x.code === 'unplugged'), `plugged in through another of its ids: not "not plugged in" (${rr.findings.map((x) => x.code)})`);
+  // stepped aside: the plain not-mine finding first, nothing about plugs, no open-and-close probe
+  rr = await diagnose('logitech-hidpp-mouse', base([logi('missing', { adapter: { notMine: 'the Logitech device on receiver C539 (slot 1) is a keyboard, not a mouse this driver runs: the mouse driver leaves it alone', usbId: '046d:c539' } })], { usb: USB('046d:c539'), specs: logiSpecs }));
+  check(rr.findings[0].code === 'not-mine' && /keyboard/.test(rr.findings[0].why) && /Nothing is wrong/.test(rr.findings[0].fix), `a stepped-aside driver: not-mine first (${rr.findings.map((x) => x.code)})`);
+  check(!rr.findings.some((x) => ['unplugged', 'off', 'not-opened', 'error'].includes(x.code)), `and no plug, off or error finding (${rr.findings.map((x) => x.code)})`);
+  rr = await diagnose('logitech-hidpp-mouse', base([logi('missing', { adapter: { notMine: 'x is a keyboard', usbId: '046d:c539' } })], { usb: USB(), specs: logiSpecs }));
+  check(rr.findings[0].code === 'not-mine' && !rr.findings.some((x) => x.code === 'unplugged'), 'stepped aside, then unplugged since: still the plain finding, no plug alarm');
+  // asleep at connect through a receiver
+  rr = await diagnose('logitech-hidpp-mouse', base([logi('asleep', { adapter: { usbId: '046d:c539' } })], { usb: USB('046d:c539'), specs: logiSpecs }));
+  check(rr.findings[0].code === 'asleep' && /connected through is plugged in/.test(rr.findings[0].why), `asleep on its receiver: asleep, the receiver named as plugged in (${rr.findings[0].why})`);
+  // none of many ids plugged in: one plain sentence, not five labels
+  rr = await diagnose('logitech-hidpp-mouse', base([logi('missing')], { usb: USB(), specs: logiSpecs }));
+  const un = rr.findings.find((x) => x.code === 'unplugged');
+  check(un && /none of the 5 USB ids/.test(un.why) && (un.why.match(/receiver or cable/g) || []).length === 1, `nothing plugged in: one sentence (${un?.why})`);
+}
+
 // every finding: one problem, one why, one fix, and only the four kinds of action
 for (const x of [...(await diagnose('mouse', base([dev('mouse', 'missing')], { usb: USB('3710:5406'), tasklist: () => TASKS, log: () => LOG }))).findings]) {
   check(x.problem && x.why && x.fix && (!x.action || ['settings', 'retry', 'close-app', 'open-folder'].includes(x.action.kind)), `finding shape: ${JSON.stringify(x)}`);

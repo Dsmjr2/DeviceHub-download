@@ -110,20 +110,33 @@ const BUILT_IN = {
 };
 const lc = (x) => String(x || '').toLowerCase().padStart(4, '0');
 // { usb: [{ id, label }], vids, wireless, receiver, hid: { vid, pid, page, usage } | null }
+// A driver with several product ids (hid.pids: one channel per id, as the Logitech drivers' receivers and cables) has
+// every one listed (22 Oct 2026, Dsmjr2/DeviceHub-support#2: only the first, C539, was, so a mouse driver connected
+// through another receiver read as "not plugged in"); the id it is connected through (snap.adapter.usbId) comes first.
 export function deviceProfile(snap, specs = []) {
   const id = snap.id, kind = String(snap.adapter?.kind || 'device').toLowerCase();
-  const spec = specs.find((s) => s.id === id);
+  const mine = specs.filter((s) => s.id === id);
+  const spec = mine[0];
   const base = BUILT_IN[id];
   let usb = base ? base.usb.map(([u, label]) => ({ id: u, label })) : [];
   if (spec) {
     const main = `${lc(spec.vid)}:${lc(spec.pid)}`;
     if (!usb.some((u) => u.id === main)) usb = [{ id: main, label: id === 'keyboard' ? `the ${spec.productName || 'keyboard'}` : `the ${kind}'s receiver or cable` }, ...(id === 'keyboard' ? [] : usb)];
     if (spec.cablePid && !usb.some((u) => u.id === `${lc(spec.vid)}:${lc(spec.cablePid)}`)) usb.push({ id: `${lc(spec.vid)}:${lc(spec.cablePid)}`, label: `the ${kind}'s USB cable` });
+    if (!base) {
+      for (const p of mine.flatMap((x) => [x.pid, ...(Array.isArray(x.pids) ? x.pids : [])])) {
+        if (p == null || p === '') continue;
+        const u = `${lc(spec.vid)}:${lc(p)}`;
+        if (!usb.some((x) => x.id === u)) usb.push({ id: u, label: `the ${kind}'s receiver or cable` });
+      }
+    }
   }
+  const via = !base && /^[0-9a-f]{4}:[0-9a-f]{4}$/i.test(String(snap.adapter?.usbId || '')) ? snap.adapter.usbId.toLowerCase() : null;
+  if (via) usb = [{ id: via, label: `the receiver or cable the ${kind} is connected through` }, ...usb.filter((u) => u.id !== via)];
   // the headset in its sound-only mode (any USB headset): its ids are not known here
   if (id === 'headset' && snap.adapter?.mode === 'generic') usb = [];
   const vids = [...new Set(usb.map((u) => u.id.split(':')[0]))];
-  const hid = spec ? { vid: String(spec.vid).toUpperCase(), pid: String(spec.pid).toUpperCase(), page: String(spec.page || 'FF00').toUpperCase(), usage: String(spec.usage || '0001').toUpperCase() } : null;
+  const hid = spec ? { vid: String(spec.vid).toUpperCase(), pid: (via && via.startsWith(`${lc(spec.vid)}:`) ? via.split(':')[1] : String(spec.pid)).toUpperCase(), page: String(spec.page || 'FF00').toUpperCase(), usage: String(spec.usage || '0001').toUpperCase() } : null;
   return { usb, vids, wireless: base ? base.wireless : !!snap.adapter?.wireless, receiver: base?.receiver || null, hid };
 }
 
@@ -201,10 +214,22 @@ export function analyze(f) {
   // on USB: the receiver or cable, and the device behind it
   const present = Array.isArray(f.usb) && p.usb.length ? p.usb.filter((u) => f.usb.includes(u.id)) : null;
   if (present) checked.push(p.wireless ? 'the receiver and cable on USB' : 'the cable on USB');
-  if (notConnected && present && !present.length) {
+  // a library driver that found something else on its channel (helpers/my-devices.mjs stepAside): an ordinary state,
+  // not a fault, and the receiver is plugged in (the driver had it open), so none of the plug findings below apply
+  const notMine = notConnected && s.adapter?.notMine ? String(s.adapter.notMine) : null;
+  if (notMine) {
+    checked.push('what its driver found on the receiver or cable');
+    add(5, 'not-mine', `What is on its receiver is not a ${kind} this driver runs`, `${notMine.charAt(0).toUpperCase()}${notMine.slice(1)}.`,
+      `Nothing is wrong and nothing needs doing: this ${kind} driver leaves that device alone. If you have a ${kind} paired to the same receiver, switch it on or move it; DeviceHub looks again by itself.`, retry);
+  }
+  const labels = [...new Set(p.usb.map((u) => u.label))];
+  if (notConnected && present && !present.length && !notMine) {
     add(20, 'unplugged', p.receiver ? `${p.receiver} is not plugged in` : `The ${kind} is not plugged in`,
-      `Windows does not list ${p.usb.map((u) => u.label).join(' or ')} among this PC's USB devices.`,
+      p.usb.length > 3 ? `Windows lists none of the ${p.usb.length} USB ids its driver knows (${labels.join(' or ')}) among this PC's USB devices.`
+        : `Windows does not list ${labels.join(' or ')} among this PC's USB devices.`,
       'Plug it in, straight into the PC rather than a hub or front port if you can; DeviceHub finds it within a few seconds.', retry);
+  } else if (notMine) {
+    // nothing more about plugs: the driver had the receiver open
   } else if (s.status === 'asleep') {
     const via = present?.[0]?.label || (p.receiver ? p.receiver.toLowerCase() : null);
     add(25, 'asleep', `The ${kind} is asleep or switched off`, via ? `${via.replace(/^the/, 'The')} is plugged in, but the ${kind} itself is not answering through it.` : `DeviceHub has it, but the ${kind} itself is not answering.`,
@@ -264,7 +289,7 @@ export function analyze(f) {
   }
 
   // an error the device gave that nothing above explains
-  if (notConnected && errText && !out.some((x) => x.rank < 30) && s.status !== 'asleep') add(35, 'error', `DeviceHub could not read the ${kind}`, `It answered: "${errText.slice(0, 160)}".`, 'Press Connect. If it happens again, unplug it and plug it back in.', retry);
+  if (notConnected && errText && !out.some((x) => x.rank < 30) && s.status !== 'asleep' && !notMine) add(35, 'error', `DeviceHub could not read the ${kind}`, `It answered: "${errText.slice(0, 160)}".`, 'Press Connect. If it happens again, unplug it and plug it back in.', retry);
 
   out.sort((a, b) => a.rank - b.rank);
   if (!out.length) out.push({ rank: 99, code: 'none', problem: notConnected ? 'Nothing wrong found' : `The ${kind} looks fine`, why: `Checked: ${checked.join(', ')}.`, fix: notConnected ? `Press Connect. If ${title} still does not show, unplug it and plug it back in.` : 'Nothing to do.', ...(notConnected ? { action: retry } : {}) });
@@ -386,7 +411,7 @@ export async function diagnose(deviceId, deps = {}) {
   facts.library = libraryFacts(snap);
   // the open-and-close check: only while it is plugged in, DeviceHub holds no channel to it, and no maker's app explains it
   const makerHit = (facts.makers || []).some((m) => MAKER_APPS[m.key].vids.some((v) => profile.vids.includes(v)));
-  if (['missing', 'error', 'idle'].includes(snap.status) && present && profile.hid && !makerHit) {
+  if (['missing', 'error', 'idle'].includes(snap.status) && present && profile.hid && !makerHit && !snap.adapter?.notMine) {
     facts.probe = await within(deps.probe ? deps.probe(profile.hid) : openProbe(profile.hid), 35000);
   }
   return { id, title: snap.adapter?.title || id, status: snap.status, at: new Date().toISOString(), ms: Date.now() - t0, ...analyze(facts) };

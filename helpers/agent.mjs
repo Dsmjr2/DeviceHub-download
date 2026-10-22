@@ -187,7 +187,7 @@ export async function start({ port, corsairHelper }) {
     devTimer = setTimeout(() => {
       const at = new Date().toLocaleTimeString();
       devicesChanged().then((moved) => console.log(`[devices] Windows reported a device change at ${at}; ${moved.length ? `moved ${moved.join(', ')} at ${new Date().toLocaleTimeString()}` : 'no cable change'}`)).catch(() => {});
-      for (const d of Object.values(core.devices)) if (['missing', 'idle', 'error'].includes(d.status)) core.connect(d.id, false);
+      for (const d of Object.values(core.devices)) if (['missing', 'idle', 'error'].includes(d.status)) { d.adapter.notMineRetry?.(); core.connect(d.id, false); }
       require('./hs80-direct').lookForCable();  // the headset's cable may be what was plugged in
     }, 400);
   });
@@ -254,6 +254,9 @@ function adapterMeta(d) {
   const a = d.adapter;
   const meta = { id: a.id, title: a.title, kind: a.kind, vendor: a.vendor, unsupported: a.unsupported, autoReconnect: true, pollRead: !!a.pollRead, hasLighting: !!a.hasLighting?.() };
   // a device added in my-devices/: its page is drawn from its settings list (public/pages/my-device.js)
+  // a library driver that found a device on its channel that is not its own (helpers/my-devices.mjs stepAside), and the
+  // USB id it is connected through (the Logitech drivers: one of many receiver and cable ids)
+  if (a.plugin) Object.assign(meta, { notMine: a.notMine?.why || null, usbId: a.usbId || null });
   if (a.plugin) Object.assign(meta, { plugin: a.plugin, settings: a.settings, battery: typeof a.battery === 'function', ...(a.library ? { library: a.library } : {}), ...(a.batteryCare ? { batteryCare: a.batteryCare } : {}) });
   // while the mouse is away its flash is not read: which settings read back cleanly is taken from its last visit
   if (a.id === 'mouse') meta.trusted = Object.fromEntries(Object.keys(d.values || {}).map((k) => [k, d.status !== 'connected' && d.savedTrusted ? !!d.savedTrusted[k] : !!a.trusted?.(k)]));
@@ -280,7 +283,8 @@ export const reloadSettings = () => loadSettings();
 export async function op(name, b) {
   const has = (id) => { if (!core.devices[id]) throw new Error(`unknown device ${id}`); return id; };
   switch (name) {
-    case 'connect': await core.connect(has(b.id), false); return snapshot(b.id);
+    // the person's Connect: a driver resting after "not this driver's device" looks again at once
+    case 'connect': core.devices[has(b.id)].adapter.notMineRetry?.(); await core.connect(b.id, false); return snapshot(b.id);
     case 'refresh': await core.refresh(has(b.id)); return snapshot(b.id);
     case 'read': return { values: await core.readNow(has(b.id)) };
     case 'backup': return { file: await core.backupNow(has(b.id), String(b.why || 'manual')) };

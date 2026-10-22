@@ -7,6 +7,7 @@
 // Run: node tests/sim-logitech.mjs (no hardware)
 import driver, { useDevice, F, NEVER, HidppError, BLE, BLE_HID, isReplyTo, isReplyToBle, WIRED, WPIDS, RECEIVERS, PROFILE_READ_1BASED } from '../device-library/logitech-hidpp-mouse/device.mjs';
 driver.vendorApp = async () => null;   // no tasklist in the test; section 5 swaps in G HUB
+driver.pingMs = 150;                   // an empty slot never answers: a short wait keeps the test quick
 
 const fails = [];
 const check = (ok, what) => { if (!ok) fails.push(what); };
@@ -15,7 +16,8 @@ const h = (a) => Array.from(a, (b) => b.toString(16).padStart(2, '0')).join(' ')
 // A simulated mouse. features: { featureId: index }; state holds what the mouse would hold.
 // profiles: { count, oneBasedRead, profile (1-based), slot (0-4) }; ext: { caps (0x2202 b2), lod, y }
 // replyIndex: the device index the mouse puts in its replies (a Bluetooth device answers 0xFF with 0x00, Solaar base.py)
-function simMouse({ pid, slot, features, dpiList, rateExt, rateMask, battery, mode, profiles, ext, replyIndex }) {
+// kind: what DEVICE_NAME fn 0x20 answers (Solaar hidpp20_constants.py DEVICE_KIND: 0 keyboard, 3 mouse), when 0x0005 is in features
+function simMouse({ pid, slot, features, dpiList, rateExt, rateMask, battery, mode, profiles, ext, replyIndex, kind }) {
   const state = { dpi: 800, defaultDpi: 800, rateIndex: 3, rateMs: 1, mode, ...battery, ...(profiles || {}), lod: ext?.lod ?? 0, y: ext?.y ?? 0 };
   const byIndex = Object.fromEntries(Object.entries(features).map(([id, i]) => [i, Number(id)]));
   const sent = [];
@@ -65,6 +67,7 @@ function simMouse({ pid, slot, features, dpiList, rateExt, rateMask, battery, mo
       else if (id === F.EXT_ADJUSTABLE_DPI && fn === 0x50 && ext) out = [0, state.dpi >> 8, state.dpi & 0xff, 3, 0x20, state.y >> 8, state.y & 0xff, 3, 0x20, state.lod];
       else if (id === F.EXT_ADJUSTABLE_DPI && fn === 0x60 && ext) { if (p[0] !== 0 || p[5] > 2) return emit(err(0x02)); state.dpi = (p[1] << 8) | p[2]; state.y = (p[3] << 8) | p[4]; state.lod = p[5]; out = []; }
       else if (id === F.ONBOARD_PROFILES && fn === 0x10) { if (![1, 2].includes(p[0])) return emit(err(0x02)); state.mode = p[0]; out = []; }
+      else if (id === F.DEVICE_NAME && fn === 0x20) out = [kind ?? 3];
       else return emit(err(0x07));                                                             // invalid function
       emit(reply(out));
     },
@@ -396,6 +399,113 @@ driver.vendorApp = async () => null;
   check((await driver.write('profile', 3)) === 3 && g604.state.profile === 3 && (await driver.write('profile', 2)) === 2, 'G604 profile 3 selected, read back 1-based, put back');
   e = await refusal(() => driver.write('reportRate', 500));
   check(/report rate/.test(e?.message || '') && g604.state.rateMs === 1, `G604 on Bluetooth: report rate refused unsent (${e?.message})`);
+}
+
+// ---- 9. receiver slots (22 Oct 2026, docs/handoff/logitech-c539.md; problem report Dsmjr2/DeviceHub-support#2): a C539
+// whose slot 1 is a keyboard, is empty or asleep, with or without a mouse in slot 2. Only a slot with 0x2201 is run; a
+// receiver with only a keyboard is stepped aside from (notMine, no error); nothing answering is the asleep state ----
+{
+  const { SLOT_OWNERS, KIND } = await import('../device-library/logitech-hidpp-mouse/device.mjs');
+  const { stepAside, NOT_MINE_REST_MS } = await import('../helpers/my-devices.mjs');
+  const { NOT_A_FAULT } = await import('../helpers/auto-report.mjs');
+  const isAsleepCore = (m) => /asleep|out of range|no reply/i.test(m);   // public/core/devices.js isAsleep
+  // a receiver: each slot's device is a simulated HID++ 2.0 device answering on its own index; a kid with asleep: true
+  // answers nothing (as a sleeping mouse: the receiver's own error is a short report, not on this channel)
+  const simReceiver = (pid, kids) => {
+    const r = {
+      opened: false, productId: pid, sent: [], closed: 0, kids,
+      async open() { this.opened = true; },
+      close() { this.closed++; this.opened = false; },
+      addEventListener(t, fn) { for (const k of Object.values(kids)) k.addEventListener(t, fn); },
+      removeEventListener(t, fn) { for (const k of Object.values(kids)) k.removeEventListener(t, fn); },
+      async sendReport(id, data) { const b = Array.from(data); this.sent.push({ reportId: id, b }); const k = kids[b[0]]; if (k && !k.asleep) return k.sendReport(id, data); },
+    };
+    return r;
+  };
+  const keyboard = (pid, slot) => simMouse({ pid, slot, kind: 0, features: { [F.DEVICE_NAME]: 2, [F.UNIFIED_BATTERY]: 3 }, dpiList: [], rateMask: 0, battery: { percent: 90, charge: 0, external: 0 }, mode: 0 });
+  const mouse = (pid, slot) => simMouse({ pid, slot, features: { [F.DEVICE_NAME]: 2, [F.ADJUSTABLE_DPI]: 4, [F.REPORT_RATE]: 5 }, dpiList: [400, 800, 1600], rateMask: 0x8b, battery: {}, mode: 0 });
+  // only reads go to a slot that is not run: Root ping / getFeature, and DEVICE_NAME fn 0x20 (its kind)
+  const onlyProbes = (rx, slot, nameIndex) => rx.sent.filter((s) => s.b[0] === slot).every((s) => (s.b[1] === 0 && [0x00, 0x10].includes(s.b[2] & 0xf0)) || (s.b[1] === nameIndex && (s.b[2] & 0xf0) === 0x20));
+  check(KIND[0] === 'keyboard' && KIND[3] === 'mouse', 'HID++ 2.0 kinds as Solaar hidpp20_constants.py DEVICE_KIND');
+
+  // a) keyboard in slot 1, mouse in slot 2: the mouse is run, the keyboard only asked what it is
+  let rx = simReceiver(0xc539, { 1: keyboard(0xc539, 1), 2: mouse(0xc539, 2) });
+  useDevice(rx);
+  check(await driver.connect(false) && driver.index === 2 && !driver.asleep, `C539: keyboard in slot 1 skipped, mouse in slot 2 run (slot ${driver.index})`);
+  check(onlyProbes(rx, 1, 2) && rx.sent.some((s) => s.b[0] === 1 && s.b[1] === 2 && (s.b[2] & 0xf0) === 0x20), 'slot 1 (the keyboard) got only ping, getFeature and its kind read (DEVICE_NAME fn 0x20)');
+  check(SLOT_OWNERS.get('C539:2') === 'logitech-hidpp-mouse' && !SLOT_OWNERS.has('C539:1'), 'the mouse driver holds slot 2 only');
+  check(/slot 2/.test((await driver.info()).Model) && (await driver.read()).dpi === 800 && driver.usbId === '046d:c539', 'reads the mouse in slot 2; usbId names the receiver');
+  check(rx.closed === 0, 'the receiver stays open while its mouse is run');
+
+  // b) keyboard alone: step aside (notMine), the receiver let go, nothing written; through stepAside(): not connected,
+  // no error, and the next automatic connect rests
+  rx = simReceiver(0xc539, { 1: keyboard(0xc539, 1) });
+  useDevice(rx);
+  e = await refusal(() => driver.connect(false));
+  check(e?.notMine === true && e.gone === true && /keyboard/.test(e.message) && /not a mouse/.test(e.message) && /slot 1/.test(e.message), `a keyboard alone: steps aside (${e?.message})`);
+  check(rx.closed === 1 && driver.chan === null && !SLOT_OWNERS.has('C539:1'), 'the receiver is closed so another driver can open it; no slot held');
+  check(onlyProbes(rx, 1, 2), 'the keyboard got only reads');
+  check(NOT_A_FAULT.test(e.message), `auto-report does not count "${e.message}" as a fault`);
+  check(NOT_A_FAULT.test('this Logitech device has no DPI feature (0x2201): it is not a mouse this driver runs'), 'nor the old wording from the report');
+  let clock = Date.parse('2026-10-22T12:00:00Z');
+  const said = [];
+  const w = stepAside(Object.create(driver), { now: () => clock, log: (t) => said.push(t) });
+  rx = simReceiver(0xc539, { 1: keyboard(0xc539, 1) });
+  useDevice(rx);
+  check((await w.connect(false)) === false && /keyboard/.test(w.notMine?.why || '') && said.length === 1, `through stepAside: connect() is false (not connected, no error), why kept (${w.notMine?.why})`);
+  const n0 = rx.sent.length;
+  check((await w.connect(false)) === false && rx.sent.length === n0 && said.length === 1, 'the next automatic connect rests: nothing sent, nothing logged again');
+  w.notMineRetry();
+  check((await w.connect(false)) === false && rx.sent.length > n0, 'a device change (notMineRetry) looks again at once');
+  clock += NOT_MINE_REST_MS + 1000;
+  rx.kids[2] = mouse(0xc539, 2);
+  check((await w.connect(false)) === true && w.notMine === null && w.index === 2, 'after the rest a mouse paired beside the keyboard is found, and the note is cleared');
+
+  // c) slot 1 asleep, nothing else: the asleep state, not an error; it wakes with the mouse
+  const sleepy = mouse(0xc539, 1); sleepy.asleep = true;
+  rx = simReceiver(0xc539, { 1: sleepy });
+  useDevice(rx);
+  check((await driver.connect(false)) === true && driver.asleep === true && driver.index === null, 'nothing answering: connect() is true, asleep');
+  check(rx.sent.length === 6 && rx.sent.every((s) => s.b[1] === 0 && (s.b[2] & 0xf0) === 0x10), `asleep: one ping per slot 1-6, nothing else (${rx.sent.length} sent)`);
+  check(/not answering/.test((await driver.info()).Model) && (await driver.battery()) === null, 'asleep: info without the mouse, no battery');
+  e = await refusal(() => driver.read());
+  check(/asleep/.test(e?.message || '') && isAsleepCore(e.message) && NOT_A_FAULT.test(e.message) && !e.gone, `asleep: read says so (status asleep, no report) (${e?.message})`);
+  e = await refusal(() => driver.write('dpi', 800));
+  check(e?.waiting === true && /asleep/.test(e.message), 'asleep: a write waits, nothing sent');
+  check((await driver.awake()) === false, 'awake() does not ask again within 30 s');
+  sleepy.asleep = false; driver.wokeAt = 0;
+  check((await driver.awake()) === true && driver.asleep === false && driver.index === 1 && (await driver.read()).dpi === 800, 'moved: awake() finds it in slot 1 and it reads');
+
+  // d) an empty receiver (nothing paired) looks the same: asleep, never an error
+  useDevice(simReceiver(0xc539, {}));
+  check((await driver.connect(false)) === true && driver.asleep === true, 'an empty receiver: asleep, not an error');
+  // asleep at connect, then a keyboard wakes instead: read() steps aside
+  const kb2 = keyboard(0xc539, 1); kb2.asleep = true;
+  rx = simReceiver(0xc539, { 1: kb2 });
+  useDevice(rx);
+  check((await driver.connect(false)) === true && driver.asleep, 'a sleeping keyboard: asleep at first');
+  kb2.asleep = false; driver.wokeAt = 0;
+  e = await refusal(() => driver.read());
+  check(e?.notMine === true && rx.closed === 1, `it wakes as a keyboard: read() steps aside (${e?.message})`);
+
+  // e) one owner per slot: a slot another Logitech driver holds is never asked
+  SLOT_OWNERS.set('C539:1', 'logitech-hidpp-keyboard');
+  rx = simReceiver(0xc539, { 1: mouse(0xc539, 1), 2: mouse(0xc539, 2) });
+  useDevice(rx);
+  check(await driver.connect(false) && driver.index === 2 && !rx.sent.some((s) => s.b[0] === 1), 'slot 1 held by the keyboard driver: nothing sent to it, slot 2 run');
+  SLOT_OWNERS.delete('C539:1');
+  check(await driver.connect(false) && driver.index === 1 && SLOT_OWNERS.get('C539:1') === 'logitech-hidpp-mouse' && !SLOT_OWNERS.has('C539:2'), 'freed: the next connect takes slot 1 and lets slot 2 go');
+
+  // f) a mouse whose kind is mouse but which has no 0x2201 (0x2202 only): stepped aside, said plainly, no error
+  const onlyExt = simMouse({ pid: 0xc539, slot: 1, kind: 3, features: { [F.DEVICE_NAME]: 2, [F.EXT_ADJUSTABLE_DPI]: 3 }, dpiList: [], rateMask: 0, battery: {}, mode: 0 });
+  useDevice(simReceiver(0xc539, { 1: onlyExt }));
+  e = await refusal(() => driver.connect(false));
+  check(e?.notMine && /a mouse without the DPI feature 0x2201/.test(e.message) && NOT_A_FAULT.test(e.message), `a 0x2202-only mouse: stepped aside, plainly (${e?.message})`);
+  // g) Bolt with the keyboard in slot 1 and the mouse in slot 3
+  rx = simReceiver(0xc548, { 1: keyboard(0xc548, 1), 3: mouse(0xc548, 3) });
+  useDevice(rx);
+  check(await driver.connect(false) && driver.index === 3 && /Bolt/.test((await driver.info()).Connection), 'Bolt: keyboard in 1, slot 2 empty, mouse in 3 run');
+  SLOT_OWNERS.clear();
 }
 
 console.log(fails.length ? `sim-logitech: FAILED: ${fails.join('; ')}` : 'sim-logitech (Logitech HID++ mouse driver, simulated): all good');
