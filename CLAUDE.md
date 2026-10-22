@@ -9,15 +9,19 @@ Epomaker P75. Someone with other devices adds their own by following "Adding you
 The person may only say "set this up", "install this" or "make it work with my stuff". Do all of this without being
 asked for each part; stop only where a step below says to ask. Say in a line or two what you are doing as you go.
 
-1. **Install.** If DeviceHub is already installed (`%USERPROFILE%\DeviceHub` exists, or
-   `http://127.0.0.1:5577/api/version` answers with a `"version"`), use that copy. Install again only when the person
-   says this download is newer (the installer keeps their settings, profiles and backups), and never over a folder
-   that has a `.git` folder (someone's own development copy; the installer refuses it too). Otherwise, if this folder
-   is not already `%USERPROFILE%\DeviceHub`, run `powershell -NoProfile -ExecutionPolicy Bypass -File helpers\install.ps1`
-   (never `Install DeviceHub.bat`: it ends with `pause` and waits for a key, and never `DeviceHub-Setup.exe`: a
+1. **Install.** If `http://127.0.0.1:5577/api/version` answers with a `"version"`, DeviceHub is installed and
+   running: use `%USERPROFILE%\DeviceHub`. Otherwise run `powershell -NoProfile -ExecutionPolicy Bypass -File helpers\install.ps1`
+   from this folder. It is safe in every case: when this folder already is `%USERPROFILE%\DeviceHub` (the person
+   unzipped it there) it only sets it up and starts it; over an older install it keeps their settings, profiles and
+   backups; and it refuses a development copy (a `.git` whose origin is not `DeviceHub-download`). Do not ask whether
+   this download is newer: compare `builtAt` in this folder's `release.json` with the installed one, and reinstall
+   only when this one is newer.
+   Never run `Install DeviceHub.bat` ( it ends with `pause` and waits for a key, and never `DeviceHub-Setup.exe`: a
    downloaded exe opens Windows' "Windows protected your PC" screen). It copies DeviceHub there, clears Windows'
    downloaded-file mark on the installed copy (so nothing warns when DeviceHub starts), makes shortcuts and starts it. From then on, work on the installed copy: run its scripts and edit its files by full path
-   under `%USERPROFILE%\DeviceHub` (this session stays in the downloaded folder; that is fine).
+   under `%USERPROFILE%\DeviceHub` (this session stays in the downloaded folder; that is fine); every `helpers\...`
+   below means `%USERPROFILE%\DeviceHub\helpers\...`. Git is needed only for updates that merge with the PC's own
+   changes; if `git --version` fails, mention it in the report as optional and carry on.
 2. **Find their devices (read-only).** All of these are GET requests to `http://127.0.0.1:5577`:
    - `/api/agent/state`: the mouse, headset and keyboard DeviceHub already runs, with each one's model (`info.Model`)
      and status. A wireless device that is `asleep` shows its last reading; it wakes when moved.
@@ -25,7 +29,10 @@ asked for each part; stop only where a step below says to ask. Say in a line or 
      already runs; `name` can be empty, then take the model from `/api/agent/state` or BRANDS.md).
    - `/api/monitors`, `/api/cameras`, `/api/eq` (`engine: "eqapo"` = Equalizer APO is installed; `notOn` lists headset
      sound devices it is not switched on for), `/api/openrgb` (PC lights).
-   For each USB device DeviceHub does **not** already run, look its vendor id up in `docs/BRANDS.md` and run
+   For each USB device DeviceHub does **not** already run, look its vendor id up in `docs/BRANDS.md` (and, for Logitech,
+   Razer, Corsair, SteelSeries and Turtle Beach/ROCCAT, its sheet in `docs/brands/`: find the model there by product
+   id; a model a sheet does not list, or lists as unconfirmed, is identified from its USB name and the `hid-caps`
+   output and treated as unconfirmed) and run
    `powershell -NoProfile -ExecutionPolicy Bypass -File helpers\hid-caps.ps1 -Vid <vid>` (read-only). Leave out
    devices that are not a mouse, headset, keyboard or light (Bluetooth adapters, hubs, storage, webcams: the webcam is
    handled through `/api/cameras`); a vendor id not in BRANDS.md is reported as unknown, with its USB name.
@@ -34,12 +41,14 @@ asked for each part; stop only where a step below says to ask. Say in a line or 
      DDC/CI, webcams, and Windows sound (or that Equalizer APO is needed for the EQ, with the Headset page's button);
    - PC lights: the board, graphics card and RAM `/api/pc` found, and that their lights go through OpenRGB 1.1 or newer
      with its SDK server on (motherboard and RAM also need PawnIO), only if the person wants them;
-   - for each other device: whether its protocol is known (an open project in BRANDS.md) or needs a learning session,
-     and what that needs from them.
-4. **Then build, one device at a time,** following "Adding your own devices" from step 2. A keyboard with VIA needs no
+   - for each other device: whether its protocol is known (its brand sheet in `docs/brands/` maps it, or an open
+     project in BRANDS.md knows it) or needs a learning session, and what that needs from them.
+4. **Then build, one device at a time, without waiting to be asked for each** (do not stop between steps), following "Adding your own devices"
+   from step 2 (the most popular brand first; a device with a brand sheet before one that has to be learned). A keyboard with VIA needs no
    code: check it shows up with its layout. Ask before any download or install (Equalizer APO, USBPcap, a maker's
    app), and before a learning session (it needs the person at the PC changing settings in the maker's app).
-5. **Prove each device** (step 6) and run `npm test` before saying it works.
+5. **Prove each device** (step 6) and run the checks before saying it works: `npm test`, or on a copy without npm,
+   `runtime\node.exe` on each script in package.json's `test` line, in order.
 
 What cannot happen without the person: anything that needs a download or install, and learning a protocol that no
 open project documents (they change one setting at a time in the maker's app while you listen).
@@ -119,15 +128,20 @@ tests/                     npm test: offline checks, then every page opened live
 
 ## Adding your own devices
 
-DeviceHub has three device slots: `mouse`, `headset` and `keyboard`. A new device replaces the one in its slot (or is
-added beside it as a fourth slot, which also needs a page and a sidebar entry). Work through these steps with the
-person, one device at a time, and stop to report after each step.
+DeviceHub has three built-in device slots: `mouse`, `headset` and `keyboard`. Someone else's device goes in
+`my-devices\` beside them (those three ids are reserved) and gets its page, tile and sidebar entry by itself; a
+built-in device that is not plugged in simply shows nothing. Work through these steps with the
+person, one device at a time. Say in a line what each step found and go straight on; stop only where a step needs
+the person (a download or install, a learning session, or a check in the maker's app).
 
 1. **Find out what is plugged in (read-only).** List the HID devices and their collections:
-   `powershell -NoProfile -ExecutionPolicy Bypass -File helpers\hid-caps.ps1 -Vid <vendor id>` (the vendor id is in Device Manager > the device >
-   Details > Hardware Ids, `VID_xxxx`). Write down vendor id, product id, the vendor usage page (0xFF..) and report
+   `powershell -NoProfile -ExecutionPolicy Bypass -File helpers\hid-caps.ps1 -Vid <vendor id>` (the vendor id is in `/api/pc?fresh=1`'s USB list). Write down vendor id, product id, the vendor usage page (0xFF..) and report
    lengths. Note the exact model and whether it has a dongle and a cable (often two product ids).
-2. **Look for a known protocol before learning anything.** Start with `docs/BRANDS.md`: the 10 most popular brands
+2. **Look for a known protocol before learning anything.** First the brand's **mapping sheet** if it has one
+   (`docs/brands/logitech.md`, `razer.md`, `corsair.md`, `steelseries.md`, `turtle-beach.md`; overview in
+   `docs/TOP-BRANDS.md`): its models with USB ids, how they talk, a settings map with every id cited to its source, the
+   safe reads, the risky writes to never send, and a build plan to follow in its order. Anything a sheet marks
+   unconfirmed is checked on the device with a read before it is used, never assumed. Then `docs/BRANDS.md`: the 10 most popular brands
    per device type with their USB vendor ids, how they talk, which open projects know them and how risky writes are
    (the Lighting page's "This PC" card names any plugged-in device from it).
    - Keyboards with **VIA** work with no code: DeviceHub finds any VIA keyboard (usage page 0xFF60) and takes its
@@ -136,11 +150,24 @@ person, one device at a time, and stop to report after each step.
      keyboard it found and where its layout came from (`[keyboard] ...`). If editing is blocked ("does not match the
      layout"), the definition is for another revision of the board: get the maker's file. QMK boards without VIA
      need VIA enabled in their firmware, which is the owner's call (never flash it for them).
-   - **Corsair** devices: the iCUE SDK (npm `cue-sdk`) covers many settings while iCUE runs; the HS80 code shows the
-     direct protocol (Bragi).
-   - **Logitech** (HID++), **Razer**, **SteelSeries**: open-source projects document many of their protocols
-     (Solaar, OpenRazer, rivalcfg). Use their documented facts; do not copy their code.
+   - **Corsair**: `docs/brands/corsair.md`. Most current headsets, mice and keyboards speak the HS80's property
+     protocol (Bragi, `helpers/hs80-direct.js`); the sheet says what differs per model. The iCUE SDK (npm `cue-sdk`)
+     covers many settings while iCUE runs.
+   - **Logitech** (HID++ 2.0), **Razer** (the 90-byte report), **SteelSeries**, **Turtle Beach/ROCCAT**: their sheets
+     in `docs/brands/`, drawn from Solaar, libratbag, OpenRazer, rivalcfg, HeadsetControl and OpenRGB. Use the
+     documented facts; do not copy their code.
    - Mice like the Pulsar: OpenMouse and Linux driver patches document some. If nothing is documented, go to step 3.
+   - **Before driving a device, close its maker's app** (G HUB, Synapse, GG, iCUE, Swarm II) and say so in a line:
+     two programs writing the same device fight. It stays installed for firmware updates and learning sessions.
+   - **Settings kept on the device** (Logitech onboard profiles and the like): DeviceHub changes the live settings;
+     say once in a line that the maker's app may show them as changed. Never write onboard profile memory itself (the
+     sheets mark it high risk).
+   - **Feature reports:** Razer, many SteelSeries keyboards and ROCCAT devices talk through HID *feature* reports.
+     DeviceHub's HID layer sends output reports only (`sendReport` in `helpers/hid-host.mjs`, the native helper's
+     `REQ`). This is the one core change a new device may need, and it is allowed: add `sendFeatureReport(id, data)`
+     and `receiveFeatureReport(id)` to `HostDevice` in `helpers/hid-host.mjs`, backed by two native helper commands
+     over `HidD_SetFeature` / `HidD_GetFeature` (hid.dll) beside `REQ`, then use them from the device's `my-devices`
+     driver. Everything else of the device stays in `my-devices\`.
 3. **Learn it by listening (read-only, needs the person's yes for USBPcap).** With USBPcap installed:
    `helpers/usb-find.ps1` finds the device's capture number, `helpers/hs80-learn.ps1 -Match '<USB name>'` records while
    the person changes ONE setting in the maker's app, `node helpers/pcap-read.mjs <capture>` prints the messages.
@@ -156,9 +183,17 @@ person, one device at a time, and stop to report after each step.
    gives it a page, a tile and Undo by itself. **Do not edit DeviceHub's own files for a device**: files under
    `my-devices\` belong to that PC and no update ever changes them, while edits to DeviceHub's files have to be brought
    together with every new version. Only add settings whose bytes were seen in step 3 or are documented.
+   **What the rest of DeviceHub picks up by itself:** `battery()` returning `{ percent, charging }` gives the battery
+   (and Charging) on the device's tile and page. A device that can only tell charging from its voltage does it the way
+   `chargerLifted` in `public/devices/headset-adapter.js` does for the HS80 on a wall charger. The battery history graph,
+   low-battery saving (`helpers/battery-care.mjs`), the lights-off-while-charging rule and the Live battery look's
+   liquid are written for the `mouse` and `headset` slots only (lists of those two ids in `helpers/battery-history.js`,
+   `helpers/battery-care.mjs` and `public/ui/live-art.js`); a device added in `my-devices` does not get them yet. An
+   added device gets a plain drawing on its tile; the photos and detailed drawings are only for the three originals.
 5. **Show it.** Its page is drawn from `settings`: give each a clear label, a `unit`, a `hint` where it helps, and
    `live: true` on a slider that is quick and harmless to send often (a brightness). Restart DeviceHub to load it.
-6. **Prove it.** Read everything and compare with the maker's app. Then one write per setting: read the current value,
+6. **Prove it.** Read everything and compare with the maker's app (ask the person once to open it and confirm the
+   values you list, then close it again). Then one write per setting: read the current value,
    write a different valid value, read back, put the original back, read back. `node helpers/soak-test.mjs 1` writes
    every setting with its own value. Then `npm test`.
 

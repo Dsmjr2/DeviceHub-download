@@ -2,7 +2,7 @@
   "name": "devicehub",
   "version": "0.1.0",
   "private": true,
-  "description": "One local dashboard for Shawn's Pulsar mouse, Corsair HS80 and Epomaker P75",
+  "description": "One local dashboard for your mouse, headset, keyboard, monitors and PC lights",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

@@ -1,6 +1,6 @@
 # Read-only: report lengths of each vendor HID collection, from Windows' parsed descriptor.
 # Opens each collection with access 0 (query only); sends nothing to the device.
-param([string]$Vid = '3710')
+param([Parameter(Mandatory = $true)][string]$Vid)  # the vendor id to list, e.g. 046D (no default: it was the Pulsar's)
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
