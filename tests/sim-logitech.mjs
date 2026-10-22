@@ -5,7 +5,7 @@
 // 0x30 / 0x40) and DPI slot (0xB0 / 0xC0, libratbag), the profile numbering quirk, and the G HUB refusal.
 // Checks the driver's request bytes against the sheet byte for byte, and read / write / read-back.
 // Run: node tests/sim-logitech.mjs (no hardware)
-import driver, { useDevice, F, NEVER, HidppError } from '../device-library/logitech-hidpp-mouse/device.mjs';
+import driver, { useDevice, F, NEVER, HidppError, BLE, BLE_HID, isReplyTo, isReplyToBle } from '../device-library/logitech-hidpp-mouse/device.mjs';
 driver.vendorApp = async () => null;   // no tasklist in the test; section 5 swaps in G HUB
 
 const fails = [];
@@ -14,7 +14,8 @@ const h = (a) => Array.from(a, (b) => b.toString(16).padStart(2, '0')).join(' ')
 
 // A simulated mouse. features: { featureId: index }; state holds what the mouse would hold.
 // profiles: { count, oneBasedRead, profile (1-based), slot (0-4) }; ext: { caps (0x2202 b2), lod, y }
-function simMouse({ pid, slot, features, dpiList, rateExt, rateMask, battery, mode, profiles, ext }) {
+// replyIndex: the device index the mouse puts in its replies (a Bluetooth device answers 0xFF with 0x00, Solaar base.py)
+function simMouse({ pid, slot, features, dpiList, rateExt, rateMask, battery, mode, profiles, ext, replyIndex }) {
   const state = { dpi: 800, defaultDpi: 800, rateIndex: 3, rateMs: 1, mode, ...battery, ...(profiles || {}), lod: ext?.lod ?? 0, y: ext?.y ?? 0 };
   const byIndex = Object.fromEntries(Object.entries(features).map(([id, i]) => [i, Number(id)]));
   const sent = [];
@@ -30,8 +31,9 @@ function simMouse({ pid, slot, features, dpiList, rateExt, rateMask, battery, mo
       if (reportId !== 0x11 || b.length !== 19) return;                  // only long reports are answered
       const [d, idx, fs] = b, p = b.slice(3);
       if (d !== slot) return;                                             // empty slot: no HID++ 2.0 answer
-      const reply = (params) => [d, idx, fs, ...params, ...Array(16).fill(0)].slice(0, 19);
-      const err = (code) => [d, 0xff, idx, fs, code, ...Array(14).fill(0)];
+      const ri = replyIndex ?? d;
+      const reply = (params) => [ri, idx, fs, ...params, ...Array(16).fill(0)].slice(0, 19);
+      const err = (code) => [ri, 0xff, idx, fs, code, ...Array(14).fill(0)];
       const emit = (bytes) => setTimeout(() => { for (const fn of [...listeners]) fn({ reportId: 0x11, data: new DataView(Uint8Array.from(bytes).buffer) }); }, 1);
       if (this.eventFirst) { this.eventFirst = false; emit([d, features[F.UNIFIED_BATTERY] || 1, 0x00, 50, 4, 0, 0, ...Array(12).fill(0)]); }  // battery event, software id 0
       if (this.failNext) { const c = this.failNext; this.failNext = null; return emit(err(c)); }
@@ -293,6 +295,53 @@ driver.vendorApp = async () => null;
   check(vf.keys.mode?.ok === true && vf.keys.mode.value === 'onboard', 'settings that passed keep their result (not written again)');
   driver.vendorApp = async () => null;
   fs.rmSync(folder, { recursive: true, force: true });
+}
+
+// ---- 7. Bluetooth (22 Oct 2026, docs/handoff/logitech-ble.md) ----
+// No source documents a Bluetooth id for a mouse this driver lists, so the shipped table is empty and every channel is
+// as before. The transport is proven with a TEST-ONLY id added to BLE here and removed again: device index 0xFF, replies
+// with index 0x00 taken (Solaar base.py), no report rate, the same bytes and values as on the cable.
+{
+  const { hidSpecs, ownClash } = await import('../helpers/my-devices.mjs');
+  const meta = JSON.parse((await import('node:fs')).readFileSync(new URL('../device-library/logitech-hidpp-mouse/device.json', import.meta.url), 'utf8'));
+  check(Object.keys(BLE).length === 0 && !meta.pids.some((p) => /^b/i.test(p)), 'no Bluetooth id is shipped for a mouse (none documented)');
+  check(Object.keys(driver.hid.byPid).length === 0 && hidSpecs(driver).every((s) => s.page === 'FF00' && s.usage === '0002' && s.inputLen === undefined), 'every mouse channel is the long collection on FF00 / 0002, as before');
+  check(ownClash('046d', meta.pids).length === 0 && ownClash('046d', hidSpecs(driver).map((s) => s.pid)).length === 0, 'no mouse id is one DeviceHub runs itself (pc-map RUNS)');
+  check(BLE_HID.page === '*' && BLE_HID.usage === '*' && BLE_HID.inputLen === 19 && BLE_HID.outputLen === 19, `the Bluetooth collection: any page / usage, 19-byte reports (${JSON.stringify(BLE_HID)})`);
+  check([0x1816, 0x0309, 0x1500].every((id) => NEVER.includes(id)), 'BLE pre-pairing 0x1816, Lightspeed pairing 0x0309 and force pairing 0x1500 are on the never list');
+  for (const id of [0x1816, 0x0309, 0x1500]) { const r = await refusal(() => driver.call(id, 0x00)); check(/refused/.test(r?.message || ''), `call() refuses 0x${id.toString(16)}`); }
+  // reply matching: Bluetooth takes 0x00 for 0xFF; the cable's matcher is unchanged (0x00 is not a reply to 0xFF there)
+  const sent = [0xff, 5, 0x2b, 0];
+  check(isReplyToBle(sent, [0x00, 5, 0x2b]) && isReplyToBle(sent, [0xff, 5, 0x2b]) && isReplyToBle(sent, [0x00, 0xff, 5, 0x2b, 2]), 'Bluetooth: replies and errors with index 0x00 or 0xFF match');
+  check(!isReplyToBle(sent, [0x01, 5, 0x2b]) && !isReplyToBle(sent, [0x00, 6, 0x2b]), 'Bluetooth: another index or feature does not match');
+  check(!isReplyTo(sent, [0x00, 5, 0x2b]) && isReplyTo(sent, [0xff, 5, 0x2b]), 'cable / receiver matching unchanged');
+
+  const feats = { [F.BATTERY_STATUS]: 3, [F.ADJUSTABLE_DPI]: 5, [F.ONBOARD_PROFILES]: 8 };
+  const run = async (m) => {
+    useDevice(m);
+    check(await driver.connect(false), `mouse ${m.productId.toString(16)} connects`);
+    const n0 = m.sent.length;
+    const vals = await driver.read();
+    const w1 = await driver.write('dpi', 1600), w2 = await driver.write('dpi', 800);
+    const bat = await driver.battery();
+    return { vals, w: [w1, w2], bat, frames: m.sent.slice(n0).map((s) => h(s.b)), info: await driver.info() };
+  };
+  const cable = await run(simMouse({ pid: 0xc094, slot: 0xff, features: feats, dpiList: [100, 0xe000 | 50, 25600], battery: { percent: 64, status: 0 }, mode: 2 }));
+  BLE[0xb0aa] = 'test mouse (simulation only)';
+  try {
+    const bt = simMouse({ pid: 0xb0aa, slot: 0xff, replyIndex: 0x00, features: { ...feats, [F.EXT_REPORT_RATE]: 9, [F.REPORT_RATE]: 10 }, dpiList: [100, 0xe000 | 50, 25600], rateExt: true, rateMask: 0x7f, battery: { percent: 64, status: 0 }, mode: 2 });
+    const ble = await run(bt);
+    check(driver.ble === true && driver.index === 0xff && h(bt.sent[0].b.slice(0, 6)) === 'ff 00 1b 00 00 5a', `Bluetooth: ping at index 0xFF (${h(bt.sent[0].b.slice(0, 6))})`);
+    check(bt.sent.every((s) => s.reportId === 0x11 && s.b.length === 19 && s.b[0] === 0xff), 'Bluetooth: every request is a long report to index 0xFF (no receiver slots)');
+    check(!frames(bt).some((b) => b[1] === 0 && (b[2] & 0xf0) === 0 && [0x8060, 0x8061].includes((b[3] << 8) | b[4])) && !driver.features[F.EXT_REPORT_RATE] && !driver.features[F.REPORT_RATE], 'Bluetooth: the report rate features are not looked up');
+    check(!frames(bt).some((b) => b[1] === 0 && (b[2] & 0xf0) === 0 && NEVER.includes((b[3] << 8) | b[4])), 'Bluetooth: no never-list feature is looked up');
+    check(JSON.stringify(ble.vals) === JSON.stringify(cable.vals) && ble.vals.reportRate === undefined && ble.vals.dpi === 800, `Bluetooth reads the same values as the cable (${JSON.stringify(ble.vals)} / ${JSON.stringify(cable.vals)})`);
+    check(ble.frames.join('|') === cable.frames.join('|'), `Bluetooth sends the same bytes as the cable for the same reads and writes (${ble.frames.length} frames)`);
+    check(ble.w.join() === '1600,800' && bt.state.dpi === 800 && JSON.stringify(ble.bat) === JSON.stringify(cable.bat), 'Bluetooth: DPI written, read back and put back; battery the same');
+    check(ble.info.Connection === 'Bluetooth' && /test mouse/.test(ble.info.Model) && cable.info.Connection === 'USB cable', `info names the connection (${ble.info.Connection}, ${ble.info.Model})`);
+    e = await refusal(() => driver.write('reportRate', 1000));
+    check(/report rate/.test(e?.message || '') && bt.state.rateIndex === 3, `Bluetooth: a report-rate write is refused unsent (${e?.message})`);
+  } finally { delete BLE[0xb0aa]; }
 }
 
 console.log(fails.length ? `sim-logitech: FAILED: ${fails.join('; ')}` : 'sim-logitech (Logitech HID++ mouse driver, simulated): all good');

@@ -180,7 +180,7 @@ export function summary({ root = ROOT, sources = {} } = {}) {
   }
   const ran = new Set((sources.usb || []).filter((u) => u.runs).map(idOf));
   const via = new Set((sources.via || []).map(idOf));   // a VIA keyboard runs on the Keyboard page: never "still to do"
-  for (const k of (sources.via || []).filter((x) => !ran.has(idOf(x)))) works.push({ what: 'via', line: `${k.name || `${k.vid}:${k.pid}`}: a VIA keyboard, its keys and lights work with no setup (Keyboard page)` });
+  for (const k of (sources.via || []).filter((x) => !ran.has(idOf(x)))) works.push({ what: 'via', line: `${k.name || `${k.vid}:${k.pid}`}: a VIA keyboard, its keys and lights work on the Keyboard page (a board that needs its maker's layout file has a Get the layout button there)` });
   const mons = (sources.monitors || []).filter((m) => m.ddc);
   if (mons.length) works.push({ what: 'monitors', line: `${plural(mons.length, 'monitor')} over DDC/CI: ${mons.map((m) => m.name || m.model).join(', ')} (Monitors page)` });
   const cams = sources.cameras || [];

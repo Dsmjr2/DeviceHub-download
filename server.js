@@ -537,6 +537,8 @@ async function api(req, res, url) {
   if (url.pathname.startsWith('/api/share/')) { try { if (await (await import('./helpers/share-route.mjs')).handle(url, req, res, send, readBody)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   // why a device isn't working, and the fix (helpers/diagnose.mjs; read-only apart from closing a maker's app on a confirmed press)
   // optional tools (Equalizer APO, ReaPlugs, USBPcap): download, check the signature or hash, run the maker's installer on a click
+  // Get the layout: a VIA keyboard's official definition file on the person's click (helpers/via-fetch.mjs, pinned sources)
+  if (url.pathname.startsWith('/api/via-fetch')) { try { if (await (await import('./helpers/via-fetch.mjs')).handle(url, req, res, send, readBody)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   if (url.pathname.startsWith('/api/installers')) { try { if (await (await import('./helpers/installers.mjs')).handle(url, req, res, send, readBody)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   if (url.pathname.startsWith('/api/diagnose')) { try { return await (await import('./helpers/diagnose.mjs')).handle(url, req, res, send); } catch (e) { return send(res, 500, { error: e.message }); } }
   if (url.pathname === '/api/library' && req.method === 'GET') {

@@ -1,5 +1,6 @@
 // Logitech G keyboards over HID++ 2.0 (22 Oct 2026): on their own cable or a Lightspeed receiver (G915 / G915 TKL /
-// G815 / G515 TKL / G512 / G213 / PRO). Written only from open-source code, cited beside every command:
+// G815 / G515 TKL / G512 / G213 / PRO), and the G915 TKL on Bluetooth (BLE below; docs/handoff/logitech-ble.md).
+// Written only from open-source code, cited beside every command:
 //   Solaar    = github.com/pwr-Solaar/Solaar @ e7304c4c451cc9bb4f206a914844525e67856a28, lib/logitech_receiver/
 //               (hidpp20_constants.py feature ids; settings_templates.py ReportRate, ExtendedReportRate, OnboardProfiles,
 //               DisableKeyboardKeys, FnSwap / NewFnSwap, BrightnessControl; settings.py FeatureRW defaults;
@@ -29,7 +30,15 @@ const hex2 = (b) => b.toString(16).padStart(2, '0');
 // on it too (the sheet's open question); a mouse on it is refused by its 0x2201 feature, as on C541 / C545.
 export const RECEIVERS = { 0xc541: 'G915 receiver', 0xc547: 'G915 receiver', 0xc545: 'G915 TKL receiver' };
 export const WIRED = { 0xc33e: 'G915', 0xc343: 'G915 TKL', 0xc33f: 'G815', 0xc355: 'G515 LIGHTSPEED TKL', 0xc33c: 'G512', 0xc336: 'G213', 0xc339: 'PRO Gaming Keyboard' };
-export const PIDS = [...Object.keys(RECEIVERS), ...Object.keys(WIRED)].map(Number);
+// Bluetooth (22 Oct 2026, docs/handoff/logitech-ble.md): the keyboard is its own HID device with the keyboard's BLE
+// product id, HID++ 2.0 straight to it at device index 0xFF (no receiver, no slots).
+//   0xB35F: Linux drivers/hid/hid-logitech-hidpp.c @ 3fabd8ec206bd48a45ef77aed170d25b322ad9a2, hidpp_devices:
+//           "Logitech G915 TKL keyboard over Bluetooth" HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_LOGITECH, 0xb35f).
+//           It is inside Solaar's Bluetooth keyboard range (base.py get_unknown_logitech_device_info: BusID.BLUETOOTH and
+//           0xB317 <= product_id <= 0xB3FF, @ e7304c4c). Solaar descriptors.py lists no btid for any G keyboard.
+//   No source read gives a Bluetooth id for the G915, G515 TKL or any other model here, so none is guessed.
+export const BLE = { 0xb35f: 'G915 TKL' };
+export const PIDS = [...Object.keys(RECEIVERS), ...Object.keys(WIRED), ...Object.keys(BLE)].map(Number);
 
 // sheet section 2: long report 0x11, 19 bytes after the id; software id 0x0B (Solaar); 0xFF = wired, 1-6 = receiver slots
 const REPORT_LONG = 0x11, LEN = 19, SW_ID = 0x0b, DEV_WIRED = 0xff, SLOTS = [1, 2, 3, 4, 5, 6];
@@ -66,6 +75,15 @@ export class HidppError extends Error {
 }
 // a reply echoes device index, feature index and function+swid, or is <dev> FF <idx> <fn+swid> <code> (sheet section 2)
 export const isReplyTo = (sent, r) => r[0] === sent[0] && ((r[1] === sent[1] && r[2] === sent[2]) || (r[1] === 0xff && r[2] === sent[1] && r[3] === sent[2]));
+// Bluetooth: the same, but the device index may come back as request ^ 0xFF, i.e. 0x00 for 0xFF (Solaar base.py request()
+// and ping(): "reply_devnumber == devnumber or reply_devnumber == devnumber ^ 0xFF:  # BT device returning 0x00")
+export const isReplyToBle = (sent, r) => (r[0] === sent[0] || r[0] === (sent[0] ^ 0xff)) && ((r[1] === sent[1] && r[2] === sent[2]) || (r[1] === 0xff && r[2] === sent[1] && r[3] === sent[2]));
+// Bluetooth collection: Solaar finds HID++ by its reports, not by a usage page (hidapi_impl.py check_hidpp_long: input
+// report 0x11 of 1 + 19 bytes; udev_impl.py: report 0x11 of 19 * 8 bits). OpenRGB LogitechControllerDetect.cpp @
+// a44f52507873f9810601a9ea2640cbe13a868c15 registers Bluetooth HID++ 2.0 on usage page 0xFF43 (any usage) and on 0xFF00
+// usage 2, so the page differs by model: the channel takes any page and usage and picks the collection whose input and
+// output reports are 19 data bytes (helpers/hid-host.mjs channelOpts il / ol; the helper adds the report id byte).
+export const BLE_HID = { page: '*', usage: '*', inputLen: LEN, outputLen: LEN };
 
 // Solaar ExtendedReportRate choices_universe: index 0 = 8 ms ... 6 = 125 us
 export const EXT_RATES_HZ = [125, 250, 500, 1000, 2000, 4000, 8000];
@@ -92,6 +110,8 @@ async function defaultVendorApp() {
   return null;
 }
 async function defaultOpen(pid) {
+  // Bluetooth: no usage page in the filter (the BLE channel chooses its collection by report length, BLE_HID)
+  if (BLE[pid]) return getDevice([{ vendorId: VID, productId: pid }], { prompt: false });
   return getDevice([{ vendorId: VID, productId: pid, usagePage: 0xff00, usage: 0x0002 }], { prompt: false });
 }
 
@@ -102,7 +122,9 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
     kind: 'Keyboard',
     vendor: 'Logitech',
     // the long-report collection, usage page 0xFF00 usage 0x02 (sheet section 2, OpenRGB); raw replies (as the mouse)
-    hid: { vid: '046D', pid: 'C33E', pids: PIDS.map(hex4), page: 'FF00', usage: '0002', len: LEN, reportId: REPORT_LONG, replyMs: 2000, reply: 'raw' },
+    // Bluetooth ids get their own collection choice (BLE_HID); every USB id's channel is as before
+    hid: { vid: '046D', pid: 'C33E', pids: PIDS.map(hex4), page: 'FF00', usage: '0002', len: LEN, reportId: REPORT_LONG, replyMs: 2000, reply: 'raw',
+      byPid: Object.fromEntries(Object.keys(BLE).map((p) => [hex4(Number(p)), { ...BLE_HID }])) },
     unsupported: ['editing onboard profiles (keys, macros, lights)', 'lighting colours and effects (no read-back)', 'G-key and M-key remaps', 'game mode beyond the key locks', 'firmware updates', 'pairing'],
     dev: null, chan: null, index: DEV_WIRED, features: {}, caps: {},
 
@@ -137,7 +159,8 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
       this.dev = dev;
       this.pid = typeof dev.pid === 'string' ? parseInt(dev.pid, 16) : dev.productId;
       this.receiver = !!RECEIVERS[this.pid];
-      this.chan = new HidChannel(dev, { reportId: REPORT_LONG, length: LEN, match: isReplyTo });
+      this.ble = !!BLE[this.pid];
+      this.chan = new HidChannel(dev, { reportId: REPORT_LONG, length: LEN, match: this.ble ? isReplyToBle : isReplyTo });
       let ver = null;
       for (const idx of this.receiver ? SLOTS : [DEV_WIRED]) {    // sheet section 5 step 3: ping slots 1-6
         this.index = idx;
@@ -145,7 +168,10 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
       }
       if (!ver) throw new Error(this.receiver ? 'no reply from a keyboard on the receiver (asleep, switched off or not paired)' : 'no reply from the keyboard');
       this.protocol = ver;
-      for (const id of [F.UNIFIED_BATTERY, F.BATTERY_STATUS, F.BATTERY_VOLTAGE, F.ADJUSTABLE_DPI, F.EXT_REPORT_RATE, F.REPORT_RATE, F.ONBOARD_PROFILES, F.DISABLE_KEYS, F.NEW_FN_INVERSION, F.FN_INVERSION, F.BRIGHTNESS]) {
+      // Bluetooth: the report rate is the USB / Lightspeed polling rate (Solaar ReportRate: "Frequency of device movement
+      // reports"); over Bluetooth the link sets it and no source documents 0x8060 / 0x8061 there, so it is not looked up
+      const rateIds = this.ble ? [] : [F.EXT_REPORT_RATE, F.REPORT_RATE];
+      for (const id of [F.UNIFIED_BATTERY, F.BATTERY_STATUS, F.BATTERY_VOLTAGE, F.ADJUSTABLE_DPI, ...rateIds, F.ONBOARD_PROFILES, F.DISABLE_KEYS, F.NEW_FN_INVERSION, F.FN_INVERSION, F.BRIGHTNESS]) {
         const f = await this.getFeature(id);
         if (f) this.features[id] = f;
       }
@@ -246,8 +272,8 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
     async info() {
       const mode = await this.readMode().catch(() => undefined);
       const out = {
-        Model: this.receiver ? `Logitech keyboard on ${RECEIVERS[this.pid]} ${hex4(this.pid)} (slot ${this.index})` : `Logitech ${WIRED[this.pid] || `keyboard ${hex4(this.pid)}`}`,
-        Connection: this.receiver ? 'Lightspeed receiver' : 'USB cable',
+        Model: this.receiver ? `Logitech keyboard on ${RECEIVERS[this.pid]} ${hex4(this.pid)} (slot ${this.index})` : `Logitech ${WIRED[this.pid] || BLE[this.pid] || `keyboard ${hex4(this.pid)}`}`,
+        Connection: this.receiver ? 'Lightspeed receiver' : this.ble ? 'Bluetooth' : 'USB cable',
         'HID++': this.protocol,
         Battery: this.features[F.UNIFIED_BATTERY] ? '0x1004 unified' : this.features[F.BATTERY_STATUS] ? '0x1000 status' : this.features[F.BATTERY_VOLTAGE] ? '0x1001 voltage' : 'none reported',
       };

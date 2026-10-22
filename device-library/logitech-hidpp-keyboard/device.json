@@ -1,7 +1,7 @@
 {
   "id": "logitech-hidpp-keyboard",
   "vendor": "Logitech",
-  "product": "Logitech G keyboards (HID++ 2.0, cable or Lightspeed receiver)",
+  "product": "Logitech G keyboards (HID++ 2.0, cable, Lightspeed receiver or Bluetooth)",
   "kind": "Keyboard",
   "vid": "046d",
   "pids": [
@@ -14,11 +14,12 @@
     "c355",
     "c33c",
     "c336",
-    "c339"
+    "c339",
+    "b35f"
   ],
   "models": [
     "G915",
-    "G915 TKL",
+    "G915 TKL (also on Bluetooth, B35F)",
     "G815",
     "G515 LIGHTSPEED TKL",
     "G512",
@@ -36,6 +37,7 @@
     "F-key swap: 0x40A2 or 0x40A0, read 0x00 / write 0x10 (Solaar NewFnSwap / FnSwap)",
     "backlight brightness: 0x8040 info 0x00, read 0x10 / write 0x20, on/off 0x30 / 0x40, the keyboard's own steps when it has them (Solaar BrightnessControl)",
     "every write read back; every write refused while G HUB (lghub*.exe) runs",
+    "Bluetooth: the G915 TKL on its Bluetooth id B35F (Linux hid-logitech-hidpp.c @ 3fabd8ec; inside Solaar base.py Bluetooth keyboard range 0xB317-0xB3FF), HID++ 2.0 at device index 0xFF, replies with index 0x00 taken (Solaar base.py), the collection with 19-byte input and output reports on any usage page (Solaar hidapi_impl.py / OpenRGB 0xFF43 and 0xFF00); the same battery, settings source, profile display, key locks, F-key swap and backlight",
     "receivers C541 and C547 (G915, OpenRGB LogitechControllerDetect.cpp) and C545 (G915 TKL)"
   ],
   "doesNotWork": [
@@ -45,9 +47,11 @@
     "G-key and M-key remaps, and a game mode beyond the key locks (no documented read-back)",
     "PRO X TKL and G915 X (no product ids in any source read)",
     "the K375s-style F-key swap 0x40A3 (needs the host-info feature; office keyboards)",
-    "selecting an onboard profile: read-only until Solaar's or libratbag's profile numbering is confirmed on a real keyboard"
+    "selecting an onboard profile: read-only until Solaar's or libratbag's profile numbering is confirmed on a real keyboard",
+    "report rate over Bluetooth: it is the USB / Lightspeed polling rate; no source documents 0x8060 / 0x8061 over Bluetooth, so it is not looked up there",
+    "the G915, G515 TKL and other models on Bluetooth: no source read gives their Bluetooth product ids"
   ],
   "status": "untested",
   "tested": [],
-  "source": "Solaar lib/logitech_receiver (settings_templates.py, settings.py, settings_validator.py, special_keys.py, hidpp20_constants.py, descriptors.py, base_usb.py) @ e7304c4c451cc9bb4f206a914844525e67856a28; libratbag src/hidpp20.h @ 8235b5bb6032dea15901ab58a8218956f4494d08; docs/brands/logitech.md"
+  "source": "Solaar lib/logitech_receiver (settings_templates.py, settings.py, settings_validator.py, special_keys.py, hidpp20_constants.py, descriptors.py, base_usb.py) @ e7304c4c451cc9bb4f206a914844525e67856a28; libratbag src/hidpp20.h @ 8235b5bb6032dea15901ab58a8218956f4494d08; Linux drivers/hid/hid-logitech-hidpp.c (hidpp_devices, Bluetooth ids) @ 3fabd8ec206bd48a45ef77aed170d25b322ad9a2; OpenRGB Controllers/LogitechController/LogitechControllerDetect.cpp @ a44f52507873f9810601a9ea2640cbe13a868c15; docs/brands/logitech.md"
 }

@@ -3,6 +3,7 @@
 // about 1,500 keyboards), or a file the maker hands out for VIA's "load draft definition" placed in DeviceHub's
 // via-definitions folder. The P75's layout is built in (it is not in VIA's library).
 // A layout: { name, vpid, rows, cols, width, height, keys: [{ row, col, x, y, w, h, knob }] } in key units.
+import { keymapToKeys } from './via-kle.js';
 
 // The P75, as measured on Shawn's board: 6 x 15 matrix; the F row in its groups (Esc, F1-F4, F5-F8, F9-F12, Delete,
 // gaps of 1/4 key), the knob top right.
@@ -36,10 +37,12 @@ export function fromDefinition(def) {
   const rows = def.matrix?.rows, cols = def.matrix?.cols;
   if (!Number.isInteger(rows) || !Number.isInteger(cols) || rows < 1 || cols < 1 || rows > 32 || cols > 32) throw new Error('the definition has no valid matrix size');
   const L = def.layouts || {};
-  let raw = Array.isArray(L.keys) ? [...L.keys] : null;
-  if (!raw) throw new Error('the definition has no key positions (older formats are read through VIA\'s library)');
+  let raw = Array.isArray(L.keys) ? [...L.keys] : null, options = L.optionKeys;
+  // a maker's file draws its keys (layouts.keymap, the KLE format) instead of listing them (devices/via-kle.js)
+  if (!raw && Array.isArray(L.keymap)) { const c = keymapToKeys(L.keymap); raw = c.keys; options = c.optionKeys; }
+  if (!raw) throw new Error('the definition has no key positions');
   // layout options: each option group's first choice (option keys are listed per group, per choice)
-  for (const group of Object.values(L.optionKeys || {})) { const first = group?.['0'] || Object.values(group || {})[0]; if (Array.isArray(first)) raw.push(...first); }
+  for (const group of Object.values(options || {})) { const first = group?.['0'] || Object.values(group || {})[0]; if (Array.isArray(first)) raw.push(...first); }
   const keys = [];
   const seen = new Set();
   for (const r of raw) {

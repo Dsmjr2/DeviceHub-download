@@ -1,0 +1,2462 @@
+{
+ "about": "Official VIA files for keyboards VIA's own library does not have. Made by helpers/make-via-sources.mjs; read by helpers/via-fetch.mjs. Key: <VID><PID>.",
+ "made": "2026-10-22",
+ "sources": {
+  "keychron": {
+   "repo": "Keychron/qmk_firmware",
+   "raw": "https://raw.githubusercontent.com/Keychron/qmk_firmware/<commit>/<path>",
+   "branches": [
+    {
+     "branch": "2025q3",
+     "commit": "c5d998442710b38650903937249144a0cd728ebe",
+     "files": 280,
+     "added": 277
+    },
+    {
+     "branch": "wireless_playground",
+     "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+     "files": 184,
+     "added": 85
+    },
+    {
+     "branch": "hall_effect_playground",
+     "commit": "bc56b3c611dcc1a8ed9a2acb8bdc4da5e1a80c27",
+     "files": 21,
+     "added": 0
+    },
+    {
+     "branch": "wls_2025q1",
+     "commit": "c8b2b237b4ef09765e48cbb5c1fdb0afd164289f",
+     "files": 221,
+     "added": 18
+    },
+    {
+     "branch": "playground",
+     "commit": "4a8143cce9c2ab32a1384c352c3db324149abddd",
+     "files": 22,
+     "added": 22
+    },
+    {
+     "branch": "bluetooth_playground",
+     "commit": "618127a725a1773e85f13455602cf6f72ab4de17",
+     "files": 74,
+     "added": 0
+    }
+   ]
+  }
+ },
+ "files": {
+  "34340106": {
+   "name": "Keychron Q1V2 ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q1v2/via_json/q1v2_ansi.json",
+   "size": 8242
+  },
+  "34340107": {
+   "name": "Keychron Q1V2 ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q1v2/via_json/q1v2_ansi_encoder.json",
+   "size": 8267
+  },
+  "34340108": {
+   "name": "Keychron Q1V2 ISO",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q1v2/via_json/q1v2_iso.json",
+   "size": 8317
+  },
+  "34340109": {
+   "name": "Keychron Q1V2 ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q1v2/via_json/q1v2_iso_encoder.json",
+   "size": 8342
+  },
+  "34340110": {
+   "name": "Keychron Q2 ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q2/via_json/q2_ansi.json",
+   "size": 7068
+  },
+  "34340111": {
+   "name": "Keychron Q2 ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q2/via_json/q2_ansi_encoder.json",
+   "size": 7092
+  },
+  "34340112": {
+   "name": "Keychron Q2 ISO",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q2/via_json/q2_iso.json",
+   "size": 7080
+  },
+  "34340113": {
+   "name": "Keychron Q2 ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q2/via_json/q2_iso_encoder.json",
+   "size": 7105
+  },
+  "34340120": {
+   "name": "Keychron Q3 ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q3/via_json/q3_ansi.json",
+   "size": 7488
+  },
+  "34340121": {
+   "name": "Keychron Q3 ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q3/via_json/q3_ansi_encoder.json",
+   "size": 7559
+  },
+  "34340122": {
+   "name": "Keychron Q3 ISO",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q3/via_json/q3_iso.json",
+   "size": 7501
+  },
+  "34340123": {
+   "name": "Keychron Q3 ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q3/via_json/q3_iso_encoder.json",
+   "size": 7612
+  },
+  "34340130": {
+   "name": "Keychron Q0",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q0/via_json/q0.json",
+   "size": 3924
+  },
+  "34340131": {
+   "name": "Keychron Q0 Plus Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q0/via_json/q0_plus_encoder.json",
+   "size": 4895
+  },
+  "34340140": {
+   "name": "Keychron Q4 ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q4/via_json/q4_ansi.json",
+   "size": 6785
+  },
+  "34340142": {
+   "name": "Keychron Q4 ISO",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q4/via_json/q4_iso.json",
+   "size": 6798
+  },
+  "34340150": {
+   "name": "Keychron Q5 ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q5/via_json/q5_ansi.json",
+   "size": 7806
+  },
+  "34340151": {
+   "name": "Keychron Q5 ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q5/via_json/q5_ansi_encoder.json",
+   "size": 7886
+  },
+  "34340152": {
+   "name": "Keychron Q5 ISO",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q5/via_json/q5_iso.json",
+   "size": 7776
+  },
+  "34340153": {
+   "name": "Keychron Q5 ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q5/via_json/q5_iso_encoder .json",
+   "size": 7855
+  },
+  "34340160": {
+   "name": "Keychron Q6 ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q6/via_json/q6_ansi.json",
+   "size": 9232
+  },
+  "34340161": {
+   "name": "Keychron Q6 ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q6/via_json/q6_ansi_encoder.json",
+   "size": 9291
+  },
+  "34340162": {
+   "name": "Keychron Q6 ISO",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q6/via_json/q6_iso.json",
+   "size": 9375
+  },
+  "34340163": {
+   "name": "Keychron Q6 ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q6/via_json/q6_iso_encoder.json",
+   "size": 9370
+  },
+  "34340170": {
+   "name": "Keychron Q7 ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q7/via_json/q7_ansi.json",
+   "size": 7724
+  },
+  "34340172": {
+   "name": "Keychron Q7 ISO",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q7/via_json/q7_iso.json",
+   "size": 7796
+  },
+  "34340180": {
+   "name": "Keychron Q8 ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q8/via_json/q8_ansi.json",
+   "size": 9131
+  },
+  "34340181": {
+   "name": "Keychron Q8 ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q8/via_json/q8_ansi_encoder.json",
+   "size": 9156
+  },
+  "34340182": {
+   "name": "Keychron Q8 ISO",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q8/via_json/q8_iso.json",
+   "size": 9202
+  },
+  "34340183": {
+   "name": "Keychron Q8 ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q8/via_json/q8_iso_encoder.json",
+   "size": 9227
+  },
+  "34340206": {
+   "name": "Keychron K17 Pro ANSI Knob RGB",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k17_pro/via_json/k17_pro_ansi_encoder_rgb.json",
+   "size": 7308
+  },
+  "34340207": {
+   "name": "Keychron K17 Pro ISO Knob RGB",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k17_pro/via_json/k17_pro_iso_encoder_rgb.json",
+   "size": 7403
+  },
+  "34340209": {
+   "name": "Keychron K17 Pro ANSI Knob White",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k17_pro/via_json/k17_pro_ansi_encoder_white.json",
+   "size": 5237
+  },
+  "34340210": {
+   "name": "Keychron K1 Pro ANSI RGB",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k1_pro/via_json/k1_pro_ansi_rgb.json",
+   "size": 6335
+  },
+  "34340211": {
+   "name": "Keychron K1 Pro ISO RGB",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k1_pro/via_json/k1_pro_iso_rgb.json",
+   "size": 6431
+  },
+  "34340213": {
+   "name": "Keychron K1 Pro ANSI White",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k1_pro/via_json/k1_pro_ansi_white.json",
+   "size": 4264
+  },
+  "34340214": {
+   "name": "Keychron K1 Pro ISO White",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k1_pro/via_json/k1_pro_iso_white.json",
+   "size": 4360
+  },
+  "34340220": {
+   "name": "Keychron K2 Pro",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k2_pro/via_json/k2_pro_ansi_rgb.json",
+   "size": 5929
+  },
+  "34340221": {
+   "name": "Keychron K2 Pro",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k2_pro/via_json/k2_pro_iso_rgb.json",
+   "size": 6067
+  },
+  "34340223": {
+   "name": "Keychron K2 Pro",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k2_pro/via_json/k2_pro_ansi_white.json",
+   "size": 3856
+  },
+  "34340224": {
+   "name": "Keychron K2 Pro",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k2_pro/via_json/k2_pro_iso_white.json",
+   "size": 3994
+  },
+  "34340230": {
+   "name": "Keychron K3 Pro",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k3_pro/via_json/k3_pro_ansi_rgb.json",
+   "size": 5930
+  },
+  "34340231": {
+   "name": "Keychron K3 Pro",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k3_pro/via_json/k3_pro_iso_rgb .json",
+   "size": 4026
+  },
+  "34340232": {
+   "name": "Keychron K3 Pro",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k3_pro/via_json/k3_pro_jis_rgb .json",
+   "size": 5955
+  },
+  "34340233": {
+   "name": "Keychron K3 Pro",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k3_pro/via_json/k3_pro_ansi_white.json",
+   "size": 3857
+  },
+  "34340234": {
+   "name": "Keychron K3 Pro",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k3_pro/via_json/k3_pro_iso_white.json",
+   "size": 3997
+  },
+  "34340235": {
+   "name": "Keychron K3 Pro",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k3_pro/via_json/k3_pro_jis_white.json",
+   "size": 3882
+  },
+  "34340240": {
+   "name": "Keychron K4 Pro",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k4_pro/via_json/k4_pro_ansi_rgb.json",
+   "size": 6887
+  },
+  "34340241": {
+   "name": "Keychron K4 Pro",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k4_pro/via_json/k4_pro_iso_rgb.json",
+   "size": 6917
+  },
+  "34340243": {
+   "name": "Keychron K4 Pro",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k4_pro/via_json/k4_pro_ansi_white.json",
+   "size": 4844
+  },
+  "34340244": {
+   "name": "Keychron K4 Pro",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k4_pro/via_json/k4_pro_iso_white.json",
+   "size": 4847
+  },
+  "34340250": {
+   "name": "Keychron K5 Pro",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k5_pro/via_json/k5_pro_ansi_rgb_v1.00.json",
+   "size": 7235
+  },
+  "34340251": {
+   "name": "Keychron K5 Pro ISO RGB",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k5_pro/via_json/k5_pro_iso_rgb.json",
+   "size": 7367
+  },
+  "34340252": {
+   "name": "Keychron K5 Pro JIS RGB",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k5_pro/via_json/k5_pro_jis_rgb.json",
+   "size": 7310
+  },
+  "34340253": {
+   "name": "Keychron K5 Pro ANSI White",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k5_pro/via_json/k5_pro_ansi_white.json",
+   "size": 5173
+  },
+  "34340254": {
+   "name": "Keychron K5 Pro ISO White",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k5_pro/via_json/k5_pro_iso_white.json",
+   "size": 5296
+  },
+  "34340255": {
+   "name": "Keychron K5 Pro JIS White",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k5_pro/via_json/k5_pro_jis_white.json",
+   "size": 5239
+  },
+  "34340260": {
+   "name": "Keychron K6 Pro",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k6_pro/via_json/k6_pro_ansi_rgb.json",
+   "size": 5575
+  },
+  "34340261": {
+   "name": "Keychron K6 Pro",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k6_pro/via_json/k6_pro_iso_rgb.json",
+   "size": 5770
+  },
+  "34340262": {
+   "name": "Keychron K6 Pro",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k6_pro/via_json/k6_pro_jis_rgb.json",
+   "size": 5612
+  },
+  "34340263": {
+   "name": "Keychron K6 Pro",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k6_pro/via_json/k6_pro_ansi_white.json",
+   "size": 3504
+  },
+  "34340264": {
+   "name": "Keychron K6 Pro",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k6_pro/via_json/k6_pro_iso_white.json",
+   "size": 3699
+  },
+  "34340270": {
+   "name": "Keychron K7 Pro",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k7_pro/via_json/k7_pro_ansi_rgb.json",
+   "size": 5484
+  },
+  "34340271": {
+   "name": "Keychron K7 Pro ISO RGB",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k7_pro/via_json/k7_pro_iso_rgb.json",
+   "size": 5980
+  },
+  "34340273": {
+   "name": "Keychron K7 Pro",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k7_pro/via_json/k7_pro_ansi_white.json",
+   "size": 3411
+  },
+  "34340274": {
+   "name": "Keychron K7 Pro ISO White",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k7_pro/via_json/k7_pro_iso_white.json",
+   "size": 3909
+  },
+  "34340280": {
+   "name": "Keychron K8 Pro",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k8_pro/via_json/k8_pro_ansi_rgb.json",
+   "size": 6329
+  },
+  "34340281": {
+   "name": "Keychron K8 Pro",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k8_pro/via_json/k8_pro_iso_rgb.json",
+   "size": 6426
+  },
+  "34340282": {
+   "name": "Keychron K8 Pro",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k8_pro/via_json/k8_pro_jis_rgb.json",
+   "size": 6413
+  },
+  "34340283": {
+   "name": "Keychron K8 Pro",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k8_pro/via_json/k8_pro_ansi_white.json",
+   "size": 4258
+  },
+  "34340284": {
+   "name": "Keychron K8 Pro",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k8_pro/via_json/k8_pro_iso_white.json",
+   "size": 4355
+  },
+  "34340285": {
+   "name": "Keychron K8 Pro",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k8_pro/via_json/k8_pro_jis_white.json",
+   "size": 4340
+  },
+  "34340310": {
+   "name": "Keychron V1 ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v1/via_json/v1_ansi_rgb.json",
+   "size": 8257
+  },
+  "34340311": {
+   "name": "Keychron V1 ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v1/via_json/v1_ansi_encoder.json",
+   "size": 8259
+  },
+  "34340312": {
+   "name": "Keychron V1 ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v1/via_json/v1_iso.json",
+   "size": 8334
+  },
+  "34340313": {
+   "name": "Keychron V1 ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v1/via_json/v1_iso_encoder.json",
+   "size": 8334
+  },
+  "34340317": {
+   "name": "Keychron V1 BR Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v1/via_json/v1_abnt2_encoder.json",
+   "size": 8260
+  },
+  "34340320": {
+   "name": "Keychron V2 ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v2/via_json/v2_ansi.json",
+   "size": 7728
+  },
+  "34340321": {
+   "name": "Keychron V2 ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v2/via_json/v2_ansi_encoder.json",
+   "size": 7754
+  },
+  "34340323": {
+   "name": "Keychron V2 ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v2/via_json/v2_iso_knob.json",
+   "size": 7828
+  },
+  "34340327": {
+   "name": "Keychron V2 BR Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v2/via_json/v2_br_encoder.json",
+   "size": 7831
+  },
+  "34340330": {
+   "name": "Keychron V3 ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v3/via_json/v3_ansi_rgb.json",
+   "size": 8276
+  },
+  "34340331": {
+   "name": "Keychron V3 ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v3/via_json/v3_ansi_encoder.json",
+   "size": 8364
+  },
+  "34340333": {
+   "name": "Keychron V3 ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v3/via_json/v3_iso_encoder.json",
+   "size": 8439
+  },
+  "34340337": {
+   "name": "Keychron V3 BR Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v3/via_json/v3_br_encoder.json",
+   "size": 8466
+  },
+  "34340340": {
+   "name": "Keychron V4 ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v4/via_json/v4_ansi.json",
+   "size": 7328
+  },
+  "34340342": {
+   "name": "Keychron V4 ISO",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v4/via_json/v4_iso.json",
+   "size": 7404
+  },
+  "34340350": {
+   "name": "Keychron V5 ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v5/via_json/v5_ansi.json",
+   "size": 8725
+  },
+  "34340351": {
+   "name": "Keychron V5 ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v5/via_json/v5_ansi_encoder.json",
+   "size": 8819
+  },
+  "34340352": {
+   "name": "Keychron V5 ISO",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v5/via_json/v5_iso.json",
+   "size": 8782
+  },
+  "34340353": {
+   "name": "Keychron V5 ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v5/via_json/v5_iso_encoder.json",
+   "size": 8877
+  },
+  "34340360": {
+   "name": "Keychron V6 ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v6/via_json/v6_ansi.json",
+   "size": 9082
+  },
+  "34340361": {
+   "name": "Keychron V6 ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v6/via_json/v6_ansi_encoder.json",
+   "size": 9168
+  },
+  "34340362": {
+   "name": "Keychron V6 ISO",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v6/via_json/v6_iso.json",
+   "size": 9185
+  },
+  "34340363": {
+   "name": "Keychron V6 ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v6/via_json/v6_iso_encoder.json",
+   "size": 9203
+  },
+  "34340367": {
+   "name": "Keychron V6 BR Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v6/via_json/v6_abnt2_encoder.json",
+   "size": 9290
+  },
+  "34340368": {
+   "name": "Keychron V6 Version 2",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v6_version_2/via_json/v6_version_2_iso_encoder.json",
+   "size": 7174
+  },
+  "34340370": {
+   "name": "Keychron V7 ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v7/via_json/v7_ansi.json",
+   "size": 7519
+  },
+  "34340372": {
+   "name": "Keychron V7 ISO",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v7/via_json/v7_iso.json",
+   "size": 7635
+  },
+  "34340381": {
+   "name": "Keychron V8 ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v8/via_json/v8_ansi_encoder.json",
+   "size": 9079
+  },
+  "34340430": {
+   "name": "Keychron C3 Pro ANSI Red",
+   "commit": "4a8143cce9c2ab32a1384c352c3db324149abddd",
+   "path": "keyboards/keychron/c3_pro/via_json/c3_pro_ansi_red.json",
+   "size": 4231
+  },
+  "34340433": {
+   "name": "Keychron C3 Pro ANSI RGB",
+   "commit": "4a8143cce9c2ab32a1384c352c3db324149abddd",
+   "path": "keyboards/keychron/c3_pro/via_json/c3_pro_ansi_rgb.json",
+   "size": 6306
+  },
+  "34340510": {
+   "name": "Keychron C1 Pro ANSI RGB",
+   "commit": "4a8143cce9c2ab32a1384c352c3db324149abddd",
+   "path": "keyboards/keychron/c1_pro/via_json/c1_pro_ansi_v1_rgb.json",
+   "size": 6130
+  },
+  "34340513": {
+   "name": "Keychron C1 Pro ANSI White",
+   "commit": "4a8143cce9c2ab32a1384c352c3db324149abddd",
+   "path": "keyboards/keychron/c1_pro/via_json/c1_pro_ansi_v1_white.json",
+   "size": 4116
+  },
+  "34340516": {
+   "name": "Keychron C1 Pro V2 ANSI RGB",
+   "commit": "4a8143cce9c2ab32a1384c352c3db324149abddd",
+   "path": "keyboards/keychron/c1_pro/via_json/c1_pro_ansi_v2_rgb.json",
+   "size": 6156
+  },
+  "34340519": {
+   "name": "Keychron C1 Pro V2 ANSI White",
+   "commit": "4a8143cce9c2ab32a1384c352c3db324149abddd",
+   "path": "keyboards/keychron/c1_pro/via_json/c1_pro_ansi_v2_white.json",
+   "size": 4119
+  },
+  "34340520": {
+   "name": "Keychron C2 Pro ANSI RGB",
+   "commit": "4a8143cce9c2ab32a1384c352c3db324149abddd",
+   "path": "keyboards/keychron/c2_pro/via_json/c2_pro_ansi_v1_rgb.json",
+   "size": 7174
+  },
+  "34340521": {
+   "name": "Keychron C1 Pro 8K ANSI RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/c1_pro_8k/via_json/c1_pro_8k_ansi_rgb.json",
+   "size": 6294
+  },
+  "34340522": {
+   "name": "Keychron C2 Pro 8K ANSI RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/c2_pro_8k/via_json/c2_pro_8k_ansi.json",
+   "size": 7198
+  },
+  "34340523": {
+   "name": "Keychron C2 Pro ANSI White",
+   "commit": "4a8143cce9c2ab32a1384c352c3db324149abddd",
+   "path": "keyboards/keychron/c2_pro/via_json/c2_pro_ansi_v1_white.json",
+   "size": 4868
+  },
+  "34340526": {
+   "name": "Keychron C2 Pro V2 ANSI RGB",
+   "commit": "4a8143cce9c2ab32a1384c352c3db324149abddd",
+   "path": "keyboards/keychron/c2_pro/via_json/c2_pro_ansi_v2_rgb.json",
+   "size": 6913
+  },
+  "34340529": {
+   "name": "Keychron C2 Pro V2 ANSI White",
+   "commit": "4a8143cce9c2ab32a1384c352c3db324149abddd",
+   "path": "keyboards/keychron/c2_pro/via_json/c2_pro_ansi_v2_white.json",
+   "size": 4898
+  },
+  "34340530": {
+   "name": "Keychron C3 Pro ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/c3_pro_8k/via_json/c3_pro_8k_ansi_via.json",
+   "size": 6405
+  },
+  "34340531": {
+   "name": "Keychron C3 Pro ISO",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/c3_pro_8k/via_json/c3_pro_8k_iso_launcher.json",
+   "size": 7275
+  },
+  "34340532": {
+   "name": "Keychron C3 Pro JIS",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/c3_pro_8k/via_json/c3_pro_8k_jis_via.json",
+   "size": 6468
+  },
+  "34340610": {
+   "name": "Keychron Q1 Pro ANSI Knob",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/q1_pro/via_json/q1_pro_ansi_knob.json",
+   "size": 6415
+  },
+  "34340611": {
+   "name": "Keychron Q1 Pro ISO Knob",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/q1_pro/via_json/q1_pro_iso_knob.json",
+   "size": 6596
+  },
+  "34340620": {
+   "name": "Keychron Q2 Pro ANSI Knob",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/q2_pro/via_json/q2_pro_ansi_encoder.json",
+   "size": 5793
+  },
+  "34340621": {
+   "name": "Keychron Q2 Pro ISO Knob",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/q2_pro/via_json/q2_pro_iso_encoder.json",
+   "size": 5862
+  },
+  "34340630": {
+   "name": "Keychron Q3 Pro",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/q3_pro/via_json/q3_pro_ansi_encoder_v1.json",
+   "size": 7251
+  },
+  "34340631": {
+   "name": "Keychron Q3 Pro ISO Knob",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/q3_pro/via_json/q3_pro_iso_encoder_v1.json",
+   "size": 7357
+  },
+  "34340633": {
+   "name": "Keychron Q3 Pro ANSI Knob",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/q3_pro/via_json/q3_pro_ansi_encoder_v2.json",
+   "size": 6423
+  },
+  "34340640": {
+   "name": "Keychron Q4 Pro ANSI",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/q4_pro/via_json/q4_pro_ansi_rgb.json",
+   "size": 5368
+  },
+  "34340641": {
+   "name": "Keychron Q4 Pro ISO",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/q4_pro/via_json/q4_pro_iso_rgb.json",
+   "size": 5438
+  },
+  "34340650": {
+   "name": "Keychron Q5 Pro ANSI Knob",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/q5_pro/via_json/q5_pro_ansi_encoder.json",
+   "size": 7145
+  },
+  "34340651": {
+   "name": "Keychron Q5 Pro ISO Knob",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/q5_pro/via_json/q5_pro_iso_encoder.json",
+   "size": 7240
+  },
+  "34340660": {
+   "name": "Keychron Q6 Pro ANSI Knob",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/q6_pro/via_json/q6_pro_ansi_encoder.json",
+   "size": 7332
+  },
+  "34340661": {
+   "name": "Keychron Q6 Pro ISO Knob",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/q6_pro/via_json/q6_pro_iso_encoder.json",
+   "size": 7455
+  },
+  "34340680": {
+   "name": "Keychron Q8 Pro ANSI Knob",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/q8_pro/via_json/q8_pro_ansi_encoder.json",
+   "size": 7206
+  },
+  "34340681": {
+   "name": "Keychron Q8 Pro ISO Knob",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/q8_pro/via_json/q8_pro_iso_encoder.json",
+   "size": 7384
+  },
+  "34340800": {
+   "name": "Keychron Q0 Max Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q0_max/via_json/q0_max_encoder.json",
+   "size": 4921
+  },
+  "34340810": {
+   "name": "Keychron Q1 Max ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q1_max/via_json/q1_max_ansi_encoder.json",
+   "size": 6645
+  },
+  "34340811": {
+   "name": "Keychron Q1 Max ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q1_max/via_json/q1_max_iso_encoder.json",
+   "size": 6694
+  },
+  "34340812": {
+   "name": "Keychron Q1 Max JIS Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q1_max/via_json/q1_max_jis_encoder.json",
+   "size": 6679
+  },
+  "34340820": {
+   "name": "Keychron Q2 Max ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q2_max/via_json/q2_ansi_encoder.json",
+   "size": 6118
+  },
+  "34340821": {
+   "name": "Keychron Q2 Max ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q2_max/via_json/q2_iso_encoder.json",
+   "size": 6187
+  },
+  "34340830": {
+   "name": "Keychron Q3 Max ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q3_max/via_json/q3_max_ansi_encoder.json",
+   "size": 6833
+  },
+  "34340831": {
+   "name": "Keychron Q3 Max ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q3_max/via_json/q3_max_iso_encoder.json",
+   "size": 6909
+  },
+  "34340850": {
+   "name": "Keychron Q5 Max ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q5_max/via_json/q5_max_ansi_encoder.json",
+   "size": 7483
+  },
+  "34340851": {
+   "name": "Keychron Q5 Max ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q5_max/via_json/q5_max_iso_encoder.json",
+   "size": 7549
+  },
+  "34340852": {
+   "name": "Keychron Q5 Max JIS Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q5_max/via_json/q5_max_jis_encoder.json",
+   "size": 7622
+  },
+  "34340860": {
+   "name": "Keychron Q6 Max ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q6_max/via_json/q6_max_ansi_encoder.json",
+   "size": 7638
+  },
+  "34340861": {
+   "name": "Keychron Q6 Max ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q6_max/via_json/q6_max_iso_encoder.json",
+   "size": 7761
+  },
+  "34340880": {
+   "name": "Keychron Q8 Max ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q8_max/via_json/q8_max_ansi_encoder.json",
+   "size": 7270
+  },
+  "34340913": {
+   "name": "Keychron V1 Max ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v1_max/via_json/v1_max_ansi_encoder.json",
+   "size": 6672
+  },
+  "34340914": {
+   "name": "Keychron V1 Max ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v1_max/via_json/v1_max_iso_encoder.json",
+   "size": 6747
+  },
+  "34340915": {
+   "name": "Keychron V1 Max JIS Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v1_max/via_json/v1_max_jis_encoder.json",
+   "size": 6675
+  },
+  "34340920": {
+   "name": "Keychron V2 Max ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v2_max/via_json/v2_max_ansi_encoder.json",
+   "size": 6145
+  },
+  "34340921": {
+   "name": "Keychron V2 Max ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v2_max/via_json/v2_max_iso_encoder.json",
+   "size": 6220
+  },
+  "34340922": {
+   "name": "Keychron V2 Max JIS Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v2_max/via_json/v2_max_jis_encoder.json",
+   "size": 5929
+  },
+  "34340933": {
+   "name": "Keychron V3 Max ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v3_max/via_json/v3_max_ansi_encoder.json",
+   "size": 6781
+  },
+  "34340934": {
+   "name": "Keychron V3 Max ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v3_max/via_json/v3_max_iso_encoder.json",
+   "size": 6857
+  },
+  "34340935": {
+   "name": "Keychron V3 Max JIS Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v3_max/via_json/v3_max_jis_encoder.json",
+   "size": 6773
+  },
+  "34340940": {
+   "name": "Keychron V4 Max ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v4_max/via_json/v4_max_ansi.json",
+   "size": 5726
+  },
+  "34340941": {
+   "name": "Keychron V4 MAX ISO",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v4_max/via_json/v4_max_iso.json",
+   "size": 5874
+  },
+  "34340950": {
+   "name": "Keychron V5 Max ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v5_max/via_json/v5_max_ansi_encoder.json",
+   "size": 7367
+  },
+  "34340951": {
+   "name": "Keychron V5 Max ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v5_max/via_json/v5_max_iso_encoder.json",
+   "size": 7425
+  },
+  "34340952": {
+   "name": "Keychron V5 Max JIS Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v5_max/via_json/v5_max_jis_encoder.json",
+   "size": 7224
+  },
+  "34340960": {
+   "name": "Keychron V6 Max ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v6_max/via_json/v6_max_ansi_encoder.json",
+   "size": 7566
+  },
+  "34340961": {
+   "name": "Keychron V6 Max ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v6_max/via_json/v6_max_iso_encoder.json",
+   "size": 7643
+  },
+  "34340962": {
+   "name": "Keychron V6 Max JIS Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v6_max/via_json/v6_max_jis_encoder.json",
+   "size": 7635
+  },
+  "34340980": {
+   "name": "Keychron V8 Max ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v8_max/via_json/v8_max_ansi_encoder.json",
+   "size": 7339
+  },
+  "34340981": {
+   "name": "Keychron V8 Max ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v8_max/via_json/v8_max_iso_encoder.json",
+   "size": 7434
+  },
+  "34341430": {
+   "name": "Keychron R3 ANSI RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/r3/via_json/r3_ansi_rgb.json",
+   "size": 6636
+  },
+  "34341432": {
+   "name": "Keychron R3 JIS RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/r3/via_json/r3_jis_rgb.json",
+   "size": 6809
+  },
+  "34341433": {
+   "name": "Keychron R3 ANSI RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/r3/via_json/r3_ansi_th.json",
+   "size": 6773
+  },
+  "34341450": {
+   "name": "Keychron R5 ANSI RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/r5/via_json/r5_ansi_rgb.json",
+   "size": 7354
+  },
+  "34341460": {
+   "name": "Keychron R6 ANSI RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/r6/via_json/r6_ansi_rgb.json",
+   "size": 7474
+  },
+  "34341463": {
+   "name": "Keychron R6 ANSI RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/r6/via_json/r6_th_rgb.json",
+   "size": 7474
+  },
+  "3434010A": {
+   "name": "Keychron Q1V2 JIS",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q1v2/via_json/q1v2_jis.json",
+   "size": 8202
+  },
+  "3434010B": {
+   "name": "Keychron Q1V2 JIS Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q1v2/via_json/q1v2_jis_encoder.json",
+   "size": 8436
+  },
+  "343401A1": {
+   "name": "Keychron Q10 ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q10/via_json/q10_ansi_encoder.json",
+   "size": 10230
+  },
+  "343401A3": {
+   "name": "Keychron Q10 ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q10/via_json/q10_iso_encoder.json",
+   "size": 10307
+  },
+  "343401B1": {
+   "name": "Keychron Q65 ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q65/via_json/q65_ansi_encoder.json",
+   "size": 8221
+  },
+  "343401C0": {
+   "name": "Keychron Q60 ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q60/via_json/q60_ansi.json",
+   "size": 7114
+  },
+  "343401D1": {
+   "name": "Keychron Q12 ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q12/via_json/q12_ansi_encoder.json",
+   "size": 8139
+  },
+  "343401D3": {
+   "name": "Keychron Q12 ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q12/via_json/q12_iso_encoder.json",
+   "size": 9174
+  },
+  "3434020A": {
+   "name": "Keychron K17 Pro ISO Knob White",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k17_pro/via_json/k17_pro_iso_encoder_white.json",
+   "size": 5332
+  },
+  "343402A0": {
+   "name": "Keychron K10 Pro ANSI RGB",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k10_pro/via_json/k10_pro_ansi_rgb.json",
+   "size": 7436
+  },
+  "343402A1": {
+   "name": "Keychron K10 Pro ISO RGB",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k10_pro/via_json/k10_pro_iso_rgb.json",
+   "size": 7503
+  },
+  "343402A2": {
+   "name": "Keychron K10 Pro JIS RGB",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k10_pro/via_json/k10_pro_jis_rgb.json",
+   "size": 7510
+  },
+  "343402A3": {
+   "name": "Keychron K10 Pro ANSI White",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k10_pro/via_json/k10_pro_ansi_white.json",
+   "size": 5396
+  },
+  "343402A4": {
+   "name": "Keychron K10 Pro ISO White",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k10_pro/via_json/k10_pro_iso_white.json",
+   "size": 5488
+  },
+  "343402A5": {
+   "name": "Keychron K10 Pro JIS White",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k10_pro/via_json/k10_pro_jis_white.json",
+   "size": 5495
+  },
+  "343402B0": {
+   "name": "Keychron K11 Pro ANSI RGB",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k11_pro/via_json/k11_pro_ansi_rgb.json",
+   "size": 7246
+  },
+  "343402B3": {
+   "name": "Keychron K11 Pro ANSI White",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k11_pro/via_json/k11_pro_ansi_white.json",
+   "size": 5175
+  },
+  "343402B6": {
+   "name": "Keychron K11 Pro ANSI RGB Knob",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k11_pro/via_json/k11_pro_ansi_encoder_rgb.json",
+   "size": 7271
+  },
+  "343402B9": {
+   "name": "Keychron K11 Pro ANSI White Knob",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k11_pro/via_json/k11_pro_ansi_encoder_white.json",
+   "size": 5200
+  },
+  "343402C0": {
+   "name": "Keychron K12 Pro ANSI RGB",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k12_pro/via_json/k12_pro_ansi_rgb.json",
+   "size": 5368
+  },
+  "343402C3": {
+   "name": "Keychron K12 Pro ANSI White",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k12_pro/via_json/k12_pro_ansi_white.json",
+   "size": 3297
+  },
+  "343402D1": {
+   "name": "Keychron K13 Pro ISO RGB",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k13_pro/via_json/k13_pro_iso_rgb.json",
+   "size": 6504
+  },
+  "343402D3": {
+   "name": "Keychron K13 Pro ANSI White",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k13_pro/via_json/k13_pro_ansi_white.json",
+   "size": 4384
+  },
+  "343402D4": {
+   "name": "Keychron K13 Pro ISO White",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k13_pro/via_json/k13_pro_iso_white.json",
+   "size": 4433
+  },
+  "343402E0": {
+   "name": "Keychron K14 Pro ANSI RGB",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k14_pro/via_json/k14_pro_ansi_rgb.json",
+   "size": 5748
+  },
+  "343402E3": {
+   "name": "Keychron K14 Pro ANSI White",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k14_pro/via_json/k14_pro_ansi_white.json",
+   "size": 3677
+  },
+  "343402F6": {
+   "name": "Keychron K15 Pro ANSI knob RGB",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k15_pro/via_json/k15_pro_ansi_encoder_rgb.json",
+   "size": 8006
+  },
+  "343402F9": {
+   "name": "Keychron K15 Pro ANSI knob White",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k15_pro/via_json/k15_pro_ansi_encoder_white.json",
+   "size": 5935
+  },
+  "343403A1": {
+   "name": "Keychron V10 ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v10/via_json/v10_ansi_encoder.json",
+   "size": 10225
+  },
+  "343403A3": {
+   "name": "Keychron V10 ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v10/via_json/v10_iso_encoder.json",
+   "size": 10302
+  },
+  "3434042C": {
+   "name": "Keychron C100 8K",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/c100_8k/via_json/c100_8k.json",
+   "size": 5265
+  },
+  "3434051C": {
+   "name": "Keychron C1 Pro V2 ANSI Non Light",
+   "commit": "4a8143cce9c2ab32a1384c352c3db324149abddd",
+   "path": "keyboards/keychron/c1_pro/via_json/c1_pro_ansi_v2_non_light.json",
+   "size": 4091
+  },
+  "3434051D": {
+   "name": "Keychron C1 Pro 8K ISO RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/c1_pro_8k/via_json/c1_pro_8k_iso_rgb.json",
+   "size": 6345
+  },
+  "3434051E": {
+   "name": "Keychron C1 Pro 8K JIS RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/c1_pro_8k/via_json/c1_pro_8k_jis_rgb.json",
+   "size": 6269
+  },
+  "3434052D": {
+   "name": "Keychron C2 Pro 8K ISO RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/c2_pro_8k/via_json/c2_pro_8k_iso.json",
+   "size": 7224
+  },
+  "343406A0": {
+   "name": "Keychron Q10 Pro ANSI knob",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/q10_pro/via_json/q10_pro_ansi_encoder.json",
+   "size": 7975
+  },
+  "343406A1": {
+   "name": "Keychron Q10 Pro ISO knob",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/q10_pro/via_json/q10_pro_iso_encoder.json",
+   "size": 8047
+  },
+  "343406D0": {
+   "name": "Keychron Q13 Pro ANSI knob",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/q13_pro/via_json/q13_pro_ansi_encoder.json",
+   "size": 8474
+  },
+  "343406D1": {
+   "name": "Keychron Q13 Pro ISO knob",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/q13_pro/via_json/q13_pro_iso_encoder.json",
+   "size": 8572
+  },
+  "343406E0": {
+   "name": "Keychron Q14 Pro ANIS Knob",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/q14_pro/via_json/q14_pro_ansi_encoder.json",
+   "size": 8853
+  },
+  "343406E1": {
+   "name": "Keychron Q14 Pro ISO Knob",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/q14_pro/via_json/q14_pro_iso_encoder.json",
+   "size": 9024
+  },
+  "343408A0": {
+   "name": "Keychron Q10 Max ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q10_max/via_json/q10_max_ansi_encoder.json",
+   "size": 8571
+  },
+  "343408A1": {
+   "name": "Keychron Q10 Max ISO knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q10_max/via_json/q10_max_iso_encoder.json",
+   "size": 8648
+  },
+  "343408B0": {
+   "name": "Keychron Q65 Max ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q65_max/via_json/q65_max_ansi_encoder.json",
+   "size": 6437
+  },
+  "343408C0": {
+   "name": "Keychron Q60 Max",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q60_max/via_json/q60_max_ansi.json",
+   "size": 5396
+  },
+  "343408C3": {
+   "name": "Keychron Q12 MAX ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q12_max/via_json/q12_max_ansi_encoder.json",
+   "size": 7533
+  },
+  "343408D0": {
+   "name": "Keychron Q13 Max ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q13_max/via_json/q13_max_ansi_encoder.json",
+   "size": 8877
+  },
+  "343408D2": {
+   "name": "Keychron Q13 Max JIS Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q13_max/via_json/q13_max_jis_encoder.json",
+   "size": 8698
+  },
+  "343408E0": {
+   "name": "Keychron Q14 Max ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q14_max/via_json/q14_max_ansi_encoder.json",
+   "size": 9093
+  },
+  "343408F0": {
+   "name": "Keychron Q15 Max ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q15_max/via_json/q15_max_ansi_encoder.json",
+   "size": 5616
+  },
+  "343409A0": {
+   "name": "Keychron V10 Max ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v10_max/via_json/v10_max_ansi_encoder.json",
+   "size": 8558
+  },
+  "343409A1": {
+   "name": "Keychron V10 Max ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v10_max/via_json/v10_max_iso_encoder.json",
+   "size": 8635
+  },
+  "34340A00": {
+   "name": "Keychron K17 Max ANSI Knob RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k17_max/via_json/k17_max_ansi_knob_rgb.json",
+   "size": 7415
+  },
+  "34340A01": {
+   "name": "Keychron K17 Max ISO Knob RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k17_max/via_json/k17_max_iso_knob_rgb.json",
+   "size": 7388
+  },
+  "34340A02": {
+   "name": "Keychron K17 Max JIS Knob RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k17_max/via_json/k17_max_jis_knob_rgb.json",
+   "size": 7417
+  },
+  "34340A03": {
+   "name": "Keychron K17 Max ANSI Knob White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k17_max/via_json/k17_max_ansi_knob_white.json",
+   "size": 5386
+  },
+  "34340A04": {
+   "name": "Keychron K17 Max ISO Knob White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k17_max/via_json/k17_max_iso_knob_white.json",
+   "size": 5459
+  },
+  "34340A05": {
+   "name": "Keychron K17 Max JIS Knob White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k17_max/via_json/k17_max_jis_knob_white.json",
+   "size": 5490
+  },
+  "34340A06": {
+   "name": "Keychron K0 Max Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k0_max/via_json/k0_max.json",
+   "size": 4894
+  },
+  "34340A10": {
+   "name": "Keychron K1 Max ANSI RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k1_max/via_json/k1_max_ansi_rgb.json",
+   "size": 6745
+  },
+  "34340A11": {
+   "name": "Keychron K1 Max ISO RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k1_max/via_json/k1_max_iso_rgb.json",
+   "size": 6821
+  },
+  "34340A12": {
+   "name": "Keychron K1 Max JIS RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k1_max/via_json/k1_max_jis_rgb .json",
+   "size": 6982
+  },
+  "34340A13": {
+   "name": "Keychron K1 Max ANSI White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k1_max/via_json/k1_max_ansi_white.json",
+   "size": 4716
+  },
+  "34340A14": {
+   "name": "Keychron K1 Max ISO White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k1_max/via_json/k1_max_iso_white.json",
+   "size": 4792
+  },
+  "34340A15": {
+   "name": "Keychron K1 Max JIS White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k1_max/via_json/k1_max_jis_white.json",
+   "size": 4807
+  },
+  "34340A20": {
+   "name": "Keychron K2 Max ANSI RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k2_max/via_json/k2_max_ansi_rgb.json",
+   "size": 6275
+  },
+  "34340A21": {
+   "name": "Keychron K2 Max ISO RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k2_max/via_json/k2_max_iso_rgb.json",
+   "size": 6392
+  },
+  "34340A22": {
+   "name": "Keychron K2 Max JIS RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k2_max/via_json/k2_max_jis_rgb.json",
+   "size": 6272
+  },
+  "34340A23": {
+   "name": "Keychron K2 Max ANSI White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k2_max/via_json/k2_max_ansi_white.json",
+   "size": 4246
+  },
+  "34340A24": {
+   "name": "Keychron K2 Max ISO White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k2_max/via_json/k2_max_iso_white.json",
+   "size": 4363
+  },
+  "34340A25": {
+   "name": "Keychron K2 Max JIS White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k2_max/via_json/k2_max_jis_white.json",
+   "size": 4243
+  },
+  "34340A30": {
+   "name": "Keychron K3 Max ANSI RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k3_max/via_json/k3_max_ansi_rgb.json",
+   "size": 6426
+  },
+  "34340A31": {
+   "name": "Keychron K3 Max ISO RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k3_max/via_json/k3_max_iso_rgb.json",
+   "size": 6543
+  },
+  "34340A32": {
+   "name": "Keychron K3 Max JIS RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k3_max/via_json/k3_max_jis_rgb.json",
+   "size": 6358
+  },
+  "34340A33": {
+   "name": "Keychron K3 Max ANSI White",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k3_max/via_json/k3_max_ansi_white.json",
+   "size": 4533
+  },
+  "34340A34": {
+   "name": "Keychron K3 Max ISO White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k3_max/via_json/k3_max_iso_white.json",
+   "size": 4514
+  },
+  "34340A35": {
+   "name": "Keychron K3 Max JIS White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k3_max/via_json/k3_max_jis_white.json",
+   "size": 4303
+  },
+  "34340A38": {
+   "name": "Keychron K3 Max ANSI White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k3_max/via_json/k3_max_ansi_white.json",
+   "size": 4397
+  },
+  "34340A40": {
+   "name": "Keychron K4 MAX ANSI RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k4_max/via_json/k4_max_ansi_rgb.json",
+   "size": 7113
+  },
+  "34340A41": {
+   "name": "Keychron K4 MAX ISO RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k4_max/via_json/k4_max_iso_rgb.json",
+   "size": 7132
+  },
+  "34340A42": {
+   "name": "Keychron K4 MAX JIS RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k4_max/via_json/k4_max_jis_rgb.json",
+   "size": 7067
+  },
+  "34340A43": {
+   "name": "Keychron K4 MAX ANSI White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k4_max/via_json/k4_max_ansi_white.json",
+   "size": 5087
+  },
+  "34340A44": {
+   "name": "Keychron K4 MAX ISO White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k4_max/via_json/k4_max_iso_white.json",
+   "size": 5336
+  },
+  "34340A45": {
+   "name": "Keychron K4 MAX JIS White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k4_max/via_json/k4_max_jis_white.json",
+   "size": 5268
+  },
+  "34340A50": {
+   "name": "Keychron K5 Max ANSI RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k5_max/via_json/k5_max_ansi_rgb.json",
+   "size": 7508
+  },
+  "34340A51": {
+   "name": "Keychron K5 Max ISO RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k5_max/via_json/k5_max_iso_rgb.json",
+   "size": 7553
+  },
+  "34340A52": {
+   "name": "Keychron K5 Max JIS RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k5_max/via_json/k5_max_jis_rgb.json",
+   "size": 7500
+  },
+  "34340A53": {
+   "name": "Keychron K5 Max ANSI White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k5_max/via_json/k5_max_ansi_white.json",
+   "size": 5481
+  },
+  "34340A54": {
+   "name": "Keychron K5 Max ISO White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k5_max/via_json/k5_max_iso_white.json",
+   "size": 5522
+  },
+  "34340A55": {
+   "name": "Keychron K5 Max JIS White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k5_max/via_json/k5_max_jis_white.json",
+   "size": 5447
+  },
+  "34340A57": {
+   "name": "Keychron K5 Max JIS2 White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k5_max/via_json/k5_max_jis_v2_white.json",
+   "size": 5532
+  },
+  "34340A58": {
+   "name": "Keychron K5 Max JIS2 RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k5_max/via_json/k5_max_jis_v2_rgb.json",
+   "size": 7561
+  },
+  "34340A70": {
+   "name": "Keychron K7 Max ANSI RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k7_max/via_json/k7_max_ansi_rgb.json",
+   "size": 5933
+  },
+  "34340A71": {
+   "name": "Keychron K7 Max ISO RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k7_max/via_json/k7_max_iso_rgb.json",
+   "size": 5921
+  },
+  "34340A72": {
+   "name": "Keychron K7 Max JIS RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k7_max/via_json/k7_max_jis_rgb.json",
+   "size": 5911
+  },
+  "34340A73": {
+   "name": "Keychron K7 Max White ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k7_max/via_json/k7_max_ansi_white.json",
+   "size": 3905
+  },
+  "34340A74": {
+   "name": "Keychron K7 Max ISO White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k7_max/via_json/k7_max_iso_white.json",
+   "size": 3850
+  },
+  "34340A75": {
+   "name": "Keychron K7 Max JIS White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k7_max/via_json/k7_max_jis_white.json",
+   "size": 3781
+  },
+  "34340A76": {
+   "name": "Keychron K7 Max JIS V2 RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k7_max/via_json/k7_max_jis_v2_rgb.json",
+   "size": 5978
+  },
+  "34340A77": {
+   "name": "Keychron K7 Max JIS V2 White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k7_max/via_json/k7_max_jis_v2_white.json",
+   "size": 3950
+  },
+  "34340A80": {
+   "name": "Keychron K8 Max ANSI RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k8_max/via_json/k8_max_ansi_rgb.json",
+   "size": 6672
+  },
+  "34340A81": {
+   "name": "Keychron K8 Max ISO RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k8_max/via_json/k8_max_iso_rgb.json",
+   "size": 6748
+  },
+  "34340A82": {
+   "name": "Keychron K8 Max JIS RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k8_max/via_json/k8_max_jis_rgb.json",
+   "size": 6631
+  },
+  "34340A83": {
+   "name": "Keychron K8 Max ANSI White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k8_max/via_json/k8_max_ansi_white.json",
+   "size": 4644
+  },
+  "34340A84": {
+   "name": "Keychron K8 Max ISO White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k8_max/via_json/k8_max_iso_white.json",
+   "size": 4720
+  },
+  "34340A85": {
+   "name": "Keychron K8 Max JIS White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k8_max/via_json/k8_max_jis_white.json",
+   "size": 4706
+  },
+  "34340A90": {
+   "name": "Keychron K9 Max ANSI RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k9_max/via_json/k9_max_ansi_rgb.json",
+   "size": 5763
+  },
+  "34340A93": {
+   "name": "Keychron K9 Max ANSI White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k9_max/via_json/k9_max_ansi_white.json",
+   "size": 3738
+  },
+  "34340AA0": {
+   "name": "Keychron K10 Max ANSI RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k10_max/via_json/k10_max_ansi_rgb.json",
+   "size": 7479
+  },
+  "34340AA1": {
+   "name": "Keychron K10 Max ISO RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k10_max/via_json/k10_max_iso_rgb.json",
+   "size": 7558
+  },
+  "34340AA2": {
+   "name": "Keychron K10 Max JIS RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k10_max/via_json/k10_max_jis_rgb.json",
+   "size": 7491
+  },
+  "34340AA3": {
+   "name": "Keychron K10 Max ANSI White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k10_max/via_json/k10_max_ansi_white.json",
+   "size": 5554
+  },
+  "34340AA4": {
+   "name": "Keychron K10 Max ISO White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k10_max/via_json/k10_max_iso_white.json",
+   "size": 5631
+  },
+  "34340AA5": {
+   "name": "Keychron K10 Max JIS White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k10_max/via_json/k10_max_jis_white.json",
+   "size": 5566
+  },
+  "34340AAA": {
+   "name": "Keychron K10 Pro SE2",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/keychron/k10_pro_se2/via_json/k10_pro_se2_ansi.json",
+   "size": 6341
+  },
+  "34340AAC": {
+   "name": "Keychron K10 Max ANSI RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k10_max_v2/via_json/k10_max_v2_ansi_rgb.json",
+   "size": 8218
+  },
+  "34340AB3": {
+   "name": "Keychron K11 Max ANSI RGB Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k11_max/via_json/k11_max_ansi_rgb_encoder.json",
+   "size": 7154
+  },
+  "34340AB4": {
+   "name": "Keychron K11 Max ISO RGB Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k11_max/via_json/k11_max_iso_rgb_encoder.json",
+   "size": 7125
+  },
+  "34340AB5": {
+   "name": "Keychron K11 Max JIS RGB Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k11_max/via_json/k11_max_jis_rgb_encoder.json",
+   "size": 7209
+  },
+  "34340AB9": {
+   "name": "Keychron K11 Max ANSI White Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k11_max/via_json/k11_max_ansi_white_encoder.json",
+   "size": 5125
+  },
+  "34340ABA": {
+   "name": "Keychron K11 Max ISO White Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k11_max/via_json/k11_max_iso_white_encoder.json",
+   "size": 5054
+  },
+  "34340ABB": {
+   "name": "Keychron K11 Max JIS White Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k11_max/via_json/k11_max_jis_white_encoder.json",
+   "size": 5183
+  },
+  "34340AD0": {
+   "name": "Keychron K13 Max ANSI RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k13_max/via_json/k13_max_ansi_rgb.json",
+   "size": 6886
+  },
+  "34340AD1": {
+   "name": "Keychron K13 Max ISO RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k13_max/via_json/k13_max_iso_rgb.json",
+   "size": 6787
+  },
+  "34340AD2": {
+   "name": "Keychron K13 Max JIS RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k13_max/via_json/k13_max_jis_rgb.json",
+   "size": 6913
+  },
+  "34340AD3": {
+   "name": "Keychron K13 Max ANSI White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k13_max/via_json/k13_max_ansi_white.json",
+   "size": 4857
+  },
+  "34340AD4": {
+   "name": "Keychron K13 Max ISO White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k13_max/via_json/k13_max_iso_white.json",
+   "size": 4862
+  },
+  "34340AD5": {
+   "name": "Keychron K13 Max JIS White",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k13_max/via_json/k13_max_jis_white.json",
+   "size": 4856
+  },
+  "34340AF0": {
+   "name": "Keychron K15 Max ANSI Knob RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k15_max/via_json/k15_max_ansi_knob_rgb.json",
+   "size": 8470
+  },
+  "34340AF1": {
+   "name": "Keychron K15 Max ISO Knob RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k15_max/via_json/k15_max_iso_knob_rgb.json",
+   "size": 8547
+  },
+  "34340AF2": {
+   "name": "Keychron K15 Max JIS Knob RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k15_max/via_json/k15_max_jis_knob_rgb.json",
+   "size": 8478
+  },
+  "34340AF3": {
+   "name": "Keychron K15 Max ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k15_max/via_json/k15_max_ansi_knob_white.json",
+   "size": 6435
+  },
+  "34340AF4": {
+   "name": "Keychron K15 Max ISO White Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k15_max/via_json/k15_max_iso_knob_white.json",
+   "size": 6518
+  },
+  "34340AF5": {
+   "name": "Keychron K15 Max JIS White Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k15_max/via_json/k15_max_jis_knob_white.json",
+   "size": 6449
+  },
+  "34340B00": {
+   "name": "Keychron Q0 HE Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q0_he/via_json/q0_he_knob.json",
+   "size": 5607
+  },
+  "34340B10": {
+   "name": "Keychron Q1 HE ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q1_he/via_json/q1_he_ansi_encoder.json",
+   "size": 6935
+  },
+  "34340B11": {
+   "name": "Keychron Q1 HE ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q1_he/via_json/q1_he_iso_encoder.json",
+   "size": 7010
+  },
+  "34340B12": {
+   "name": "Keychron Q1 HE ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q1_he/via_json/q1_he_jis_encoder.json",
+   "size": 6891
+  },
+  "34340B20": {
+   "name": "Keychron Q2 HE ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q2_he/via_json/q2_he_ansi_encoder.json",
+   "size": 6144
+  },
+  "34340B30": {
+   "name": "Keychron Q3 HE ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q3_he/via_json/q3_he_ansi_encoder.json",
+   "size": 7043
+  },
+  "34340B31": {
+   "name": "Keychron Q3 HE ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q3_he/via_json/q3_he_iso_encoder.json",
+   "size": 7119
+  },
+  "34340B32": {
+   "name": "Keychron Q3 HE JIS Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q3_he/via_json/q3_he_jis_encoder.json",
+   "size": 7060
+  },
+  "34340B40": {
+   "name": "Keychron Q4 HE ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q4_he/via_json/q4_he_ansi.json",
+   "size": 5938
+  },
+  "34340B50": {
+   "name": "Keychron Q5 HE ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q5_he/via_json/q5_he_ansi_encoder.json",
+   "size": 7722
+  },
+  "34340B51": {
+   "name": "Keychron Q5 HE ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q5_he/via_json/q5_he_iso_encoder.json",
+   "size": 7797
+  },
+  "34340B52": {
+   "name": "Keychron Q5 HE JIS Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q5_he/via_json/q5_he_jis_encoder.json",
+   "size": 7870
+  },
+  "34340B60": {
+   "name": "Keychron Q6 HE ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q6_he/via_json/q6_he_ansi_encoder.json",
+   "size": 7824
+  },
+  "34340B61": {
+   "name": "Keychron Q6 HE ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q6_he/via_json/q6_he_iso_encoder.json",
+   "size": 7903
+  },
+  "34340B62": {
+   "name": "Keychron Q6 HE JIS Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q6_he/via_json/q6_he_jis_encoder.json",
+   "size": 7796
+  },
+  "34340BC0": {
+   "name": "Keychron Q12 HE ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q12_he/via_json/q12_he_ansi_encoder.json",
+   "size": 7790
+  },
+  "34340BC1": {
+   "name": "Keychron Q12 HE ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/q12_he/via_json/q12_he_iso_encoder.json",
+   "size": 7865
+  },
+  "34340D10": {
+   "name": "Keychron K1 Version 6 ANSI RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k1_version_6/via_json/k1_version_6_ansi_rgb.json",
+   "size": 6643
+  },
+  "34340D11": {
+   "name": "Keychron K1 Version 6 ISO RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k1_version_6/via_json/k1_version_6_iso_rgb.json",
+   "size": 6739
+  },
+  "34340D12": {
+   "name": "Keychron K1 Version 6 JIS RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k1_version_6/via_json/k1_version_6_jis_rgb.json",
+   "size": 6764
+  },
+  "34340D13": {
+   "name": "Keychron K1 Version 6 ANSI WHITE",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k1_version_6/via_json/k1_version_6_ansi_white.json",
+   "size": 4590
+  },
+  "34340D14": {
+   "name": "Keychron K1 Version 6 ISO WHITE",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k1_version_6/via_json/k1_version_6_iso_white.json",
+   "size": 4689
+  },
+  "34340D15": {
+   "name": "Keychron K1 Version 6 JIS WHITE",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k1_version_6/via_json/k1_version_6_jis_white.json",
+   "size": 4725
+  },
+  "34340D20": {
+   "name": "Keychron K2 Version 3 ANSI RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k2_version_3/via_json/k2_version_3_ansi_rgb.json",
+   "size": 6370
+  },
+  "34340D21": {
+   "name": "Keychron K2 Version 3 ISO RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k2_version_3/via_json/k2_version_3_iso_rgb.json",
+   "size": 6487
+  },
+  "34340D22": {
+   "name": "Keychron K2 Version 3 JIS RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k2_version_3/via_json/k2_version_3_jis_rgb.json",
+   "size": 6308
+  },
+  "34340D23": {
+   "name": "Keychron K2 Version 3 ANSI WHITE",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k2_version_3/via_json/k2_version_3_ansi_white.json",
+   "size": 4317
+  },
+  "34340D24": {
+   "name": "Keychron K2 Version 3 ISO WHITE",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k2_version_3/via_json/k2_version_3_iso_white.json",
+   "size": 4434
+  },
+  "34340D25": {
+   "name": "Keychron K2 Version 3 JIS WHITE",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k2_version_3/via_json/k2_version_3_jis_white.json",
+   "size": 4255
+  },
+  "34340D30": {
+   "name": "Keychron K3 Version 3 ANSI RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k3_version_3/via_json/k3_version_3_ansi_rgb.json",
+   "size": 6300
+  },
+  "34340D31": {
+   "name": "Keychron K3 Version 3 ISO RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k3_version_3/via_json/k3_version_3_iso_rgb.json",
+   "size": 6507
+  },
+  "34340D32": {
+   "name": "Keychron K3 Version 3 JIS RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k3_version_3/via_json/k3_version_3_jis_rgb.json",
+   "size": 6452
+  },
+  "34340D33": {
+   "name": "Keychron K3 Version 3 ANSI WHITE",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k3_version_3/via_json/k3_version_3_ansi_white.json",
+   "size": 4271
+  },
+  "34340D34": {
+   "name": "Keychron K3 Version 3 ISO WHITE",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k3_version_3/via_json/k3_version_3_iso_white.json",
+   "size": 4454
+  },
+  "34340D35": {
+   "name": "Keychron K3 Version 3 JIS WHITE",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k3_version_3/via_json/k3_version_3_jis_white.json",
+   "size": 4423
+  },
+  "34340D40": {
+   "name": "Keychron K4 Version 3 ANSI RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k4_version_3/via_json/k4_version3_ansi_rgb.json",
+   "size": 6773
+  },
+  "34340D41": {
+   "name": "Keychron K4 Version 3 ISO RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k4_version_3/via_json/k4_version3_iso_rgb.json",
+   "size": 6740
+  },
+  "34340D42": {
+   "name": "Keychron K4 Version 3 JIS RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k4_version_3/via_json/k4_version3_jis_rgb.json",
+   "size": 6753
+  },
+  "34340D43": {
+   "name": "Keychron K4 Version 3 ANSI WHITE",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k4_version_3/via_json/k4_version3_ansi_white.json",
+   "size": 4674
+  },
+  "34340D44": {
+   "name": "Keychron K4 Version 3 ISO WHITE",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k4_version_3/via_json/k4_version3_iso_white.json",
+   "size": 4745
+  },
+  "34340D45": {
+   "name": "Keychron K4 Version 3 JIS WHITE",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k4_version_3/via_json/k4_version3_jis_white.json",
+   "size": 4782
+  },
+  "34340D50": {
+   "name": "Keychron K5 Version 2 ANSI RGB",
+   "commit": "c8b2b237b4ef09765e48cbb5c1fdb0afd164289f",
+   "path": "keyboards/keychron/k5_version_2/via_json/k5_version_2_ansi_rgb.json",
+   "size": 7355
+  },
+  "34340D51": {
+   "name": "Keychron K5 Version 2 ISO RGB",
+   "commit": "c8b2b237b4ef09765e48cbb5c1fdb0afd164289f",
+   "path": "keyboards/keychron/k5_version_2/via_json/k5_version_2_iso_rgb.json",
+   "size": 7380
+  },
+  "34340D52": {
+   "name": "Keychron K5 Version 2 JIS RGB",
+   "commit": "c8b2b237b4ef09765e48cbb5c1fdb0afd164289f",
+   "path": "keyboards/keychron/k5_version_2/via_json/k5_version_2_jis_rgb.json",
+   "size": 7393
+  },
+  "34340D53": {
+   "name": "Keychron K5 Version 2 ANSI White",
+   "commit": "c8b2b237b4ef09765e48cbb5c1fdb0afd164289f",
+   "path": "keyboards/keychron/k5_version_2/via_json/k5_version_2_ansi_white.json",
+   "size": 5430
+  },
+  "34340D54": {
+   "name": "Keychron K5 Version 2 ISO WHITE",
+   "commit": "c8b2b237b4ef09765e48cbb5c1fdb0afd164289f",
+   "path": "keyboards/keychron/k5_version_2/via_json/k5_version_2_iso_white.json",
+   "size": 5455
+  },
+  "34340D55": {
+   "name": "Keychron K5 Version 2 JIS WHITE",
+   "commit": "c8b2b237b4ef09765e48cbb5c1fdb0afd164289f",
+   "path": "keyboards/keychron/k5_version_2/via_json/k5_version_2_jis_white.json",
+   "size": 5468
+  },
+  "34340D80": {
+   "name": "Keychron K8 Version 2 ANSI RGB",
+   "commit": "c8b2b237b4ef09765e48cbb5c1fdb0afd164289f",
+   "path": "keyboards/keychron/k8_version_2/via_json/k8_version_2_ansi_rgb.json",
+   "size": 6512
+  },
+  "34340D81": {
+   "name": "Keychron K8 Version 2 ISO RGB",
+   "commit": "c8b2b237b4ef09765e48cbb5c1fdb0afd164289f",
+   "path": "keyboards/keychron/k8_version_2/via_json/k8_version_2_iso_rgb.json",
+   "size": 6588
+  },
+  "34340D82": {
+   "name": "Keychron K8 Version 2 JIS RGB",
+   "commit": "c8b2b237b4ef09765e48cbb5c1fdb0afd164289f",
+   "path": "keyboards/keychron/k8_version_2/via_json/k8_version_2_jis_rgb.json",
+   "size": 6555
+  },
+  "34340D83": {
+   "name": "Keychron K8 Version 2 ANSI WHITE",
+   "commit": "c8b2b237b4ef09765e48cbb5c1fdb0afd164289f",
+   "path": "keyboards/keychron/k8_version_2/via_json/k8_version_2_ansi_white.json",
+   "size": 4441
+  },
+  "34340D84": {
+   "name": "Keychron K8 Version 2 ISO White",
+   "commit": "c8b2b237b4ef09765e48cbb5c1fdb0afd164289f",
+   "path": "keyboards/keychron/k8_version_2/via_json/k8_version_2_iso_white.json",
+   "size": 4517
+  },
+  "34340D85": {
+   "name": "Keychron K8 Version 2 JIS White",
+   "commit": "c8b2b237b4ef09765e48cbb5c1fdb0afd164289f",
+   "path": "keyboards/keychron/k8_version_2/via_json/k8_version_2_jis_white.json",
+   "size": 4484
+  },
+  "34340DA0": {
+   "name": "Keychron K10 Version 2 ANSI RGB",
+   "commit": "c8b2b237b4ef09765e48cbb5c1fdb0afd164289f",
+   "path": "keyboards/keychron/k10_version_2/via_json/k10_version_2_ansi_rgb.json",
+   "size": 7215
+  },
+  "34340DA1": {
+   "name": "Keychron K10 Version 2 ISO RGB",
+   "commit": "c8b2b237b4ef09765e48cbb5c1fdb0afd164289f",
+   "path": "keyboards/keychron/k10_version_2/via_json/k10_version_2_iso_rgb.json",
+   "size": 7344
+  },
+  "34340DA2": {
+   "name": "Keychron K10 Version 2 JIS RGB",
+   "commit": "c8b2b237b4ef09765e48cbb5c1fdb0afd164289f",
+   "path": "keyboards/keychron/k10_version_2/via_json/k10_version_2_jis_rgb.json",
+   "size": 7350
+  },
+  "34340DA3": {
+   "name": "Keychron K10 Version 2 ANSI",
+   "commit": "c8b2b237b4ef09765e48cbb5c1fdb0afd164289f",
+   "path": "keyboards/keychron/k10_version_2/via_json/k10_version_2_ansi_white.json",
+   "size": 5138
+  },
+  "34340DA4": {
+   "name": "Keychron K10 Version 2 ISO White",
+   "commit": "c8b2b237b4ef09765e48cbb5c1fdb0afd164289f",
+   "path": "keyboards/keychron/k10_version_2/via_json/k10_version_2_iso_white.json",
+   "size": 5273
+  },
+  "34340DA5": {
+   "name": "Keychron K10 Version 2 JIS White",
+   "commit": "c8b2b237b4ef09765e48cbb5c1fdb0afd164289f",
+   "path": "keyboards/keychron/k10_version_2/via_json/k10_version_2_jis_white.json",
+   "size": 5293
+  },
+  "34340E20": {
+   "name": "Keychron K2 HE ANSI RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k2_he/via_json/k2_he_ansi_rgb.json",
+   "size": 6480
+  },
+  "34340E21": {
+   "name": "Keychron K2 HE ISO RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k2_he/via_json/k2_he_iso_rgb.json",
+   "size": 6593
+  },
+  "34340E22": {
+   "name": "Keychron K2 HE JIS RGB",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k2_he/via_json/k2_he_jis_rgb.json",
+   "size": 6520
+  },
+  "34340E40": {
+   "name": "Keychron K4 HE ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k4_he/via_json/k4_he_ansi.json",
+   "size": 6207
+  },
+  "34340E41": {
+   "name": "Keychron K4 HE ISO",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k4_he/via_json/k4_he_iso.json",
+   "size": 6324
+  },
+  "34340E42": {
+   "name": "Keychron K4 HE JIS",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k4_he/via_json/k4_he_jis.json",
+   "size": 6275
+  },
+  "34340E60": {
+   "name": "Keychron K6 HE ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k6_he/via_json/k6_he_ansi.json",
+   "size": 5612
+  },
+  "34340E80": {
+   "name": "Keychron K8 HE ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k8_he/via_json/k8_he_ansi.json",
+   "size": 6411
+  },
+  "34340E81": {
+   "name": "Keychron K8 HE ISO",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k8_he/via_json/k8_he_iso.json",
+   "size": 6487
+  },
+  "34340E82": {
+   "name": "Keychron K8 HE JIS",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k8_he/via_json/k8_he_jis.json",
+   "size": 6454
+  },
+  "34340EA0": {
+   "name": "Keychron K10 HE ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k10_he/via_json/k10_he_ansi.json",
+   "size": 6983
+  },
+  "34340EA1": {
+   "name": "Keychron K10 HE ISO",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/k10_he/via_json/k10_he_iso.json",
+   "size": 7061
+  },
+  "34340F10": {
+   "name": "Keychron V1 8K ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v1_8k/via_json/v1_8k_ansi_encoder.json",
+   "size": 6344
+  },
+  "34340F30": {
+   "name": "Keychron V3 8K ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v3_8k/via_json/v3_8k_ansi_encoder.json",
+   "size": 6418
+  },
+  "34340F31": {
+   "name": "Keychron V3 8K ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v3_8k/via_json/v3_8k_iso_encoder.json",
+   "size": 6493
+  },
+  "34340F60": {
+   "name": "Keychron V6 8K ANSI Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v6_8k/via_json/v6_8k_ansi_encoder.json",
+   "size": 7297
+  },
+  "34340F61": {
+   "name": "Keychron V6 8K ISO Knob",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/keychron/v6_8k/via_json/v6_8k_iso_encoder.json",
+   "size": 7317
+  },
+  "362D0110": {
+   "name": "Lemokey L1 ANSI",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/lemokey/l1/via_json/l1_ansi.json",
+   "size": 7329
+  },
+  "362D0111": {
+   "name": "Lemokey L1 ISO",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/lemokey/l1/via_json/l1_iso.json",
+   "size": 7385
+  },
+  "362D0130": {
+   "name": "Lemokey L3",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/lemokey/l3/via_json/l3_ansi.json",
+   "size": 7457
+  },
+  "362D0131": {
+   "name": "Lemokey L3",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/lemokey/l3/via_json/l3_iso.json",
+   "size": 7619
+  },
+  "362D0200": {
+   "name": "Lemokey X0 ANSI Red",
+   "commit": "4a8143cce9c2ab32a1384c352c3db324149abddd",
+   "path": "keyboards/keychron/x0/via_json/x0_ansi_red.json",
+   "size": 2588
+  },
+  "362D0210": {
+   "name": "Lemokey X1 ANSI Red",
+   "commit": "4a8143cce9c2ab32a1384c352c3db324149abddd",
+   "path": "keyboards/keychron/x1/via_json/x1_pro_ansi_red.json",
+   "size": 4109
+  },
+  "362D0220": {
+   "name": "Lemokey X2 ANSI Red",
+   "commit": "4a8143cce9c2ab32a1384c352c3db324149abddd",
+   "path": "keyboards/keychron/x2/via_json/x2_ansi_red.json",
+   "size": 4892
+  },
+  "362D0230": {
+   "name": "Lemokey X3 ANSI Red",
+   "commit": "4a8143cce9c2ab32a1384c352c3db324149abddd",
+   "path": "keyboards/keychron/x3/via_json/x3_ansi_red.json",
+   "size": 4892
+  },
+  "362D0231": {
+   "name": "Lemokey X3 ISO Red",
+   "commit": "4a8143cce9c2ab32a1384c352c3db324149abddd",
+   "path": "keyboards/keychron/x3/via_json/x3_iso_red.json",
+   "size": 5015
+  },
+  "362D0233": {
+   "name": "Lemokey X3 ANSI RGB",
+   "commit": "4a8143cce9c2ab32a1384c352c3db324149abddd",
+   "path": "keyboards/keychron/x3/via_json/x3_ansi_rgb.json",
+   "size": 6941
+  },
+  "362D0234": {
+   "name": "Lemokey X3 ISO RGB",
+   "commit": "4a8143cce9c2ab32a1384c352c3db324149abddd",
+   "path": "keyboards/keychron/x3/via_json/x3_iso_rgb.json",
+   "size": 6951
+  },
+  "362D0240": {
+   "name": "Lemokey X4 ANSI Knob Red",
+   "commit": "4a8143cce9c2ab32a1384c352c3db324149abddd",
+   "path": "keyboards/keychron/x4/via_json/x4_ansi_encoder_red.json",
+   "size": 4050
+  },
+  "362D0250": {
+   "name": "Lemokey X5 ANSI Red",
+   "commit": "4a8143cce9c2ab32a1384c352c3db324149abddd",
+   "path": "keyboards/keychron/x5/via_json/x5_ansi_red.json",
+   "size": 4479
+  },
+  "362D0260": {
+   "name": "Lemokey X6 ANSI Red",
+   "commit": "4a8143cce9c2ab32a1384c352c3db324149abddd",
+   "path": "keyboards/keychron/x6/via_json/x6_ansi_red.json",
+   "size": 3615
+  },
+  "362D0303": {
+   "name": "Lemokey P1 Pro ANSI Knob",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/lemokey/p1_pro/via_json/p1_pro_ansi_encoder_v1.0.json",
+   "size": 6658
+  },
+  "362D0304": {
+   "name": "Lemokey P1 Pro ISO Knob",
+   "commit": "666862cb8123b64a6b96718d739c6203ad99031f",
+   "path": "keyboards/lemokey/p1_pro/via_json/p1_pro_iso_encoder_v1.0.json",
+   "size": 6721
+  },
+  "362D0310": {
+   "name": "Lemokey P1 ANSI Knob",
+   "commit": "4a8143cce9c2ab32a1384c352c3db324149abddd",
+   "path": "keyboards/lemokey/p1/via_json/p1_ansi_encoder_v1.0.json",
+   "size": 6312
+  },
+  "362D0510": {
+   "name": "Lemokey L1 HE ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/lemokey/l1_he/via_json/l1_he_ansi.json",
+   "size": 7415
+  },
+  "362D0610": {
+   "name": "Lemokey P1 HE ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/lemokey/p1_he/via_json/p1_he_ansi.json",
+   "size": 6805
+  },
+  "362D0611": {
+   "name": "Lemokey P1 HE",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/lemokey/p1_he/via_json/p1_he_iso.json",
+   "size": 6851
+  },
+  "362D0612": {
+   "name": "Lemokey P1 HE",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/lemokey/p1_he/via_json/p1_he_jis.json",
+   "size": 6752
+  },
+  "362D0620": {
+   "name": "Lemokey P2 HE ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/lemokey/p2_he/via_json/p2_he_ansi.json",
+   "size": 5987
+  },
+  "362D0630": {
+   "name": "Lemokey P3 HE ANSI",
+   "commit": "c5d998442710b38650903937249144a0cd728ebe",
+   "path": "keyboards/lemokey/p3_he/via_json/p3_he_ansi.json",
+   "size": 6756
+  }
+ }
+}

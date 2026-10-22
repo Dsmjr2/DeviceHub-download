@@ -7,8 +7,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createLogitechKeyboard, F, NEVER, PIDS, HidppError, halvingMarks } from '../device-library/logitech-hidpp-keyboard/device.mjs';
-import { problem, fits } from '../helpers/my-devices.mjs';
+import { createLogitechKeyboard, F, NEVER, PIDS, BLE, HidppError, halvingMarks } from '../device-library/logitech-hidpp-keyboard/device.mjs';
+import { problem, fits, hidSpecs, ownClash } from '../helpers/my-devices.mjs';
 import { validateMeta } from '../helpers/device-library.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -19,7 +19,8 @@ process.on('uncaughtException', (e) => { console.log(`sim-logitech-keyboard: FAI
 const refusal = async (fn) => { try { await fn(); return null; } catch (e) { return e; } };
 
 // a simulated keyboard. features: { id: index }; slot: 0xFF wired or the receiver slot it answers on
-function simKeyboard({ pid, slot, features, state, rateExt, rateMask, profiles, disableMask, bright }) {
+// replyIndex: the device index in its replies (a Bluetooth keyboard answers 0xFF with 0x00, Solaar base.py)
+function simKeyboard({ pid, slot, features, state, rateExt, rateMask, profiles, disableMask, bright, replyIndex }) {
   const byIndex = Object.fromEntries(Object.entries(features).map(([id, i]) => [i, Number(id)]));
   const ls = new Set();
   const dev = {
@@ -35,8 +36,9 @@ function simKeyboard({ pid, slot, features, state, rateExt, rateMask, profiles, 
       const [d, idx, fs] = b, p = b.slice(3);
       if (d !== slot) return;                                           // an empty receiver slot: no answer
       const emit = (bytes) => setTimeout(() => { for (const fn of [...ls]) fn({ reportId: 0x11, data: new DataView(Uint8Array.from(bytes).buffer) }); }, 1);
-      const reply = (out) => emit([d, idx, fs, ...out, ...Array(16).fill(0)].slice(0, 19));
-      const err = (code) => emit([d, 0xff, idx, fs, code, ...Array(14).fill(0)]);
+      const ri = replyIndex ?? d;
+      const reply = (out) => emit([ri, idx, fs, ...out, ...Array(16).fill(0)].slice(0, 19));
+      const err = (code) => emit([ri, 0xff, idx, fs, code, ...Array(14).fill(0)]);
       if (this.failNext) { const c = this.failNext; this.failNext = null; return err(c); }
       const fn = fs & 0xf0, id = idx === 0 ? 0 : byIndex[idx];
       if (id === 0 && fn === 0x00) { const want = (p[0] << 8) | p[1]; return reply(features[want] ? [features[want], 0, 1] : [0, 0, 0]); }
@@ -271,6 +273,83 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
   check(meta.pids.map((p) => parseInt(p, 16)).sort().join() === [...PIDS].sort().join() && meta.id === d.id, 'device.json lists exactly the driver\'s ids');
   const mouse = JSON.parse(fs.readFileSync(path.join(ROOT, 'device-library', 'logitech-hidpp-mouse', 'device.json'), 'utf8'));
   check(!meta.pids.some((p) => mouse.pids.includes(p)), 'no product id is shared with the mouse driver');
+}
+
+// ---- 5. Bluetooth (22 Oct 2026, docs/handoff/logitech-ble.md): the G915 TKL on its Bluetooth id B35F (Linux
+// hid-logitech-hidpp.c). HID++ 2.0 at device index 0xFF, replies with index 0x00 (Solaar base.py), the collection with
+// 19-byte reports on any page, no report rate; the same bytes and values as on its cable ----
+{
+  check(PIDS.includes(0xb35f) && BLE[0xb35f] === 'G915 TKL' && Object.keys(BLE).length === 1, 'B35F (G915 TKL over Bluetooth) is the one Bluetooth id');
+  check(Object.keys(BLE).every((p) => Number(p) >= 0xb317 && Number(p) <= 0xb3ff), 'every Bluetooth id is in Solaar\'s Bluetooth keyboard range 0xB317-0xB3FF');
+  check(ownClash('046d', PIDS.map((p) => p.toString(16))).length === 0, 'no keyboard id (Bluetooth included) is one DeviceHub runs itself (pc-map RUNS)');
+
+  // the channel: filters from the driver's own open, then hid-host's names, with a stand-in for the native helper
+  const { createRequire } = await import('node:module');
+  const native = createRequire(import.meta.url)('../helpers/native.js');
+  const lines = [];
+  native.request = async (chan, cmd) => { lines.push(`${chan} ${cmd}`); return cmd === 'OPEN' && chan.startsWith('hid:046D:B35F:') ? 'OK' : 'NONE'; };
+  native.onEvent = () => {};
+  const host = await import('../helpers/hid-host.mjs');
+  const { setDeviceProvider } = await import('../public/devices/hid.js');
+  const asked = [];
+  setDeviceProvider(async (filters) => { asked.push(filters); return null; });
+  const plain = createLogitechKeyboard({ vendorApp: async () => null });
+  check((await plain.connect()) === false && asked.length === PIDS.length, 'the driver asks once per product id');
+  const bleFilter = asked.find((f) => f[0].productId === 0xb35f), usbFilter = asked.find((f) => f[0].productId === 0xc343);
+  check(bleFilter.length === 1 && bleFilter[0].usagePage === undefined && usbFilter[0].usagePage === 0xff00 && usbFilter[0].usage === 0x0002, `Bluetooth asks without a usage page, the cable on FF00 / 0002 (${JSON.stringify(bleFilter)} / ${JSON.stringify(usbFilter)})`);
+  setDeviceProvider(null);
+  const specs = hidSpecs(plain);
+  const bs = specs.find((s) => s.pid === 'B35F');
+  check(bs && bs.page === '*' && bs.usage === '*' && bs.inputLen === 19 && bs.outputLen === 19 && bs.reportId === 0x11 && bs.reply === 'raw', `the B35F spec: any page / usage, 19-byte input and output, report 0x11, raw (${JSON.stringify(bs)})`);
+  check(specs.filter((s) => s.pid !== 'B35F').every((s) => s.page === 'FF00' && s.usage === '0002' && s.inputLen === undefined && s.outputLen === undefined), 'every USB id keeps the FF00 / 0002 spec it had');
+  for (const s of specs) host.addSpec(s);
+  const hb = await host.provider(bleFilter);
+  check(hb && lines.includes('hid:046D:B35F:*:*:19:17:il=19:ol=19:rw=1 OPEN'), `Bluetooth channel = hid:046D:B35F:*:*:19:17:il=19:ol=19:rw=1 (${lines.filter((l) => /B35F/.test(l)).join(' | ')})`);
+  check(hb?.spec.never === true, 'the never list is checked on the Bluetooth channel too');
+  await host.provider(usbFilter);
+  check(lines.includes('hid:046D:C343:FF00:0002:19:17:rw=1 OPEN'), `the cable's channel name is unchanged (${lines.filter((l) => /C343/.test(l)).join(' | ')})`);
+  hb?.close();
+
+  const feats = { [F.UNIFIED_BATTERY]: 2, [F.ONBOARD_PROFILES]: 6, [F.DISABLE_KEYS]: 8, [F.NEW_FN_INVERSION]: 9, [F.BRIGHTNESS]: 11 };
+  const st = () => ({ percent: 66, charge: 0, mode: 1, sector: 1, disabled: 0x00, fnSwap: 1, level: 100, on: true });
+  const kit = { profiles: 3, disableMask: 0x1f, bright: { max: 100, steps: 5, onOff: true, min: 1 } };
+  const run = async (kb, app = { name: null }) => {
+    const d = make(kb, app);
+    check(await d.connect(), `keyboard ${kb.productId.toString(16)} connects`);
+    const n0 = kb.sent.length;
+    const vals = await d.read();
+    const w = [await d.write('lockWinKey', true), await d.write('lockWinKey', false), await d.write('fnSwap', false), await d.write('fnSwap', true),
+      await d.write('brightness', 25), await d.write('brightness', 100), await d.write('mode', 'host'), await d.write('mode', 'onboard')];
+    const bat = await d.battery();
+    return { d, vals, w, bat, frames: kb.sent.slice(n0).map(h), keys: d.settings.map((s) => s.key).join(), info: await d.info() };
+  };
+  const cable = await run(simKeyboard({ pid: 0xc343, slot: 0xff, features: feats, state: st(), rateMask: 0, ...kit }));
+  const bt = simKeyboard({ pid: 0xb35f, slot: 0xff, replyIndex: 0x00, features: { ...feats, [F.EXT_REPORT_RATE]: 5, [F.REPORT_RATE]: 4 }, state: { ...st(), rateIndex: 3 }, rateExt: true, rateMask: 0x0f, ...kit });
+  const app = { name: null };
+  const ble = await run(bt, app);
+  const d = ble.d;
+  check(d.ble === true && d.index === 0xff && h(bt.sent[0].slice(0, 6)) === 'ff 00 1b 00 00 5a', `Bluetooth: ping at index 0xFF, no receiver slots (${h(bt.sent[0].slice(0, 6))})`);
+  check(bt.sent.every((b) => b[0] === 0xff) && bt.bad.length === 0, `Bluetooth: every request a 19-byte long report to 0xFF (${bt.bad.join('; ')})`);
+  check(!lookedUp(bt).some((id) => id === 0x8060 || id === 0x8061) && !lookedUp(bt).some((id) => NEVER.includes(id)), `Bluetooth: neither report rate nor any never-list feature is looked up (${lookedUp(bt).map((x) => x.toString(16))})`);
+  check(ble.keys === 'mode,profile,lockWinKey,lockCapsLock,lockNumLock,lockScrollLock,lockInsert,fnSwap,brightness' && ble.keys === cable.keys, `Bluetooth: the cable's settings, no report rate (${ble.keys})`);
+  check(JSON.stringify(ble.vals) === JSON.stringify(cable.vals) && ble.vals.fnSwap === true && ble.vals.brightness === 100, `Bluetooth reads the same values (${JSON.stringify(ble.vals)})`);
+  check(ble.frames.join('|') === cable.frames.join('|') && ble.frames.length > 10, `Bluetooth sends the same bytes as the cable (${ble.frames.length} frames)`);
+  check(ble.frames.includes(h([0xff, 8, 0x2b, 0x10, ...Array(15).fill(0)])), 'Windows key off over Bluetooth = FF 08 2B 10');
+  check(ble.w.join() === 'true,false,false,true,25,100,host,onboard' && JSON.stringify(bt.state) === JSON.stringify({ ...st(), rateIndex: 3 }), 'Bluetooth: each write read back and put back; the keyboard ends as it started');
+  check(JSON.stringify(ble.bat) === JSON.stringify(cable.bat) && ble.bat.percent === 66, `Bluetooth battery the same (${JSON.stringify(ble.bat)})`);
+  check(ble.info.Connection === 'Bluetooth' && ble.info.Model === 'Logitech G915 TKL' && cable.info.Connection === 'USB cable', `info: ${ble.info.Model}, ${ble.info.Connection}`);
+  let e = await refusal(() => d.write('reportRate', 1000));
+  check(/not a setting/.test(e?.message || '') && bt.state.rateIndex === 3, `Bluetooth: report rate is not a setting (${e?.message})`);
+  for (const id of [0x1816, 0x0309, 0x1500]) { e = await refusal(() => d.call(id, 0x00)); check(/refused/.test(e?.message || ''), `Bluetooth: call() refuses pairing feature 0x${id.toString(16)}`); }
+  app.name = 'lghub_agent.exe';
+  let n = bt.sent.length;
+  e = await refusal(() => d.write('fnSwap', false));
+  check(/G HUB/.test(e?.message || '') && e.waiting === true && bt.sent.length === n, 'Bluetooth: refused while G HUB runs, nothing sent');
+  app.name = null;
+  bt.failNext = 0x05;
+  e = await refusal(() => d.write('fnSwap', false));
+  check(e instanceof HidppError && e.code === 5 && bt.state.fnSwap === 1, `Bluetooth: an error reply with index 0x00 is reported with its code (${e?.message})`);
+  await selfChecked(d, bt.state);
 }
 
 console.log(fails.length ? `sim-logitech-keyboard: FAILED: ${fails.join('; ')}` : 'sim-logitech-keyboard (Logitech HID++ keyboard driver, simulated): all good');

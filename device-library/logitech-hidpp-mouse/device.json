@@ -44,6 +44,7 @@
     "onboard profile select: the profile count from 0x8100 fn 0x00 (libratbag), current profile fn 0x40, select fn 0x30 [00, number]; only offered once the mouse's profile numbering is known (G502 X family 1-based per libratbag's quirk, otherwise learnt from a 0 or top reading)",
     "DPI stage (which of the profile's 5 DPI slots is in use): 0x8100 fn 0xB0 / 0xC0 (libratbag)",
     "lift-off distance low / medium / high on mice with 0x2202 and its LOD bit (Solaar ExtendedAdjustableDpi), the DPI rewritten as read",
+    "never looked up or sent: DFU, reset, OOB state, force pairing, and since 22 Oct 2026 BLE pre-pairing 0x1816 and Lightspeed pairing 0x0309 (Solaar hidpp20_constants.py)",
     "every write read back; DPI, report rate and lift-off written only in host mode; every write refused while G HUB (lghub*.exe) runs"
   ],
   "doesNotWork": [
@@ -55,7 +56,8 @@
     "lighting: 0x8071 has no read-back; 0x8070 effect parameter layouts are not in the sheet",
     "button remapping: 0x1B04 remap targets and its read reply layout are not in the sheet",
     "angle snapping and surface tuning: no documented bytes (0x2240 is an id only)",
-    "mice with only 0x2202 and no 0x2201 (DPI is read through 0x2201)"
+    "mice with only 0x2202 and no 0x2201 (DPI is read through 0x2201)",
+    "Bluetooth: no source read gives a Bluetooth product id for any mouse listed here (Solaar descriptors.py @ e7304c4c has Bluetooth ids for MX / M-series mice only; Linux hid-logitech-hidpp.c @ 3fabd8ec none for a G mouse). The Bluetooth transport is in the driver (device index 0xFF, replies with index 0x00, 19-byte collection on any page, no report rate) for when one is documented"
   ],
   "status": "read-only",
   "tested": [

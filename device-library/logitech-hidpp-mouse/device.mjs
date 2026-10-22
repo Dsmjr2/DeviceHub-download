@@ -39,6 +39,13 @@ export const WIRED = {
   0xc095: 'G502 X PLUS', 0xc099: 'G502 X', 0xc088: 'G PRO Wireless', 0xc090: 'G703 HERO', 0xc091: 'G903 HERO',
   0xc08d: 'G502 LIGHTSPEED',
 };
+// Bluetooth (22 Oct 2026, docs/handoff/logitech-ble.md): a mouse on Bluetooth is its own HID device with its BLE product
+// id, HID++ 2.0 straight to it at device index 0xFF. Empty on purpose: no source read lists a Bluetooth id for any mouse
+// in WIRED (Solaar descriptors.py @ e7304c4c has btid only for MX / M-series mice; Linux hid-logitech-hidpp.c @
+// 3fabd8ec lists none for a G mouse; OpenRGB lists none). Solaar treats 0xB012-0xB0FF as its Bluetooth mouse range
+// (base.py get_unknown_logitech_device_info). A documented id for one of these models goes here, one line, and the
+// transport below (BLE_HID, isReplyToBle, no report rate) applies to it.
+export const BLE = {};
 const hex4 = (n) => n.toString(16).toUpperCase().padStart(4, '0');
 
 // sheet section 2 "Transport": HID++ long = report 0x11, 20 bytes in all (19 after the report id); the long collection
@@ -46,7 +53,7 @@ const hex4 = (n) => n.toString(16).toUpperCase().padStart(4, '0');
 const REPORT_LONG = 0x11, LEN = 19;
 // sheet section 2 "Message format": low nibble of byte 3 = software id, non-zero; Solaar uses 0x0B
 const SW_ID = 0x0b;
-const DEV_WIRED = 0xff;                       // section 2 "Device index": 0xFF = a wired device directly
+const DEV_WIRED = 0xff;                       // section 2 "Device index": 0xFF = a wired (or Bluetooth) device directly
 const SLOTS = [1, 2, 3, 4, 5, 6];             // 0x01-0x06 = paired devices (Bolt holds 6; Lightspeed usually 1)
 
 // feature ids (sheet section 3 settings map; section 2 for 0x0000 / 0x0001)
@@ -73,7 +80,9 @@ export const ALLOWED = {
 // were ever added to ALLOWED by mistake
 export const NEVER_FN = { [F.ONBOARD_PROFILES]: [0x50, 0x60, 0x70, 0x80] };
 // sheet section 4 "Never touch": refused even if someone adds them to ALLOWED by mistake
-export const NEVER = [0x00c0, 0x00c1, 0x00c2, 0x00c3, 0x00d0, 0x010a, 0x1802, 0x1805, 0x1500];
+// + Solaar hidpp20_constants.py BLE_PRO_PRE_PAIRING 0x1816 and LIGHTSPEED_PAIRING 0x0309 (as the keyboard and headset
+// drivers; added 22 Oct 2026 with Bluetooth, where 0x1816 is reachable on the device itself)
+export const NEVER = [0x00c0, 0x00c1, 0x00c2, 0x00c3, 0x00d0, 0x010a, 0x1802, 0x1805, 0x1500, 0x1816, 0x0309];
 
 // sheet section 2 "Errors", HID++ 2.0 codes
 const ERRORS = { 1: 'unknown', 2: 'invalid argument', 3: 'out of range', 4: 'hardware error', 5: 'not allowed', 6: 'invalid feature index', 7: 'invalid function', 8: 'busy', 9: 'unsupported' };
@@ -84,6 +93,14 @@ export class HidppError extends Error {
 // a reply answers the request when it echoes device index, feature index and function+software id (section 2
 // "Replies"), or is an error reply for it: <dev> FF <feature idx> <fn+swid> <code> (section 2 "Errors")
 export const isReplyTo = (sent, r) => r[0] === sent[0] && ((r[1] === sent[1] && r[2] === sent[2]) || (r[1] === 0xff && r[2] === sent[1] && r[3] === sent[2]));
+// Bluetooth: the device index may come back as request ^ 0xFF, 0x00 for 0xFF (Solaar base.py request() / ping():
+// "reply_devnumber == devnumber or reply_devnumber == devnumber ^ 0xFF:  # BT device returning 0x00")
+export const isReplyToBle = (sent, r) => (r[0] === sent[0] || r[0] === (sent[0] ^ 0xff)) && ((r[1] === sent[1] && r[2] === sent[2]) || (r[1] === 0xff && r[2] === sent[1] && r[3] === sent[2]));
+// Bluetooth collection: Solaar finds HID++ by its reports (hidapi_impl.py check_hidpp_long: input report 0x11 of 1 + 19
+// bytes), not a usage page; OpenRGB LogitechControllerDetect.cpp @ a44f5250 registers Bluetooth HID++ 2.0 on 0xFF43 (any
+// usage) and on 0xFF00 usage 2 ("mice, the collection Solaar drives them on"). So any page / usage, chosen by 19-byte
+// input and output reports (helpers/hid-host.mjs channelOpts il / ol).
+export const BLE_HID = { page: '*', usage: '*', inputLen: LEN, outputLen: LEN };
 
 // 0x8061 index -> Hz (settings map "Report rate (8K)": 0=8 ms, 1=4 ms, 2=2 ms, 3=1 ms, 4=500 us, 5=250 us, 6=125 us)
 export const EXT_RATES_HZ = [125, 250, 500, 1000, 2000, 4000, 8000];
@@ -130,9 +147,11 @@ const adapter = {
   kind: 'Mouse',
   vendor: 'Logitech',
   // one channel per pid (HID LAYER 1); usage 0002 = the long-report collection
-  hid: { vid: '046D', pid: 'C539', pids: [...RECEIVERS, ...Object.keys(WIRED).map(Number)].map(hex4), page: 'FF00', usage: '0002', len: LEN, reportId: REPORT_LONG,
+  hid: { vid: '046D', pid: 'C539', pids: [...RECEIVERS, ...Object.keys(WIRED).map(Number), ...Object.keys(BLE).map(Number)].map(hex4), page: 'FF00', usage: '0002', len: LEN, reportId: REPORT_LONG,
     replyMs: 2000,        // Solaar waits up to 4 s for a device (section 2 "Replies"); below this driver's own 2.6 s
-    reply: 'raw' },       // HID LAYER 2: every input report reaches isReplyTo
+    reply: 'raw',         // HID LAYER 2: every input report reaches isReplyTo
+    // Bluetooth ids choose their collection by report length (BLE_HID); every USB id's channel is as before
+    byPid: Object.fromEntries(Object.keys(BLE).map((p) => [hex4(Number(p)), { ...BLE_HID }])) },
   settings,
   unsupported: ['editing onboard profiles (buttons, the DPI of each slot, sleep timer, lights)', 'lighting', 'button remapping', 'angle snapping', 'surface tuning', 'firmware updates', 'pairing'],
 
@@ -155,6 +174,8 @@ const adapter = {
         dev = await getDevice([{ vendorId: VID, productId: pid, usagePage: 0xff00, usage: 0x0002 }], { prompt: false });
         if (dev) break;
       }
+      // Bluetooth: no usage page in the filter (BLE_HID picks the collection)
+      for (const pid of Object.keys(BLE).map(Number)) { if (dev) break; dev = await getDevice([{ vendorId: VID, productId: pid }], { prompt: false }); }
       if (!dev && prompt) dev = await getDevice(RECEIVERS.concat(Object.keys(WIRED).map(Number)).map((p) => ({ vendorId: VID, productId: p, usagePage: 0xff00, usage: 0x0002 })));
     }
     if (!dev) return false;
@@ -163,7 +184,8 @@ const adapter = {
     this.pid = typeof dev.pid === 'string' ? parseInt(dev.pid, 16) : dev.productId;
     // sheet section 5 step 2: 0xC500-0xC5FF = receiver, anything else = a direct device at index 0xFF
     this.receiver = this.pid >= 0xc500 && this.pid <= 0xc5ff;
-    this.chan = new HidChannel(dev, { reportId: REPORT_LONG, length: LEN, match: isReplyTo });
+    this.ble = !!BLE[this.pid];
+    this.chan = new HidChannel(dev, { reportId: REPORT_LONG, length: LEN, match: this.ble ? isReplyToBle : isReplyTo });
     // receiver: ping slots 1-6 and take the first that answers (section 5 step 3); wired: index 0xFF
     let ver = null;
     for (const idx of this.receiver ? SLOTS : [DEV_WIRED]) {
@@ -173,7 +195,10 @@ const adapter = {
     if (!ver) throw new Error(this.receiver ? 'no reply from a mouse on the receiver (asleep, switched off or not paired)' : 'no reply from the mouse');
     this.protocol = ver;
     // feature lookup through IRoot getFeature (section 2), cached per connect (indexes change between models/firmware)
-    for (const id of [F.FEATURE_SET, F.UNIFIED_BATTERY, F.BATTERY_STATUS, F.BATTERY_VOLTAGE, F.ADJUSTABLE_DPI, F.EXT_ADJUSTABLE_DPI, F.EXT_REPORT_RATE, F.REPORT_RATE, F.ONBOARD_PROFILES]) {
+    // Bluetooth: the report rate is the USB / Lightspeed polling rate; over Bluetooth the link sets it and no source
+    // documents 0x8060 / 0x8061 there, so it is not looked up (and so not read, offered or written)
+    const rateIds = this.ble ? [] : [F.EXT_REPORT_RATE, F.REPORT_RATE];
+    for (const id of [F.FEATURE_SET, F.UNIFIED_BATTERY, F.BATTERY_STATUS, F.BATTERY_VOLTAGE, F.ADJUSTABLE_DPI, F.EXT_ADJUSTABLE_DPI, ...rateIds, F.ONBOARD_PROFILES]) {
       const f = await this.getFeature(id);
       if (f) this.features[id] = f;
     }
@@ -319,8 +344,8 @@ const adapter = {
     const bat = this.features[F.UNIFIED_BATTERY] ? '0x1004 unified' : this.features[F.BATTERY_STATUS] ? '0x1000 status' : this.features[F.BATTERY_VOLTAGE] ? '0x1001 voltage' : 'none reported';
     const mode = await this.readMode().catch(() => undefined);
     const out = {
-      Model: this.receiver ? `Logitech mouse on receiver ${hex4(this.pid)} (slot ${this.index})` : (WIRED[this.pid] ? `Logitech ${WIRED[this.pid]}` : `Logitech mouse ${hex4(this.pid)}`),
-      Connection: this.receiver ? (this.pid === 0xc548 ? 'Bolt receiver' : 'Lightspeed receiver') : 'USB cable',
+      Model: this.receiver ? `Logitech mouse on receiver ${hex4(this.pid)} (slot ${this.index})` : (WIRED[this.pid] || BLE[this.pid] ? `Logitech ${WIRED[this.pid] || BLE[this.pid]}` : `Logitech mouse ${hex4(this.pid)}`),
+      Connection: this.receiver ? (this.pid === 0xc548 ? 'Bolt receiver' : 'Lightspeed receiver') : this.ble ? 'Bluetooth' : 'USB cable',
       'HID++': this.protocol,
       Battery: bat,
       'Report rate feature': this.features[F.EXT_REPORT_RATE] ? '0x8061 (up to 8000 Hz)' : this.features[F.REPORT_RATE] ? '0x8060' : 'none',

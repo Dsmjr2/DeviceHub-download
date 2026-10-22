@@ -226,6 +226,9 @@ the person (a download or install, a learning session, or a check in the maker's
      keyboard it found and where its layout came from (`[keyboard] ...`). If editing is blocked ("does not match the
      layout"), the definition is for another revision of the board: get the maker's file. QMK boards without VIA
      need VIA enabled in their firmware, which is the owner's call (never flash it for them).
+     A board VIA's library lacks (Keychron Pro, Max, HE, 8K; Lemokey) has a **Get the layout** button on the Keyboard
+     page: it gets Keychron's official file (helpers/via-sources.json, pinned commits), checks it is for that vid/pid and
+     drawable, saves it, then DeviceHub needs a restart (docs/handoff/via-fetch.md).
    - **Corsair**: `docs/brands/corsair.md`. Most current headsets, mice and keyboards speak the HS80's property
      protocol (Bragi, `helpers/hs80-direct.js`); the sheet says what differs per model. The iCUE SDK (npm `cue-sdk`)
      covers many settings while iCUE runs.

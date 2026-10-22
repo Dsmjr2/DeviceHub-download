@@ -265,9 +265,27 @@ export const isViaKeyboard = (u) => !!(u?.brand?.transport?.includes('via-qmk') 
 export function viaFileNote(vid, pid, maker) {
   const file = `${vid}${pid}`.toUpperCase() + '.json';
   const site = maker ? `${maker}'s website` : 'the maker\'s website';
+  const line = h('p', { class: 'faint', style: { margin: '6px 0' } });
+  const actions = h('div', { class: 'actions' }, button('Open folder', () => fetch('/api/reveal', { method: 'POST' }).catch(() => {}), { kind: 'ghost small', ic: 'external' }));
+  // "Get the layout" (helpers/via-fetch.mjs): only for a keyboard whose official VIA file DeviceHub knows; the click
+  // is the person's yes for that one file, which is checked before it is saved
+  if (!isDemo()) fetch(`/api/via-fetch?vid=${encodeURIComponent(vid)}&pid=${encodeURIComponent(pid)}`).then((r) => r.json()).then((p) => {
+    if (p.have) { line.textContent = `via-definitions\\${p.file} is there. If the keys still do not show, restart DeviceHub.`; return; }
+    if (!p.source) return;
+    const size = p.source.size ? `, about ${(p.source.size / 1024).toFixed(1)} KB` : '';
+    line.textContent = `Get the layout saves ${p.file} (${p.source.name || 'its VIA file'}${size}) from ${p.source.host}, ${p.source.from}. It is checked before it is saved.`;
+    const b = button('Get the layout', async () => {
+      line.textContent = `Getting ${p.file} from ${p.source.host}...`;
+      const r = await fetch('/api/via-fetch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vid, pid }) })
+        .then((x) => x.json()).catch(() => ({ error: 'DeviceHub did not answer.' }));
+      if (r.ok) { b.remove(); line.textContent = `Saved ${r.file} (${r.sizeText}, from ${r.host}) in via-definitions. Restart DeviceHub to show its keys (tray icon > Quit, then open it again).`; }
+      else line.textContent = `${r.file || p.file} was not saved. ${r.error || ''}`.trim();
+    }, { kind: 'small' });
+    actions.prepend(b);
+  }).catch(() => {});
   return h('div', { class: 'via-file' },
     h('p', { class: 'faint', style: { margin: '6px 0' } }, `A VIA keyboard needs no learning. If its keys do not show on the Keyboard page, VIA's own list does not have this model: download its VIA file (a .json file) from ${site}, rename it ${file}, put it in the via-definitions folder inside DeviceHub's folder, then restart DeviceHub (tray icon > Quit, then open it again).`),
-    h('div', { class: 'actions' }, button('Open folder', () => fetch('/api/reveal', { method: 'POST' }).catch(() => {}), { kind: 'ghost small', ic: 'external' })));
+    line, actions);
 }
 // on the Keyboard page while no keyboard runs: the VIA keyboards This PC found (pc-lights.js reads the PC once)
 function viaHelp() {
