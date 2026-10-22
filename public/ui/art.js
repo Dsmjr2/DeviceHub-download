@@ -210,6 +210,48 @@ export function keyboardArt() {
 }
 
 export const artFor = { mouse: mouseArt, headset: headsetArt, keyboard: keyboardArt };
+
+// Generic devices, no particular model (22 Oct 2026, Shawn: the loading tiles should suit "anyone with any device"):
+// a symmetric mouse with a wheel and split buttons, an over-ear headset from the front, a plain keyboard with an even
+// grid of keys. The same layers as the real drawings, so every look paints them.
+export function genericMouseArt() {
+  const body = 'M50 6C70 6 82 18 84 42C86 64 86 98 84 122C82 148 68 162 50 162C32 162 18 148 16 122C14 98 14 64 16 42C18 18 30 6 50 6Z';
+  return svgEl(`<svg class="art mark art-mouse generic" viewBox="0 0 100 168" aria-hidden="true"><g class="drawn">
+    <ellipse class="floor" cx="50" cy="160" rx="34" ry="8"/>
+    <path class="solid" d="${body}"/>
+    <path class="shade" d="M84 42C86 64 86 98 84 122C82 148 68 162 54 162C68 152 76 134 77 112C78 88 77 60 74 38C77 38 81 39 84 42Z"/>
+    <path class="hi" d="M22 30C19 46 18 62 19 76C24 60 30 42 40 16C31 18 25 22 22 30Z"/>
+    <path class="cut-line" d="M50 6V66"/><path class="cut-line" d="M16.5 66Q50 74 83.5 66"/>
+    <rect class="cut" x="44" y="18" width="12" height="28" rx="6"/><rect class="soft" x="46" y="20.5" width="8" height="23" rx="4"/>
+  </g></svg>`);
+}
+export function genericHeadsetArt() {
+  return svgEl(`<svg class="art mark art-headset generic" viewBox="0 0 180 160" aria-hidden="true"><g class="drawn">
+    <ellipse class="floor" cx="90" cy="153" rx="76" ry="7"/>
+    <path class="solid" d="M30 96C30 26 150 26 150 96H142C142 36 38 36 38 96Z"/>
+    <path class="hi-line" d="M34 76C37 36 143 36 146 76"/>
+    <rect class="solid" x="26" y="84" width="12" height="20" rx="4"/><rect class="solid" x="142" y="84" width="12" height="20" rx="4"/>
+    <rect class="solid" x="12" y="98" width="40" height="56" rx="18"/><rect class="solid" x="128" y="98" width="40" height="56" rx="18"/>
+    <rect class="soft" x="46" y="102" width="14" height="48" rx="7"/><rect class="soft" x="120" y="102" width="14" height="48" rx="7"/>
+    <path class="shade" d="M12 116C12 106 20 98 30 98H26C20 101 17 107 17 116V136C17 145 20 151 27 154H30C20 154 12 146 12 136Z"/>
+    <path class="shade" d="M168 116C168 106 160 98 150 98H154C160 101 163 107 163 116V136C163 145 160 151 153 154H150C160 154 168 146 168 136Z"/>
+    <path class="hi" d="M22 103C28 100.5 38 100.5 44 103C37 102.5 29 102.5 22 106Z"/><path class="hi" d="M136 103C142 100.5 152 100.5 158 103C151 102.5 143 102.5 136 106Z"/>
+  </g></svg>`);
+}
+export function genericKeyboardArt() {
+  const u = 13, gap = 2.4, pad = 10, cols = 15, W = pad * 2 + cols * u - gap, H = pad * 2 + 5 * u - gap, f = (n) => n.toFixed(1);
+  let keys = '';
+  for (let r = 0; r < 4; r++) for (let c = 0; c < cols; c++) keys += `<rect class="soft" x="${f(pad + c * u)}" y="${f(pad + r * u)}" width="${f(u - gap)}" height="${f(u - gap)}" rx="2.2"/>`;
+  // the bottom row: modifiers, a long space bar, modifiers
+  [[0, 1.5], [1.5, 1.5], [3, 7.5], [10.5, 1.5], [12, 1.5], [13.5, 1.5]].forEach(([x, w]) => { keys += `<rect class="soft" x="${f(pad + x * u)}" y="${f(pad + 4 * u)}" width="${f(w * u - gap)}" height="${f(u - gap)}" rx="2.2"/>`; });
+  return svgEl(`<svg class="art mark art-keyboard generic" viewBox="0 0 ${f(W)} ${f(H)}" aria-hidden="true"><g class="drawn">
+    <ellipse class="floor" cx="${f(W / 2)}" cy="${f(H - 2)}" rx="${f(W / 2 - 4)}" ry="9"/>
+    <rect class="solid" x="1" y="1" width="${f(W - 2)}" height="${f(H - 2)}" rx="9"/>
+    <rect class="cut" x="${f(pad - 3)}" y="${f(pad - 3)}" width="${f(W - 2 * pad + 6)}" height="${f(H - 2 * pad + 6)}" rx="5"/>
+    ${keys}
+  </g></svg>`);
+}
+export const genericArtFor = { mouse: genericMouseArt, headset: genericHeadsetArt, keyboard: genericKeyboardArt };
 // a device added in my-devices/ (21 Oct 2026): a plain rounded tile (the built-in drawings show Shawn's own devices);
 // artOf(d) is what pages call for any device
 export const artOf = (d) => (artFor[d.id] || plainArt)();
