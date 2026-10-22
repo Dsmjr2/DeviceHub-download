@@ -19,7 +19,7 @@ async function uninstall() {
   } catch { toast('DeviceHub is not running', 'bad'); }
 }
 import { env } from '../core/env.js';
-import { ART_STYLES, saveArtStyle } from '../core/theme.js';
+import { ART_STYLES, saveArtStyle, THEME_ACCENTS, THEME_BGS, currentTheme, saveTheme } from '../core/theme.js';
 import { artFor } from '../ui/art.js';
 import { copyDownloadLink, copyShortReport } from '../core/share.js';
 
@@ -124,15 +124,15 @@ const GUIDES = {
   pulsar: { app: 'the Pulsar app', steps: ['Plug the mouse into the PC with its USB cable and leave it plugged in until the update finishes.', 'Click the gear at the top right, then Check Update next to Version: Mouse.', 'If it offers one, update the dongle first, then the mouse, as Pulsar says.', 'Come back here and press Done: DeviceHub closes the app and reads the new version.'] },
   icue: { app: 'iCUE', steps: ['Plug the headset into the PC with its USB cable.', 'In iCUE open Settings, then Device Settings, then HS80.', 'Press Check for Updates (and the same for the HS80 Wireless Receiver).', 'Come back here and press Done: DeviceHub closes iCUE and takes the headset back.'] },
 };
-function updatesCard() {
+// device firmware: a row of the Startup card with its button, and once checked, a row per device under it
+function updatesRows() {
   const mi = devices.mouse?.info || {}, hi = devices.headset?.info || {};
   const u = upd, web = u?.online || {}, apps = u?.apps || {};
-  const head = [h('h2', {}, 'Device updates'), h('span', { class: 'spacer' }),
-    button(updLoading ? 'Checking…' : 'Check now', () => loadUpdates(true), { kind: 'ghost small', ic: 'refresh', disabled: updLoading })];
-  if (!u) return card(head, h('p', { class: 'faint', style: { margin: 0 } }, 'Looks for newer firmware. Nothing is installed.'));
-  if (u.error) return card(head, h('p', { class: 'faint' }, `Could not check: ${u.error}`));
+  const head = row('Device firmware', !u ? 'Looks for newer firmware. Nothing is installed.' : u.error ? `Could not check: ${u.error}` : 'Checked; each device below.',
+    button(updLoading ? 'Checking…' : 'Check now', () => loadUpdates(true), { kind: 'ghost small', ic: 'refresh', disabled: updLoading }));
+  if (!u || u.error) return [head];
   const g = guide && GUIDES[guide];
-  return card(head,
+  return [head,
     row('Mouse and dongle', `Mouse ${mi['Mouse firmware'] || '—'} · dongle ${mi['Dongle firmware'] || '—'} · Pulsar app ${apps.pulsar || 'not installed'}. `,
       h('span', { class: 'actions', style: { alignItems: 'center' } },
         u.pulsarAppNewer ? pill(`app ${web.pulsar.app} out`, 'warn') : web.pulsar ? pill('app up to date', 'good') : pill(web.errors?.pulsar ? 'could not check' : '—', ''),
@@ -145,7 +145,7 @@ function updatesCard() {
     g ? h('div', { class: 'banner', style: { marginTop: '12px' } }, h('div', { class: 'grow' },
       h('b', {}, `Updating in ${g.app}`),
       h('ol', { style: { margin: '6px 0 0', paddingLeft: '18px' } }, ...g.steps.map((t) => h('li', {}, t)))),
-      button('Done', async () => { const app = guide; guide = null; rerender(); await post('/api/updates/done', { app }); toast(`Closed ${GUIDES[app].app}`, 'good', { detail: 'versions read again' }); loadUpdates(false); }, { kind: 'primary small' })) : null);
+      button('Done', async () => { const app = guide; guide = null; rerender(); await post('/api/updates/done', { app }); toast(`Closed ${GUIDES[app].app}`, 'good', { detail: 'versions read again' }); loadUpdates(false); }, { kind: 'primary small' })) : null];
 }
 
 // Health (19 Oct 2026): how DeviceHub itself is doing, in plain words, with a yellow dot on anything unusual.
@@ -206,6 +206,25 @@ function appearanceCard() {
       h('span', {}, name)))));
 }
 
+// the theme: the accent color (six swatches and any color) and the backdrop (21 Oct 2026)
+function themeControls() {
+  const t = currentTheme();
+  const pickAccent = async (hex, name) => { await saveTheme({ themeAccent: hex }); toast(`Accent: ${name}`, 'good', { ms: 1400 }); rerender(); };
+  const bgName = THEME_BGS.find(([k]) => k === t.bg)?.[1];
+  // two compact rows, the name of the picked one beside each (no hover text in this app)
+  return card([h('h2', {}, 'Theme')],
+    h('div', { class: 'theme-grid' },
+      h('span', { class: 'theme-label' }, 'Accent'),
+      h('div', { class: 'theme-row' },
+        ...THEME_ACCENTS.map(([hex, name]) => h('button', { class: `theme-swatch${t.accent === hex ? ' sel' : ''}`, style: { '--s': hex }, 'aria-label': `${name} accent`, 'aria-pressed': String(t.accent === hex), onclick: () => pickAccent(hex, name) })),
+        h('input', { type: 'color', class: `theme-swatch-custom${THEME_ACCENTS.some(([x]) => x === t.accent) ? '' : ' sel'}`, value: t.accent, 'aria-label': 'any accent color', onchange: (e) => pickAccent(e.target.value.toLowerCase(), e.target.value) })),
+      h('span', { class: 'theme-label' }, 'Backdrop'),
+      h('div', { class: 'theme-row' },
+        ...THEME_BGS.map(([key, name, bg, pool]) => h('button', { class: `theme-swatch${t.bg === key ? ' sel' : ''}`, style: { '--s': `radial-gradient(circle at 35% 30%, rgba(${pool}, .95), rgba(${pool}, .35) 45%, ${bg} 80%)` }, 'aria-label': `${name} backdrop`, 'aria-pressed': String(t.bg === key),
+          onclick: async () => { await saveTheme({ themeBg: key }); rerender(); } })),
+        h('span', { class: 'theme-name' }, bgName))));
+}
+
 // Reads every connected device twice and checks the two readings agree and pass their own checks. Writes nothing.
 
 async function selfTest() {
@@ -261,10 +280,10 @@ export default {
       topbar('App', 'Settings', null),
       h('div', { class: 'grid settings-cols top' },
         h('div', { class: 'stack' }, appearanceCard(),
-          card([icon('shield'), h('h2', {}, 'Safety'), h('span', { class: 'spacer' }), button('Self-test', selfTest, { kind: 'small', ic: 'shield' })],
+          card([icon('shield'), h('h2', {}, 'Safety'), h('span', { class: 'spacer' }), button('Self-test: read each device twice', selfTest, { kind: 'small', ic: 'shield' })],
             results ? h('div', { class: 'diff', style: { marginBottom: '10px' } }, ...results.map(([dev, st, msg]) => h('div', { style: { gridTemplateColumns: '120px 52px 1fr' } }, h('span', { class: 'dev' }, dev), pill(st, st === 'pass' ? 'good' : st === 'fail' ? 'bad' : st === 'warn' ? 'warn' : ''), h('span', {}, msg)))) : null,
             h('ul', { class: 'safety' }, ...SAFETY.map((t) => h('li', {}, icon('check'), t))),
-            results ? null : h('p', { class: 'faint', style: { margin: '8px 0 0' } }, 'Self-test reads each device twice to check it.'))),
+            null)),
         h('div', { class: 'stack' }, card([h('h2', {}, 'Startup')],
           selfRow(),
           row('Start with Windows', 'Starts in the tray.',
@@ -272,7 +291,7 @@ export default {
               const r = await (await fetch('/api/startup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: on }) })).json();
               startup = r.enabled; toast(startup ? 'DeviceHub will start with Windows' : 'DeviceHub will not start with Windows', 'good'); rerender();
             } })),
-          ...syncRows()), updatesCard()),
+          ...syncRows(), ...updatesRows()), themeControls()),
         h('div', { class: 'stack' }, healthCard(),
           card([h('h2', {}, 'DeviceHub')],
             row('Share DeviceHub', 'Download link to send to people.', button('Copy link', copyDownloadLink, { kind: 'small', ic: 'external' })),

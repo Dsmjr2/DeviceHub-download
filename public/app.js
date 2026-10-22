@@ -112,7 +112,12 @@ function paintRail() {
   // no devices at all: no "Devices" heading either
   const label = [...document.querySelectorAll('.nav-label')].find((l) => l.textContent === 'Devices');
   if (label) label.hidden = shown.size === 0;
-  document.querySelectorAll('.nav .dot').forEach((dot) => { dot.className = `dot ${devices[dot.dataset.dev]?.status || ''}`; });
+  // green connected, yellow asleep, red when it cannot be used: not connected, or the headset switched off with only its
+  // receiver plugged in (Shawn, 21 Oct 2026)
+  document.querySelectorAll('.nav .dot').forEach((dot) => {
+    const d = devices[dot.dataset.dev], st = d?.status || 'idle';
+    dot.className = `dot ${st === 'connected' && d.id === 'headset' && d.values && d.values.headsetOn === false ? 'off' : st}`;
+  });
 }
 
 // ---------- routing ----------

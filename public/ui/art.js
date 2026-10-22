@@ -22,6 +22,13 @@ export function artDefs() {
 }
 
 
+// Detail layers every drawing carries (21 Oct 2026, Shawn: "put more effort into the details"): .floor, the soft shadow
+// the device casts on the desk (each look colors it: a glow in Neon, a flat offset in Pop, none in Blueprint); .bp, the
+// Blueprint look's callouts and real measurements (hidden in every other look)
+const callout = (x1, y1, x2, y2, text, anchor = 'start') => `<path class="bp-lead" d="M${x1} ${y1}L${x2} ${y2}"/><circle class="bp-dot" cx="${x1}" cy="${y1}" r="1.1"/><text class="bp-text" x="${x2 + (anchor === 'end' ? -1.5 : 1.5)}" y="${y2 + 1.8}" text-anchor="${anchor}">${text}</text>`;
+const dimV = (x, y1, y2, text) => `<path class="bp-lead" d="M${x} ${y1}V${y2}M${x - 2} ${y1}H${x + 2}M${x - 2} ${y2}H${x + 2}"/><text class="bp-text" transform="translate(${x - 2.5} ${(y1 + y2) / 2}) rotate(-90)" text-anchor="middle">${text}</text>`;
+const dimH = (y, x1, x2, text) => `<path class="bp-lead" d="M${x1} ${y}H${x2}M${x1} ${y - 2}V${y + 2}M${x2} ${y - 2}V${y + 2}"/><text class="bp-text" x="${(x1 + x2) / 2}" y="${y + 6.5}" text-anchor="middle">${text}</text>`;
+
 // ---- Pulsar X-Lite CrazyLight, from above: the right-hand ergonomic shell (the left side carries the thumb groove and
 // the two side buttons, the right side slopes in for the ring and little finger), the long split buttons, the ridged
 // wheel in its slot, and the small PULSAR wordmark under the left button (its only mark). Drawn at the real
@@ -31,6 +38,7 @@ export function mouseArt() {
   for (let y = 20; y <= 42; y += 3.2) ridges += `<path class="line" d="M46.5 ${y.toFixed(1)}H53.5"/>`;
   return svgEl(`<svg class="art mark art-mouse" viewBox="0 0 100 160" aria-hidden="true">
     <g class="drawn">
+    <ellipse class="floor" cx="50" cy="150" rx="34" ry="9"/>
     <g transform="translate(50 0) scale(1.18 1) translate(-50 0)">
     <rect class="soft side-btn" x="18.3" y="50" width="2.4" height="12.5" rx="1.2"/>
     <rect class="soft side-btn" x="18.6" y="64.5" width="2.4" height="12.5" rx="1.2"/>
@@ -45,6 +53,7 @@ export function mouseArt() {
     ${ridges}
     </g>
     <text class="logo-text" x="35" y="74" text-anchor="middle">PULSAR</text>
+    <g class="bp">${dimV(4, 5, 156, '115.6 mm')}${dimH(160, 10, 90, '63.4 mm')}${callout(50, 30, 72, 8, 'WHEEL')}${callout(22, 63, 6, 92, 'M4 M5', 'start')}</g>
   </g>
     <image class="photo" href="/img/xlite.png" x="0" y="0" width="100" height="160" preserveAspectRatio="xMidYMid meet"/>
   </svg>`);
@@ -65,6 +74,7 @@ export function headsetArt() {
     </g>`;
   return svgEl(`<svg class="art mark art-headset" viewBox="0 0 180 160" aria-hidden="true">
     <g class="drawn">
+    <ellipse class="floor" cx="90" cy="153" rx="80" ry="8"/>
     <path class="solid" d="M28 92C28 16 152 16 152 92H147C147 23 33 23 33 92Z"/>
     <path class="hi-line" d="M31 72C33.5 26 146.5 26 149 72"/>
     <path class="soft" d="M37 94C37 50 143 50 143 94V100C141 60 39 60 37 100Z"/>
@@ -92,6 +102,7 @@ export function headsetArt() {
     <circle class="cut" cx="44.6" cy="129" r="1.8"/>
     <rect class="soft" x="65.5" y="146.2" width="13" height="7.4" rx="3.7"/>
     <circle class="led mic" cx="76.4" cy="149.9" r="1.4"/>
+    <g class="bp">${callout(78, 150, 100, 146, 'MIC · MUTE LIGHT')}${callout(8.5, 119, 2, 108, 'VOL', 'start')}${callout(157.5, 111, 166, 88, 'RGB', 'start')}${callout(90, 22, 112, 10, 'FLOATING STRAP')}</g>
   </g>
     <image class="photo" href="/img/hs80.png" x="0" y="0" width="180" height="160" preserveAspectRatio="xMidYMid meet"/>
   </svg>`);
@@ -146,6 +157,7 @@ export function keyboardArt() {
   const cx = pad + 15 * u + (u - gap) / 2, cy = pad + (u - gap) / 2, r = (u - gap) / 2 + 1;
   return svgEl(`<svg class="art mark art-keyboard" viewBox="0 0 ${f(W)} ${f(H)}" aria-hidden="true">
     <g class="drawn">
+    <ellipse class="floor" cx="${f(W / 2)}" cy="${f(H - 2)}" rx="${f(W / 2 - 4)}" ry="10"/>
     <rect class="solid" x="1" y="1" width="${f(W - 2)}" height="${f(H - 2)}" rx="9"/>
     <rect class="shade" x="1" y="${f(H - 6)}" width="${f(W - 2)}" height="5" rx="2.5"/>
     <rect class="hi" x="8" y="2.2" width="${f(W - 16)}" height="1.6" rx="0.8"/>
@@ -155,6 +167,7 @@ export function keyboardArt() {
     <circle class="solid" cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}"/>
     <circle class="line knurl" cx="${f(cx)}" cy="${f(cy)}" r="${f(r - 1.1)}"/>
     <circle class="hi" cx="${f(cx - 1.4)}" cy="${f(cy - 1.4)}" r="1.6"/>
+    <g class="bp">${callout(+f(cx), +f(cy - r), +f(cx - 20), -6, 'KNOB', 'end')}${callout(pad + 5, pad + 4, pad + 18, -6, 'ESC')}${dimH(+f(H + 6), 1, +f(W - 1), '75% LAYOUT')}</g>
   </g>
     <image class="photo" href="/img/p75.png" x="0" y="0" width="${f(W)}" height="${f(H)}" preserveAspectRatio="xMidYMid meet"/>
   </svg>`);

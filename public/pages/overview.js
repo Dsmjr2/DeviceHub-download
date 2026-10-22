@@ -85,7 +85,7 @@ function bay(d, go, redraw) {
   const off = d.status === 'connected' && d.id === 'headset' && !d.values.headsetOn;
   const el = h('div', { class: `bay ${d.status}${muted ? ' mic-muted' : ''}${off ? ' off' : ''}`, 'data-dev': d.id, 'data-shape': `${d.status}|${ro.length}|${bat != null}`, role: 'button', tabindex: 0, style: { '--cc': COLORS[d.id] }, onclick: () => go(d.id), onkeydown: (e) => { if (e.key === 'Enter') go(d.id); } },
     // the pill carries the state: CONNECTED, ASLEEP, HEADSET OFF ... (no "Ready" line under the name)
-    h('div', { class: 'bay-top' }, h('span', { class: 'bay-kind' }, a.kind), d.status === 'connected' && d.id === 'headset' && !d.values.headsetOn ? pill('headset off', 'warn') : statusPill(d)),
+    h('div', { class: 'bay-top' }, h('span', { class: 'bay-kind' }, a.kind), d.status === 'connected' && d.id === 'headset' && !d.values.headsetOn ? pill('headset off', 'off') : statusPill(d)),
     h('div', { class: 'bay-art' }, artOf(d)),
     // the name, with the battery beside it on the right (Shawn, 19 Oct 2026); up to two lines, the same height on all three
     h('div', { class: 'bay-head' }, h('h3', {}, a.title),
@@ -94,7 +94,8 @@ function bay(d, go, redraw) {
     // a short spec list: the setting's name on the left, its value on the right, the full tile width for long values
     // the off note sits in the values area, so all three names stay on one line
     // (the Connect button too, for a device that is not connected)
-    h('div', { class: 'readouts' }, off ? h('div', { class: 'bay-note' }, 'Turned off') : null, ...ro.map(([k, v]) => h('div', { class: 'readout' }, h('span', {}, k), v instanceof Node ? v : h('b', { title: String(v) }, v))),
+    // no "Turned off" line: the pill at the top says it (Shawn, 21 Oct 2026)
+    h('div', { class: 'readouts' }, ...ro.map(([k, v]) => h('div', { class: 'readout' }, h('span', {}, k), v instanceof Node ? v : h('b', { title: String(v) }, v))),
       ['idle', 'missing', 'error'].includes(d.status) && !(isRemote() && d.status !== 'error') ? h('div', { class: 'bay-cta', onclick: (e) => e.stopPropagation() },
         button('Connect', () => connect(d.id, d.id !== 'headset'), { kind: 'primary small', ic: 'plug' })) : null));
   return el;
