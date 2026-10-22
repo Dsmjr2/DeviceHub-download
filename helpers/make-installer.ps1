@@ -61,6 +61,20 @@ try {
     foreach ($f in $files) { $full = Join-Path $root $f; if (Test-Path $full -PathType Leaf) { $prints[$f] = (Get-FileHash $full -Algorithm SHA256).Hash.ToLower() } }
     $e = $z.CreateEntry((Ent 'release-files.json'))
     $w = New-Object System.IO.StreamWriter $e.Open(); $w.Write(($prints | ConvertTo-Json -Compress)); $w.Dispose()
+    # ---- BUNDLED TOOLS (22 Oct 2026, the owner's decision; helpers/bundled-tools.json, docs/handoff/bundled-tools.md) ----
+    # Equalizer APO's installer and OpenRGB's portable build, each the official file checked against its pinned SHA-256
+    # by helpers/fetch-bundled.mjs (it downloads into bundled-cache\, outside git, and leaves out every driver and PawnIO
+    # file), go in under tools\equalizerapo\ and tools\openrgb\ with their license text and tools\README.txt.
+    # -NoTools: a test build without them.
+    if ($args -notcontains '-NoTools') {
+      $manifest = Join-Path $env:TEMP "DeviceHub-bundled-$PID.json"
+      & (Get-Command node).Source (Join-Path $PSScriptRoot 'fetch-bundled.mjs') --manifest $manifest
+      if ($LASTEXITCODE) { throw 'the bundled tools could not be fetched and checked (see above); nothing was put in the zip' }
+      $bundled = Get-Content $manifest -Raw | ConvertFrom-Json
+      Remove-Item $manifest -Force
+      foreach ($b in $bundled) { [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($z, $b.src, (Ent $b.dest), 'Optimal') }
+    }
+    # ---- end BUNDLED TOOLS ----
   } finally { $z.Dispose() }
   # the release's version file, published beside the zip: version, size and SHA-256, so an update is checked whole
   $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
@@ -68,12 +82,19 @@ try {
   # signed with the publisher's key, kept only on this PC (helpers/sign-release.mjs): copies install only what it signs
   & (Get-Command node).Source (Join-Path $PSScriptRoot 'sign-release.mjs') (Join-Path $dist 'version.json')
   if ($LASTEXITCODE) { throw 'the release could not be signed' }
+  # ---- LIBRARY BUNDLE (22 Oct 2026; helpers/make-library-bundle.mjs, docs/handoff/library-updates.md) ----
+  # dist\device-library.json: every device-library entry, signed with the same key over a payload of its own. UPLOAD IT
+  # beside version.json on the release: copies fetch it once a day (helpers/library-updates.mjs). It can also be
+  # rebuilt and uploaded on its own between app releases: node helpers/make-library-bundle.mjs
+  & (Get-Command node).Source (Join-Path $PSScriptRoot 'make-library-bundle.mjs') (Join-Path $dist 'device-library.json')
+  if ($LASTEXITCODE) { throw 'the device library bundle could not be built' }
+  # ---- end LIBRARY BUNDLE ----
 
   # never this PC's data
   $private = 'backups', 'profiles.json', 'settings.json', 'activity.jsonl', 'battery-history.jsonl', 'mouse-battery-study.jsonl',
     'mouse-level.json', 'headset-lights.json', 'headset-firmware.json', 'seen-devices.json', 'updates-cache.json', 'server.log',
     'server.old.log', 'captures', 'window-profile', 'screenshots', 'waiting-changes.json', 'waiting-monitors.json',
-    'last-device-values.json', 'last-monitor-values.json', 'daily-check.json', 'battery-care.json'
+    'last-device-values.json', 'last-monitor-values.json', 'daily-check.json', 'battery-care.json', 'setup.json', 'openrgb-config', 'bundled-cache'
   $z = [System.IO.Compression.ZipFile]::OpenRead($zip)
   try {
     $names = $z.Entries | ForEach-Object { ($_.FullName -replace '[\\/]', '/') -replace '^DeviceHub/', '' }
@@ -83,6 +104,11 @@ try {
     $extra = $names | Where-Object { $_ -like 'node_modules/*' } | ForEach-Object { $_.Split('/')[1] } | Sort-Object -Unique | Where-Object { $_ -notin $libs }
     if ($extra) { throw "unexpected libraries in the zip: $($extra -join ', ')" }
     if ($names -notcontains 'runtime/node.exe') { throw 'runtime/node.exe is missing from the zip' }
+    # never a driver or anything PawnIO, WinRing0 or inpout (helpers/bundled-tools.json neverKeep), anywhere in the zip
+    $never = (Get-Content (Join-Path $PSScriptRoot 'bundled-tools.json') -Raw | ConvertFrom-Json).neverKeep
+    $drv = $names | Where-Object { $n = $_.Split('/')[-1]; $_ -like 'tools/*' -and ($never | Where-Object { $n -match $_ }) }
+    if ($drv) { throw "a driver or PawnIO file got into the zip: $($drv -join ', ')" }
+    if ($args -notcontains '-NoTools' -and ($names -notcontains 'tools/equalizerapo/EqualizerAPO-x64-1.4.2.exe' -or $names -notcontains 'tools/openrgb/OpenRGB.exe' -or $names -notcontains 'tools/README.txt')) { throw 'the bundled tools are missing from the zip' }
     $mb = [math]::Round((Get-Item $zip).Length / 1MB, 1)
     "built $zip ($($names.Count) files, $mb MB, Node.js $ver included); checked: none of this PC's data is in it"
   } finally { $z.Dispose() }

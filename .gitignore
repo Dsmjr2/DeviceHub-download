@@ -37,3 +37,13 @@ update-failed.txt
 my-devices/*
 !my-devices/_example/
 release-files.json
+# what auto setup installed on this PC (helpers/auto-setup.mjs)
+setup.json
+# library entries fetched between releases (helpers/library-updates.mjs)
+library-cache/
+# driver shares being prepared (helpers/share-route.mjs)
+share-staging/
+# official tool files fetched for the zip (helpers/fetch-bundled.mjs); never in git
+bundled-cache/
+# the bundled OpenRGB's own settings (helpers/openrgb.js)
+openrgb-config/

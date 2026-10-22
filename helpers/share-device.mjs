@@ -5,7 +5,7 @@
 //        [--vendor <name>] [--product <name>] [--name <vendor-product>] [--vid <hex>] [--pid <hex>[,<hex>]]
 //        [--model <name>[,<name>]] [--works "<a>;<b>"] [--how "<how it was tested>"]
 //
-// It copies device.mjs and writes device.json under device-library/<vendor-product>/. It REFUSES when the folder holds
+// It copies device.mjs (or, for a driver as data, driver.json: docs/DRIVER-FORMAT.md) and writes device.json under device-library/<vendor-product>/. It REFUSES when the folder holds
 // anything personal (backups, logs, USB captures, settings dumps, serial numbers, Bluetooth addresses, e-mail
 // addresses, this PC's user or computer name, paths with a user's name) and lists every file and line it refused.
 // It never sends anything anywhere: it prints the steps for the person to open a pull request themselves.
@@ -14,11 +14,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { problem } from './my-devices.mjs';
-import { ROOT, STATUSES, devicehubVersion, hex4, validateMeta } from './device-library.mjs';
+import { ROOT, STATUSES, devicehubVersion, hex4, validateMeta, driverFileOf, loadDriver } from './device-library.mjs';
 
 export const UPSTREAM = 'https://github.com/Dsmjr2/DeviceHub-download';
-const SHIPPED = ['device.mjs'];                  // the only file copied into the library
-const KNOWN = ['device.mjs', 'device.json', 'readme.md'];   // read, not refused (device.json is re-written)
+// the only file copied into the library: the folder's driver, device.mjs or (when it has none) driver.json
+const KNOWN = ['device.mjs', 'driver.json', 'device.json', 'readme.md'];   // read, not refused (device.json is re-written)
 const GENERIC_NAMES = new Set(['user', 'users', 'admin', 'administrator', 'owner', 'public', 'default', 'guest', 'pc', 'desktop', 'home', 'root']);
 
 // names of files and folders that are personal by what they are
@@ -96,16 +96,17 @@ export async function shareDevice(folder, opts = {}) {
   if (!folder) return { ok: false, error: 'name a my-devices folder', refused: [] };
   let dir = path.resolve(folder);
   if (!fs.existsSync(dir)) dir = path.join(root, 'my-devices', folder);
-  if (!fs.existsSync(path.join(dir, 'device.mjs'))) return { ok: false, error: `no device.mjs in ${dir}`, refused: [] };
+  const file = driverFileOf(dir);
+  if (!file) return { ok: false, error: `no device.mjs or driver.json in ${dir}`, refused: [] };
   if (path.resolve(dir).toLowerCase().startsWith(path.resolve(libraryDir).toLowerCase() + path.sep)) return { ok: false, error: 'that folder is already in the library', refused: [] };
 
   const scan = scanFolder(dir, { names: personalNames(opts.names || []) });
   if (scan.refused.length) return { ok: false, error: 'the folder holds something personal: nothing was shared', refused: scan.refused, leftOut: scan.leftOut };
 
   let a;
-  try { a = (await import(`${pathToFileURL(path.join(dir, 'device.mjs')).href}?share=${Date.now()}`)).default; } catch (e) { return { ok: false, error: `device.mjs does not load: ${String(e.message || e).split('\n')[0]}`, refused: [] }; }
+  try { a = (await loadDriver(dir, 'share')).a; } catch (e) { return { ok: false, error: `${file} does not load: ${String(e.message || e).split('\n')[0]}`, refused: [] }; }
   const why = problem(a);
-  if (why) return { ok: false, error: `device.mjs: ${why}`, refused: [] };
+  if (why) return { ok: false, error: `${file}: ${why}`, refused: [] };
 
   let old = {};
   try { old = JSON.parse(fs.readFileSync(path.join(dir, 'device.json'), 'utf8')); } catch {}
@@ -139,17 +140,17 @@ export async function shareDevice(folder, opts = {}) {
 
   fs.mkdirSync(libraryDir, { recursive: true });
   fs.mkdirSync(to);
-  for (const f of SHIPPED) fs.copyFileSync(path.join(dir, f), path.join(to, f), fs.constants.COPYFILE_EXCL);
+  for (const f of [file]) fs.copyFileSync(path.join(dir, f), path.join(to, f), fs.constants.COPYFILE_EXCL);
   fs.writeFileSync(path.join(to, 'device.json'), JSON.stringify(meta, null, 2) + '\n', { flag: 'wx' });
   const steps = [
-    `Look over device-library\\${name}\\device.mjs and device.json once more: nothing in them may be about you or this PC.`,
+    `Look over device-library\\${name}\\${file} and device.json once more: nothing in them may be about you or this PC.`,
     `Open ${UPSTREAM} in a browser (signed in to GitHub) and press Fork.`,
     `In your fork, switch to the "app" branch, then Add file > Upload files: drag the device-library\\${name} folder in, choose "Create a new branch", and Propose changes.`,
     `Open the pull request into Dsmjr2/DeviceHub-download's "app" branch, titled "Library: ${a.title}", and say what you tested (status "${status}").`,
     'DeviceHub never sends this for you; nothing has left this PC.',
   ];
   if (status !== 'tested') steps.unshift(`Its status is "${status}": others are offered it but it does not install by itself. After writing each setting once and reading it back, share again with --status tested.`);
-  return { ok: true, name, dir: to, meta, refused: [], leftOut: scan.leftOut, steps };
+  return { ok: true, name, dir: to, meta, file, refused: [], leftOut: scan.leftOut, steps };
 }
 
 function parseArgs(argv) {

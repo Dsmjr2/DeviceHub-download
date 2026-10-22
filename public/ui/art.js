@@ -7,18 +7,29 @@
 // In the Realistic look all three devices show the makers' own product photos (public/img: Pulsar, Corsair, Epomaker, 19 Oct
 // 2026) in place of the drawing (.drawn); the other looks and the Lighting previews keep the drawing.
 // Hover lifts a drawing; a settings change gives one small bounce (style.css).
+// .glaze (a soft light over the main bodies) and .grain (Titanium's brushed grain) copy the main body shapes; both are
+// hidden unless a look shows them (22 Oct 2026, style.css "The drawn looks, made beautiful").
 import { svgEl } from './dom.js';
 import { ART_STYLES } from '../core/theme.js';
 const ART_LOOKS = ART_STYLES.map(([k]) => k);
 
 // the lit gradients every drawing uses (dhb-<device> the body, dhs-<device> the soft parts), once per page; the stop
 // colors are CSS variables set per device and per look in style.css
+// (22 Oct 2026, the looks made beautiful) besides the body and soft-part gradients, each look and device has: dhr-, a rim
+// light for outlines (bright where the light comes from, top left, and a second light from the bottom right, its colors
+// per look); dhg-, a soft radial light that the .glaze layer lays over the main body (frost, sheen or a glow); dha-, the
+// accent keys. dh-brush-h / -v: a brushed metal grain, the .grain layer's fill in Titanium. All static.
+const stop = (o, v) => `<stop offset="${o}" style="stop-color: var(${v})"/>`;
 export function artDefs() {
-  const g = (dev, look) => `<linearGradient id="dhb-${dev}-${look}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color: var(--gb1)"/><stop offset=".45" style="stop-color: var(--gb2)"/><stop offset="1" style="stop-color: var(--gb3)"/></linearGradient>`
-    + `<linearGradient id="dhs-${dev}-${look}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color: var(--gs1)"/><stop offset="1" style="stop-color: var(--gs2)"/></linearGradient>`;
+  const g = (dev, look) => `<linearGradient id="dhb-${dev}-${look}" x1="0" y1="0" x2="1" y2="1">${stop(0, '--gb1')}${stop('.45', '--gb2')}${stop(1, '--gb3')}</linearGradient>`
+    + `<linearGradient id="dhs-${dev}-${look}" x1="0" y1="0" x2="0" y2="1">${stop(0, '--gs1')}${stop(1, '--gs2')}</linearGradient>`
+    + `<linearGradient id="dhr-${dev}-${look}" x1="0" y1="0" x2="1" y2="1">${stop(0, '--gr1')}${stop('.5', '--gr2')}${stop(1, '--gr3')}</linearGradient>`
+    + `<radialGradient id="dhg-${dev}-${look}" cx=".32" cy=".22" r=".85" fx=".26" fy=".12">${stop(0, '--gg1')}${stop('.45', '--gg2')}${stop(1, '--gg3')}</radialGradient>`
+    + `<linearGradient id="dha-${dev}-${look}" x1="0" y1="0" x2="0" y2="1">${stop(0, '--ga1')}${stop(1, '--ga2')}</linearGradient>`;
+  const brush = (id, rot) => `<pattern id="${id}" patternUnits="userSpaceOnUse" width="40" height="3.7"${rot ? ' patternTransform="rotate(90)"' : ''}><rect width="40" height=".35" fill="#fff" fill-opacity=".1"/><rect y=".9" width="40" height=".25" fill="#000" fill-opacity=".09"/><rect y="1.6" width="40" height=".5" fill="#fff" fill-opacity=".05"/><rect y="2.5" width="40" height=".3" fill="#000" fill-opacity=".07"/><rect y="3.1" width="40" height=".25" fill="#fff" fill-opacity=".08"/></pattern>`;
   // each look's set sits in a group that takes that look's colors (style.css), so a preview box shows its own look
   const set = (look) => `<g class="art-preview" data-art-preview="${look}">${['mouse', 'headset', 'keyboard'].map((d) => `<g class="art art-${d}">${g(d, look)}</g>`).join('')}</g>`;
-  return svgEl(`<svg class="art-defs" width="0" height="0" aria-hidden="true" style="position: absolute"><defs>${ART_LOOKS.map(set).join('')}</defs></svg>`);
+  return svgEl(`<svg class="art-defs" width="0" height="0" aria-hidden="true" style="position: absolute"><defs>${ART_LOOKS.map(set).join('')}${brush('dh-brush-h')}${brush('dh-brush-v', true)}</defs></svg>`);
 }
 
 
@@ -37,7 +48,7 @@ function liquid(clip, x, y, w, h) {
   const wave = (dy) => { let d = `M${x0} ${y + dy}`; for (let wx = x0; wx < x1; wx += p) d += `q${p / 4} ${-a} ${p / 2} 0t${p / 2} 0`; return `${d}V${y + h + 4}H${x0}Z`; };
   const bubbles = [0.22, 0.5, 0.76].map((f, i) => `<circle class="bubble b${i}" cx="${(x + w * f).toFixed(1)}" cy="${y + h - 3}" r="${1.1 + (i % 2) * 0.5}"/>`).join('');
   const g = `${clip}-g`, sh = `${clip}-s`;
-  return `<defs><linearGradient id="${g}" gradientUnits="userSpaceOnUse" x1="0" y1="${y}" x2="0" y2="${y + Math.min(h, 45)}"><stop offset="0" class="lq-top"/><stop offset=".55" class="lq-mid"/><stop offset="1" class="lq-deep"/></linearGradient>
+  return `<defs><linearGradient id="${g}" gradientUnits="userSpaceOnUse" x1="0" y1="${y}" x2="0" y2="${y + h}"><stop offset="0" class="lq-top"/><stop offset=".22" class="lq-mid"/><stop offset="1" class="lq-deep"/></linearGradient>
       <linearGradient id="${sh}" x1="0" y1="0" x2="1" y2=".6"><stop offset=".18" stop-color="#fff" stop-opacity="0"/><stop offset=".3" stop-color="#fff" stop-opacity=".22"/><stop offset=".38" stop-color="#fff" stop-opacity="0"/><stop offset=".52" stop-color="#fff" stop-opacity=".08"/><stop offset=".58" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
     <g clip-path="url(#${clip})"><g class="liquid" style="--lh: ${h}px">
       <path class="wave back" d="${wave(1.6)}"/><path class="wave front" d="${wave(0)}" style="fill: url(#${g})"/>
@@ -66,6 +77,7 @@ export function mouseArt() {
     <rect class="soft side-btn" x="2.6" y="55" width="3.6" height="26" rx="1.8"/>
     <rect class="soft side-btn" x="2.6" y="86.5" width="3.6" height="26.5" rx="1.8"/>
     <path class="solid" d="${MOUSE_SHAPE}"/>
+    <path class="grain" d="${MOUSE_SHAPE}"/><path class="glaze" d="${MOUSE_SHAPE}"/>
     <clipPath id="${lq}"><path d="${MOUSE_SHAPE}"/></clipPath>
     ${liquid(lq, 0, 2, 100, 180)}
     <path class="shade" d="M93 30C95 60 96 95 97 112C98 135 96 158 84 172C76 180 64 182 56 182C72 176 85 160 88 136C90 112 89 70 86 30Z"/>
@@ -99,13 +111,15 @@ export function headsetArt() {
       <path d="M40.35,23.32S66.19,41.47,67.89,48.51c1.29,5.3-2.450,10.19-2.45,10.19s-2-13.82-51.51,7.17a26.630,26.630,0,0,0,7-20.44,26.3,26.3,0,0,0-2.43-8.88l11.6,6.16c0,.18,0,.36.05.55a40.11,40.11,0,0,1-1,13.53,31.68,31.68,0,0,0,2.95-16.6A31.930,31.930,0,0,0,29.54,30.1l12.4,8.27c.05.41.08.82.12,1.24a40,40,0,0,1-1.34,14.88,32,32,0,0,0-.37-31.170Z"/>
     </g>`;
   const lq = clipId();
+  const BAND = 'M72 4C82 1 112 1 124 4C131 6 135 12 136 22L137.5 69H57.5L60.5 20C61.5 11 65 6 72 4Z';
   const CUP = 'M94 95H131C147 95 159 107 159 123V165C159 181 147 193 131 193H94C78 193 66 181 66 165V123C66 107 78 95 94 95Z';
   return svgEl(`<svg class="art mark art-headset" viewBox="0 0 160 220" aria-hidden="true">
     <g class="drawn">
     <ellipse class="floor" cx="100" cy="204" rx="58" ry="9"/>
     <!-- headband: one wide flat strip (as in the photo, no gap through it), its far half in shadow, the two fabric pads
          and the status light on its inside -->
-    <path class="solid" d="M72 4C82 1 112 1 124 4C131 6 135 12 136 22L137.5 69H57.5L60.5 20C61.5 11 65 6 72 4Z"/>
+    <path class="solid" d="${BAND}"/>
+    <path class="grain" d="${BAND}"/><path class="glaze" d="${BAND}"/>
     <path class="shade" d="M60.5 20C61.5 11 65 6 72 4C80 2.3 90 1.8 98 1.9C91 3 87 7 86.5 15L95 69H57.5Z"/>
     <path class="hi-line" d="M100 3.6C114 3.4 126 5 131 11C134 15 134.8 19 135 24"/>
     <path class="cut-line" d="M95 69L86.5 15C87 7 91 3 98 1.9"/>
@@ -123,6 +137,7 @@ export function headsetArt() {
     <rect class="soft" x="46" y="101" width="50" height="91" rx="23"/>
     <path class="shade" d="M46 124C46 111 56 101 69 101H74C61 103 54 113 54 126V168C54 181 61 190 74 192H69C56 192 46 182 46 169Z"/>
     <path class="solid" d="${CUP}"/>
+    <path class="grain" d="${CUP}"/><path class="glaze" d="${CUP}"/>
     <clipPath id="${lq}"><path d="${CUP}"/></clipPath>
     ${liquid(lq, 66, 95, 93, 98)}
     <path class="shade" d="M159 123V165C159 181 147 193 131 193H124C140 191 151 180 151 165V123C151 110 143 99 131 96C146 97 159 108 159 123Z"/>
@@ -194,6 +209,7 @@ export function keyboardArt() {
     <g class="drawn">
     <ellipse class="floor" cx="${f(W / 2)}" cy="${f(H - 2)}" rx="${f(W / 2 - 4)}" ry="10"/>
     <rect class="solid" x="1" y="1" width="${f(W - 2)}" height="${f(H - 2)}" rx="9"/>
+    <rect class="grain" x="1" y="1" width="${f(W - 2)}" height="${f(H - 2)}" rx="9"/><rect class="glaze" x="1" y="1" width="${f(W - 2)}" height="${f(H - 2)}" rx="9"/>
     <rect class="shade" x="1" y="${f(H - 6)}" width="${f(W - 2)}" height="5" rx="2.5"/>
     <rect class="hi" x="8" y="2.2" width="${f(W - 16)}" height="1.6" rx="0.8"/>
     <rect class="cut" x="${f(pad - 3)}" y="${f(pad - 3)}" width="${f(W - 2 * pad + 6)}" height="${f(H - 2 * pad + 6)}" rx="5"/>

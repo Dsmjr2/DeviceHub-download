@@ -37,11 +37,16 @@ public class Hs80Io : IDisposable {
     byte[] r; return Replies.TryTake(out r, waitMs) ? r : null;
   }
   // Sets ONE property, from a fixed list with fixed ranges (the same set message iCUE uses, [02] 09 01 <id> 00 <value LE>):
-  //   02 LED brightness 0..1000, 03 lighting mode 1..2, 0E auto-shutoff in ms (1..120 minutes).
+  //   02 LED brightness 0..1000, 03 lighting mode 1..2, 0E auto-shutoff in ms (1..120 minutes); for the other Bragi
+  //   headsets (device-library/corsair-bragi-headset, docs/brands/corsair.md section 3, 22 Oct 2026): 0D sleep timer
+  //   on/off, 46 sidetone on/off (0 = on), 47 sidetone level 0..1000.
   // Returns the reply's status byte, or -1.
   public int Set(int id, int value, int waitMs) {
     bool ok = (id == 0x02 && value >= 0 && value <= 1000) || (id == 0x03 && (value == 1 || value == 2))
-           || (id == 0x0e && value >= 60000 && value <= 7200000);
+           || (id == 0x0e && value >= 60000 && value <= 7200000)
+           || (id == 0x0d && (value == 0 || value == 1))
+           || (id == 0x46 && (value == 0 || value == 1))
+           || (id == 0x47 && value >= 0 && value <= 1000);
     if (!ok) throw new ArgumentException("property " + id.ToString("x2") + " = " + value + " is not something DeviceHub sets");
     byte[] old; while (Replies.TryTake(out old)) {}
     var o = new byte[64]; o[0] = 2; o[1] = Ep; o[2] = 1; o[3] = (byte)id; o[4] = 0;
@@ -142,5 +147,53 @@ public static class HidFind {
         } finally { Marshal.FreeHGlobal(buf); }
       }
     } finally { SetupDiDestroyDeviceInfoList(set); }
+  }
+
+  // A collection chosen by more than its usage (22 Oct 2026, library drivers; helper.cs HandleHid's channel options).
+  // page / usage -1 = any; iface (the "&mi_NN" in the path), col ("&colNN"), and the input, output and feature report
+  // lengths WITH their report id byte (HidP_GetCaps) are checked when >= 0. Opened with access 0 (query only); nothing
+  // is sent. The first collection that fits, or null.
+  public static string FindEx(string vid, string pid, int page, int usage, int iface, int col, int inLen, int outLen, int featLen) {
+    Guid g; HidD_GetHidGuid(out g);
+    IntPtr set = SetupDiGetClassDevs(ref g, null, IntPtr.Zero, 0x12);
+    string want = "vid_" + vid.ToLower() + "&pid_" + pid.ToLower();
+    try {
+      for (int i = 0; ; i++) {
+        var d = new SP_DEVICE_INTERFACE_DATA(); d.cbSize = Marshal.SizeOf(d);
+        if (!SetupDiEnumDeviceInterfaces(set, IntPtr.Zero, ref g, i, ref d)) return null;
+        int need; SetupDiGetDeviceInterfaceDetail(set, ref d, IntPtr.Zero, 0, out need, IntPtr.Zero);
+        IntPtr buf = Marshal.AllocHGlobal(need);
+        try {
+          Marshal.WriteInt32(buf, IntPtr.Size == 8 ? 8 : 6);
+          if (!SetupDiGetDeviceInterfaceDetail(set, ref d, buf, need, out need, IntPtr.Zero)) continue;
+          string path = Marshal.PtrToStringUni(buf + 4);
+          if (path == null || path.ToLower().IndexOf(want) < 0 || !PathFits(path, iface, col)) continue;
+          using (var h = CreateFile(path, 0, 3, IntPtr.Zero, 3, 0, IntPtr.Zero)) {
+            if (h.IsInvalid) continue;
+            IntPtr pp; if (!HidD_GetPreparsedData(h, out pp)) continue;
+            var c = new byte[64]; HidP_GetCaps(pp, c); HidD_FreePreparsedData(pp);
+            if (CapsFit(c, page, usage, inLen, outLen, featLen)) return path;
+          }
+        } finally { Marshal.FreeHGlobal(buf); }
+      }
+    } finally { SetupDiDestroyDeviceInfoList(set); }
+  }
+
+  // the USB interface and collection numbers in a device path ("...&mi_02&col03#..."); -1 = not asked
+  public static bool PathFits(string path, int iface, int col) {
+    string p = path.ToLower();
+    if (iface >= 0 && p.IndexOf("&mi_" + iface.ToString("x2")) < 0) return false;
+    if (col >= 0 && p.IndexOf("&col" + col.ToString("x2")) < 0) return false;
+    return true;
+  }
+
+  // HIDP_CAPS: usage @0, usage page @2, input @4, output @6, feature @8 report byte lengths; -1 = not asked
+  public static bool CapsFit(byte[] c, int page, int usage, int inLen, int outLen, int featLen) {
+    if (usage >= 0 && BitConverter.ToUInt16(c, 0) != usage) return false;
+    if (page >= 0 && BitConverter.ToUInt16(c, 2) != page) return false;
+    if (inLen >= 0 && BitConverter.ToUInt16(c, 4) != inLen) return false;
+    if (outLen >= 0 && BitConverter.ToUInt16(c, 6) != outLen) return false;
+    if (featLen >= 0 && BitConverter.ToUInt16(c, 8) != featLen) return false;
+    return true;
   }
 }

@@ -80,7 +80,8 @@ function thisPc() {
       pc.lampArrays ? line('Dynamic Lighting', `${pc.lampArrays} device${pc.lampArrays === 1 ? '' : 's'}`, 'yes', 'Set in Windows Settings > Personalization > Dynamic Lighting.', null) : null),
     others.length ? h('div', { class: 'pc-others' }, h('h3', {}, 'Other devices plugged in'),
       ...others.map((u) => h('div', { class: 'pc-other' }, line(u.brand.shared ? 'USB device' : u.brand.name, u.name || `${u.brand.name} device`, null, null, u.brand),
-        button('Copy a prompt for Claude', () => copyPrompt(u), { kind: 'ghost small', title: 'A ready prompt to add this device with Claude Code' })))) : null,
+        h('div', { class: 'actions' }, button('Learn it', () => { location.hash = '#/learn'; }, { kind: 'ghost small', ic: 'plug', title: 'Teach DeviceHub this device: it listens while you change settings in the maker app' }),
+          button('Copy a prompt for Claude', () => copyPrompt(u), { kind: 'ghost small', title: 'A ready prompt to add this device with Claude Code' }))))) : null,
     // paired Bluetooth devices: connected or off, and the battery Windows last read
     st.bt?.length ? h('div', { class: 'pc-others' }, h('h3', {}, 'Bluetooth'),
       ...st.bt.map((d) => line(d.connected ? 'connected' : 'off', d.name, null, d.battery != null ? `Battery ${d.battery}%${d.connected ? '' : ' when last connected'}` : null, null))) : null);
@@ -111,12 +112,17 @@ function pcLights() {
   const o = st.orgb;
   const head = [h('h2', {}, 'PC lights')];
   if (!o) return card(head, skeleton([66, 48]));
+  // the OpenRGB shipped inside DeviceHub (helpers/openrgb.js): started hidden, USB lights only, when this asks for it
+  const b = o.bundle;
   if (!o.running) {
     return card(head,
-      h('p', { class: 'faint' }, 'Board, fan and RAM lights work through OpenRGB 1.1 or newer, a free app (openrgb.org). Open it and turn on its SDK server; the lights then show here and in Apply to all.'),
-      h('div', { class: 'actions' }, button('Look again', () => loadPc(true), { kind: 'small', ic: 'refresh' })));
+      b?.canStart ? h('p', { class: 'faint' }, `DeviceHub carries OpenRGB ${b.version} for USB lights (no drivers, so not the board, RAM or graphics card). Find lights starts it hidden; it stops when DeviceHub quits.`)
+        : h('p', { class: 'faint' }, 'Board, fan and RAM lights work through OpenRGB 1.1 or newer, a free app (openrgb.org). Open it and turn on its SDK server; the lights then show here and in Apply to all.'),
+      o.reason && o.reason !== 'not running' ? h('p', { class: 'faint', style: { fontSize: '12.5px' } }, o.reason) : null,
+      h('div', { class: 'actions' }, button(b?.canStart ? 'Find lights' : 'Look again', () => loadPc(true), { kind: 'small', ic: 'refresh' })));
   }
   return card([...head, h('span', { class: 'spacer' }), pill(`${o.controllers.length} found`, 'good')],
+    o.bundled ? h('p', { class: 'faint', style: { fontSize: '12.5px' } }, `Through the OpenRGB inside DeviceHub: USB lights only${o.readOnly ? '; read only for now (this OpenRGB version numbers lights wrongly for DeviceHub)' : ''}.`) : null,
     o.controllers.length ? h('div', { class: 'pc-parts' }, ...o.controllers.map((c) => h('div', { class: 'pc-part' },
       h('div', { class: 'pc-part-head' }, h('span', { class: 'muted' }, c.type), h('b', {}, c.name),
         c.color ? h('span', { class: 'dot', style: { background: c.same ? c.color : 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)' }, title: c.same ? c.color : 'several colors' }) : null),

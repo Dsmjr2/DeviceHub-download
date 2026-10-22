@@ -249,3 +249,15 @@ come back as input reports, which the helper already reads.
 - [BigBrainAFK gist: Wooting USB Feature Codes (command and report names, from Wootility)](https://gist.github.com/BigBrainAFK/0ba454a1efb43f7cb6301cda8838f432)
 - [Wootility 5.4: App Linking](https://wooting.io/post/wootility-5-4-app-linking-and-advanced-keys-presets)
 - [Wooting: what is Rapid Trigger](https://wooting.io/post/what-is-wootings-rapid-trigger-for-analog-keyboards)
+
+## Covered in device-library/wooting (22 Oct 2026)
+
+Read only, simulated only (tests/sim-wooting.mjs), never run on a real board; status "untested".
+- **Boards:** the `31e3` ids in section 1 (One, Two, Two Lekker, Two HE and ARM, 60HE and ARM, 60HE+, 60HE v2, 80HE,
+  UwU, UwU RGB), on the `1337` config page.
+- **Reads:** model and size from the product id, layout from GetDeviceConfig `19` (reply byte 10), the one command it
+  sends. Steps back while Wootility runs.
+- **Not covered, and why:** per-key lighting (documented by the RGB SDK, but no command reads a colour back; OpenRGB
+  drives it); actuation, rapid trigger, tachyon (no setter anywhere); key depth (the analog SDK's `FF54` / `FF53`
+  collection is not the config channel, and a driver opens one collection per product id); profiles (community
+  protocol only); the original `03eb` boards; boards with only the `FF55` page.

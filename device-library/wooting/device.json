@@ -1,0 +1,23 @@
+{
+  "id": "wooting",
+  "vendor": "Wooting",
+  "product": "Wooting analog keyboards (read only: model, size, layout)",
+  "kind": "Keyboard",
+  "vid": "31e3",
+  "pids": ["1100", "1200", "1210", "1220", "1230", "1300", "1310", "1320", "1340", "1400", "1500", "1510"],
+  "models": ["Wooting One", "Wooting Two", "Wooting Two Lekker Edition", "Wooting Two HE", "Wooting Two HE (ARM)", "Wooting 60HE", "Wooting 60HE (ARM)", "Wooting 60HE+", "Wooting 60HE v2", "Wooting 80HE", "Wooting UwU", "Wooting UwU RGB"],
+  "works": [
+    "written from docs/brands/wooting.md (Wooting's own wooting-rgb-sdk) and checked against a simulated keyboard only (tests/sim-wooting.mjs)",
+    "reads: the model and size (from the product id), the keyboard layout (GetDeviceConfig, command 19, the one command it sends)",
+    "steps back while Wootility runs"
+  ],
+  "doesNotWork": [
+    "any setting: per-key lighting has no read-back (OpenRGB drives it); actuation, rapid trigger and tachyon have no documented setter",
+    "key depth (the analog SDK's collection is not the config channel)",
+    "profiles (community protocol only), firmware updates (Wootility only)",
+    "the original One / Two (vendor 03EB) and boards that only expose the FF55 config page"
+  ],
+  "status": "untested",
+  "tested": [],
+  "source": "docs/brands/wooting.md"
+}

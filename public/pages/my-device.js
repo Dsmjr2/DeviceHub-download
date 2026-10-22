@@ -8,6 +8,63 @@ import { devices, write, prepare, connect } from '../core/devices.js';
 import { topbar, deviceActions, kv, statusPill, isAway, awayBanner, undoButton } from './common.js';
 import { artOf } from '../ui/art.js';
 import { button } from '../ui/controls.js';
+import { modal, toast } from '../ui/overlay.js';
+import { isDemo } from '../core/devices.js';
+
+// ---------- "Share this driver" (22 Oct 2026; helpers/share-route.mjs, docs/handoff/share-route.md) ----------
+// One click: DeviceHub checks the folder for anything personal, says in plain words what would be shared, asks for an
+// optional public name, prepares the entry and opens GitHub with the submission filled in. The person presses Submit;
+// DeviceHub sends nothing itself.
+async function sharePost(path, body) {
+  const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  let j = null;
+  try { j = await r.json(); } catch {}
+  return j || { ok: false, error: r.statusText || 'DeviceHub did not answer' };
+}
+const para = (text, extra = {}) => h('p', { style: { margin: '0 0 10px' }, ...extra }, text);
+const list = (items) => h('ul', { style: { margin: '0 0 10px', paddingLeft: '20px' } }, ...items.map((x) => h('li', {}, x)));
+
+async function shareRefused(a, r) {
+  const found = r.refused || [];
+  const body = h('div', {},
+    para(found.length ? `DeviceHub found something in my-devices\\${a.plugin} that is about you or this PC, so nothing was shared:` : `It could not be shared: ${r.error || 'unknown problem'}.`),
+    found.length ? list(found.map((x) => h('span', {}, h('b', {}, x.text), h('br'), h('span', { class: 'faint' }, x.fix)))) : null,
+    para(found.length ? 'Fix those, then press Share this driver again. Nothing has left this PC.' : 'Nothing has left this PC.', { class: 'faint' }));
+  await modal('Not shared', body, [{ label: 'Close', value: true, kind: 'primary' }]);
+}
+
+async function shareDriver(d) {
+  const a = d.adapter;
+  if (isDemo()) { toast('Demo mode: nothing is shared', 'info'); return; }
+  const c = await sharePost('/api/share/check', { name: a.plugin });
+  if (!c.ok) return shareRefused(a, c);
+  const by = h('input', { class: 'text', placeholder: 'A public name or nickname (optional)', 'aria-label': 'Public name', maxlength: 40 });
+  const body = h('div', {},
+    para(`Others with a ${c.title} (USB ${c.usb}) would get this driver without any setup.`),
+    h('b', {}, 'What is shared'), list(c.shared),
+    c.stays?.length ? para(`Stays on this PC: ${c.stays.join(', ')}.`, { class: 'faint' }) : null,
+    h('b', {}, 'Nothing personal'), para(c.checked),
+    h('b', {}, `Shared as "${c.status}"`), para(c.statusWhy),
+    h('b', {}, 'What happens next'), para(c.next),
+    by, para('This name is shown to everyone with the driver. Leave it empty to stay unnamed.', { class: 'faint', style: { margin: '6px 0 0' } }));
+  if (!(await modal('Share this driver?', body, [{ label: 'Cancel', value: false, kind: 'ghost' }, { label: 'Open GitHub', value: true, kind: 'primary' }]))) return;
+  const p = await sharePost('/api/share/prepare', { name: a.plugin, by: by.value });
+  if (!p.ok) return shareRefused(a, p);
+  const opened = window.open(p.url, '_blank', 'noopener');
+  if (p.method === 'attach') sharePost('/api/share/open-folder', { entry: p.entry }).catch(() => {});
+  // the link is shown too, in case the browser blocked the new window
+  await modal(p.method === 'attach' ? 'Attach the driver on GitHub' : 'Finish on GitHub', h('div', {},
+    list(p.steps),
+    para(h('a', { href: p.url, target: '_blank', rel: 'noopener' }, opened ? 'Open the GitHub page again' : 'Open the GitHub page')),
+    para(`Saved on this PC in ${p.folder}.`, { class: 'faint' })), [{ label: 'Done', value: true, kind: 'primary' }]);
+}
+
+// shown when the device works: connected and its settings read (a read-only driver with reads working counts)
+function shareButton(d, shown) {
+  if (!d.adapter?.plugin || d.status !== 'connected' || !shown.length) return null;
+  return h('div', { class: 'actions', style: { marginTop: '12px' } },
+    button('Share this driver', () => shareDriver(d).catch((e) => toast('Not shared', 'bad', { detail: e.message })), { kind: 'ghost small', ic: 'external', title: 'Send this driver to the device library so others with this device need no setup' }));
+}
 
 const ICON = { mouse: 'mouse', headset: 'headset', keyboard: 'keyboard' };
 
@@ -40,7 +97,7 @@ export function devicePage(id) {
           card([h('h2', {}, 'Settings'), d.battery?.percent != null ? pill(`battery ${d.battery.percent}%${d.battery.charging ? ', charging' : ''}`) : null],
             shown.length ? shown.map((s) => row(s.label, s.hint || null, control(d, s))) : h('p', { class: 'faint', style: { margin: 0 } }, 'It has not reported any settings yet.'),
             a.unsupported?.length ? h('p', { class: 'faint', style: { marginTop: '12px' } }, icon('external'), ` Still in its maker's app: ${a.unsupported.join(', ')}.`) : null),
-          card([h('h2', {}, 'Device'), h('span', { class: 'spacer' }), deviceActions(d)], kv(d.info || {}))));
+          card([h('h2', {}, 'Device'), h('span', { class: 'spacer' }), deviceActions(d)], kv(d.info || {}), shareButton(d, shown))));
     },
   };
 }

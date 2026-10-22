@@ -499,16 +499,57 @@ async function api(req, res, url) {
   if (url.pathname === '/api/openrgb') return send(res, 200, await openrgb.status(url.searchParams.has('fresh')));
   // Less learning for other people's devices (22 Oct 2026): the shared device library, standard batteries and
   // standard lights. Read-only, except the library install, which copies a tested driver into my-devices\ only.
+  // library entries that arrive between app releases, signed (helpers/library-updates.mjs), and sharing a working driver
+  // in one click (helpers/share-route.mjs: checks for anything personal, then opens a pre-filled GitHub page)
+  if (url.pathname.startsWith('/api/library/update')) { try { if (await (await import('./helpers/library-updates.mjs')).handle(url, req, res, send)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
+  // Learn a device: USB recordings -> a read-only driver.json, without Claude (helpers/learn-wizard.mjs, public/pages/learn.js)
+  if (url.pathname.startsWith('/api/learn/')) { try { if (await (await import('./helpers/learn-wizard.mjs')).handle(url, req, res, send, readBody)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
+  if (url.pathname.startsWith('/api/share/')) { try { if (await (await import('./helpers/share-route.mjs')).handle(url, req, res, send, readBody)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
+  // why a device isn't working, and the fix (helpers/diagnose.mjs; read-only apart from closing a maker's app on a confirmed press)
+  // optional tools (Equalizer APO, ReaPlugs, USBPcap): download, check the signature or hash, run the maker's installer on a click
+  if (url.pathname.startsWith('/api/installers')) { try { if (await (await import('./helpers/installers.mjs')).handle(url, req, res, send, readBody)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
+  if (url.pathname.startsWith('/api/diagnose')) { try { return await (await import('./helpers/diagnose.mjs')).handle(url, req, res, send); } catch (e) { return send(res, 500, { error: e.message }); } }
   if (url.pathname === '/api/library' && req.method === 'GET') {
-    try { const lib = await import('./helpers/device-library.mjs'); return send(res, 200, { matches: lib.match((await pcMap.get(url.searchParams.has('fresh'))).usb) }); } catch (e) { return send(res, 500, { error: e.message }); }
+    try { const lib = await import('./helpers/device-library.mjs'); return send(res, 200, { matches: lib.match((await pcMap.get(url.searchParams.has('fresh'))).usb, { readOnly: true }) }); } catch (e) { return send(res, 500, { error: e.message }); }
   }
+  // a "read-only" entry installs too: it loads guarded, each setting writable only once it passes its self-check
+  // (helpers/my-devices.mjs); it is loaded at once when the agent runs, else on the next start
   if (url.pathname === '/api/library/install' && req.method === 'POST') {
     try {
       const lib = await import('./helpers/device-library.mjs');
-      const r = await lib.installFromLibrary((await readBody(req)).name);
-      if (r?.ok) serverLog({ kind: 'good', text: `Device library: ${r.name || 'a driver'} installed (restart DeviceHub to load it)` });
+      const r = await lib.installFromLibrary((await readBody(req)).name, { readOnly: true });
+      if (r?.ok) {
+        let loaded = null;
+        if (agent) try { loaded = await (await import('./helpers/my-devices.mjs')).loadNew(ROOT); } catch {}
+        r.loaded = !!loaded?.some((x) => x.name === r.name && x.id);
+        if (!r.loaded) r.note = `${r.note || ''} (restart DeviceHub to load it)`.trim();
+        serverLog({ kind: 'good', text: `Device library: ${r.name || 'a driver'} installed${r.status === 'tested' ? '' : ' read-only until its self-check'}${r.loaded ? '' : ' (restart DeviceHub to load it)'}` });
+      }
       return send(res, r?.ok ? 200 : 400, r);
     } catch (e) { return send(res, 400, { error: e.message }); }
+  }
+  // the setup summary (helpers/auto-setup.mjs): found, installed, works now, optional, still to learn. Read-only;
+  // kept a minute (?fresh=1 looks again). POST /api/setup/dismiss { signature } hides the Overview's Set up card until
+  // the summary says something new.
+  if (url.pathname === '/api/setup' && req.method === 'GET') {
+    try {
+      const fresh = url.searchParams.has('fresh');
+      const setup = await import('./helpers/auto-setup.mjs');
+      if (!fresh && setup.cache.value && Date.now() - setup.cache.at < 60000) return send(res, 200, setup.cache.value);
+      const within = (p, ms = 20000) => Promise.race([Promise.resolve().then(() => p()).catch(() => undefined), new Promise((r) => setTimeout(() => r(undefined), ms))]);
+      const [pc, via, mons, cams, bt, lamps, rgb] = await Promise.all([
+        within(() => pcMap.get(fresh), 70000), within(() => require('./helpers/via-defs').findKeyboards()), within(() => monitors.list(false)), within(() => camera.list(false)),
+        within(() => require('./helpers/std-battery').read({})), within(async () => (await (await import('./helpers/lamparray.mjs')).findLampArrays()).map(({ fields, ...d }) => d)), within(() => openrgb.status(false))]);
+      const value = setup.summary({ sources: {
+        agent: agent ? agent.state() : null, usb: pc?.usb, via, monitors: mons, cameras: cams,
+        bluetooth: (bt || []).map((b) => ({ name: b.name, percent: b.percent })), lamparrays: lamps, eqapo: eqapo.installed(), openrgb: rgb,
+        pcLights: pc ? !!(pc.board?.model || pc.gpus?.length || pc.ram?.length) : undefined } });
+      Object.assign(setup.cache, { at: Date.now(), value });
+      return send(res, 200, value);
+    } catch (e) { return send(res, 500, { error: e.message }); }
+  }
+  if (url.pathname === '/api/setup/dismiss' && req.method === 'POST') {
+    try { const setup = await import('./helpers/auto-setup.mjs'); const r = setup.dismiss(ROOT, (await readBody(req)).signature); setup.cache.value = null; return send(res, 200, r); } catch (e) { return send(res, 400, { error: e.message }); }
   }
   if (url.pathname === '/api/std-battery') {
     try { const sb = require('./helpers/std-battery'); return send(res, 200, { bluetooth: await sb.read({ fresh: url.searchParams.has('fresh') }), hid: await sb.hidBatteryCaps() }); } catch (e) { return send(res, 500, { error: e.message }); }
@@ -667,6 +708,8 @@ http.createServer(async (req, res) => {
       agent = await import('./helpers/agent.mjs');
       await agent.start({ port: PORT, corsairHelper: corsair });
       console.log('[agent] running');
+      if (process.env.DEVICEHUB_TEST !== '1') import('./helpers/auto-setup.mjs').then((m) => m.startup({ root: ROOT, pcMap, log: serverLog })).catch((e) => console.error('[setup] auto setup:', e.message));  // AUTO SETUP (helpers/auto-setup.mjs): library drivers for this PC's USB devices
+      if (process.env.DEVICEHUB_TEST !== '1') import('./helpers/library-updates.mjs').then((m) => m.schedule({ root: ROOT, log: serverLog })).catch((e) => console.error('[library] updates:', e.message));  // LIBRARY UPDATES: the signed library bundle, at most once a day
     } catch (e) { agent = null; console.error('[agent] could not start:', e); }
   }
   // DeviceHub's handling of Windows' speakers (helpers/audio-follow.js: one HS80 connection at a time, apps following
@@ -727,6 +770,7 @@ async function shutdown() {
   try { audioFollow.stop(); } catch {}
   try { batteryHistory.stop(); } catch {}
   try { receiverLight.stop(); } catch {}
+  try { openrgb.stop(); } catch {}  // the bundled OpenRGB, if DeviceHub started it
   try { require('./helpers/native').stop(); } catch {}
   quitting = true;
   process.exit(0);

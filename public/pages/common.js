@@ -69,6 +69,65 @@ export function vendorNote(a) {
   return el;
 }
 
+// Why it is not connected (22 Oct 2026; helpers/diagnose.mjs, GET /api/diagnose?id=): the likeliest cause with its
+// fix and button, the rest under More. Read-only; asked again when the device's state or error changes (or after 30 s,
+// on the next redraw). An action runs only on a click; closing a maker's app asks once more, in place (no pop-up).
+const diagCache = {};   // id -> { key, at, data, pending }
+const diagPost = async (body) => {
+  const r = await fetch('/api/diagnose/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.error) throw new Error(j.error || r.statusText);
+  return j;
+};
+function diagAction(d, a, done) {
+  if (!a) return null;
+  if (a.kind === 'retry') return button(a.label || 'Connect again', () => { delete diagCache[d.id]; return connect(d.id, false); }, { kind: 'ghost small', ic: 'plug' });
+  if (a.kind === 'settings' || a.kind === 'open-folder') return button(a.label, async () => { try { await diagPost({ kind: a.kind, page: a.page }); } catch (e) { done(`Could not open it: ${e.message}`); } }, { kind: 'ghost small', ic: 'external' });
+  if (a.kind === 'close-app') {
+    const box = h('span', { class: 'actions', style: { alignItems: 'center', margin: 0 } });
+    const ask = () => box.replaceChildren(button(a.label, () => box.replaceChildren(h('small', {}, a.confirm || `${a.label}?`),
+      button('Yes, close it', async () => {
+        try {
+          const r = await diagPost({ kind: 'close-app', app: a.app, confirm: true });
+          delete diagCache[d.id];
+          done(r.note || (r.closed?.length ? 'Closed. DeviceHub connects within a few seconds.' : 'Nothing to close.'));
+          setTimeout(() => connect(d.id, false).catch(() => {}), 3000);
+        } catch (e) { done(`Not closed: ${e.message}`); }
+      }, { kind: 'small' }),
+      button('Cancel', ask, { kind: 'ghost small' })), { kind: 'ghost small' }));
+    ask();
+    return box;
+  }
+  return null;
+}
+function diagnosis(d) {
+  if (isDemo()) return null;
+  const el = h('div', { class: 'banner info', style: { textAlign: 'left', maxWidth: '560px', margin: '6px auto 14px', alignItems: 'flex-start' } });
+  const line = (f, main) => h('div', { style: { marginTop: main ? 0 : '10px' } },
+    main ? h('b', {}, f.problem) : h('span', {}, f.problem), h('small', {}, f.why), h('small', {}, `Fix: ${f.fix}`));
+  const fill = (data) => {
+    const [top, ...rest] = data.findings || [];
+    if (!top) { el.remove(); return; }
+    const note = h('small', {});
+    const done = (t) => { note.textContent = t; };
+    el.replaceChildren(icon('search'), h('div', { class: 'grow' },
+      line(top, true),
+      h('div', { class: 'actions', style: { margin: '8px 0 0', justifyContent: 'flex-start' } }, diagAction(d, top.action, done)),
+      note,
+      rest.length ? h('details', { style: { marginTop: '8px' } }, h('summary', { style: { cursor: 'pointer', color: 'var(--muted)' } }, `More (${rest.length})`),
+        ...rest.map((f) => h('div', {}, line(f, false), f.action ? h('div', { class: 'actions', style: { margin: '6px 0 0', justifyContent: 'flex-start' } }, diagAction(d, f.action, done)) : null))) : null));
+  };
+  const key = `${d.status}|${d.error || ''}`;
+  let c = diagCache[d.id];
+  if (!c || c.key !== key || Date.now() - c.at > 30000) {
+    c = diagCache[d.id] = { key, at: Date.now(), data: null };
+    c.pending = fetch(`/api/diagnose?id=${encodeURIComponent(d.id)}`).then((r) => (r.ok ? r.json() : null)).then((x) => { c.data = x; return x; }).catch(() => null);
+  }
+  if (c.data) fill(c.data);
+  else { el.append(icon('search'), h('small', { class: 'grow' }, 'Looking for the cause…')); c.pending.then((x) => (x ? fill(x) : el.remove())); }
+  return el;
+}
+
 // Shown on a device page when the device is not connected (or asleep / failed).
 export function connectState(d, hint) {
   const a = d.adapter;
@@ -81,6 +140,7 @@ export function connectState(d, hint) {
   return h('div', { class: 'panel empty' }, art,
     h('h2', {}, d.status === 'error' ? `Couldn't reach your ${a.kind.toLowerCase()}` : isRemote() ? `Waiting for your ${a.kind.toLowerCase()}` : `Connect your ${a.kind.toLowerCase()}`),
     h('p', {}, d.error || (isRemote() ? agentHint : hint)),
+    diagnosis(d),
     h('div', { class: 'actions' },
       button('Connect', () => connect(d.id, needsPick), { kind: 'primary', ic: 'plug' }),
       button(`Open ${a.vendor.label}`, () => openVendor(a.vendor.app), { kind: 'ghost', ic: 'external' })));

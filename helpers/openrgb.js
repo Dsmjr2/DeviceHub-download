@@ -9,12 +9,22 @@
 // Same rules as the devices: every controller's colors and mode are backed up before the first change
 // (backups/openrgb-<time>.json), each change is read back, and Put back restores the backup exactly (its mode and
 // every LED color).
+//
+// The bundled OpenRGB (22 Oct 2026, the owner's decision to ship it inside DeviceHub): tools\openrgb\OpenRGB.exe, the
+// official 1.1 portable build with the PawnIO driver's modules and every driver left out (helpers/bundled-tools.json;
+// only its 4 KB user-mode PawnIOLib.dll is kept, which OpenRGB.exe needs to start), so it reaches USB lights only.
+// Any OpenRGB built before 1.1 (FIXED_BUILD) numbers devices wrongly for protocol 3, so through it DeviceHub only reads. DeviceHub starts it hidden as an SDK server on a free port on 127.0.0.1 only when lights are used (a fresh
+// read, a color, Put back), never when another OpenRGB is running or installed, and never at boot beyond DeviceHub's own
+// start; it stops it when DeviceHub quits. Through it DeviceHub lists and writes USB (HID) lights only.
 const net = require('net');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
+const { spawn, execFile } = require('child_process');
 const { writeAtomic } = require('./safe-write');
 
 const PORT = 6742, HOST = '127.0.0.1', WANT = 3;
+let port = PORT;   // where session() connects: OpenRGB's own default, or the bundled server's port
 const ID = { count: 0, data: 1, version: 40, name: 50, updateLeds: 1050, customMode: 1100, updateMode: 1101 };
 let backupDir = null, cache = { at: 0, value: null }, busy = Promise.resolve();
 const serial = (f) => { const p = busy.then(f, f); busy = p.catch(() => {}); return p; };
@@ -27,13 +37,13 @@ function header(dev, id, size) {
 const u32 = (n) => { const b = Buffer.alloc(4); b.writeUInt32LE(n >>> 0); return b; };
 
 // One connection for one job: connect (short timeout, so a closed OpenRGB costs nothing), agree the protocol, run, close.
-function session(job, ms = 4000) {
+function session(job, ms = 4000, at = port) {
   return new Promise((resolve, reject) => {
-    const sock = net.connect({ host: HOST, port: PORT });
+    const sock = net.connect({ host: HOST, port: at });
     let buf = Buffer.alloc(0), waiters = [], done = false;
     const finish = (err, v) => { if (done) return; done = true; clearTimeout(timer); sock.destroy(); err ? reject(err) : resolve(v); };
     const timer = setTimeout(() => finish(new Error('OpenRGB did not answer in time')), ms);
-    sock.on('error', (e) => finish(e.code === 'ECONNREFUSED' ? Object.assign(new Error('OpenRGB is not running (no SDK server on port 6742)'), { notRunning: true }) : e));
+    sock.on('error', (e) => finish(e.code === 'ECONNREFUSED' ? Object.assign(new Error(`OpenRGB is not running (no SDK server on port ${at})`), { notRunning: true }) : e));
     sock.on('data', (d) => {
       buf = Buffer.concat([buf, d]);
       while (buf.length >= 16) {
@@ -141,17 +151,161 @@ const shapeOut = (c) => ({
 // RGBController device types (OpenRGB's RGBController.h)
 const TYPES = ['motherboard', 'ram', 'gpu', 'cooler', 'led strip', 'keyboard', 'mouse', 'mousemat', 'headset', 'headset stand', 'gamepad', 'light', 'speaker', 'virtual', 'storage', 'case', 'microphone', 'accessory', 'keypad'];
 
+// ---- the bundled OpenRGB (tools\openrgb\, helpers/bundled-tools.json) ----
+const TABLE = (() => { try { return require('./bundled-tools.json').tools.find((t) => t.id === 'openrgb') || null; } catch { return null; } })();
+const SYS32 = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32');
+const bundle = {
+  table: TABLE,
+  dir: TABLE ? path.join(__dirname, '..', ...TABLE.folder.split('/')) : null,
+  config: path.join(__dirname, '..', 'openrgb-config'),   // its own settings, never the person's own OpenRGB's
+  pidFile: path.join(os.tmpdir(), 'DeviceHub-openrgb.json'),
+  proc: null, pid: null, port: null, starting: null, hooked: false,
+};
+// the parts that touch Windows, swappable for tests (tests/bundled-tools.mjs)
+const deps = {
+  exists: (f) => fs.existsSync(f),
+  spawn: (exe, args, opts) => spawn(exe, args, opts),
+  // OpenRGB processes running now: [pid]
+  running: () => new Promise((resolve) => execFile('tasklist.exe', ['/FI', 'IMAGENAME eq OpenRGB.exe', '/FO', 'CSV', '/NH'], { windowsHide: true, timeout: 10000 }, (err, out) => {
+    resolve(String(out || '').split(/\r?\n/).map((l) => /^"OpenRGB\.exe","(\d+)"/i.exec(l)?.[1]).filter(Boolean).map(Number));
+  })),
+  // an OpenRGB the person installed (its MSI's folder, or a per-user install)
+  installed: () => [process.env.ProgramFiles, process.env['ProgramFiles(x86)'], process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Programs')]
+    .filter(Boolean).map((d) => path.join(d, 'OpenRGB', 'OpenRGB.exe')).find((f) => fs.existsSync(f)) || null,
+  freePort: () => new Promise((resolve, reject) => { const s = net.createServer(); s.unref(); s.on('error', reject); s.listen(0, HOST, () => { const p = s.address().port; s.close(() => resolve(p)); }); }),
+  // the files of the OpenRGB.exe processes running now (Windows may not name one running as administrator)
+  openrgbExes: () => new Promise((resolve) => execFile('powershell.exe', ['-NoProfile', '-Command', "Get-CimInstance Win32_Process -Filter \"Name='OpenRGB.exe'\" | ForEach-Object { $_.ExecutablePath }"], { windowsHide: true, timeout: 15000 }, (err, out) => {
+    resolve(String(out || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean));
+  })),
+  alive: (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } },
+  kill: (pid) => { try { process.kill(pid); } catch {} },
+};
+// can the bundled one start at all? every file it loads, and Windows' Visual C++ runtime
+function bundleCheck() {
+  const t = bundle.table;
+  if (!t || !bundle.dir) return { ok: false, why: 'OpenRGB is not shipped with this copy of DeviceHub' };
+  const exe = path.join(bundle.dir, t.exe);
+  if (!deps.exists(exe)) return { ok: false, why: 'the OpenRGB inside DeviceHub is missing (tools\\openrgb\\OpenRGB.exe)' };
+  const lack = (t.needs || []).filter((f) => !deps.exists(path.join(bundle.dir, f)));
+  if (lack.length) return { ok: false, why: `the OpenRGB ${t.version} inside DeviceHub cannot start without ${lack.join(', ')} (missing from tools\\openrgb; reinstall DeviceHub)` };
+  const sys = (t.systemNeeds || []).filter((f) => !deps.exists(path.join(SYS32, f)));
+  if (sys.length) return { ok: false, why: `OpenRGB needs Microsoft's Visual C++ runtime, which this PC lacks (${sys.join(', ')})` };
+  return { ok: true, exe, version: t.version, writes: t.sdkWrites !== false, writesWhy: t.sdkWritesNote || null };
+}
+const bundleAlive = () => !!bundle.pid && !!bundle.port && deps.alive(bundle.pid);
+const knock = (at, ms = 800) => new Promise((resolve) => { const s = net.connect({ host: HOST, port: at }); const done = (ok) => { clearTimeout(t); s.destroy(); resolve(ok); }; const t = setTimeout(() => done(false), ms); s.on('connect', () => done(true)); s.on('error', () => done(false)); });
+
+function stopBundled() {
+  if (bundle.pid) deps.kill(bundle.pid);
+  try { bundle.proc?.kill(); } catch {}
+  bundle.proc = null; bundle.pid = null; bundle.port = null;
+  try { fs.rmSync(bundle.pidFile, { force: true }); } catch {}
+}
+async function startBundled() {
+  const c = bundleCheck();
+  if (!c.ok) throw Object.assign(new Error(c.why), { notRunning: true, bundleWhy: true });
+  // one left from a DeviceHub that did not get to stop it (a crash): taken over, not started twice
+  try {
+    const old = JSON.parse(fs.readFileSync(bundle.pidFile, 'utf8'));
+    if (old.pid && old.port && deps.alive(old.pid) && (await deps.running()).includes(old.pid) && await knock(old.port)) { bundle.pid = old.pid; bundle.port = old.port; return old.port; }
+  } catch {}
+  const mine = await deps.running();
+  if (mine.length) throw Object.assign(new Error('OpenRGB is already running here without its SDK server: in OpenRGB, turn on Start Server (port 6742)'), { notRunning: true, bundleWhy: true });
+  const own = deps.installed();
+  if (own) throw Object.assign(new Error('OpenRGB is installed on this PC: open it and turn on its SDK server (DeviceHub does not start a second one)'), { notRunning: true, bundleWhy: true });
+  const at = await deps.freePort();
+  fs.mkdirSync(bundle.config, { recursive: true });
+  // headless SDK server (no --gui), on 127.0.0.1 only, its own settings folder, not connecting to other servers
+  const args = ['--server', '--server-host', HOST, '--server-port', String(at), '--noautoconnect', '--config', bundle.config];
+  const p = deps.spawn(c.exe, args, { cwd: bundle.dir, windowsHide: true, stdio: 'ignore', detached: false });
+  bundle.proc = p; bundle.pid = p.pid; bundle.port = at;
+  p.on?.('exit', () => { if (bundle.proc === p) { bundle.proc = null; bundle.pid = null; bundle.port = null; } });
+  p.on?.('error', () => {});
+  if (!bundle.hooked) { bundle.hooked = true; process.once('exit', stopBundled); }
+  try { fs.writeFileSync(bundle.pidFile, JSON.stringify({ pid: p.pid, port: at })); } catch {}
+  // its server answers within a few seconds of starting; checked a few times while it starts, then never again
+  for (let i = 0; i < 50; i++) {
+    if (await knock(at, 300)) return at;
+    if (!bundle.proc || !deps.alive(p.pid)) break;
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  stopBundled();
+  throw Object.assign(new Error('the OpenRGB inside DeviceHub did not start its SDK server'), { notRunning: true, bundleWhy: true });
+}
+const ensureBundled = () => { if (bundleAlive()) return Promise.resolve(bundle.port); if (!bundle.starting) bundle.starting = startBundled().finally(() => { bundle.starting = null; }); return bundle.starting; };
+
+// ---- OpenRGB before 1.1 is read only ----
+// OpenRGB 1.1 (commit 8e16de2, built 2026-10-16 16:37:19 -0500) fixed "the OpenRGB SDK server device indices on protocol
+// versions < 6"; DeviceHub speaks protocol 3, so through an OpenRGB.exe built before that (1.0 and its candidates) a
+// color sent by number could land on the wrong light. Such an OpenRGB is only read. OpenRGB.exe has no Windows version
+// number (0.0.0.0); it carries its commit id and commit time (its About page's "Git Commit Date"), read from the file.
+const FIXED_BUILD = Date.parse('2026-10-16T16:37:19-05:00');
+const builds = new Map();
+function buildOf(exe) {
+  let st; try { st = fs.statSync(exe); } catch { return null; }
+  const key = `${exe}|${st.size}|${st.mtimeMs}`;
+  if (builds.has(key)) return builds.get(key);
+  let v = null;
+  try {
+    const m = /\0([0-9a-f]{40})\0+(\d{4}-\d\d-\d\d) (\d\d:\d\d:\d\d) ([+-]\d\d)(\d\d)\0/.exec(fs.readFileSync(exe).toString('latin1'));
+    if (m) v = { commit: m[1].slice(0, 7), date: m[2], at: Date.parse(`${m[2]}T${m[3]}${m[4]}:${m[5]}`) };
+  } catch {}
+  builds.set(key, v);
+  return v;
+}
+// the OpenRGB.exe files behind a write: the bundled one, or the running ones (else the installed one when Windows does
+// not name them, e.g. one running as administrator); the first built before 1.1, or null (unknown counts as not old)
+async function oldOpenRGB(viaBundle) {
+  const exes = viaBundle ? (bundle.table && bundle.dir ? [path.join(bundle.dir, bundle.table.exe)] : [])
+    : await deps.openrgbExes().then((l) => (l.length ? l : [deps.installed()].filter(Boolean)), () => []);
+  for (const exe of exes) { const b = buildOf(exe); if (b && b.at < FIXED_BUILD) return { exe, ...b }; }
+  return null;
+}
+async function checkWrites() {
+  const viaBundle = bundleAlive() || !(await knock(port, 500));
+  if (viaBundle && bundle.table) { const c = bundleCheck(); if (c.ok && !c.writes) throw new Error(`PC lights are read-only through the OpenRGB ${c.version} inside DeviceHub: ${c.writesWhy}`); }
+  const old = await oldOpenRGB(viaBundle);
+  if (old) throw new Error(`PC lights are read-only through this OpenRGB (built ${old.date}, commit ${old.commit}): OpenRGB before 1.1 numbers lights wrongly for DeviceHub. Update OpenRGB to 1.1 or newer.`);
+}
+
+// which OpenRGB: the bundled one when DeviceHub started it, else one serving on 6742 (the person's own), else (only
+// when lights are being used: start) the bundled one, started now. start 'write': a color or Put back, refused first
+// when that OpenRGB is too old to write through (checkWrites)
+async function withOpenRGB(start, job) {
+  if (start === 'write') await checkWrites();
+  if (bundleAlive()) return session((s) => job({ ...s, bundled: true }), 4000, bundle.port);
+  try { return await session((s) => job({ ...s, bundled: false }), 4000, port); }
+  catch (e) {
+    if (!e.notRunning || !start || !bundle.table) throw e;
+    const at = await ensureBundled();
+    return session((s) => job({ ...s, bundled: true }), 4000, at);
+  }
+}
+// through the bundled OpenRGB (no PawnIO): USB lights only, whatever else it finds (a graphics card it reads itself)
+const usable = (s, c) => !s.bundled || /^(HID|USB)\b/i.test(c.location || '');
+// why the bundled OpenRGB is read only, or null (its table says so, or its exe was built before 1.1)
+const bundleReadOnly = () => {
+  const c = bundleCheck();
+  if (c.ok && !c.writes) return c.writesWhy;
+  const b = c.ok ? buildOf(c.exe) : null;
+  return b && b.at < FIXED_BUILD ? `this OpenRGB was built ${b.date}, before 1.1, and numbers lights wrongly for DeviceHub` : null;
+};
+const bundleInfo = () => { const c = bundleCheck(); return { shipped: !!bundle.table, version: bundle.table?.version || null, canStart: c.ok, why: c.ok ? null : c.why, running: bundleAlive(), writes: c.ok ? c.writes : null }; };
+
 async function status(fresh = false) {
   if (!fresh && cache.value && Date.now() - cache.at < 10000) return cache.value;
   let value;
   try {
-    value = await serial(() => session(async (s) => ({ running: true, protocol: s.proto, controllers: (await readAll(s)).map(shapeOut) })));
+    value = await serial(() => withOpenRGB(fresh, async (s) => ({ running: true, protocol: s.proto, bundled: s.bundled, readOnly: s.bundled ? bundleReadOnly() : null, controllers: (await readAll(s)).filter((c) => usable(s, c)).map(shapeOut) })));
   } catch (e) {
-    value = { running: false, reason: e.notRunning ? 'not running' : e.message, controllers: [] };
+    value = { running: false, reason: e.notRunning && !e.bundleWhy ? 'not running' : e.message, controllers: [] };
   }
+  value.bundle = bundleInfo();
   cache = { at: Date.now(), value };
   return value;
 }
+// through the bundled OpenRGB 1.0 DeviceHub only reads (its device numbers are wrong for protocol 3; bundled-tools.json)
+const writable = (s) => { if (s.bundled) { const c = bundleCheck(); if (!c.writes) throw new Error(`PC lights are read-only through the OpenRGB ${c.version} inside DeviceHub: ${c.writesWhy}`); } };
 
 // One light is known by its name, where OpenRGB found it and its LED count, never by its number in the list (the
 // numbers change when OpenRGB rescans or restarts).
@@ -184,9 +338,10 @@ const leds = (n, hexes) => {
 // Set one light (or all) to one color. Custom mode is OpenRGB's "Direct" (colors set from the PC).
 async function setColor(target, hexColor) {
   if (!/^#[0-9a-f]{6}$/i.test(hexColor)) throw new Error('color must look like #rrggbb');
-  return serial(() => session(async (s) => {
+  return serial(() => withOpenRGB('write', async (s) => {
+    writable(s);
     const before = await readAll(s);
-    const chosen = before.filter((c) => (target === 'all' ? !isOwn(c) : c.index === Number(target)));
+    const chosen = before.filter((c) => usable(s, c) && (target === 'all' ? !isOwn(c) : c.index === Number(target)));
     if (!chosen.length) throw new Error(target === 'all' ? 'no OpenRGB lights to set' : 'no such OpenRGB device');
     const file = backupNew(chosen);
     const want = hexColor.toLowerCase();
@@ -205,7 +360,8 @@ async function setColor(target, hexColor) {
 // colors only show in it); for an effect mode the colors first and the mode last, so nothing overrides the effect.
 async function restore() {
   if (!saved.size) throw new Error('nothing changed through OpenRGB yet');
-  return serial(() => session(async (s) => {
+  return serial(() => withOpenRGB('write', async (s) => {
+    writable(s);
     const now = new Map((await readAll(s)).map((c) => [keyOf(c), c]));
     const missing = [], done = [];
     for (const b of saved.values()) {
@@ -227,4 +383,4 @@ async function restore() {
   }));
 }
 
-module.exports = { start: (dir, opts = {}) => { backupDir = dir; ownDevice = opts.ownDevice || null; }, status, setColor, restore, _test: { parseController, PORT } };
+module.exports = { start: (dir, opts = {}) => { backupDir = dir; ownDevice = opts.ownDevice || null; }, status, setColor, restore, stop: stopBundled, _test: { parseController, PORT, bundle, deps, bundleCheck, buildOf, FIXED_BUILD } };

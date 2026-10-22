@@ -1,0 +1,65 @@
+{
+  "id": "corsair-bragi-headset",
+  "vendor": "Corsair",
+  "product": "Wireless headsets (Bragi), other than the HS80 RGB Wireless",
+  "kind": "Headset",
+  "vid": "1b1c",
+  "pids": [
+    "0a97",
+    "2a0f",
+    "2a0c",
+    "0a62",
+    "0a64",
+    "2a08",
+    "0a3d",
+    "0a3f",
+    "0a3e",
+    "0a40",
+    "0a41",
+    "0a43",
+    "0a42",
+    "0a44",
+    "2a12",
+    "2a05",
+    "2a02",
+    "2a03"
+  ],
+  "models": [
+    "HS80 MAX Wireless",
+    "Virtuoso RGB Wireless XT",
+    "Void Wireless V2",
+    "Virtuoso SE",
+    "Virtuoso RGB Wireless",
+    "Void MAX Wireless V2",
+    "Virtuoso MAX Wireless"
+  ],
+  "works": [
+    "battery level (property 0f), every model",
+    "charging: on the USB cable; on a wall charger from the battery voltage (53) when the headset answers it",
+    "firmware version (13), every model",
+    "sleep timer 1-60 minutes (0e), read and write with read-back, every model",
+    "sleep timer on/off (0d) on HS80 MAX, Virtuoso RGB Wireless XT and Void Wireless V2, offered only when the headset answers a read of it",
+    "sidetone on/off (46, 0 = on) and sidetone level 0-100% (47, 0-1000) on HS80 MAX, Virtuoso RGB Wireless XT and Void Wireless V2, each offered only when the headset answers a read of it",
+    "mic muted, read and live notices: a6 on HS80 MAX and Void Wireless V2, 8e on Virtuoso RGB Wireless XT",
+    "steps back while iCUE runs"
+  ],
+  "doesNotWork": [
+    "firmware updates and receiver pairing (never: they stay in iCUE)",
+    "lights and the mic light (the headsets keep their own; the helper has no HS80 MAX lighting resource 22 frame, and the sheet has no Virtuoso XT color layout)",
+    "EQ presets (no headset property is documented; Windows sound and Equalizer APO do the EQ) and noise cancelling (d1: meaning unconfirmed)",
+    "sidetone and the sleep timer on/off on Virtuoso SE, Virtuoso RGB Wireless (original), Virtuoso MAX and Void MAX Wireless V2 (the sheet does not name them for those models)",
+    "mic mute state on Virtuoso SE, Virtuoso RGB Wireless (original), Virtuoso MAX and Void MAX Wireless V2 (no property in the sheet)",
+    "HS80 MAX, Virtuoso MAX, Void Wireless V2 and Void MAX Wireless V2 on their own USB cable (their cable ids are not in the sheet)",
+    "the HS80 RGB Wireless (0a69, 0a6b, 0a71): DeviceHub's built-in headset page runs it"
+  ],
+  "status": "read-only",
+  "tested": [
+    {
+      "by": "DeviceHub",
+      "date": "2026-10-22",
+      "devicehub": "0.1.0",
+      "how": "tests/sim-corsair.mjs only: a simulated headset per model. Never run on a real headset."
+    }
+  ],
+  "source": "docs/brands/corsair.md"
+}

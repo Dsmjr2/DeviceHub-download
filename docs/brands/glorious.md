@@ -277,3 +277,16 @@ must gain `HidD_SetFeature` / `HidD_GetFeature` (or `FileStream`-free equivalent
 - [QMK raw HID docs (FF60, 61, 32 bytes)](https://github.com/qmk/qmk_firmware/blob/master/docs/features/rawhid.md)
 - [VIA keyboards v3/gmmk (gmmk2, numpad, pro)](https://github.com/the-via/keyboards/tree/master/v3/gmmk)
 - [Reddit: GMMK 3 and QMK flashing (anecdotal)](https://reddit.birdcat.cafe/r/glorious/comments/1gu8oo9/gmmk_3_and_qmk_flashing)
+
+## Covered in device-library/glorious (22 Oct 2026)
+
+READ ONLY, simulated only (tests/sim-glorious.mjs), never run on a real mouse; status "untested". No writes at all.
+- **Devices, exact ids only:** wired Model O / O- `0036`, Model D / D- `0033`; wireless Model O `2011` / `2022`, O-
+  `2013` / `2024`, D `2012` / `2023`, D- `2014` / `2025`.
+- **Gate:** the firmware read is the first and, until it passes, the only request. Wired: the firmware string must be
+  libratbag's `V103` (`0036`) or `V102` (`0033`). Wireless: no firmware strings are documented, so the reply must have
+  mxw's shape (echo `81` at [6], status `A0` / `A1` / `A4`, four version bytes). A device that fails gets nothing more.
+- **Reads:** firmware; wired sensor type and polling code (nibble order unconfirmed); wireless battery % (charging is
+  not documented). Feature reports only, on a handle opened with no access. Steps back while Glorious Core runs.
+- **Gaps (writes, never done here):** DPI, polling, lift-off, debounce, sleep, lights, buttons. Also Model O Eternal
+  (`3794`), Model I, the Model O 2 family, GMMK keyboards.

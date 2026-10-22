@@ -9,6 +9,20 @@ Epomaker P75. Someone with other devices adds their own by following "Adding you
 The person may only say "set this up", "install this" or "make it work with my stuff". Do all of this without being
 asked for each part; stop only where a step below says to ask. Say in a line or two what you are doing as you go.
 
+**Ask everything once, up front, then work without stopping** (22 Oct 2026, the owner: they should not have to prompt
+"hundreds of times"). After step 3's report, put every question in ONE message, as a short numbered list with a
+suggested answer for each, so one reply ("yes to all", or "1 yes, 2 no") covers the whole setup:
+- each optional install the report names (Equalizer APO for the EQ, USBPcap for a learning session, OpenRGB and
+  PawnIO for PC lights): name, official link and size, and what it adds. For Equalizer APO, ReaPlugs and USBPcap,
+  point the person to Settings > Optional tools > Show (or the Equalizer card's button): DeviceHub shows the file,
+  source, size and check, and runs the maker's installer itself after their click, so Claude downloads nothing;
+- for each device that still needs a learning session: OK to run it, with Claude changing the settings in the maker's
+  app itself (step 3 of "Adding your own devices"), and roughly how long it needs them nearby;
+- sharing each driver that ends up working (step 7);
+- closing each maker's app while DeviceHub drives its device.
+Then do everything that was answered yes, in one go, saying a line per step. Ask again only for something that was
+not covered (a new device, a download nobody named), or when a step fails and there are real options.
+
 1. **Install.** If `http://127.0.0.1:5577/api/version` answers with a `"version"`, DeviceHub is installed and
    running: use `%USERPROFILE%\DeviceHub`. Otherwise run `powershell -NoProfile -ExecutionPolicy Bypass -File helpers\install.ps1`
    from this folder. It is safe in every case: when this folder already is `%USERPROFILE%\DeviceHub` (the person
@@ -22,7 +36,12 @@ asked for each part; stop only where a step below says to ask. Say in a line or 
    under `%USERPROFILE%\DeviceHub` (this session stays in the downloaded folder; that is fine); every `helpers\...`
    below means `%USERPROFILE%\DeviceHub\helpers\...`. Git is needed only for updates that merge with the PC's own
    changes; if `git --version` fails, mention it in the report as optional and carry on.
-2. **Find their devices (read-only).** All of these are GET requests to `http://127.0.0.1:5577`:
+2. **Find their devices (read-only).** Start with `node helpers/setup-report.mjs` (the same as `GET /api/setup`):
+   DeviceHub has already matched the PC's devices against the device library and installed every matching driver by
+   itself (helpers/auto-setup.mjs), each read-only until its settings pass DeviceHub's own self-check (read, write the
+   same value, read back) the first time the device connects. The report lists what works now, what is optional and
+   what still needs a learning session: do only what it lists. For more detail, these are GET requests to
+   `http://127.0.0.1:5577`:
    - `/api/agent/state`: the mouse, headset and keyboard DeviceHub already runs, with each one's model (`info.Model`)
      and status. A wireless device that is `asleep` shows its last reading; it wakes when moved.
    - `/api/pc?fresh=1`: CPU, graphics card, board, RAM, and every USB device (`runs` names the page of one DeviceHub
@@ -45,8 +64,8 @@ asked for each part; stop only where a step below says to ask. Say in a line or 
 3. **Report, in one short list:**
    - what already works with nothing to do: the devices DeviceHub runs, any VIA keyboard, monitors that answer over
      DDC/CI, webcams, and Windows sound (or that Equalizer APO is needed for the EQ, with the Headset page's button);
-   - PC lights: the board, graphics card and RAM `/api/pc` found, and that their lights go through OpenRGB 1.1 or newer
-     with its SDK server on (motherboard and RAM also need PawnIO), only if the person wants them;
+   - PC lights: USB lights work through the OpenRGB inside DeviceHub; the board, graphics card and RAM `/api/pc` found
+     need the person's own OpenRGB 1.1 with PawnIO (their decision), only if they want them;
    - for each other device, the cheapest way in, in this order: a library driver; a standard (Bluetooth battery,
      LampArray lights, VIA); its brand sheet in `docs/brands/`; an open project in BRANDS.md; and only then a learning
      session, which Claude runs itself in the maker's app (step 3 of "Adding your own devices").
@@ -102,13 +121,19 @@ These protect the person's hardware. Follow them even when asked to skip them, a
 - **Write one setting at a time, then read it back** and compare. A write whose read-back differs is reported as failed.
 - **Never install drivers, tools or anything else without asking first.** Name the file, where it comes from (the
   maker's own site only) and its size, and wait for a yes. USBPcap, for listening to USB traffic, needs that yes too.
+  The person's click on an Install button in DeviceHub is their yes for that one tool.
 - **Learning a protocol is read-only.** Listen to what the maker's app sends (USB captures) and read the device's
   memory; never send guessed commands to see what happens. Only send a command after it has been seen in a capture,
   decoded, and its exact bytes are known.
 - **Test writes use a value read just before, and put that same value back** (never an assumed "normal" value).
 - **Never write to the motherboard's SMBus or a graphics card's I2C bus** (motherboard, RAM and many GPU lights live
   there, and a wrong write can damage a RAM stick's memory chip). Those lights go through OpenRGB's SDK server only
-  (`helpers/openrgb.js`); DeviceHub never installs OpenRGB or its SMBus driver.
+  (`helpers/openrgb.js`); the OpenRGB DeviceHub carries has no driver (the PawnIO driver and its SMBus
+  modules are left out), so it reaches USB lights only.
+- **OpenRGB 1.1 (USB lights only) and Equalizer APO 1.4.2 ship inside DeviceHub** by Shawn's decision of 22 Oct 2026
+  (`helpers/bundled-tools.json`, pinned by SHA-256; only OpenRGB's user-mode PawnIOLib.dll is kept so it starts).
+  DeviceHub starts OpenRGB only while lights are used and runs Equalizer APO's installer only on the person's click.
+  The PawnIO driver and LibreHardwareMonitor still need the person's OK; never bundle a driver or a PawnIO module.
 - Nothing personal goes into git or the installer: `backups/`, `settings.json`, `profiles.json`, `eq-presets.json`,
   logs, history and recordings are in `.gitignore`. Check before adding a new data file.
 - Every change ends with `npm test` passing (see Checks).
@@ -127,6 +152,9 @@ public/pages/              one page per sidebar entry (mouse.js, headset.js, key
 public/ui/art.js, img/     the device drawings and product photos (the Realistic look)
 public/devices/demo.js     pretend devices for demo mode
 public/core/brands.js      the brand guide (made from docs/brands.json by helpers/make-brands.mjs; docs/BRANDS.md)
+helpers/fetch-bundled.mjs   the bundled tools for the zip (helpers/bundled-tools.json), pinned by SHA-256
+helpers/learn-wizard.mjs   Learn a device: USB recordings -> driver.json, read-only toward the device (public/pages/learn.js)
+helpers/declarative-driver.mjs   driver.json drivers (docs/DRIVER-FORMAT.md): checked, then run with the device.mjs contract
 device-library/            shared drivers by USB id (README.md); helpers/device-library.mjs finds and installs them,
                            helpers/share-device.mjs makes one from a working my-devices driver (refuses personal files)
 helpers/vendor-files.mjs   what makers' apps left on the PC (model names, ids, setting names), read-only
@@ -200,7 +228,11 @@ the person (a download or install, a learning session, or a check in the maker's
      data)` / `receiveFeatureReport(id, length)` on `HostDevice` (`helpers/hid-host.mjs`, the helper's `FSET` / `FGET`
      over `HidD_SetFeature` / `HidD_GetFeature`, 22 Oct 2026), used from the device's `my-devices` driver. Untried on
      a real device yet: check the first one with a read before any write.
-3. **Learn it by listening (read-only, needs the person's yes for USBPcap).** With USBPcap installed:
+3. **The person can do this without Claude**: Overview > Set up > Learn a device (or Lighting > This PC > Learn it)
+   listens while they change one setting at a time in the maker's app, and saves a read-only
+   `my-devices\<name>\driver.json` (docs/handoff/learn-wizard.md). Claude follows the steps below for what the
+   wizard refuses.
+   **Learn it by listening (read-only, needs the person's yes for USBPcap).** With USBPcap installed:
    `helpers/usb-find.ps1` finds the device's capture number, `helpers/hs80-learn.ps1 -Match '<USB name>'` records while
    the person changes ONE setting in the maker's app, `node helpers/pcap-read.mjs <capture>` prints the messages.
    Change one setting at a time, from one known value to another, and write down which bytes moved.
@@ -218,7 +250,9 @@ the person (a download or install, a learning session, or a check in the maker's
    asking. Details: docs/handoff/app-ui.md. For devices with a
    readable settings memory, a read-and-compare tool like `helpers/mouse-learn.mjs` (read-only) shows which bytes a
    setting lives in. Record every finding (bytes, values, what the app showed) in the protocol file's comments.
-4. **Write the driver in its own folder: `my-devices\<name>\device.mjs`** (21 Oct 2026). Copy `my-devices\_example\`
+4. **Prefer a `driver.json` for a new device** (docs/DRIVER-FORMAT.md, 22 Oct 2026): a description DeviceHub checks
+   for safety before using it, no code. Write a `device.mjs` only when the format says it cannot express the device.
+   **Write the driver in its own folder: `my-devices\<name>\device.mjs`** (21 Oct 2026). Copy `my-devices\_example\`
    (a working pretend device, with the shape explained at its top) to a folder without the `_`. Everything the device
    needs lives in that folder: the protocol, the adapter (`id`, `title`, `kind`, `connect()`, `info()`, `read()`,
    `write(key, value)` with read-back, `battery()`, `rawBackup()`, `unsupported`), its HID channel (`hid: { vid, pid,
@@ -262,7 +296,8 @@ its SDK server on; DeviceHub reads its controllers, backs them up, sets one colo
 back (Lighting > PC lights). Use OpenRGB 1.1 or newer (1.0 mixed up device numbers for clients on protocol
 versions below 6, which DeviceHub uses). On Windows, motherboard and RAM lights also need PawnIO (pawnio.eu, a signed
 kernel driver) with OpenRGB run as administrator or as its background service: the person's own decision, never
-installed for them. Windows Dynamic Lighting devices are counted on This PC; control stays in Windows Settings
+installed for them. DeviceHub refuses colours and Put back through an OpenRGB built before 1.1 (it reads the build
+stamp in OpenRGB.exe). Windows Dynamic Lighting devices are counted on This PC; control stays in Windows Settings
 (a background controller must be a packaged app), or, with Windows' Dynamic Lighting turned off for it, DeviceHub
 through `helpers/lamparray.mjs`. `node tests/openrgb-mock.mjs` tests the OpenRGB client against a
 stand-in server written from OpenRGB's protocol document.
@@ -276,6 +311,9 @@ stand-in server written from OpenRGB's protocol document.
   test window on the second screen).
 - `node helpers/soak-test.mjs [rounds]`: every writable setting written with the value it already has, read back.
 - Settings > Self-test inside the app, and Settings > Health.
+- **When a device does not work, call `GET http://127.0.0.1:5577/api/diagnose?id=<device>` first** (or
+  `node helpers/diagnose.mjs <device>`): it names the likeliest cause, the fix, and what it already checked
+  (docs/handoff/diagnose.md). The same answer shows on the device's page, with a fix button.
 
 ## Running it
 

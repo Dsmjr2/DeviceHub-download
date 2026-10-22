@@ -1,0 +1,99 @@
+{
+  "about": "Tools shipped INSIDE the DeviceHub zip (owner's decision 22 Oct 2026: 'Yes why would we not want to ship them in it?'). Each file is downloaded once from its project's official source by helpers/fetch-bundled.mjs when the zip is built, refused unless its SHA-256 is the one pinned here, and put in the zip under tools/<id>/ by helpers/make-installer.ps1. Binaries never go into git (bundled-cache/ is ignored). The PawnIO driver, its .bin modules, WinRing0, inpout and every kernel driver are never bundled; OpenRGB's 4 KB user-mode PawnIOLib.dll is kept (OpenRGB.exe cannot start without it; it does nothing without the PawnIO driver). A new version: change version, url, file, size and sha256 (and for a zip, every kept file's sha256), after the owner's OK.",
+  "neverKeep": [
+    "\\.sys$",
+    "\\.bin$",
+    "winring0",
+    "inpout",
+    "(^|/)(?!pawniolib\\.dll$)[^/]*pawnio"
+  ],
+  "tools": [
+    {
+      "id": "equalizerapo",
+      "name": "Equalizer APO",
+      "version": "1.4.2",
+      "kind": "installer",
+      "page": "https://sourceforge.net/projects/equalizerapo/",
+      "sourceCode": "https://sourceforge.net/p/equalizerapo/code/HEAD/tree/",
+      "url": "https://sourceforge.net/projects/equalizerapo/files/1.4.2/EqualizerAPO-x64-1.4.2.exe/download",
+      "hosts": [
+        "sourceforge.net",
+        "downloads.sourceforge.net",
+        ".dl.sourceforge.net"
+      ],
+      "file": "EqualizerAPO-x64-1.4.2.exe",
+      "size": 11980366,
+      "sha256": "7403be7427bbe1936a40dded082829b6e217fc4f5990fee5cba501f0ae055afa",
+      "pinned": "computed 22 Oct 2026 from the official SourceForge download; its MD5 (410aab9749ae4673b950bc29a4eb226f) equals the MD5 SourceForge publishes for the file. Not digitally signed (Get-AuthenticodeSignature: NotSigned).",
+      "license": "GPL-2.0",
+      "licenseNote": "GNU General Public License version 2.0, as the project states on its SourceForge page",
+      "licenseFile": "helpers/licenses/GPL-2.0.txt",
+      "folder": "tools/equalizerapo"
+    },
+    {
+      "id": "openrgb",
+      "name": "OpenRGB",
+      "version": "1.1",
+      "kind": "zip",
+      "page": "https://openrgb.org/releases.html",
+      "sourceCode": "https://codeberg.org/OpenRGB/OpenRGB/src/tag/release_1.1",
+      "url": "https://codeberg.org/OpenRGB/OpenRGB/releases/download/release_1.1/OpenRGB_1.1_Windows_64_8e16de2.zip",
+      "hosts": [
+        "codeberg.org"
+      ],
+      "file": "OpenRGB_1.1_Windows_64_8e16de2.zip",
+      "size": 22019605,
+      "sha256": "63291726c6fc84eb479ef2ee752e97e1187f6ce9c49fd27eee40ded588a8172a",
+      "pinned": "computed 22 Oct 2026 from the official Codeberg release asset (the link openrgb.org/releases.html gives for Release 1.1, Windows 64-bit portable), downloaded twice with the same SHA-256; its size equals the size Codeberg's release API lists. The project publishes no checksum.",
+      "license": "GPL-2.0",
+      "licenseNote": "GNU General Public License version 2, as the project states; the Qt 6 libraries in its zip are LGPL-3.0, libusb LGPL-2.1, hidapi BSD-style, and PawnIOLib.dll is PawnIO's user-mode library (each as shipped in OpenRGB's own zip)",
+      "licenseFile": "helpers/licenses/GPL-2.0.txt",
+      "folder": "tools/openrgb",
+      "zipRoot": "OpenRGB Windows 64-bit/",
+      "exe": "OpenRGB.exe",
+      "keep": {
+        "OpenRGB.exe": "e26ae71162795a8abcfb90c05c1572a00ba06ca63b886aca57392a0138963b1e",
+        "PawnIOLib.dll": "c6e7c2f54643ef9cb51b9a3ec7b0efc9e204803c206f33014e39f281546ea9b4",
+        "Qt6Core.dll": "8632f4a9f57355680f1b0de5013eb4657b1038b0cedc7c0534db827f73162014",
+        "Qt6Core5Compat.dll": "0d949a077144cfe2fecd4a030a3a6fbf0d651501e1b39bbdaaa11f56c74c25a2",
+        "Qt6Gui.dll": "1c6ab7a785ade7a8964f67cce21e6099b1209301498726019189ea0023e6f24c",
+        "Qt6OpenGL.dll": "bfb1be764c0e9d75682319b14d8ba0493d89a52d1680e1cc914525ea1ad944fb",
+        "Qt6Widgets.dll": "baf97dfdb7fe72a14e1675f37b21cc8634c7ec26cc9082f4883aa7492292a1db",
+        "dxcompiler.dll": "6ec587d1952778a41a5a90647b39d0c86958e7dabf87fa1cf2b14408bfe1e8de",
+        "dxil.dll": "a0cfaf3e930894e9b5d48efcacaed6ace5c645bad3c4e99b4a23c9831a078120",
+        "hidapi-hotplug.dll": "263a662b014a7082871bb3e46f4d3c4790d7ed253768dcd585264fd598892dfb",
+        "libusb-1.0.dll": "a8c91f0ff68fb7802a9f4416728f0eeb4d99af4ceaa4ef7dfe9374e76e375018",
+        "imageformats/qgif.dll": "9cb2a7645576e72db54f957e9431b6145daf55bb83f4879cc01f864d4af96621",
+        "imageformats/qico.dll": "41038802daf3a01d4701f88e2c7730c41a9e7e63fa8c985e2ef4a9a9370b2d6e",
+        "imageformats/qjpeg.dll": "c6d100f40b051a1750cda26c46b66694b8854eae01de45a0d4510b779b5ea88d",
+        "platforms/qwindows.dll": "d858a41e1617052f113442ea755696bc6dbe8030e64266e3ff3dc27fddea6bef",
+        "styles/qmodernwindowsstyle.dll": "518118bbe1eba484b431a5eff1a212a1ffe8b92305db18a3476a6a6217a78c9f"
+      },
+      "dropped": {
+        "LedsValve.bin": "a PawnIO module",
+        "LpcIO.bin": "a PawnIO module (Super I/O chip access)",
+        "SmbusI801.bin": "a PawnIO module (Intel SMBus)",
+        "SmbusIntelSkylakeIMC.bin": "a PawnIO module (Intel memory controller SMBus)",
+        "SmbusNCT6793.bin": "a PawnIO module (Nuvoton SMBus)",
+        "SmbusPIIX4.bin": "a PawnIO module (AMD SMBus)"
+      },
+      "needs": [
+        "libusb-1.0.dll",
+        "hidapi-hotplug.dll",
+        "PawnIOLib.dll",
+        "Qt6Widgets.dll",
+        "Qt6Gui.dll",
+        "Qt6Core.dll"
+      ],
+      "needsNote": "the DLLs OpenRGB.exe 1.1 loads from its own folder at start (its import table, read 22 Oct 2026). PawnIOLib.dll is among them and is kept (4 KB, user mode, imports only ntdll and kernel32; it installs nothing and does nothing without the PawnIO driver, which is never shipped).",
+      "systemNeeds": [
+        "MSVCP140.dll",
+        "VCRUNTIME140.dll",
+        "VCRUNTIME140_1.dll"
+      ],
+      "systemNeedsNote": "Microsoft's Visual C++ runtime, not in OpenRGB's zip: it must already be in Windows\\System32 (most PCs have it).",
+      "sdkWrites": true,
+      "sdkWritesNote": "OpenRGB 1.1 numbers devices correctly for SDK clients on protocol versions below 6 (its release notes: 'Fix an issue with the OpenRGB SDK server device indices on protocol versions < 6'), so DeviceHub sets colors and puts them back through it. Any OpenRGB built before 1.1 is read only (helpers/openrgb.js, FIXED_BUILD)."
+    }
+  ]
+}

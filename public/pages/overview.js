@@ -84,6 +84,28 @@ function firstRun(go, redraw) {
       button('Monitors', () => go('monitors'), { kind: 'ghost small', ic: 'monitor' })));
 }
 
+// The Set up card (22 Oct 2026; helpers/auto-setup.mjs, GET /api/setup): on a PC where DeviceHub installed something
+// from the device library or something still needs attention, what was found, what works now, what is optional and
+// what still needs a learning session. Shown only when /api/setup says show (never on a PC where everything is built
+// in); Dismiss hides it until the summary says something new (kept in setup.json).
+let setupInfo = null, setupAsked = false, setupHidden = false;
+function setupCard(redraw) {
+  if (isDemo() || setupHidden) return null;
+  if (!setupAsked) { setupAsked = true; fetch('/api/setup').then((r) => (r.ok ? r.json() : null)).then((j) => { setupInfo = j; if (j?.show) redraw(); }).catch(() => {}); }
+  const s = setupInfo;
+  if (!s?.show) return null;
+  const part = (title, items) => (items?.length ? h('div', { class: 'setup-part' }, h('h3', {}, title), h('ul', { style: { margin: '4px 0 10px', paddingLeft: '18px' } }, ...items.map((i) => h('li', {}, i.line)))) : null);
+  const dismiss = () => { setupHidden = true; redraw(); fetch('/api/setup/dismiss', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ signature: s.signature }) }).catch(() => {}); };
+  return h('div', { class: 'panel setup-card', style: { marginBottom: '16px' } },
+    h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } }, h('h2', { style: { margin: 0 } }, 'Set up'), h('span', { class: 'spacer', style: { flex: 1 } }), button('Dismiss', dismiss, { kind: 'ghost small' })),
+    part('Installed from the device library', s.installed),
+    part('Works now', s.works),
+    part('Still to do', s.learn),
+    part('Optional', s.optional),
+    s.learn?.length ? h('div', { class: 'actions', style: { margin: '0 0 8px' } }, button('Learn a device', () => { location.hash = '#/learn'; }, { kind: 'primary small', ic: 'plug' })) : null,
+    s.learn?.length ? h('p', { class: 'faint', style: { margin: 0 } }, 'Learn a device walks you through it in DeviceHub. Or open this folder in Claude Code and say "set this up": it runs helpers/setup-report.mjs and does what is listed under Still to do.') : null);
+}
+
 function bay(d, go, redraw) {
   const a = d.adapter;
   const ro = readouts(d, redraw);
@@ -249,6 +271,7 @@ export default {
 
       isDemo() ? h('div', { class: 'banner info' }, icon('shield'), h('div', { class: 'grow' }, h('b', {}, 'Demo with pretend devices'),
         h('small', {}, 'Click anything: change DPI, remap keys, switch profiles. The values start from a real Pulsar X-Lite, Corsair HS80 and Epomaker P75, and nothing leaves this page. The real app runs on the PC and talks to the devices over USB.'))) : null,
+      setupCard(redraw),
       noDevicesYet() ? firstRun(go, redraw)
         : h('div', { class: 'bays', style: { gridTemplateColumns: `repeat(${list.length}, minmax(0, 1fr))` } }, ...list.map((d) => bay(d, go, redraw))),
       h('div', { class: 'grid ov-bottom' },

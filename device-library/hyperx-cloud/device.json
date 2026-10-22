@@ -1,0 +1,55 @@
+{
+  "id": "hyperx-cloud",
+  "vendor": "HyperX",
+  "product": "Cloud wireless headsets (HP-era dongles)",
+  "kind": "Headset",
+  "vid": "03f0",
+  "pids": [
+    "0696",
+    "018b",
+    "098d",
+    "1743",
+    "1765",
+    "05b7",
+    "0c9d",
+    "069f",
+    "0995"
+  ],
+  "models": [
+    "HyperX Cloud II Wireless",
+    "HyperX Cloud Alpha Wireless",
+    "HyperX Cloud III Wireless",
+    "HyperX Cloud II Core Wireless"
+  ],
+  "works": [
+    "Cloud II Wireless (03F0:0696, 018B): battery %, battery voltage, charging, sidetone on/off, raw sidetone level, auto-off minutes, mic mute, boom mic attached (read); sidetone on/off, auto-off, mic mute (write with read-back)",
+    "Cloud Alpha Wireless (03F0:098D): battery %, charging, sidetone on/off and level 0-128, auto-off, voice prompts, mic mute, boom mic attached (read); sidetone on/off, sidetone level 0-128 (HeadsetControl), auto-off, voice prompts, mic mute (write with read-back)",
+    "Cloud Alpha Wireless (03F0:1743, 1765, ids from one source only): the same reads, no writes",
+    "Cloud III Wireless (03F0:05B7, 0C9D, ids the source calls possible): battery %, connected, sidetone on/off, raw sidetone level, auto-off, mic mute, silent mode, charging raw byte, product color code (read only)",
+    "Cloud II Core Wireless (03F0:069F, 0995, HyperHeadset only): battery %, connected, sidetone on/off and level -5..5, auto-off, mic mute, silent mode, noise gate, boom mic attached, charging raw byte (read only)",
+    "every write refused while HyperX NGENUITY runs"
+  ],
+  "doesNotWork": [
+    "firmware updates (never: they stay in HyperX NGENUITY)",
+    "pairing: the Cloud III Wireless SIRK reset and read are never sent (nor on the Cloud II Core, which shares the frame)",
+    "the Cloud II Wireless wireless-status get (it unmutes the headset): never sent",
+    "sidetone level changes on the Cloud II Wireless (a raw byte with no documented range)",
+    "Alpha Wireless connection state (the two sources disagree on its byte)",
+    "Cloud III Wireless and Cloud II Core Wireless changes (ids not confirmed / one source)",
+    "mic monitoring (no source documents it; HyperX calls it sidetone)",
+    "equalizer (documented only for the Cloud III S, write-only)",
+    "Kingston-era 0951 dongles, the wired Cloud III, Cloud III S, Cloud Flight, 03F0:0D93 (maybe a Cloud Stinger 2 Wireless)",
+    "lights (mice and keyboards only, through OpenRGB)",
+    "running beside NGENUITY: close it first"
+  ],
+  "status": "untested",
+  "tested": [
+    {
+      "by": "nobody yet: simulation only",
+      "date": "2026-10-22",
+      "devicehub": "0.1.0",
+      "how": "tests/sim-hyperx.mjs against simulated headsets answering as docs/brands/hyperx.md documents; never run on a real headset"
+    }
+  ],
+  "source": "docs/brands/hyperx.md"
+}

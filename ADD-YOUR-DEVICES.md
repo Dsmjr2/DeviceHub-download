@@ -12,7 +12,7 @@ settings in the maker's own app. It never flashes firmware and asks before insta
 - Your devices' own apps installed for now (Claude learns from what they send). You can remove them afterwards.
 - Google Chrome (or Edge) for DeviceHub's window.
 
-Not in the zip, installed only if you want them (Claude asks first and gives you the official link):
+Not in the zip, installed only if you want them (Settings > Optional tools installs or links them; Claude asks first):
 - **Equalizer APO** (sourceforge.net/projects/equalizerapo): the headset EQ, monitor EQ and mic filters.
 - **ReaPlugs** (reaper.fm/reaplugs): the mic's Even volume.
 - **USBPcap** (desowin.org/usbpcap): only to learn a device whose protocol is not known.

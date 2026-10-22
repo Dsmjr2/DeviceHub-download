@@ -1,0 +1,26 @@
+{
+  "id": "steelseries-arctis",
+  "vendor": "SteelSeries",
+  "product": "Arctis headsets",
+  "kind": "Headset",
+  "vid": "1038",
+  "pids": ["2202", "22a1", "227e", "2206", "22a4", "22a5", "2258", "229e", "22ad", "223a", "22a9", "227a", "220e", "2212", "2216", "2236", "2232", "2253", "12e0", "12e5", "12c2", "1260", "12ad", "1252", "1280"],
+  "models": ["Arctis Nova 7", "Arctis Nova 7 Wireless Gen 2", "Arctis Nova 7X", "Arctis Nova 7x v2", "Arctis Nova 7 Diablo IV", "Arctis Nova 7 WoW Edition", "Arctis 7+", "Arctis 7P+ (PS5)", "Arctis 7X+ (Xbox)", "Arctis 7+ Destiny", "Arctis Nova 5", "Arctis Nova 5X", "Arctis Nova Pro Wireless", "Arctis Nova Pro Wireless X", "Arctis 9", "Arctis 7", "Arctis 7 (2019)", "Arctis Pro (2019)", "Arctis Pro GameDAC"],
+  "works": [
+    "battery and charging (read): Nova 7 family, Arctis 7+, Nova Pro Wireless, Arctis 9; battery without a charging flag on the Arctis 7 (2017-19)",
+    "ChatMix (read, shown on the page as read-only): Nova 7 family, Arctis 7+, Arctis 9, Arctis 7 / Pro (2017-19)",
+    "sidetone (0-3, written and read back): Arctis Nova 7 Wireless Gen 2 only",
+    "writes are refused while SteelSeries GG or SteelSeries Engine runs",
+    "all from docs/brands/steelseries.md and a simulated headset (tests/sim-steelseries.mjs); not yet run on a real headset"
+  ],
+  "doesNotWork": [
+    "firmware updates (never: they stay in SteelSeries GG)",
+    "settings no source can read back, so DeviceHub does not write them: sidetone (except Nova 7 Gen 2), auto-off, EQ presets and custom EQ, mic volume, mic mute light, volume limiter, Bluetooth options, lights",
+    "saving settings to the headset (never sent)",
+    "Nova 5 battery and ChatMix (the sheet does not give the request bytes)",
+    "Nova Pro ChatMix, ANC, transparency and the base station screen (not in the sheet)"
+  ],
+  "status": "read-only",
+  "tested": [],
+  "source": "docs/brands/steelseries.md"
+}

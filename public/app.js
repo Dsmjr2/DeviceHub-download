@@ -20,6 +20,7 @@ import backupsPage from './pages/backups.js';
 import monitorsPage from './pages/monitors.js';
 import fansPage from './pages/fans.js';
 import settingsPage from './pages/settings.js';
+import learnPage from './pages/learn.js';
 import { devicePage } from './pages/my-device.js';
 import { commands } from './core/commands.js';
 import { startAutoSwitch, loadSettings, auto } from './core/autoswitch.js';
@@ -42,7 +43,7 @@ const LOCAL = !DEMO && !AGENT;
 const adapters = DEMO ? demoAdapters() : [mouse, headset, keyboard];
 if (!REMOTE) adapters.forEach(register);
 
-const PAGES = [overview, mousePage, headsetPage, keyboardPage, lightingPage, monitorsPage, fansPage, profilesPage, backupsPage, settingsPage];
+const PAGES = [overview, mousePage, headsetPage, keyboardPage, lightingPage, monitorsPage, fansPage, profilesPage, backupsPage, settingsPage, learnPage];
 // devices added on this PC (my-devices/, 21 Oct 2026): a page each, after the built-in devices
 if (REMOTE) for (const d of Object.values(devices)) if (d.adapter?.plugin) PAGES.splice(PAGES.indexOf(lightingPage), 0, devicePage(d.id));
 let current = null;
@@ -78,7 +79,8 @@ function buildRail() {
     h('div', { class: 'nav-label' }, 'Desk'),
     ...PAGES.filter((p) => ['lighting', 'monitors', 'fans'].includes(p.id)).map(navBtn),
     h('div', { class: 'nav-label' }, 'App'),
-    ...PAGES.filter((p) => !p.device && p.id !== 'overview' && !['lighting', 'monitors', 'fans'].includes(p.id)).map(navBtn),
+    // rail: false = reached from another page only (Learn a device: the Set up card, This PC)
+    ...PAGES.filter((p) => !p.device && p.id !== 'overview' && p.rail !== false && !['lighting', 'monitors', 'fans'].includes(p.id)).map(navBtn),
     h('div', { class: 'rail-foot' },
       h('button', { class: 'cmd-hint', onclick: openPalette }, icon('search'), h('span', {}, 'Search'), h('kbd', { class: 'cmd-kbd' }, 'Ctrl K'))),
   );

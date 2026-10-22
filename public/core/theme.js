@@ -17,8 +17,11 @@ export function setGlow(hex) {
 // the looks are variations of the real-color drawings ('frosted' is the stored name of Classic, the drawn look; 'photo' is Realistic)
 // six clearly different looks (21 Oct 2026, Shawn: the old ones were "not different enough"); a look saved before then
 // is shown as the nearest new one
-export const ART_STYLES = [['photo', 'Realistic'], ['frosted', 'Classic'], ['blueprint', 'Blueprint'], ['neon', 'Neon'], ['duo', 'Duotone'], ['arctic', 'Arctic'], ['live', 'Live battery']];
-const RENAMED = { studio: 'frosted', glow: 'neon', matte: 'duo', night: 'neon', pop: 'duo' };
+// nine looks (22 Oct 2026, Shawn: "truly make the themes beautiful ... add 2 more"): Neon became Noir and Duotone became
+// Tonal (same keys, so a saved choice carries over); the two new ones reuse two old keys the server already accepts
+// ('matte' is Titanium, 'glow' is Aurora), so they save with no server change
+export const ART_STYLES = [['photo', 'Realistic'], ['frosted', 'Classic'], ['matte', 'Titanium'], ['arctic', 'Arctic'], ['neon', 'Noir'], ['duo', 'Tonal'], ['glow', 'Aurora'], ['blueprint', 'Blueprint'], ['live', 'Live battery']];
+const RENAMED = { studio: 'frosted', night: 'neon', pop: 'duo' };
 export function applyArtStyle(style) { style = RENAMED[style] || style; document.documentElement.dataset.art = ART_STYLES.some(([k]) => k === style) ? style : 'frosted'; }
 export async function loadArtStyle() {
   try { const s = await (await fetch('/api/settings')).json(); applyArtStyle(s.artStyle); applyTheme(s); } catch { applyArtStyle('frosted'); }

@@ -1,0 +1,23 @@
+{
+  "id": "glorious-mouse",
+  "vendor": "Glorious",
+  "product": "Model O / O- / D / D- mice, wired and wireless (read only)",
+  "kind": "Mouse",
+  "vid": "258a",
+  "pids": ["0036", "0033", "2011", "2022", "2013", "2024", "2012", "2023", "2014", "2025"],
+  "models": ["Model O / O- (wired)", "Model D / D- (wired)", "Model O Wireless", "Model O- Wireless", "Model D Wireless", "Model D- Wireless"],
+  "works": [
+    "written from docs/brands/glorious.md (libratbag, OpenRGB, mxw) and checked against simulated mice only (tests/sim-glorious.mjs)",
+    "reads, only after the exact product id AND the firmware check pass: firmware (wired: must be V103 / V102 as libratbag lists; wireless: the documented reply shape), wired sensor and polling code, wireless battery %",
+    "never writes anything; feature reports only, on a handle opened with no access; steps back while Glorious Core runs"
+  ],
+  "doesNotWork": [
+    "every setting (DPI, polling, lift-off, debounce, sleep, lights): this driver never writes, because a wrong write has bricked other brands' devices on these chip ids",
+    "charging state (not documented)",
+    "firmware updates and DFU (never)",
+    "Model O 2 / D 2 / I 2, Model I, Model O Eternal (vendor 3794), Series One Pro, GMMK keyboards"
+  ],
+  "status": "untested",
+  "tested": [],
+  "source": "docs/brands/glorious.md"
+}

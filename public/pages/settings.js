@@ -22,6 +22,7 @@ import { env } from '../core/env.js';
 import { ART_STYLES, saveArtStyle, THEME_ACCENTS, THEME_BGS, currentTheme, saveTheme } from '../core/theme.js';
 import { artFor } from '../ui/art.js';
 import { copyDownloadLink, copyShortReport } from '../core/share.js';
+import { installerButton, installerStatus, installing } from '../ui/installer-button.js';
 
 let startup = null;
 // DeviceHub's own updates from GitHub (helpers/self-update.js): null = not read yet
@@ -98,6 +99,42 @@ function selfRow() {
   const text = !self || s.checking ? 'Checking…' : !s.git && !s.zip ? 'Not set up for this copy.' : s.error ? `Couldn't check: ${s.error}` : s.blocked ? `A new version is ready, but ${s.blocked.charAt(0).toLowerCase()}${s.blocked.slice(1)}` : s.behind ? (s.zip ? `Ready: ${s.latest}` : `${s.behind} new change${s.behind === 1 ? '' : 's'}: ${s.latest}`) : s.skipped ? 'The newest version did not start here, so DeviceHub stayed on this one. A fix will show up here.' : 'Up to date.';
   return row('DeviceHub updates', selfBusy && selfStep ? loadingBar('self-bar', selfStep.text, selfStep.pct) : text, s.behind && !s.blocked ? button(selfBusy ? 'Updating…' : 'Update', runSelfUpdate, { kind: 'primary small', ic: 'refresh', disabled: selfBusy })
     : s.git === false && !s.zip ? null : button('Check', () => loadSelf(), { kind: 'ghost small', ic: 'refresh' }));
+}
+// Optional tools (22 Oct 2026, helpers/installers.mjs): Equalizer APO, ReaPlugs and USBPcap, each with its state and
+// its button (ui/installer-button.js), so nobody needs Claude to install them. Settings must still fit one screen at
+// 1650 x 910 (measured: three tools in a line need about 400 px, the column has 330), so the card keeps ONE row: what
+// is installed, in a line, and Show, which lists the three with their buttons in DeviceHub's own dialog.
+let tools = null, toolsAt = 0, toolsList = null;
+const TOOL_USE = { eqapo: 'EQ and mic filters', reaplugs: 'mic Even volume', usbpcap: 'learning a device' };
+function loadTools(fresh) {
+  toolsAt = Date.now();
+  return installerStatus(fresh).then((t) => { const changed = JSON.stringify(t) !== JSON.stringify(tools); tools = t; if (changed) { rerender(); toolsList?.(); } }, () => {});
+}
+const toolsDone = () => { tools = null; loadTools(true); };
+const toolsRedraw = () => { rerender(); toolsList?.(); };
+function toolsSummary() {
+  const busy = installing();
+  if (busy) return `Installing ${tools?.find((t) => t.id === busy)?.name || busy}…`;
+  if (!tools) return 'Checking…';
+  const have = tools.filter((t) => t.installed).map((t) => t.name), missing = tools.filter((t) => !t.installed).map((t) => t.name);
+  return !missing.length ? 'All installed.' : !have.length ? 'None installed yet.' : `${have.join(', ')} installed.`;
+}
+async function toolsDialog() {
+  const body = h('div', {});
+  const draw = () => body.replaceChildren(...(tools || []).map((t) => h('div', { class: 'srow', style: { padding: '10px 0' } },
+    h('div', { class: 'srow-text' }, h('div', { class: 'srow-title' }, t.name), h('div', { class: 'srow-desc' }, t.partial || t.adds || TOOL_USE[t.id])),
+    h('div', { class: 'srow-ctl' }, t.installed ? pill(t.partial ? 'Check folder' : t.version ? `Installed ${t.version}` : 'Installed', t.partial ? 'warn' : 'good')
+      : installerButton(t.id, { kind: 'small', onDone: toolsDone, redraw: toolsRedraw })))));
+  toolsList = draw; draw();
+  await modal('Optional tools', body, [{ label: 'Close', value: null, kind: 'ghost' }]);
+  toolsList = null;
+}
+function toolsRows() {
+  if (!tools || Date.now() - toolsAt > 30000) loadTools(!!tools);
+  if (tools && !tools.length) return null;  // not answered (an older server.js)
+  const r = row('Optional tools', toolsSummary(), button('Show', toolsDialog, { kind: 'ghost small', disabled: !tools }));
+  r.style.padding = '6px 0';
+  return r;
 }
 let results = null;
 let upd = null, updLoading = false, guide = null;
@@ -294,6 +331,7 @@ export default {
         h('div', { class: 'stack' }, healthCard(),
           card([h('h2', {}, 'DeviceHub')],
             row('Share DeviceHub', 'Download link to send to people.', button('Copy link', copyDownloadLink, { kind: 'small', ic: 'external' })),
+            toolsRows(),
             isDemo() ? null : row('Files', 'Where DeviceHub keeps its data.', button('Open folder', () => fetch('/api/reveal', { method: 'POST' }), { kind: 'ghost small', ic: 'external' })),
             isDemo() ? null : row('Demo mode', 'Try it with pretend devices.', button('Open demo', () => window.open('/?demo#/overview', '_blank'), { kind: 'ghost small', ic: 'play' })),
             isDemo() ? null : row('Uninstall', 'Removes DeviceHub. Backups are kept.', button('Uninstall', uninstall, { kind: 'ghost small danger' }))))));

@@ -8,6 +8,8 @@
 //
 //   hid:<vid>:<pid>:<page>:<usage>:<len>:<reportId>[:tag]   mouse / keyboard: OPEN | REQ <echo> <ms> <hex...> | CLOSE
 //                                                           feature reports: FSET <hex...> | FGET <id hex> <len>
+//        [:key=value ...]                                   library drivers' options (HandleHidEx): interface,
+//                                                           collection, lengths, feature-only, raw SEND / READ, REFUSED
 //   hs80:<pid>:<ep>[:tag]                                   headset: OPEN | GET | SET | MODE | LIGHT | OPENLIGHT | CLOSE
 //   audio                                                   Windows audio, JSON requests
 //   cue                                                     iCUE SDK properties, JSON requests
@@ -148,9 +150,27 @@ public static class Helper {
   }
 
   // ---- mouse / keyboard ----
+  // Channel options (22 Oct 2026, library drivers; helpers/hid-host.mjs channelOpts): extra name parts "key=value"
+  // after the report id. A channel without them (the mouse, the keyboard, every channel before) takes exactly the
+  // paths it always took. page / usage "*" = any (then an interface, collection or length must say which).
+  //   if=<n>  USB interface (&mi_0n)     col=<n>  collection (&col0n)
+  //   il= ol= fl=<n>  input / output / feature report data bytes (without the report id) the collection must have;
+  //                   il / ol also size the reads and writes (len otherwise)
+  //   fo=1  feature-only: opened with no access, FSET / FGET only      rw=1  raw: SEND / READ instead of REQ
+  //   rf=1  a write the device refuses answers REFUSED <code> (the handle stays open) instead of GONE
+  static Dictionary<string, int> Opts(string[] p) {
+    var o = new Dictionary<string, int>();
+    for (int i = 7; i < p.Length; i++) { int e = p[i].IndexOf('='); if (e > 0) o[p[i].Substring(0, e)] = int.Parse(p[i].Substring(e + 1)); }
+    return o;
+  }
+  static int Opt(Dictionary<string, int> o, string k) { int v; return o.TryGetValue(k, out v) ? v : -1; }
+  static int HexOrAny(string s) { return s == "*" ? -1 : Convert.ToInt32(s, 16); }
+
   static string HandleHid(Channel c, string rest) {
-    var p = c.Name.Split(':');  // hid vid pid page usage len reportId [tag]
+    var p = c.Name.Split(':');  // hid vid pid page usage len reportId [tag | key=value ...]
     var w = rest.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+    var o = Opts(p);
+    if (o.Count > 0 || p[3] == "*" || p[4] == "*") return HandleHidEx(c, p, w, o);
     switch (w[0]) {
       case "OPEN": {
         if (c.Hid != null) return "OK";
@@ -197,6 +217,79 @@ public static class Helper {
     return "ERR unknown command";
   }
 
+  // A channel with options (see Opts above). Besides OPEN / CLOSE / FSET / FGET / WATCH:
+  //   REQ <echo> <ms> <hex...>           as on any channel (not on fo / rw channels); with rf=1 a refusal is REFUSED <code>
+  //   REQR <id hex> <echo> <ms> <hex...> the same with another report id (out, and the reply's)
+  //   SEND <id hex> <hex...>             rw=1: one output report with that report id, waiting input dropped first;
+  //                                      OK | REFUSED <code> | GONE
+  //   READ <ms> [<max>]                  rw=1: input reports as sent, report id first, "|" between; NONE when none came
+  static string HandleHidEx(Channel c, string[] p, string[] w, Dictionary<string, int> o) {
+    bool fo = Opt(o, "fo") == 1, raw = Opt(o, "rw") == 1, rf = Opt(o, "rf") == 1;
+    int len = int.Parse(p[5]);
+    Func<byte[], string> hex = (r) => string.Join(" ", r.Select(x => x.ToString("x2")));
+    switch (w[0]) {
+      case "OPEN": {
+        if (c.Hid != null) return "OK";
+        int page = HexOrAny(p[3]), usage = HexOrAny(p[4]);
+        int iface = Opt(o, "if"), col = Opt(o, "col"), il = Opt(o, "il"), ol = Opt(o, "ol"), fl = Opt(o, "fl");
+        // an unknown usage page needs something else to say which collection: never the first one of the device
+        if (page < 0 && iface < 0 && col < 0 && il < 0 && ol < 0 && fl < 0) return "ERR a channel without a usage page needs an interface, a collection or a report length";
+        var path = HidFind.FindEx(p[1], p[2], page, usage, iface, col, il < 0 ? -1 : il + 1, ol < 0 ? -1 : ol + 1, fl < 0 ? -1 : fl + 1);
+        if (path == null) return "NODEVICE";
+        c.Hid = new HidIo(path, ol < 0 ? len : ol, il < 0 ? len : il, byte.Parse(p[6]), fo);
+        return "OK";
+      }
+      case "CLOSE": if (c.Watch != null) { c.Watch.Dispose(); c.Watch = null; } if (c.Hid != null) { c.Hid.Dispose(); c.Hid = null; } return "OK";
+    }
+    if (c.Hid == null) return "GONE";
+    switch (w[0]) {
+      case "FSET": {
+        if (w.Length < 2) return "ERR need the report";
+        return c.Hid.FeatureSet(w.Skip(1).Select(x => Convert.ToByte(x, 16)).ToArray()) ? "OK" : "NONE";
+      }
+      case "FGET": {
+        if (w.Length < 3) return "ERR need the id and length";
+        var r = c.Hid.FeatureGet(Convert.ToByte(w[1], 16), int.Parse(w[2]));
+        return r == null ? "NONE" : hex(r);
+      }
+    }
+    if (fo) return "ERR feature-only channel: FSET and FGET only";
+    switch (w[0]) {
+      case "WATCH": {
+        if (raw) return "ERR raw channel: READ instead";
+        if (c.Watch != null) return "OK";
+        int il = Opt(o, "il");
+        c.Watch = new HidWatch(c.Hid.Path, (il < 0 ? len : il) + 1, Convert.ToByte(w[1], 16), (cmd) => Say(c.Name + " EVT " + cmd.ToString("x2") + " 1"));
+        return "OK";
+      }
+      case "REQ": case "REQR": {
+        if (raw) return "ERR raw channel: SEND and READ";
+        int at = w[0] == "REQR" ? 2 : 1;
+        if (w.Length < at + 3) return "ERR need the echo, wait and report";
+        byte rid = w[0] == "REQR" ? Convert.ToByte(w[1], 16) : byte.Parse(p[6]);
+        int echo = int.Parse(w[at]), ms = int.Parse(w[at + 1]);
+        var bytes = w.Skip(at + 2).Select(x => Convert.ToByte(x, 16)).ToArray();
+        try {
+          var r = c.Hid.ReqAs(bytes, echo, ms, rid, rf);
+          return r == null ? "NONE" : hex(r);
+        } catch (HidRefused e) { return "REFUSED " + e.Code; }
+      }
+      case "SEND": {
+        if (!raw) return "ERR not a raw channel";
+        if (w.Length < 2) return "ERR need the report id";
+        try { c.Hid.Send(Convert.ToByte(w[1], 16), w.Skip(2).Select(x => Convert.ToByte(x, 16)).ToArray()); return "OK"; }
+        catch (HidRefused e) { return "REFUSED " + e.Code; }
+      }
+      case "READ": {
+        if (!raw) return "ERR not a raw channel";
+        int ms = w.Length > 1 ? Math.Max(0, Math.Min(int.Parse(w[1]), 5000)) : 0, max = w.Length > 2 ? Math.Max(1, Math.Min(int.Parse(w[2]), 64)) : 16;
+        var list = c.Hid.Read(ms, max);
+        return list.Count == 0 ? "NONE" : string.Join("|", list.Select(hex));
+      }
+    }
+    return "ERR unknown command";
+  }
+
   // ---- headset ----
   static string HandleHs80(Channel c, string rest) {
     var p = c.Name.Split(':');  // hs80 pid ep [tag]
@@ -217,8 +310,10 @@ public static class Helper {
     if (c.Hs == null || c.Hs.Broken) { if (c.Hs != null) { try { c.Hs.Dispose(); } catch { } c.Hs = null; } return "GONE"; }
     switch (w[0]) {
       case "GET": { var r = c.Hs.Get(Convert.ToInt32(w[1], 16), 400); return r == null ? "NONE" : string.Join(" ", r.Skip(3).Take(6).Select(x => x.ToString("x2"))); }
-      case "SET": return st(c.Hs.Set(Convert.ToInt32(w[1], 16), int.Parse(w[2]), 400));
-      case "MODE": return st(c.Hs.Set(3, int.Parse(w[1]), 400));
+      // a value outside Hs80Io.Set's list is refused with ERR, the headset's handle kept (22 Oct 2026; it was GONE and
+      // closed the handle). Nothing is sent for it either way.
+      case "SET": try { return st(c.Hs.Set(Convert.ToInt32(w[1], 16), int.Parse(w[2]), 400)); } catch (ArgumentException e) { return "ERR " + e.Message; }
+      case "MODE": try { return st(c.Hs.Set(3, int.Parse(w[1]), 400)); } catch (ArgumentException e) { return "ERR " + e.Message; }
       case "LIGHT": { var rgb = w.Skip(1).Select(x => Convert.ToByte(x, 16)).ToArray(); if (rgb.Length != 9) return "ERR need 9 bytes"; return st(c.Hs.Light(rgb, 400)); }
       case "OPENLIGHT": return st(c.Hs.OpenLight(400));
     }

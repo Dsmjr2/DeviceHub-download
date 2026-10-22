@@ -266,3 +266,18 @@ DH's VIA support already covers keys, layers, knobs, macros and basic lighting f
 - [Keychron: firmware and JSON files for the C Pro 8K series (example of a maker's JSON page)](https://www.keychron.com/blogs/news/firmware-and-json-files-of-the-keychron-qmk-c-pro-8k-series-keyboards)
 - [Keychron K2 HE + M3 bundle page (Launcher: keyboard wired, mouse wired or 2.4 GHz)](https://www.keychron.com/collections/combo/products/keychron-k2-he-keyboard-and-m3-mouse-wireless-elite-bundle)
 - [OpenRGB issue 3660 (Keychron V4 request)](https://gitlab.com/CalcProgrammer1/OpenRGB/-/issues/3660)
+
+## Covered in device-library/keychron-via (22 Oct 2026)
+
+A `driver.json` (no code), simulated only (tests/sim-keychron-via.mjs), never run on a real board; status "untested".
+- **Boards:** every `3434` keyboard id in section 1 (Q1 v1/v2, Q1 Pro, Q1 Max, Q1 HE, K2 Pro, K2 Max, K2 HE, K8 Pro, V1,
+  V1 Max, V1 8K, Q6, Q6 Max), on the cable. Keys, layers, macros and VIA lighting stay with DeviceHub's VIA keyboard.
+- **Probe:** `A7 01`; each setting is shown only when its group bit is set (bit 2 debounce, 4 LPM, 5 report rate, 7 NKRO).
+  A board that answers `FF` gets no settings.
+- **Read and write (read back, old value put back on a mismatch):** debounce method `A7 05` / `A7 06` (types 0-6) and
+  time (0-100 ms on the page; the firmware takes 0-255), wireless backlight-off (5-3600 s) and sleep (60-14400 s)
+  `A7 0B` / `A7 0C`, report rate `A7 0D` / `A7 0E` (8000, 4000, 1000 Hz only: the other dividers are unconfirmed).
+- **Read only:** protocol version, NKRO state `A7 12` (switching fails on 2025q3 firmware).
+- **Never sent:** `A7 11`, `A9`, `AA`, `AB`, language, DIP switch, NKRO set, snap click (the file's own never list).
+- Not covered: snap click, Keychron per-key lighting `A8`, HE actuation `A9`, battery, the 2.4 GHz receiver, Lemokey
+  (`362D`) boards, Keychron mice.

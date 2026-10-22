@@ -259,3 +259,15 @@ the person changes one setting at a time in Swarm II, then diff the captures.
 - USB id database: [usbids/usb.ids](https://github.com/usbids/usbids/blob/master/usb.ids)
 - roccat-tools device list (packaging only): [Flathub](https://flathub.org/ko/apps/net.sourceforge.roccat.roccat-tools),
   [SlackBuilds](https://slackbuilds.org/repository/15.0/games/roccat-tools/)
+
+## Covered in device-library/turtle-beach-battery (22 Oct 2026)
+
+Read only, simulated only (tests/sim-turtle-beach-battery.mjs), never run on a real transmitter; status "untested".
+- **Devices:** Stealth 700 Gen 3 transmitter `2251` (verified in the source), siblings `2250` and `2253` (labelled "not
+  yet seen working").
+- **Reads:** battery % (GSI key `240`), charging (`250`, a best guess on this model), linked (`230`), name (`220`),
+  Signature Sound preset raw (`2c0`), from the two fixed frames in section 2 (CoAP enable `0x9942`, GET /GSI in
+  `0x9902`). Nothing else can be sent. Steps back while Swarm II runs.
+- **Unconfirmed:** the source asks for replies with GET_REPORT; DeviceHub's helper reads input reports as they arrive.
+- Not covered: Stealth Pro II (request bytes only in a capture), Stealth 600 Gen 3, Stealth 700 G2, every headset
+  setting, ROCCAT mice and keyboards.

@@ -43,7 +43,8 @@ class HostDevice {
     this.ps = null; this.buf = ''; this.waiters = new Map(); this.seq = 0;
   }
 
-  chanFor(pid) { const s = this.spec; return `hid:${s.vid}:${pid}:${s.page}:${s.usage}:${s.len}:${s.reportId}`; }
+  // s.opts: the library channel options (channelOpts below); '' / undefined for every channel before them
+  chanFor(pid) { const s = this.spec; return `hid:${s.vid}:${pid}:${s.page}:${s.usage}:${s.len}:${s.reportId}${s.opts || ''}`; }
   get chan() { return this.chanFor(this.pid || this.spec.pid); }
   get onCable() { return !!this.spec.cablePid && this.pid === this.spec.cablePid; }
 
@@ -95,6 +96,7 @@ class HostDevice {
   gone() {
     const was = this.opened;
     this.opened = false;
+    if (this.kids) for (const k of Object.values(this.kids)) k.opened = false;
     if (was) onGone(this.spec.id);
     return Object.assign(new Error(`${this.productName} was unplugged`), { gone: true });
   }
@@ -142,12 +144,19 @@ class HostDevice {
     if (!this.opened) throw Object.assign(new Error(`${this.productName} was unplugged`), { gone: true });
     const bytes = Array.from(data);
     const s = this.spec;
+    // library options (22 Oct 2026), each off unless the spec asks: a report id owned by another collection
+    // (spec.routes), a raw channel (spec.reply 'raw'), another report id on this collection (spec.reportIds)
+    if (s.routes && id !== s.reportId && s.routes[id]) return this.viaRoute(id, bytes);
+    if (s.reply === 'raw') return this.sendRaw(id, bytes);
     await this.followCable();
-    const req = `REQ ${s.echo(bytes)} ${s.replyMs} ${bytes.map((b) => b.toString(16).padStart(2, '0')).join(' ')}`;
+    const other = id !== s.reportId && Array.isArray(s.reportIds) && s.reportIds.includes(id);
+    const req = `${other ? `REQR ${hex2(id)} ` : 'REQ '}${s.echo(bytes)} ${s.replyMs} ${bytes.map((b) => b.toString(16).padStart(2, '0')).join(' ')}`;
     let reply = await this.line(req, s.replyMs + 3000);
     // the cable was pulled: carry on over the dongle
     if (reply === 'GONE' && this.onCable && (await this.backToDongle())) reply = await this.line(req, s.replyMs + 3000);
     if (reply === 'GONE') throw this.gone();
+    // only a channel with spec.refusals answers this (rf=1): the device refused the write and is still there
+    if (/^REFUSED/.test(reply)) throw this.refused(reply, id);
     if (reply === 'NONE' || reply === 'TIMEOUT' || !/^[0-9a-f ]+$/.test(reply)) return; // no answer: the driver's own timeout reports it
     const u8 = Uint8Array.from(reply.split(' ').map((x) => parseInt(x, 16)));
     const e = { reportId: id, data: new DataView(u8.buffer) };
@@ -180,18 +189,116 @@ class HostDevice {
     });
   }
 
-  close() { if (this.opened) native.request(this.chan, 'CLOSE', 3000); this.opened = false; this.pid = null; }
+  // ---- library options (22 Oct 2026; docs/handoff/hid-core.md). None runs for a spec that does not ask for it. ----
+
+  // a write the device refused while still plugged in: not gone, so a driver's fallback can run (e.refused, e.code)
+  refused(reply, id) {
+    const code = Number(String(reply).split(' ')[1]) || null;
+    return Object.assign(new Error(`${this.productName} refused report ${id}${code ? ` (Windows error ${code})` : ''}`), { refused: true, code });
+  }
+
+  // spec.reply === 'raw': SEND writes the report (with the id the driver gives, as WebHID does), then input reports are
+  // read (READ) and handed to the listeners as they came, for up to replyMs while a listener attached before the send
+  // is still waiting. The driver matches its replies itself (HID++ error replies, ASUS FF AA, notices).
+  async sendRaw(id, bytes) {
+    const s = this.spec, waiting = [...this.listeners];
+    const r = await this.line(`SEND ${hex2(id)} ${bytes.map(hex2).join(' ')}`.trim(), 5000);
+    if (r === 'GONE') throw this.gone();
+    if (/^REFUSED/.test(r)) throw this.refused(r, id);
+    if (r !== 'OK') throw new Error(`${this.productName} did not take report ${id} (${r})`);
+    const until = Date.now() + s.replyMs;
+    while (waiting.some((fn) => this.listeners.has(fn)) && Date.now() < until) {
+      for (const e of await this.readRaw(Math.min(250, until - Date.now()))) for (const fn of [...this.listeners]) fn(e);
+    }
+  }
+  async readRaw(ms) {
+    const r = await this.line(`READ ${Math.max(0, Math.round(ms))}`, ms + 3000);
+    if (r === 'GONE') throw this.gone();
+    if (!/^[0-9a-f]{2}( [0-9a-f]{2})*(\|[0-9a-f]{2}( [0-9a-f]{2})*)*$/.test(r)) return [];   // NONE, TIMEOUT, ERR
+    return r.split('|').map((one) => {
+      const b = one.split(' ').map((x) => parseInt(x, 16));
+      return { reportId: b[0], data: new DataView(Uint8Array.from(b.slice(1)).buffer) };
+    });
+  }
+  // Raw channel only: the input reports the device sent by itself (notices), waiting up to ms for the first.
+  // Resolves [{ reportId, data: DataView }] (the same shape as an inputreport event); [] when none came.
+  async receiveReports(ms = 0) {
+    return this.serial(async () => {
+      if (!this.opened) throw this.gone();
+      if (this.spec.reply !== 'raw') throw new Error(`${this.productName}: receiveReports needs hid.reply 'raw'`);
+      return this.readRaw(ms);
+    });
+  }
+
+  // spec.routes: { <report id>: { col, iface, page, usage, len, ... } } = that report id lives on another collection of
+  // the same device (the ROG Omni receiver's pair list on col01, its mouse on col03). Opened on first use, same pid.
+  kid(id) {
+    this.kids ||= {};
+    let k = this.kids[id];
+    if (!k || k.spec.pid !== this.pid) {
+      const spec = normalize({ ...this.spec, cablePid: null, watch: null, routes: null, reportIds: null, ...this.spec.routes[id], reportId: id, pid: this.pid || this.spec.pid });
+      k = new HostDevice(spec);
+      k.listeners = this.listeners;                         // its replies reach the driver's listeners
+      k.gone = () => { k.opened = false; return this.gone(); };
+      this.kids[id] = k;
+    }
+    return k;
+  }
+  async viaRoute(id, bytes) {
+    const k = this.kid(id);
+    if (!k.opened && !(await k.tryOpen())) throw new Error(`${this.productName}: the collection for report ${id} did not open`);
+    return k.sendNow(id, bytes);
+  }
+
+  close() {
+    if (this.kids) for (const k of Object.values(this.kids)) k.close();
+    if (this.opened) native.request(this.chan, 'CLOSE', 3000); this.opened = false; this.pid = null;
+  }
+}
+
+const hex2 = (b) => (b & 0xff).toString(16).padStart(2, '0');
+const up4 = (x) => String(x).toUpperCase().padStart(4, '0');
+const pageOf = (x) => (x === '*' ? '*' : up4(x));
+
+// The channel options a spec asks for (helpers/native/helper.cs HandleHidEx), as name parts after the report id.
+// '' when it asks for none: such a channel is named, opened and served exactly as before 22 Oct 2026.
+//   iface, col             the USB interface (&mi_0N) and collection (&col0N) in the device path
+//   inputLen, outputLen    report data bytes (without the report id) the collection must have; they also size reads/writes
+//   featureLen             also a match (fl), but only beside one of the new choices here; alone it keeps its old meaning
+//                          (receiveFeatureReport's default length), so a LampArray spec opens as it did
+//   featureOnly            opened with no access: FSET / FGET only      reply: 'raw'   SEND / READ (sendRaw above)
+//   refusals               a refused write answers REFUSED, not GONE (always so on a raw channel)
+export function channelOpts(s) {
+  const o = [];
+  if (s.iface != null) o.push(`if=${Number(s.iface)}`);
+  if (s.col != null) o.push(`col=${Number(s.col)}`);
+  if (s.inputLen != null) o.push(`il=${Number(s.inputLen)}`);
+  if (s.outputLen != null) o.push(`ol=${Number(s.outputLen)}`);
+  const chooses = o.length || s.page === '*' || s.usage === '*' || s.featureOnly;
+  if (s.featureLen != null && chooses) o.push(`fl=${Number(s.featureLen)}`);
+  if (s.featureOnly) o.push('fo=1');
+  if (s.reply === 'raw') o.push('rw=1');
+  if (s.refusals) o.push('rf=1');
+  return o.length ? `:${o.join(':')}` : '';
+}
+
+// a spec as hid-host keeps it (addSpec's defaults; page / usage '*' = any, for the options above)
+function normalize(spec) {
+  const s = { usage: '0001', len: 64, reportId: 0, replyMs: 900, echo: () => 1, ...spec,
+    vid: up4(spec.vid), pid: up4(spec.pid), page: pageOf(spec.page || 'FF00'), productName: spec.productName || spec.id };
+  Object.assign(s, { vendorId: parseInt(s.vid, 16), productId: parseInt(s.pid, 16), usagePage: s.page === '*' ? null : parseInt(s.page, 16), usage: pageOf(s.usage) });
+  if (s.cablePid) s.cablePid = up4(s.cablePid);
+  s.opts = channelOpts(s);
+  return s;
 }
 
 const hosts = SPECS.map((s) => new HostDevice(s));
 // a device added in my-devices\ (helpers/my-devices.mjs) with its HID channel: opened the same way as the built-in ones.
 // echo(bytes): how many leading bytes of a request its reply repeats (1 unless the device file says otherwise)
+// One channel per call; a driver with several product ids gets one call per id (helpers/my-devices.mjs hidSpecs).
+// Options for library drivers: channelOpts above, and on the HostDevice reply 'raw', routes, reportIds.
 export function addSpec(spec) {
-  const up = (x) => String(x).toUpperCase().padStart(4, '0');
-  const s = { usage: '0001', len: 64, reportId: 0, replyMs: 900, echo: () => 1, ...spec,
-    vid: up(spec.vid), pid: up(spec.pid), page: up(spec.page || 'FF00'), productName: spec.productName || spec.id };
-  Object.assign(s, { vendorId: parseInt(s.vid, 16), productId: parseInt(s.pid, 16), usagePage: parseInt(s.page, 16), usage: up(s.usage) });
-  if (s.cablePid) s.cablePid = up(s.cablePid);
+  const s = normalize(spec);
   SPECS.push(s); hosts.push(new HostDevice(s));
 }
 // another VIA keyboard instead of the P75 (helpers/via-defs.js): same channel settings, its own ids
@@ -204,11 +311,15 @@ export function useKeyboardSpec(vid, pid, name) {
 native.onExit(() => { for (const h of hosts) if (h.opened) h.gone(); });
 
 // The getDevice() provider for the agent: the matching device if it is plugged in, else null.
+// Each filter in order (22 Oct 2026; before, only the first was looked at): its first matching host, the first that
+// opens wins. A filter's iface, when the host has one, must be the same.
 export async function provider(filters) {
-  const f = filters[0];
-  const h = hosts.find((x) => x.vendorId === f.vendorId && (f.productId == null || x.productId === f.productId) && (f.usagePage == null || x.spec.usagePage === f.usagePage));
-  if (!h) return null;
-  return (await h.tryOpen()) ? h : null;
+  for (const f of filters || []) {
+    const h = hosts.find((x) => x.vendorId === f.vendorId && (f.productId == null || x.productId === f.productId) && (f.usagePage == null || x.spec.usagePage === f.usagePage)
+      && (f.iface == null || x.spec.iface == null || Number(x.spec.iface) === Number(f.iface)));
+    if (h && (await h.tryOpen())) return h;
+  }
+  return null;
 }
 
 // a device was added or removed (the helper's DeviceWatch): every host with a cable mode looks again now

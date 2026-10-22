@@ -265,3 +265,31 @@ for wireless headsets on Windows. Plan for both paths from the start.
 - [OpenRGB HyperXOrigins2_65ControllerDetect.cpp](https://gitlab.com/CalcProgrammer1/OpenRGB/-/blob/master/Controllers/HyperXKeyboardController/HyperXOrigins2_65Controller/HyperXOrigins2_65ControllerDetect.cpp) and [Controller.cpp](https://gitlab.com/CalcProgrammer1/OpenRGB/-/blob/master/Controllers/HyperXKeyboardController/HyperXOrigins2_65Controller/HyperXOrigins2_65Controller.cpp)
 - [libratbag data/devices (no HyperX files)](https://github.com/libratbag/libratbag/tree/master/data/devices)
 - [SignalRGB forum: Haste 2 Wireless support (closed source, no ids)](https://forum.signalrgb.com/t/hyperx-haste-2-wireless-not-found-driver/1936)
+
+## Covered in device-library/hyperx-cloud (22 Oct 2026)
+
+Simulated only (tests/sim-hyperx.mjs), never run on a real headset; status "untested".
+- **Cloud II Wireless (HP) `0696`, `018b`:** battery %, voltage, charging, sidetone on/off, auto-off, mic mute (read and
+  write); raw sidetone level `0B` and boom mic `08` in info. Never `01`.
+- **Cloud Alpha Wireless `098d`:** battery, charging, sidetone on/off, **sidetone level 0-128 (`11` set / `06` get, HSC)**,
+  auto-off, voice prompts, mic mute (read and write). `1743`, `1765` (HH only): read-only. Connected `03` held.
+- **Cloud III Wireless `05b7`, `0c9d`:** every `0x8x` get except `83`, plus product color `8F` (raw, in info); read-only
+  ("possible" ids).
+- **Cloud II Core Wireless `069f`, `0995`:** the `66` gets plus sidetone level -5..5 (`88`), boom mic `8C`, noise gate `8D`;
+  read-only (HH alone). `1E` / `83` never sent.
+- Every write is refused while a process named like `NGENUITY` runs.
+- Not covered: Kingston `0951` dongles, wired Cloud III (write-only sidetone), Cloud III S (reply framing), Cloud Flight
+  (% curve), Cloud II HP sidetone level writes (no range), mic monitoring (no source), EQ (Cloud III S only, write-only),
+  mouse and keyboard lights (OpenRGB).
+
+## Covered in device-library/hyperx-peripherals (22 Oct 2026)
+
+Info only, simulated only (tests/sim-hyperx-peripherals.mjs); status "untested".
+- **Devices:** HP-era (`03f0`) Pulsefire Haste `0f8f`, Dart `068e` / `088e`, Core `0d8f`, Surge `0490`; Alloy Origins 60
+  `0c8e`, 65 `038f`, Core `098f`, Origins `0591`, Origins 2 65 `0cc2`.
+- **What it does:** names the model, type and link from the product id. It sends nothing: the channel is opened with no
+  access on OpenRGB's interface and usage page.
+- **Why nothing more:** no source documents DPI, polling or battery for any HyperX mouse; every lighting command is a
+  write with no read-back (OpenRGB drives the lights). The Alloy Origins Core variant query `00 10` is a read, but its
+  usage page is not named, and an output report on the keyboard's own collection would change its lock lights.
+- Not covered: Kingston `0951` ids, Haste 2, Alloy Rise.

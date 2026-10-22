@@ -318,3 +318,15 @@ itself. Running both will fight; DeviceHub should detect `lghub_agent.exe` and t
 - HeadsetControl Centurion protocol: [logitech_centurion_protocol.hpp](https://github.com/Sapd/HeadsetControl/blob/master/lib/devices/protocols/logitech_centurion_protocol.hpp)
 - HeadsetControl devices: [logitech_gpro_x2_lightspeed.hpp](https://github.com/Sapd/HeadsetControl/blob/master/lib/devices/logitech_gpro_x2_lightspeed.hpp), [logitech_g633_g933_935.hpp](https://github.com/Sapd/HeadsetControl/blob/master/lib/devices/logitech_g633_g933_935.hpp), [logitech_g535.hpp](https://github.com/Sapd/HeadsetControl/blob/master/lib/devices/logitech_g535.hpp), [logitech_astro_a50.hpp](https://github.com/Sapd/HeadsetControl/blob/master/lib/devices/logitech_astro_a50.hpp), [logitech_astro_a50_gen4.hpp](https://github.com/Sapd/HeadsetControl/blob/master/lib/devices/logitech_astro_a50_gen4.hpp)
 - Logitech HID++ spec drafts and feature pages (x0000 root, x1b04, x2201 and others): [lekensteyn.nl/files/logitech](https://lekensteyn.nl/files/logitech/)
+
+## Covered in device-library/logitech-hidpp-mouse (22 Oct 2026)
+
+The library driver now does, for G mice over a receiver or cable (simulated only, `tests/sim-logitech.mjs`; never run
+on a real mouse): battery (0x1004 / 0x1000 / 0x1001), DPI (0x2201), report rate (0x8061 / 0x8060), onboard / host mode
+(0x8100 fn 0x10 / 0x20), **onboard profile select** (0x8100 fn 0x00 info: profile_count is byte 3 per libratbag
+`struct hidpp20_onboard_profiles_info`; fn 0x40 read, b1; fn 0x30 write `[00, number]`, libratbag sends index + 1; the
+G502 X family reads 1-based, libratbag `HIDPP20_QUIRK_INDEX_OFFSET`), **DPI stage** (0x8100 fn 0xB0 / 0xC0, slot 0-4,
+libratbag) and **lift-off** (0x2202: caps fn 0x10 `[00]` b2 bit1; read fn 0x50 `[00]` -> X b1-2, Y b5-6, LOD b9; write
+fn 0x60 `[00, X, Y, LOD]`; Solaar `ExtendedAdjustableDpi`). Every write is refused while G HUB (`lghub*.exe`) runs.
+Still left out: profile memory writes (the DPI of each stage, buttons, sleep timer), lights (0x8071 cannot be read back,
+0x8070 parameter layouts missing), button remaps (0x1B04 targets not documented), angle snapping, surface tuning.

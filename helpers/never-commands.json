@@ -1,0 +1,49 @@
+{
+  "about": "DeviceHub's built-in never list (22 Oct 2026), read by helpers/declarative-driver.mjs validate(). A driver.json whose message templates could produce any of these byte patterns is refused. Collected only from the 'Read-only first' / 'Never' sections of docs/brands/*.md (each entry names its sheet and the open project the sheet cites). bytes: the data bytes after the report id, from the first one; ?? matches any byte. reportId: only messages sent on that report id. within: the pattern may also start this many bytes later (framing not documented). vid / pids / page: which devices the entry is about (vid '*' = any). An entry with bytes null is documented but has no byte pattern; refuseVendors refuses a whole vendor's driver.json.",
+  "keywords": "firmware|bootloader|\\bdfu\\b|flash|factory|reset|unpair|pairing|sirk",
+  "refuseVendors": [
+    { "vid": "046D", "brand": "Logitech", "why": "HID++ 2.0 reaches each feature through an index the mouse hands out at run time, so a fixed byte template cannot prove it never reaches DFU (feature 0x00C0-0x00C3, 0x00D0, Centurion 0x010A), device reset (0x1802), OOB state (0x1805) or force pairing (0x1500). Logitech drivers stay device.mjs (device-library/logitech-hidpp-mouse filters those ids in code).", "source": "docs/brands/logitech.md section 4 'Never touch' (Solaar, libratbag)" }
+  ],
+  "commands": [
+    { "brand": "ASUS ROG", "vid": "0B05", "bytes": "50 40", "what": "reset (headset)", "source": "docs/brands/asus-rog.md section 2 command table, verb 50 (G-Helper, libratbag, OpenRGB)" },
+    { "brand": "ASUS ROG", "vid": "0B05", "bytes": null, "what": "firmware updates and Omni receiver pairing / unpairing: no open project maps their bytes", "source": "docs/brands/asus-rog.md section 4 'Never'" },
+
+    { "brand": "Cooler Master", "vid": "2516", "bytes": "50 55", "what": "save to flash (mice, keyboards)", "source": "docs/brands/cooler-master.md section 4 'Never' (OpenRGB)" },
+    { "brand": "Cooler Master", "vid": "2516", "bytes": "54 81 01", "what": "save to flash (MM712)", "source": "docs/brands/cooler-master.md section 4 'Never' (OpenRGB)" },
+    { "brand": "Cooler Master", "vid": "2516", "pids": ["0173", "01C9", "01CB"], "bytes": "B0", "within": 3, "what": "ARGB Gen 2 A1 save to flash (frame position not documented)", "source": "docs/brands/cooler-master.md section 3 'ARGB controllers' and section 4 'Never' (OpenRGB CMARGBGen2A1Controller)" },
+    { "brand": "Cooler Master", "vid": "2516", "pids": ["0173", "01C9", "01CB"], "bytes": "B1", "within": 3, "what": "ARGB Gen 2 A1 reset (frame position not documented)", "source": "docs/brands/cooler-master.md section 3 'ARGB controllers' and section 4 'Never' (OpenRGB CMARGBGen2A1Controller)" },
+
+    { "brand": "Corsair", "vid": "1B1C", "bytes": null, "what": "firmware, bootloader and radio paths; pairing resources 05 (pairing id) and 06 (encryption key): the Bragi protocol goes through the helper's hs80 channel, not raw templates", "source": "docs/brands/corsair.md section 4 'Never' (ckb-next)" },
+
+    { "brand": "Glorious (Sinowealth)", "vid": "258A", "reportId": 5, "bytes": "75", "what": "DFU: puts the device into firmware update mode", "source": "docs/brands/glorious.md section 2 command table and section 4 'Never' (libratbag)" },
+
+    { "brand": "HyperX", "vid": "03F0", "bytes": "DE FF", "what": "Pulsefire Dart save to on-board memory", "source": "docs/brands/hyperx.md section 3 and section 4 'Never' (OpenRGB)" },
+    { "brand": "HyperX", "vid": "03F0", "reportId": 102, "bytes": "1E", "what": "Cloud III Wireless SIRK reset (SIRK is the pairing key)", "source": "docs/brands/hyperx.md section 4 'Never' (HyperHeadset)" },
+    { "brand": "HyperX", "vid": "03F0", "reportId": 102, "bytes": "83", "what": "Cloud III Wireless SIRK read (the pairing key)", "source": "docs/brands/hyperx.md section 4 'Never' (HyperHeadset)" },
+
+    { "brand": "VIA keyboards (QMK)", "vid": "*", "page": "FF60", "bytes": "0B", "what": "VIA bootloader jump", "source": "docs/brands/keychron.md section 2 'Plain VIA' and section 4 'Never' (QMK, Keychron's QMK fork)" },
+    { "brand": "VIA keyboards (QMK)", "vid": "*", "page": "FF60", "bytes": "0A", "what": "VIA EEPROM reset", "source": "docs/brands/keychron.md section 4 'Never'" },
+    { "brand": "VIA keyboards (QMK)", "vid": "*", "page": "FF60", "bytes": "06", "what": "VIA keymap reset", "source": "docs/brands/keychron.md section 2 'Plain VIA' and section 4 'Never'" },
+    { "brand": "VIA keyboards (QMK)", "vid": "*", "page": "FF60", "bytes": "10", "what": "VIA factory reset (listed with the EEPROM resets)", "source": "docs/brands/keychron.md section 4 'Never'" },
+    { "brand": "Keychron", "vid": ["3434", "362D"], "bytes": "AA", "what": "wireless DFU", "source": "docs/brands/keychron.md section 4 'Never' (Keychron's QMK fork)" },
+    { "brand": "Keychron", "vid": ["3434", "362D"], "bytes": "A7 11", "what": "factory reset", "source": "docs/brands/keychron.md section 4 'Never'" },
+    { "brand": "Keychron", "vid": ["3434", "362D"], "bytes": "AB", "what": "factory test", "source": "docs/brands/keychron.md section 4 'Never'" },
+
+    { "brand": "Logitech", "vid": "046D", "bytes": null, "what": "DFU 0x00C0-0x00C3 and 0x00D0, Centurion DFU 0x010A, reset 0x1802, OOB state 0x1805, force pairing 0x1500, receiver pairing registers: feature ids reached by a run-time index (see refuseVendors)", "source": "docs/brands/logitech.md section 4" },
+
+    { "brand": "Razer", "vid": "1532", "bytes": null, "what": "no source documents Razer firmware update or flash commands; dongle pair / unpair is not mapped", "source": "docs/brands/razer.md section 4" },
+
+    { "brand": "SteelSeries", "vid": "1038", "bytes": null, "what": "firmware update: no source documents it; unknown mouse ids 0x2D-0x92 and keyboard 0x4B / 0xF5 could reach bootloader or calibration", "source": "docs/brands/steelseries.md section 4" },
+
+    { "brand": "Turtle Beach (Airoha RACE)", "vid": "10F5", "reportId": 6, "bytes": "?? ?? 05 ?? ?? ?? 01 0A", "what": "RACE nvkey write (id 0x0A01): persists across power cycles; the tool's author warns of bricking", "source": "docs/brands/turtle-beach.md section 2 RACE framing and section 4 (stealth600-gen3-usb-fix)" },
+    { "brand": "Turtle Beach / ROCCAT", "vid": ["10F5", "1E7D"], "bytes": null, "what": "dongle-side firmware flash", "source": "docs/brands/turtle-beach.md section 4" },
+
+    { "brand": "Wooting", "vid": ["31E3", "03EB"], "bytes": "D? DA 02", "what": "ResetToBootloader (command 2)", "source": "docs/brands/wooting.md section 2 frame and section 4 'Never' (wooting-rgb-sdk, the Gist)" },
+    { "brand": "Wooting", "vid": ["31E3", "03EB"], "bytes": "D? DA 2B", "what": "ResetSettings (command 43)", "source": "docs/brands/wooting.md section 4 'Never'" },
+    { "brand": "Wooting", "vid": ["31E3", "03EB"], "bytes": "D? DA 19", "what": "doSoftReset (command 25)", "source": "docs/brands/wooting.md section 4 'Never'" },
+    { "brand": "Wooting", "vid": ["31E3", "03EB"], "bytes": "D? DA 08", "what": "a Save command (8): writes flash", "source": "docs/brands/wooting.md section 4 'Never'" },
+    { "brand": "Wooting", "vid": ["31E3", "03EB"], "bytes": "D? DA 2A", "what": "a Save command (42): writes flash", "source": "docs/brands/wooting.md section 4 'Never'" },
+    { "brand": "Wooting", "vid": ["31E3", "03EB"], "bytes": "D? DA 2F", "what": "a Save command (47): writes flash", "source": "docs/brands/wooting.md section 4 'Never'" },
+    { "brand": "Wooting", "vid": ["31E3", "03EB"], "bytes": "D? DA 35", "what": "a Save command (53): writes flash", "source": "docs/brands/wooting.md section 4 'Never'" }
+  ]
+}

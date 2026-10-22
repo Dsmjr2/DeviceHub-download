@@ -1,0 +1,29 @@
+{
+  "id": "keychron-via",
+  "vendor": "Keychron",
+  "product": "Keychron QMK keyboards: Keychron's own settings on top of VIA",
+  "kind": "Keyboard",
+  "vid": "3434",
+  "pids": ["0100", "0101", "0102", "0103", "0106", "0107", "0108", "0109", "010a", "010b", "0610", "0611", "0612", "0810", "0811", "0812",
+    "0b10", "0b11", "0b12", "0220", "0221", "0222", "0223", "0224", "0225", "0a20", "0a21", "0a22", "0a23", "0a24", "0a25", "0e20", "0e21", "0e22",
+    "0280", "0281", "0282", "0283", "0284", "0285", "0310", "0311", "0312", "0313", "0314", "0315", "0317", "0913", "0914", "0915", "0f10",
+    "0160", "0161", "0162", "0163", "0860", "0861"],
+  "models": ["Q1 (v1)", "Q1 (v2)", "Q1 Pro", "Q1 Max", "Q1 HE", "K2 Pro", "K2 Max", "K2 HE", "K8 Pro", "V1", "V1 Max", "V1 8K", "Q6", "Q6 Max"],
+  "works": [
+    "written from docs/brands/keychron.md (Keychron's QMK fork) and checked against a simulated keyboard only (tests/sim-keychron-via.mjs)",
+    "a driver.json: DeviceHub's safety check (helpers/declarative-driver.mjs validate) passes it",
+    "reads: Keychron protocol version and feature bits, debounce method and time, wireless backlight-off and sleep timers, report rate, NKRO state",
+    "writes (one at a time, read back, the old value put back on a mismatch; refused while a Keychron or VIA desktop app runs): debounce method, debounce time 0-100 ms, backlight-off 5-3600 s, sleep 60-14400 s, report rate 1000 / 4000 / 8000 Hz",
+    "each setting is offered only when the board's own A7 01 feature bits say it has it; a board without Keychron's commands shows none"
+  ],
+  "doesNotWork": [
+    "firmware updates (never: Keychron's own tools)",
+    "keys, layers, macros and lighting here (DeviceHub's VIA keyboard page already has them)",
+    "snap click (SOCD), NKRO switching, Keychron per-key lighting (A8), HE actuation and rapid trigger (A9)",
+    "battery (no raw HID command exists), the 2.4 GHz receiver and Bluetooth",
+    "Lemokey boards (vendor 362D) and Keychron mice"
+  ],
+  "status": "untested",
+  "tested": [],
+  "source": "docs/brands/keychron.md"
+}

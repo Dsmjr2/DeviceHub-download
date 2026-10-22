@@ -1,0 +1,208 @@
+// The HID layer's library options (22 Oct 2026; helpers/hid-host.mjs, helpers/my-devices.mjs hidSpecs, helpers/native/
+// helper.cs HandleHidEx; docs/handoff/hid-core.md), against a stand-in for the native helper (helpers/native.js
+// request is replaced; no helper starts, nothing reaches a device): several product ids, choosing a collection by
+// interface and report lengths, a report id per request, raw replies, refused vs gone, and the mouse's and keyboard's
+// own channels exactly as before.
+// Run: node tests/hid-core.mjs (no hardware)
+import { createRequire } from 'node:module';
+import { HidChannel } from '../public/devices/hid.js';
+
+const fails = [];
+const check = (ok, what) => { if (!ok) fails.push(what); };
+const throws = async (fn) => { try { await fn(); return null; } catch (e) { return e; } };
+
+const native = createRequire(import.meta.url)('../helpers/native.js');
+const lines = [];
+let answer = () => 'NONE';
+native.request = async (chan, cmd) => { lines.push(`${chan} ${cmd}`); return answer(chan, cmd); };
+native.onEvent = () => {};
+const host = await import('../helpers/hid-host.mjs');
+const { hidSpecs } = await import('../helpers/my-devices.mjs');
+const { validateMeta } = await import('../helpers/device-library.mjs');
+const gone = [];
+host.setGoneHandler((id) => gone.push(id));
+const since = (n) => lines.slice(n);
+
+// ---- 1. the default paths: the Pulsar mouse and the P75 keyboard name, open and ask exactly as before ----
+{
+  // today's addSpec, kept here word for word: a spec without the new options must come out the same
+  const oldAdd = (spec) => {
+    const up = (x) => String(x).toUpperCase().padStart(4, '0');
+    const s = { usage: '0001', len: 64, reportId: 0, replyMs: 900, echo: () => 1, ...spec,
+      vid: up(spec.vid), pid: up(spec.pid), page: up(spec.page || 'FF00'), productName: spec.productName || spec.id };
+    Object.assign(s, { vendorId: parseInt(s.vid, 16), productId: parseInt(s.pid, 16), usagePage: parseInt(s.page, 16), usage: up(s.usage) });
+    if (s.cablePid) s.cablePid = up(s.cablePid);
+    return s;
+  };
+  check(host.SPECS.every((s) => !s.opts), 'the built-in specs carry no channel options');
+  answer = (chan, cmd) => (cmd === 'OPEN' ? 'OK' : cmd.startsWith('WATCH') ? 'OK' : cmd.startsWith('REQ') ? '04 aa bb' : 'NONE');
+  let n = lines.length;
+  const mouse = await host.provider([{ vendorId: 0x3710, usagePage: 0xff02 }]);
+  check(mouse && since(n)[0] === 'hid:3710:3506:FF02:0002:16:8 OPEN', `the mouse opens its cable channel first, named as before (${since(n)[0]})`);
+  check(since(n).includes('hid:3710:3506:FF02:0002:16:8 WATCH 0a'), 'the mouse still listens for its DPI button (WATCH 0a)');
+  n = lines.length;
+  await mouse.sendReport(8, [0x04, 0, 0, 0x49]);
+  check(since(n).at(-1) === 'hid:3710:3506:FF02:0002:16:8 REQ 1 900 04 00 00 49', `the mouse's request line is unchanged (${since(n).at(-1)})`);
+  n = lines.length;
+  await mouse.sendReport(3, [0x04]);
+  check(since(n).at(-1) === 'hid:3710:3506:FF02:0002:16:8 REQ 1 900 04', `another report id is still ignored on a built-in channel (${since(n).at(-1)})`);
+  mouse.close(); clearTimeout(mouse.watch); mouse.watch = null;
+  n = lines.length;
+  const kb = await host.provider([{ vendorId: 0x342d, productId: 0xe479, usagePage: 0xff60, usage: 0x61 }]);
+  check(kb && since(n)[0] === 'hid:342D:E479:FF60:0061:32:0 OPEN', `the keyboard's channel is named as before (${since(n)[0]})`);
+  n = lines.length;
+  await kb.sendReport(0, [0x01]);
+  check(/^hid:342D:E479:FF60:0061:32:0 REQ \d+ 750 01$/.test(since(n).at(-1)), `the keyboard's request line is unchanged (${since(n).at(-1)})`);
+  kb.close();
+  // a my-devices spec and a LampArray spec: the same fields as before, no options, the same channel name
+  for (const spec of [{ id: 'test-mouse', vid: '046d', pid: 'C547', page: 'FF00', len: 20, reportId: 17 },
+    { id: 'lights', vid: '045E', pid: '0B12', page: '0059', usage: '0001', len: 1, reportId: 0, featureLen: 50 },
+    { id: 'plain', vid: '1234', pid: 'abcd' }]) {
+    host.addSpec(spec);
+    const now = host.SPECS.at(-1), was = oldAdd(spec);
+    const strip = (s) => JSON.stringify({ ...s, echo: undefined, opts: undefined });
+    check(strip(now) === strip(was) && !now.opts, `${spec.id}: the spec is what it was (${strip(now)} vs ${strip(was)})`);
+  }
+  check(hidSpecs({ id: 'one', hid: { vid: '1234', pid: 'ABCD', len: 8 } }).length === 1 && JSON.stringify(hidSpecs({ id: 'one', hid: { vid: '1234', pid: 'ABCD', len: 8 } })[0]) === JSON.stringify({ id: 'one', vid: '1234', pid: 'ABCD', len: 8 }),
+    'a driver without pids gets the one channel it always got ({ id, ...hid })');
+  check(hidSpecs({ id: 'none' }).length === 0, 'a driver without hid gets none');
+}
+
+// ---- 2. several product ids: one channel per pid, overrides per pid, and every filter tried in order ----
+{
+  const drv = { id: 'multi-mouse', hid: { vid: '1532', pid: '00B7', pids: ['00b7', '0x00C1', '00C2'], page: '0001', usage: '0002', len: 90, featureLen: 90, featureOnly: true, reportId: 0,
+    byPid: { '00c1': { iface: 3 }, '00B7': { iface: 0 } } } };
+  const specs = hidSpecs(drv);
+  check(specs.map((s) => s.pid).join() === '00B7,00C1,00C2', `one spec per pid, pid first, each once (${specs.map((s) => s.pid)})`);
+  check(specs[0].iface === 0 && specs[1].iface === 3 && specs[2].iface === undefined && specs.every((s) => !('pids' in s) && !('byPid' in s) && s.id === 'multi-mouse'), 'each pid takes its own overrides');
+  for (const s of specs) host.addSpec(s);
+  const chans = host.SPECS.slice(-3).map((s) => `hid:${s.vid}:${s.pid}:${s.page}:${s.usage}:${s.len}:${s.reportId}${s.opts}`);
+  check(chans[0] === 'hid:1532:00B7:0001:0002:90:0:if=0:fl=90:fo=1', `interface + feature length + feature-only in the channel (${chans[0]})`);
+  check(chans[1] === 'hid:1532:00C1:0001:0002:90:0:if=3:fl=90:fo=1', `the second pid's interface (${chans[1]})`);
+  check(chans[2] === 'hid:1532:00C2:0001:0002:90:0:fl=90:fo=1', `featureLen chooses beside feature-only (${chans[2]})`);
+  answer = (chan, cmd) => (cmd === 'OPEN' ? (chan.includes(':00C2:') ? 'OK' : 'NODEVICE') : cmd.startsWith('FGET') ? '02 1f' : cmd.startsWith('FSET') ? 'OK' : 'NONE');
+  const n = lines.length;
+  const dev = await host.provider([0xb7, 0xc1, 0xc2].map((productId) => ({ vendorId: 0x1532, productId, usagePage: 0x0001, usage: 0x0002 })));
+  check(dev && dev.productId === 0xc2 && dev.pid === '00C2', `the third filter's device opens when the first two are not plugged in (${dev?.pid})`);
+  check(since(n).filter((l) => l.endsWith(' OPEN')).length === 3, 'each filter was tried once, in order');
+  check((await host.provider([{ vendorId: 0x1532, productId: 0xc1, iface: 0 }])) === null, 'a filter\'s iface must be the host\'s');
+  await dev.sendFeatureReport(0, [1, 2]);
+  const v = await dev.receiveFeatureReport(0);
+  check(lines.at(-2).endsWith(':fo=1 FSET 00 01 02') && lines.at(-1).endsWith(':fo=1 FGET 00 90') && v.byteLength === 2, 'a feature-only channel serves FSET / FGET (FGET length = featureLen)');
+  dev.close();
+}
+
+// ---- 3. choosing a collection: page '*', interface, collection, lengths; featureLen alone chooses nothing ----
+{
+  check(host.channelOpts({ page: '*', usage: '*', iface: 4 }) === ':if=4', 'page * with an interface');
+  check(host.channelOpts({ page: '*', outputLen: 63 }) === ':ol=63', 'page * chosen by output length');
+  check(host.channelOpts({ iface: 2, col: 3, inputLen: 63, outputLen: 63, featureLen: 0 }) === ':if=2:col=3:il=63:ol=63:fl=0', 'interface, collection and all three lengths');
+  check(host.channelOpts({ page: '0059', featureLen: 50 }) === '', 'featureLen alone keeps its old meaning (no option, a LampArray opens as before)');
+  check(host.channelOpts({ reply: 'raw', refusals: true }) === ':rw=1:rf=1', 'raw and refusals');
+  host.addSpec({ id: 'any-page', vid: '03f0', pid: '098d', page: '*', usage: '*', outputLen: 63, len: 63, reportId: 0x21 });
+  const s = host.SPECS.at(-1);
+  check(s.page === '*' && s.usage === '*' && s.usagePage === null && s.opts === ':ol=63', `page '*' stays '*' (${s.page} ${s.usage} ${s.usagePage} ${s.opts})`);
+  check((await host.provider([{ vendorId: 0x03f0, productId: 0x098d, usagePage: 0xff90 }])) === null, 'a filter naming a usage page does not take an any-page host');
+}
+
+// ---- 4. a report id per request: reportIds on the same collection, routes to another collection ----
+{
+  answer = (chan, cmd) => (cmd === 'OPEN' ? 'OK' : cmd.startsWith('REQ') ? `${cmd.split(' ').at(cmd.startsWith('REQR') ? 4 : 3)} 01` : 'NONE');
+  host.addSpec({ id: 'arctis-9', vid: '1038', pid: '12C2', page: '*', usage: '*', iface: 0, len: 30, reportId: 0, reportIds: [6, 4] });
+  const a9 = await host.provider([{ vendorId: 0x1038, productId: 0x12c2 }]);
+  let n = lines.length;
+  await a9.sendReport(6, [0x20, 1]);
+  check(since(n)[0] === 'hid:1038:12C2:*:*:30:0:if=0 REQR 06 1 900 20 01', `a listed report id goes out with it (${since(n)[0]})`);
+  n = lines.length;
+  await a9.sendReport(0, [0x20]);
+  check(since(n)[0] === 'hid:1038:12C2:*:*:30:0:if=0 REQ 1 900 20', `the channel's own id is a plain REQ (${since(n)[0]})`);
+  n = lines.length;
+  await a9.sendReport(9, [0x20]);
+  check(since(n)[0].includes(' REQ 1 900 20'), 'an unlisted id is ignored, as before');
+  a9.close();
+  // the ROG Omni receiver: report 03 on col03 (its channel), report 01 on col01 (opened on first use)
+  host.addSpec({ id: 'omni', vid: '0b05', pid: '1ace', page: '*', usage: '*', iface: 2, col: 3, len: 64, reportId: 3, replyMs: 300, routes: { 1: { col: 1 } } });
+  const omni = await host.provider([{ vendorId: 0x0b05, productId: 0x1ace }]);
+  const ch = new HidChannel(omni, { reportId: 0, length: 64, match: (s, r) => r[0] === s[0] });
+  n = lines.length;
+  const r1 = await ch.request(Uint8Array.from([0xa0, 0, 0]), { reportId: 1, timeoutMs: 500 });
+  check(since(n)[0] === 'hid:0B05:1ACE:*:*:64:1:if=2:col=1 OPEN' && since(n)[1]?.startsWith('hid:0B05:1ACE:*:*:64:1:if=2:col=1 REQ 1 300 a0 00 00'), `report 01 goes on col01 (${since(n).join(' / ').slice(0, 160)})`);
+  check(r1[0] === 0xa0, 'its reply reaches the driver as report 01');
+  n = lines.length;
+  const r3 = await ch.request(Uint8Array.from([0x12, 0x07]), { reportId: 3, timeoutMs: 500 });
+  check(since(n)[0]?.startsWith('hid:0B05:1ACE:*:*:64:3:if=2:col=3 REQ 1 300 12 07') && r3[0] === 0x12, `report 03 stays on col03 (${since(n)[0]})`);
+  n = lines.length;
+  omni.close();
+  check(since(n).some((l) => l.startsWith('hid:0B05:1ACE:*:*:64:1:if=2:col=1 CLOSE')) && since(n).some((l) => l.startsWith('hid:0B05:1ACE:*:*:64:3:if=2:col=3 CLOSE')), 'closing closes both collections');
+}
+
+// ---- 5. raw replies: SEND, then READ until the driver's listener has its reply; notices on request ----
+{
+  const queue = [];
+  answer = (chan, cmd) => {
+    if (cmd === 'OPEN') return 'OK';
+    if (cmd.startsWith('SEND')) {
+      const b = cmd.split(' ').slice(2);
+      // a battery event first, then a HID++ error reply for the request (dev FF idx fn code)
+      queue.push(`11 01 04 00 32 ${'00 '.repeat(15).trim()}`, `11 ${b[0]} ff ${b[1]} ${b[2]} 08 ${'00 '.repeat(14).trim()}`);
+      return 'OK';
+    }
+    if (cmd.startsWith('READ')) return queue.length ? queue.splice(0).join('|') : 'NONE';
+    return 'NONE';
+  };
+  host.addSpec({ id: 'hidpp', vid: '046d', pid: 'c539', page: 'FF00', usage: '0002', len: 19, reportId: 0x11, replyMs: 2000, reply: 'raw' });
+  const lg = await host.provider([{ vendorId: 0x046d, productId: 0xc539, usagePage: 0xff00 }]);
+  const isReplyTo = (sent, r) => r[0] === sent[0] && ((r[1] === sent[1] && r[2] === sent[2]) || (r[1] === 0xff && r[2] === sent[1] && r[3] === sent[2]));
+  const ch = new HidChannel(lg, { reportId: 0x11, length: 19, match: isReplyTo });
+  let n = lines.length;
+  const r = await ch.request([0x01, 0x07, 0x2b, 0x00], { timeoutMs: 2600 });
+  check(since(n)[0] === `hid:046D:C539:FF00:0002:19:17:rw=1 SEND 11 01 07 2b ${'00 '.repeat(16).trim()}`, `a raw request is a SEND with its report id (${since(n)[0]})`);
+  check(since(n)[1]?.includes(' READ '), 'then READ');
+  check(r[1] === 0xff && r[2] === 0x07 && r[4] === 0x08, `the error reply reaches the driver past the event before it (${Array.from(r.slice(0, 5))})`);
+  n = lines.length;
+  await lg.sendReport(0x10, [0x01, 0x00]);
+  check(since(n).length === 1 && since(n)[0].endsWith(' SEND 10 01 00'), 'a write nobody waits a reply for: SEND only, no READ; the driver\'s report id kept');
+  queue.length = 0; queue.push('11 01 04 00 50');
+  const got = await lg.receiveReports(100);
+  check(got.length === 1 && got[0].reportId === 0x11 && got[0].data.getUint8(3) === 0x50 && lines.at(-1).endsWith(' READ 100'), 'receiveReports hands notices back as { reportId, data }');
+  host.addSpec({ id: 'not-raw', vid: '046d', pid: 'c53a', page: 'FF00', usage: '0002', len: 19, reportId: 0x11 });
+  const plain = await host.provider([{ vendorId: 0x046d, productId: 0xc53a }]);
+  check(/raw/.test((await throws(() => plain.receiveReports(0)))?.message || ''), 'receiveReports only on a raw channel');
+  plain.close(); lg.close();
+}
+
+// ---- 6. refused vs gone ----
+{
+  let reply = 'REFUSED 31';
+  answer = (chan, cmd) => (cmd === 'OPEN' ? 'OK' : cmd.startsWith('REQ') || cmd.startsWith('SEND') ? reply : 'NONE');
+  host.addSpec({ id: 'hyperx', vid: '03f0', pid: '0696', page: 'FF90', usage: '0303', len: 19, reportId: 6, refusals: true });
+  const hx = await host.provider([{ vendorId: 0x03f0, productId: 0x0696 }]);
+  check(lines.at(-1) === 'hid:03F0:0696:FF90:0303:19:6:rf=1 OPEN', `refusals ride on the channel (${lines.at(-1)})`);
+  let e = await throws(() => hx.sendReport(6, [0xff, 0xbb, 0x02]));
+  check(e && e.refused === true && e.code === 31 && !e.gone && hx.opened, `a refused write is refused, not gone, and the device stays open (${e?.message})`);
+  check(!gone.includes('hyperx'), 'no gone event for a refusal');
+  reply = 'GONE';
+  e = await throws(() => hx.sendReport(6, [0xff, 0xbb, 0x02]));
+  check(e && e.gone === true && !e.refused && !hx.opened && gone.includes('hyperx'), 'GONE is still an unplug');
+  host.addSpec({ id: 'raw-ref', vid: '03f0', pid: '05b7', page: '*', usage: '*', outputLen: 61, len: 61, reportId: 0x66, reply: 'raw' });
+  const r = await host.provider([{ vendorId: 0x03f0, productId: 0x05b7 }]);
+  reply = 'REFUSED 1';
+  e = await throws(() => r.sendReport(0x66, [0x89]));
+  check(e && e.refused && e.code === 1 && !e.gone && r.opened, 'a raw SEND refused is refused, not gone');
+  r.close();
+}
+
+// ---- 7. the library check and the Logitech mode setting ----
+{
+  const meta = { id: 'x-mouse', vendor: 'X', product: 'P', kind: 'Mouse', vid: '1234', pids: ['abcd'], models: ['X P'], works: [], tested: [] };
+  check(validateMeta({ ...meta, status: 'read-only' }) === null && validateMeta({ ...meta, status: 'untested' }) === null, 'tested: [] is accepted for read-only and untested');
+  check(/tested must list/.test(validateMeta({ ...meta, status: 'tested' }) || ''), 'a tested entry still needs its record');
+  check(/tested must list/.test(validateMeta({ ...meta, status: 'read-only', tested: [{ by: 'x' }] }) || ''), 'a record without date and version is still refused');
+  const lg = (await import('../device-library/logitech-hidpp-mouse/device.mjs')).default;
+  check(lg.settings.find((s) => s.key === 'mode')?.selfCheck === false, 'Logitech "Settings source" is never written by the self-check');
+  const specs = hidSpecs(lg);
+  check(specs.length === 16 && specs.every((s) => s.reply === 'raw' && s.reportId === 0x11), `Logitech: one raw channel per receiver and wired mouse (${specs.length})`);
+}
+
+console.log(fails.length ? `hid-core: FAILED: ${fails.join('; ')}` : 'hid-core (several pids, interface/length matching, report ids, raw replies, refused vs gone, defaults unchanged): all good');
+process.exit(fails.length ? 1 : 0);

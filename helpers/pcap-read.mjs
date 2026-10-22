@@ -3,7 +3,12 @@
 import fs from 'node:fs';
 
 export function readPcap(file) {
-  const b = fs.readFileSync(file);
+  return readPcapBuffer(fs.readFileSync(file));
+}
+
+// the same from bytes already read (helpers/learn-wizard.mjs, tests); each record also carries ts: its absolute time
+export function readPcapBuffer(b) {
+  if (b.length < 24) throw new Error('not a pcap file (too short)');
   const le = b.readUInt32LE(0) === 0xa1b2c3d4;
   if (!le) throw new Error('not a little-endian pcap file');
   const link = b.readUInt32LE(20);
@@ -19,7 +24,7 @@ export function readPcap(file) {
     const t = sec + usec / 1e6;
     if (t0 == null) t0 = t;
     const rec = {
-      t: +(t - t0).toFixed(4),
+      t: +(t - t0).toFixed(4), ts: t,
       irp: p.readBigUInt64LE(2), status: p.readUInt32LE(10), fn: p.readUInt16LE(14),
       in: (p[16] & 1) === 1,           // 1 = completion coming back up (device -> host)
       bus: p.readUInt16LE(17), device: p.readUInt16LE(19), endpoint: p[21], transfer: p[22], length: p.readUInt32LE(23),

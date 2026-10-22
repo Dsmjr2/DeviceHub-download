@@ -277,6 +277,17 @@ Adapter outline (Node side builds reports; the C# helper sends 91-byte feature r
 | Headset battery | unknown | high (no open source) |
 | Macros / remap on device | unknown | high (no open source; host-side only) |
 
+### Covered in device-library/razer-mouse (22 Oct 2026)
+
+Every §3 mouse row with both a set and a get: DPI, the DPI stage table (active stage and each stage's DPI, written
+back whole with only that field changed; the count is never changed and a table over the 0x26 size is not written),
+polling rate (classic and HyperPolling), idle timer, low-battery threshold, scroll acceleration and smart reel
+(Basilisk family, found by reads), the HyperPolling dongle indicator light, and extended brightness (0x0F/0x84,
+0x0F/0x04) for the mouse LED ids 0x01, 0x04, 0x10, 0x11 (or 0x00 when none answers), each only when its read answers.
+Scroll mode is read and shown raw (no mode values in this sheet). Not covered: effect / static colour (0x0F/0x02 has no
+get), standard (class 0x03) lighting, device mode, dongle pair / unpair, macros and remaps. Writes are refused while
+Razer Synapse runs. Simulated only (tests/sim-razer.mjs); see docs/handoff/driver-coverage.md.
+
 ## 6. Gaps and unknowns
 
 - BlackShark V2 Pro / V2 X, Barracuda, Nari, Kraken V4 Pro: no PIDs, no protocol in any source.

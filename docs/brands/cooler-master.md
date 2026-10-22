@@ -332,3 +332,10 @@ This brand is far less mapped than Corsair. Say so plainly to anyone picking it 
 - [TechPowerUp MM720 review](https://techpowerup.com/review/cooler-master-mm720)
 - [TechPowerUp MH670 review](https://techpowerup.com/review/cooler-master-mh670)
 - [TechPowerUp MH650 review](https://techpowerup.com/review/cooler-master-mh650)
+
+## Covered (22 Oct 2026): no library driver, on purpose
+
+Nothing beyond lighting is documented with a source: no DPI, polling, lift-off, sleep, battery or macro command for
+any Cooler Master device (section 6). The only non-lighting read, the keyboard firmware version, first needs a control
+mode write (`41 00`), and the MM712 `47 81` reply is undecoded. Lighting goes through OpenRGB. A driver waits for a
+capture of MasterPlus+ (section 5, step 5).

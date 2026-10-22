@@ -7,6 +7,7 @@ import { speakerSection } from './speakers.js';
 import { isDemo } from '../core/devices.js';
 import { env } from '../core/env.js';
 import { modal, promptText, toast } from '../ui/overlay.js';
+import { installerButton } from '../ui/installer-button.js';
 
 const BANDS = ['32', '64', '125', '250', '500', '1k', '2k', '4k', '8k', '16k'];
 const DEMO_EQ = () => ({ available: true, icueRunning: true, slots: [{ slot: 2, id: 'c1' }], presets: [
@@ -156,7 +157,9 @@ export function eqPanel(redraw) {
   if (!ui.eq.available && ui.eq.needsApo) return card(head,
     h('p', { class: 'faint' }, 'The EQ, Natural sound, mic boost and mic filters need Equalizer APO, a free sound add-on for Windows.'),
     h('p', { class: 'faint' }, 'Install it, tick your headset when its installer asks, then restart the PC.'),
-    h('div', { class: 'actions' }, button('Get Equalizer APO', () => window.open('https://sourceforge.net/projects/equalizerapo/', '_blank'), { kind: 'primary small', ic: 'external' }),
+    // its button (22 Oct 2026, ui/installer-button.js): the official download in DeviceHub's own dialog, installed when
+    // it can be checked, else the official page
+    h('div', { class: 'actions' }, installerButton('eqapo', { onDone: () => load(), redraw: () => rerender() }),
       button('Check again', () => load(), { kind: 'ghost small', ic: 'refresh' })));
   if (!ui.eq.available) return card(head, h('p', { class: 'faint' }, ui.eq.reason));
   const p = selected();

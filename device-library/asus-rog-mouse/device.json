@@ -1,0 +1,55 @@
+{
+  "id": "asus-rog-mouse",
+  "vendor": "ASUS",
+  "product": "ROG mice (Harpe Ace, Keris Wireless AimPoint, Gladius III, Chakram X)",
+  "kind": "Mouse",
+  "vid": "0b05",
+  "pids": [
+    "1a92",
+    "1a94",
+    "1a66",
+    "1a68",
+    "197b",
+    "197d",
+    "197f",
+    "1a70",
+    "1a72",
+    "1a18",
+    "1a1a",
+    "1ace"
+  ],
+  "models": [
+    "ROG Harpe Ace Aim Lab Edition",
+    "ROG Keris Wireless AimPoint",
+    "ROG Gladius III",
+    "ROG Gladius III Wireless",
+    "ROG Gladius III Wireless AimPoint",
+    "ROG Chakram X"
+  ],
+  "works": [
+    "battery level and charging (read)",
+    "sleep after 1, 2, 3, 5, 10 min or never",
+    "DPI stages 1-4 in steps of 50 (read only on the Chakram X)",
+    "polling rate 125-1000 Hz; up to 8000 Hz on the Chakram X's cable",
+    "angle snapping on/off",
+    "lift-off distance low/high (also resets the surface calibration)",
+    "DPI stages in use, 2-4 (written from the sheet, not yet run on a mouse)",
+    "onboard profile select 1-5, read and select only (written from the sheet, not yet run on a mouse)",
+    "button response (read only)",
+    "on the cable, the mouse's own receiver, or the ROG Omni receiver (the model found from its pair list)"
+  ],
+  "doesNotWork": [
+    "firmware updates (never: they stay in Armoury Crate)",
+    "Omni receiver pairing",
+    "button remaps",
+    "lights (OpenRGB has them)",
+    "changing button response or the 8K booster (the sources disagree)",
+    "Bluetooth",
+    "active DPI stage (the read's numbering is not documented)",
+    "angle tuning and the low-battery warning (not yet: see docs/handoff/driver-coverage.md)",
+    "writing onboard profile contents (only selecting one)"
+  ],
+  "status": "read-only",
+  "tested": [],
+  "source": "docs/brands/asus-rog.md"
+}

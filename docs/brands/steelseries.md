@@ -277,6 +277,15 @@ cannot be read back and saves are persistent.
 - **Mouse settings read-back:** no source reads DPI or lighting from a mouse.
 - **Firmware update** protocol: unknown; stay away.
 
+## Covered in device-library/steelseries-arctis (22 Oct 2026)
+
+The headset rows of section 3 that have a documented READ are in the library driver: battery and charging (Nova 7
+family, Arctis 7+, Nova Pro, Arctis 9, Arctis 7 2017-19 `06 18`), ChatMix (Nova 7, 7+, Arctis 9, Arctis 7 2017-19
+`06 24`; shown read-only) and the Nova 7 Gen 2 sidetone (`00 39` written, `00 20` read back). Every other headset
+setting in section 3 (sidetone on other models, auto-off, EQ, mic volume, mic light, volume limiter, Bluetooth options,
+lights) has no read in any source, so DeviceHub does not write it (its rule: a write is read back). Mice and keyboards
+are not in the library yet. Details: docs/handoff/driver-coverage.md.
+
 ## Sources
 
 - HeadsetControl, shared protocol: [lib/devices/protocols/steelseries_protocol.hpp](https://github.com/Sapd/HeadsetControl/blob/master/lib/devices/protocols/steelseries_protocol.hpp)

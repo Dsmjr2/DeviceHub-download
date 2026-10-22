@@ -1,0 +1,228 @@
+// Auto setup (22 Oct 2026; docs/handoff/auto-setup.md): on a PC that is not Shawn's, DeviceHub sets itself up with
+// almost no prompting.
+//
+//   startup({ root, pcMap, log })   once, when the agent has started (one marked line in server.js): reads the PC's USB
+//                                   devices and runs run() with them
+//   run({ root, usb, busy, log })   matches the USB devices with the device library and installs every matching "tested"
+//                                   or "read-only" entry not installed yet (never over an existing my-devices folder,
+//                                   never one the person removed, never for a device DeviceHub's own drivers run), then
+//                                   loads it at once (my-devices.mjs loadNew) or says to restart. Records what it did
+//                                   in setup.json (library names, statuses, USB ids, dates: nothing personal).
+//   summary({ root, sources })      what was found and installed, what works now, what is optional and what still needs
+//                                   a learning session, one plain line each (GET /api/setup, helpers/setup-report.mjs)
+//
+// It installs drivers only (copies into my-devices\); it never writes to a device. A read-only driver writes nothing
+// until each setting passes its self-check (helpers/my-devices.mjs). Off: settings.json "autoSetup": false, or
+// DEVICEHUB_AUTO_SETUP=0.
+import fs from 'node:fs';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import { match, installFromLibrary, ROOT, hex4, devicehubVersion } from './device-library.mjs';
+import { libraryMark, readVerified, loadNew } from './my-devices.mjs';
+
+export const SETUP_FILE = 'setup.json';
+export const cache = { at: 0, value: null };  // server.js keeps /api/setup's last answer here for a minute
+const require = createRequire(import.meta.url);
+const readJson = (f, d = null) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
+export const readSetup = (root = ROOT) => readJson(path.join(root, SETUP_FILE), {}) || {};
+function saveSetup(root, data) {
+  const file = path.join(root, SETUP_FILE), tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n');
+  fs.renameSync(tmp, file);
+}
+const idOf = (u) => `${hex4(u.vid)}:${hex4(u.pid)}`;
+const product = (meta) => `${meta.vendor} ${meta.product}`;
+
+export function enabled(root = ROOT) {
+  if (process.env.DEVICEHUB_AUTO_SETUP === '0') return false;
+  return readJson(path.join(root, 'settings.json'), {})?.autoSetup !== false;
+}
+
+// usb: [{ vid, pid, name, runs }] (/api/pc); busy: extra 'vid:pid' DeviceHub already runs (VIA keyboards, built-in slots)
+export async function run({ root = ROOT, usb = [], busy = [], log = () => {}, examples, load = loadNew, now = () => new Date() } = {}) {
+  const at = now().toISOString();
+  const before = readSetup(root);
+  const rec = { version: 1, firstRunAt: before.firstRunAt || at, lastRunAt: at, devicehub: devicehubVersion(root), installed: before.installed || [], lastRun: { installed: [], offered: [], skipped: [] }, dismissed: before.dismissed || null };
+  if (!enabled(root)) { rec.lastRun = { ...(before.lastRun || {}), off: true }; saveSetup(root, rec); return rec; }
+  const own = new Set([...(usb || []).filter((u) => u.runs).map(idOf), ...busy.map((x) => String(x).toLowerCase())]);
+  const ever = new Set(rec.installed.map((x) => x.name));
+  for (const m of match(usb, { root, readOnly: true, ...(examples != null ? { examples } : {}) })) {
+    const ids = m.matched.map(idOf);
+    const line = { name: m.name, product: product(m.meta), status: m.meta.status, usb: ids };
+    if (m.installed) continue;  // already there: summary() reports it
+    if (ids.every((id) => own.has(id))) { rec.lastRun.skipped.push({ ...line, why: 'DeviceHub\'s own driver already runs it' }); continue; }
+    if (ever.has(m.name)) { rec.lastRun.skipped.push({ ...line, why: 'installed before and removed since: not installed again' }); continue; }
+    if (!m.installable) { rec.lastRun.offered.push({ ...line, why: m.why }); continue; }
+    const r = await installFromLibrary(m.name, { root, readOnly: true, ...(examples != null ? { examples } : {}), now });
+    if (!r.ok) { rec.lastRun.skipped.push({ ...line, why: r.error }); continue; }
+    const got = { ...line, id: r.id, at };
+    rec.installed.push(got); rec.lastRun.installed.push(got); ever.add(m.name);
+  }
+  if (rec.lastRun.installed.length) {
+    let loaded = null;
+    try { loaded = await load(root); } catch {}
+    rec.lastRun.loaded = loaded ? loaded.filter((x) => x.id).map((x) => x.name) : null;
+    for (const x of rec.lastRun.installed) {
+      const live = loaded?.some((l) => l.name === x.name && l.id);
+      const how = x.status === 'tested' ? '' : ' read-only until each setting passes its self-check';
+      try { log({ kind: 'good', text: `Set up: ${x.product} driver installed from the device library${how}${live ? "" : " (restart DeviceHub to load it)"}` }); } catch {}
+    }
+  }
+  saveSetup(root, rec);
+  return rec;
+}
+
+// once, when the agent has started (server.js)
+export async function startup({ root = ROOT, pcMap, log = () => {} } = {}) {
+  if (!enabled(root)) return null;
+  const usb = (await pcMap.get(true)).usb || [];
+  let busy = [];
+  try { busy = (await require('./via-defs.js').findKeyboards()).map((k) => `${k.vid}:${k.pid}`.toLowerCase()); } catch {}
+  const r = await run({ root, usb, busy, log });
+  console.log(`[setup] auto setup: ${r.lastRun.installed.length} installed, ${r.lastRun.offered.length} offered, ${r.lastRun.skipped.length} skipped`);
+  return r;
+}
+
+// ---------- the summary ----------
+
+// vendor id -> brand, for the device kinds a driver is written for (docs/brands.json)
+function brandsByVid(root) {
+  const j = readJson(path.join(root, 'docs', 'brands.json'), {}) || {};
+  const shared = new Set(((j.meta?.sharedVidWarning || '').match(/\b[0-9a-f]{4}\b/g)) || []);
+  const out = {};
+  for (const cat of ['mouse', 'headset', 'keyboard', 'case']) {
+    for (const b of j.categories?.[cat] || []) for (const v of b.usbVendorIds || []) {
+      const k = String(v).toLowerCase();
+      if (!out[k]) out[k] = { name: b.name, kinds: [], shared: shared.has(k) };
+      if (!out[k].kinds.includes(cat)) out[k].kinds.push(cat);
+    }
+  }
+  return out;
+}
+const SHEETS = { 'logitech': 'logitech', 'razer': 'razer', 'corsair': 'corsair', 'steelseries': 'steelseries', 'turtle beach': 'turtle-beach', 'roccat': 'turtle-beach', 'hyperx': 'hyperx', 'asus': 'asus-rog', 'glorious': 'glorious', 'keychron': 'keychron', 'wooting': 'wooting', 'cooler master': 'cooler-master' };
+const sheetFor = (root, brand) => {
+  const k = Object.keys(SHEETS).find((n) => brand.toLowerCase().includes(n));
+  return k && fs.existsSync(path.join(root, 'docs', 'brands', `${SHEETS[k]}.md`)) ? `docs/brands/${SHEETS[k]}.md` : null;
+};
+// not a device a driver is written for
+const NOT_A_DEVICE = /bluetooth|\bhub\b|storage|card reader|mass|camera|webcam|wireless adapter|network|ethernet|wi-?fi|serial|printer|audio interface/i;
+
+// my-devices folders installed from the library: [{ name, id, status, source, title?, verified: [labels], readOnly: [{ key, why }], checkedAt }]
+export function libraryDrivers(root = ROOT, adapters = {}) {
+  const dir = path.join(root, 'my-devices');
+  let names = [];
+  try { names = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort(); } catch {}
+  const out = [];
+  for (const name of names) {
+    const folder = path.join(dir, name);
+    const mark = libraryMark(folder);
+    if (!mark) continue;
+    const v = readVerified(folder);
+    const meta = readJson(path.join(folder, 'device.json'), {}) || {};
+    const a = adapters[mark.id];
+    const keys = a?.settings?.map((s) => [s.key, s.label]) || Object.keys(v.keys || {}).map((k) => [k, k]);
+    const ok = keys.filter(([k]) => v.keys?.[k]?.ok === true).map(([, l]) => l);
+    const failed = keys.filter(([k]) => v.keys?.[k]?.ok === false).map(([k, l]) => ({ key: k, label: l, why: v.keys[k].why }));
+    const unchecked = keys.filter(([k]) => !v.keys?.[k]).map(([, l]) => l);
+    out.push({ name, id: mark.id, status: mark.status, source: mark.source, title: a?.title || (meta.vendor ? `${meta.vendor} ${meta.product}` : name), checkedAt: v.checkedAt || null, firmware: v.firmware || null, verified: ok, failed, unchecked, deviceStatus: a?.status || null });
+  }
+  return out;
+}
+
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+
+// sources (each optional; a missing one is simply not reported):
+//   agent: /api/agent/state ({ devices }), usb: /api/pc's usb, via: [{ vid, pid, name }], monitors, cameras,
+//   bluetooth: std-battery read(), lamparrays, eqapo: boolean (installed), openrgb: status(), pcLights: boolean
+export function summary({ root = ROOT, sources = {} } = {}) {
+  const setup = readSetup(root);
+  const devs = sources.agent?.devices || [];
+  const adapters = Object.fromEntries(devs.map((d) => [d.id, { ...(d.adapter || {}), status: d.status }]));
+  const works = [], optional = [], learn = [], installed = [], attention = [];
+  // built-in slots: only the ones this PC has
+  for (const d of devs.filter((x) => ['mouse', 'headset', 'keyboard'].includes(x.id))) {
+    if (!d.seen && !['connected', 'asleep'].includes(d.status)) continue;
+    const model = d.info?.Model && d.info.Model !== d.adapter?.title ? ` (${d.info.Model})` : '';
+    works.push({ what: d.id, line: `${d.adapter?.title || d.id}${model}: runs on its ${d.adapter?.kind || d.id} page${d.status === 'connected' ? '' : ` (${d.status} now)`}` });
+  }
+  const ran = new Set((sources.usb || []).filter((u) => u.runs).map(idOf));
+  for (const k of (sources.via || []).filter((x) => !ran.has(idOf(x)))) works.push({ what: 'via', line: `${k.name || `${k.vid}:${k.pid}`}: a VIA keyboard, its keys and lights work with no setup (Keyboard page)` });
+  const mons = (sources.monitors || []).filter((m) => m.ddc);
+  if (mons.length) works.push({ what: 'monitors', line: `${plural(mons.length, 'monitor')} over DDC/CI: ${mons.map((m) => m.name || m.model).join(', ')} (Monitors page)` });
+  const cams = sources.cameras || [];
+  if (cams.length) works.push({ what: 'cameras', line: `${plural(cams.length, 'webcam')}: ${cams.map((c) => c.name).join(', ')}, picture settings on the Monitors page` });
+  const bt = (sources.bluetooth || []).filter((b) => b.percent != null);
+  if (bt.length) works.push({ what: 'bluetooth', line: `Battery levels from Windows: ${bt.map((b) => `${b.name} ${b.percent}%`).join(', ')}` });
+  const lamps = sources.lamparrays || [];
+  if (lamps.length) works.push({ what: 'lamparrays', line: `${plural(lamps.length, 'Windows Dynamic Lighting device')}: ${lamps.map((l) => l.name || l.product || 'light').join(', ')} (one color, then handed back to Windows)` });
+  // library drivers
+  for (const l of libraryDrivers(root, adapters)) {
+    const ro = [...l.failed.map((f) => `${f.label} (${f.why})`), ...(l.status === 'tested' ? [] : l.unchecked)];
+    const state = !l.checkedAt ? (l.status === 'tested' ? 'its settings change normally; its self-check runs when it connects' : 'read-only until it connects and its self-check runs')
+      : `verified: ${l.verified.length ? l.verified.join(', ') : 'none'}${ro.length ? `; read-only: ${ro.join('; ')}` : ''}`;
+    const item = { what: 'library', name: l.name, line: `${l.title}: library driver (${l.status}), ${state}` };
+    works.push(item);
+    if (!l.checkedAt || l.failed.length || (l.status !== 'tested' && l.unchecked.length)) attention.push(item.line);
+  }
+  // what auto setup installed (until dismissed)
+  for (const x of setup.installed || []) installed.push({ what: 'installed', name: x.name, line: `${x.product}: installed from the device library on ${String(x.at).slice(0, 10)} (${x.status})` });
+  if (installed.length) attention.push(...installed.map((x) => x.line));
+  // library entries for this PC's devices that did not install by themselves ("untested", or one removed by the person)
+  let matches = [];
+  try { matches = match(sources.usb || [], { root, readOnly: true }); } catch {}
+  const runs = new Set((sources.usb || []).filter((u) => u.runs).map(idOf));
+  for (const m of matches) {
+    if (m.installed || m.matched.every((u) => runs.has(idOf(u)))) continue;
+    const line = m.installable
+      ? `${product(m.meta)}: a library driver (${m.meta.status}) is there for it but not installed (removed earlier, or auto setup is off): POST /api/library/install {"name":"${m.name}"} to add it`
+      : `${product(m.meta)}: a library driver exists but is "${m.meta.status}", so it was not installed by itself: install it by hand and prove it (CLAUDE.md "Adding your own devices" step 6)`;
+    learn.push({ what: 'library-untested', name: m.name, line }); attention.push(line);
+  }
+  // devices from a known brand that nothing runs yet
+  const brands = brandsByVid(root);
+  const covered = new Set([...(sources.via || []).map((k) => `${k.vid}:${k.pid}`.toLowerCase()), ...(setup.installed || []).flatMap((x) => x.usb || [])]);
+  for (const m of matches) for (const u of m.matched) covered.add(idOf(u));
+  const learned = new Set();
+  for (const u of sources.usb || []) {
+    const id = idOf(u), b = brands[hex4(u.vid)];
+    if (u.runs || covered.has(id) || !b || learned.has(id) || NOT_A_DEVICE.test(u.name || '')) continue;
+    learned.add(id);
+    const sheet = sheetFor(root, b.name);
+    const line = `${u.name || `${b.name} device`} (USB ${id}${b.shared ? ', the vendor id is a chip maker\'s: unconfirmed' : ''}): no driver yet; ${sheet ? `start from ${sheet}, then ` : ''}a learning session in the maker's app`;
+    learn.push({ what: 'learn', usb: id, line }); attention.push(line);
+  }
+  // optional extras
+  if (sources.eqapo === false) optional.push({ what: 'eqapo', line: 'Equalizer APO: needed for the headset EQ, mic boost and mic filters (the Headset page has the button; ask before installing)' });
+  if (sources.openrgb && !sources.openrgb.running && sources.pcLights !== false) optional.push({ what: 'openrgb', line: 'PC lights (board, graphics card, RAM): through OpenRGB 1.1 or newer with its SDK server on, only if wanted (board and RAM also need PawnIO)' });
+  const signature = attention.length ? hash(attention.join('\n')) : null;
+  const found = { usb: (sources.usb || []).length, library: installed.length + works.filter((w) => w.what === 'library').length };
+  return {
+    show: !!signature && signature !== setup.dismissed,
+    signature, found, installed, works, optional, learn,
+    setup: { firstRunAt: setup.firstRunAt || null, lastRunAt: setup.lastRunAt || null, off: !enabled(root) },
+  };
+}
+
+function hash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); }
+
+// the Set up card's dismiss: kept until the summary says something new
+export function dismiss(root = ROOT, signature) {
+  if (typeof signature !== 'string' || !/^[0-9a-f]{1,8}$/.test(signature)) throw new Error('signature must be the summary\'s signature');
+  const s = readSetup(root);
+  s.dismissed = signature;
+  saveSetup(root, s);
+  return { ok: true, dismissed: signature };
+}
+
+// the summary as plain text (setup-report.mjs, and anything else that wants it in words)
+export function asText(s) {
+  const out = [];
+  const sec = (title, items) => { if (items.length) { out.push(title); for (const i of items) out.push(`  - ${i.line}`); } };
+  sec('Installed by DeviceHub\'s auto setup:', s.installed);
+  sec('Works now:', s.works);
+  sec('Still to do (learning, or a library driver to prove):', s.learn);
+  sec('Optional:', s.optional);
+  if (!out.length) out.push('Nothing found to report.');
+  out.push(s.learn.length ? `Next: follow CLAUDE.md "Adding your own devices" for the ${plural(s.learn.length, 'item')} under "Still to do", in that order.` : 'Next: nothing to set up. Run the checks (npm test) if anything was installed.');
+  return out.join('\n');
+}

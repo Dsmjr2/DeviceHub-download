@@ -239,6 +239,16 @@ Split `hs80-direct.js` into:
 
 Lighting for most Corsair mice and keyboards is also reachable through OpenRGB, which DeviceHub already talks to. So steps 4-5 can stop at battery, DPI and polling.
 
+### Covered in device-library/corsair-bragi-headset (22 Oct 2026)
+
+Headsets on the helper's hs80 channel (never the HS80 RGB Wireless, which DeviceHub's own page runs): HS80 MAX,
+Virtuoso RGB Wireless XT, Void Wireless V2, Virtuoso SE, Virtuoso RGB Wireless, Void MAX Wireless V2 and Virtuoso MAX
+Wireless. Battery `0f`, firmware `13`, voltage `53`, mic muted `a6` / `8e` (read + notices), sleep timer `0e` (all);
+sleep timer on/off `0d` and sidetone `46` / `47` on the models section 3 names, offered only when the headset answers a
+GET of them (the sheet marks them W only). Every write is read back. Not covered: lights and brightness (`02`, `03`,
+handle writes: no HS80 MAX frame in the helper), ANC `d1` (meaning unconfirmed), EQ presets (no bragi property), charge
+status `10` values. Details: docs/handoff/driver-coverage.md.
+
 ## 6. Gaps and unknowns
 
 - **HS65 Surround, HS55 Wireless:** no product ids and no protocol found in any open project.

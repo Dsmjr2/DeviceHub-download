@@ -213,6 +213,11 @@ keyboard work can stop at battery, sleep, DPI, polling and the mouse-only settin
 | 6 | Headsets that GH covers (Strix Go 2.4, Delta II, Cetra) | 1 day each | medium (report id per model) |
 | 7 | Per-key keyboard lights | 2-3 days | medium; prefer OpenRGB |
 
+**Covered in device-library/asus-rog-mouse (22 Oct 2026):** battery, charging, sleep, DPI stages 1-4, polling,
+angle snapping, lift-off, button response (read only), and since 22 Oct the DPI stage count (`51 31 0A`, read `12 00`
+byte 19) and onboard profile select (`50 02`, read `12 00` byte 11; select only). Not covered, and why:
+docs/handoff/driver-coverage.md.
+
 ## 6. Gaps and unknowns
 
 - **Delta S family (`1943`, `1A31`, `1A49`):** ids come from a driver database only. No open project speaks to it.

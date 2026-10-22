@@ -1,0 +1,22 @@
+{
+  "id": "turtle-beach-battery",
+  "vendor": "Turtle Beach",
+  "product": "Stealth 700 Gen 3 battery (Airoha RACE, read only)",
+  "kind": "Headset",
+  "vid": "10f5",
+  "pids": ["2251", "2250", "2253"],
+  "models": ["Stealth 700 Gen 3"],
+  "works": [
+    "written from docs/brands/turtle-beach.md (halobattery-stealth700) and checked against a simulated transmitter only (tests/sim-turtle-beach-battery.mjs)",
+    "reads: battery %, charging (key 250, a best guess on this model), headset linked, headset name, Signature Sound preset (raw)",
+    "sends only the sheet's two fixed frames (CoAP enable 0x9942, GET /GSI in 0x9902); steps back while Swarm II runs"
+  ],
+  "doesNotWork": [
+    "any setting (no open source documents one on any Turtle Beach headset)",
+    "firmware updates and RACE nvkey writes (never)",
+    "Stealth Pro II (its request bytes are only in a capture), Stealth 600 Gen 3, Stealth 700 G2 and older headsets"
+  ],
+  "status": "untested",
+  "tested": [],
+  "source": "docs/brands/turtle-beach.md"
+}

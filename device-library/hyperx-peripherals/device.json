@@ -1,0 +1,23 @@
+{
+  "id": "hyperx-peripherals",
+  "vendor": "HyperX",
+  "product": "Pulsefire mice and Alloy / Origins keyboards, HP-era ids (info only)",
+  "kind": "Mouse or keyboard",
+  "vid": "03f0",
+  "pids": ["0f8f", "068e", "088e", "0d8f", "0490", "0c8e", "038f", "098f", "0591", "0cc2"],
+  "models": ["Pulsefire Haste", "Pulsefire Dart", "Pulsefire Core", "Pulsefire Surge", "Alloy Origins 60", "Alloy Origins 65", "Alloy Origins Core", "Alloy Origins", "Origins 2 65"],
+  "works": [
+    "written from docs/brands/hyperx.md (OpenRGB ids and interfaces) and checked against simulated devices only (tests/sim-hyperx-peripherals.mjs)",
+    "names the device (model, mouse or keyboard, dongle or cable) from its product id and says where its lights and settings are",
+    "sends nothing: its channel is opened with no access"
+  ],
+  "doesNotWork": [
+    "DPI, polling rate and battery (no open source documents them for any HyperX mouse)",
+    "lights (every documented lighting command is write-only; OpenRGB drives them)",
+    "Kingston-era ids (vendor 0951), Pulsefire Haste 2, Alloy Rise",
+    "firmware updates (NGENUITY only)"
+  ],
+  "status": "untested",
+  "tested": [],
+  "source": "docs/brands/hyperx.md"
+}
