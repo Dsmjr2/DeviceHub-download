@@ -28,12 +28,19 @@ export function paintLive(root = document) {
       if (n && n.textContent !== text) n.textContent = text;
       if (u) u.style.display = b ? '' : 'none';
       art.classList.toggle('charging', !!b?.charging);
+      art.classList.toggle('low', !!b && !b.charging && b.percent <= 20);
     }
   }
   const hv = devices.headset?.values || {};
   for (const art of root.querySelectorAll('.art.art-headset')) {
     if (hv.led) art.style.setProperty('--glowc', hv.led);
     art.style.setProperty('--logo', hv.logoBrightness == null ? '1' : String(Math.max(0.12, hv.logoBrightness / 100)));
+    // the volume as one to three waves (none when muted or off), and the mic tip green when live, red when muted
+    const on = devices.headset?.status === 'connected' && hv.headsetOn !== false;
+    const vol = hv['vol:playback'];
+    art.dataset.vol = !on || hv['mute:playback'] || vol == null ? '0' : String(vol <= 0 ? 0 : vol < 34 ? 1 : vol < 67 ? 2 : 3);
+    art.classList.toggle('mic-live', on && hv['prop:micEnabled'] !== false && !hv['mute:recording']);
+    art.classList.toggle('mic-off', on && (hv['prop:micEnabled'] === false || !!hv['mute:recording']));
   }
   const kv = devices.keyboard?.values || {};
   const on = devices.keyboard?.status === 'connected' && kv.effect !== 0 && kv.brightness > 0;

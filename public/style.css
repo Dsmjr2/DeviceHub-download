@@ -1037,3 +1037,21 @@ html[data-art="live"] .art-keyboard .soft, .art-preview[data-art-preview="live"]
 html[data-art="live"] .art-keyboard .accent, .art-preview[data-art-preview="live"] .art.mark.art.art-keyboard .accent { fill: color-mix(in srgb, var(--kb, #fff) calc(var(--kbon, 0) * 90%), #33363e); }
 html[data-art="live"] .art.mark.art-keyboard, .art-preview[data-art-preview="live"] .art.mark.art.art-keyboard { filter: drop-shadow(0 0 calc(var(--kbon, 0) * 12px) color-mix(in srgb, var(--kb, #fff) 70%, transparent)) drop-shadow(0 12px 22px rgba(0, 0, 0, .5)); }
 .art-style[data-look="live"] { background: linear-gradient(180deg, transparent 45%, rgba(61, 220, 151, .12)); }
+/* Live look, more of the real state (21 Oct 2026, "make it even better"): one battery only (the drawing's; the icon by
+   the name is hidden in this look); the headset's volume as one to three waves beside the cups; its mic tip green
+   while live, red when muted; a battery at 20% or less pulses slowly */
+.art.mark .vol-arcs { display: none; }
+html[data-art="live"] .bay-head .bcell { display: none; }
+html[data-art="live"] .art.mark .vol-arcs, .art-preview[data-art-preview="live"] .art.mark.art .vol-arcs { display: inline; }
+html[data-art="live"] .art.mark .vol-arc, .art-preview[data-art-preview="live"] .art.mark.art .vol-arc { fill: none; stroke: rgba(255, 255, 255, .75); stroke-width: 1.3; stroke-linecap: round; opacity: 0; transition: opacity .3s; }
+html[data-art="live"] .art.mark[data-vol="1"] .v1, .art.mark[data-vol="2"] :is(.v1, .v2), .art.mark[data-vol="3"] .vol-arc, .art-preview[data-art-preview="live"] .art.mark.art[data-vol="1"] .v1, .art.mark[data-vol="2"] :is(.v1, .v2), .art.mark[data-vol="3"] .vol-arc { opacity: 1; }
+html[data-art="live"] .art.mark[data-vol="2"] .v2, .art.mark[data-vol="3"] .v2, .art-preview[data-art-preview="live"] .art.mark.art[data-vol="2"] .v2, .art.mark[data-vol="3"] .v2 { opacity: .65; }
+html[data-art="live"] .art.mark[data-vol="3"] .v3, .art-preview[data-art-preview="live"] .art.mark.art[data-vol="3"] .v3 { opacity: .4; }
+html[data-art="live"] .art.mark.mic-live .led.mic, .art-preview[data-art-preview="live"] .art.mark.art.mic-live .led.mic { fill: #3ddc97; filter: drop-shadow(0 0 2.5px #3ddc97); }
+html[data-art="live"] .art.mark.mic-off .led.mic, .art-preview[data-art-preview="live"] .art.mark.art.mic-off .led.mic { fill: #ff4d4d; filter: drop-shadow(0 0 2.5px #ff4d4d); }
+html[data-art="live"] .art.mark.low .wave.front, .art-preview[data-art-preview="live"] .art.mark.art.low .wave.front { animation: wave-x 5.5s linear infinite, low-pulse 2.4s ease-in-out infinite; }
+@keyframes low-pulse { 50% { opacity: .45; } }
+/* no number on the drawing: the liquid alone shows the battery (Shawn, 21 Oct 2026: "doesnt need any percent") */
+html[data-art="live"] .art.mark .lq-text, .art-preview[data-art-preview="live"] .art.mark.art .lq-text { display: none; }
+/* the volume waves sit just outside the cups: the headset drawing may paint past its box in this look */
+html[data-art="live"] .art.art-headset, .art-preview[data-art-preview="live"] .art.art.art-headset { contain: none; }

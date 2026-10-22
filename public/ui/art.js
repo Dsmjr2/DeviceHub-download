@@ -127,6 +127,7 @@ export function headsetArt() {
     <circle class="cut" cx="44.6" cy="129" r="1.8"/>
     <rect class="soft" x="65.5" y="146.2" width="13" height="7.4" rx="3.7"/>
     <circle class="led mic" cx="76.4" cy="149.9" r="1.4"/>
+    <g class="vol-arcs"><path class="vol-arc v1" d="M4 118Q0 125.5 4 133"/><path class="vol-arc v1" d="M176 118Q180 125.5 176 133"/><path class="vol-arc v2" d="M-1 113Q-7 125.5 -1 138"/><path class="vol-arc v2" d="M181 113Q187 125.5 181 138"/><path class="vol-arc v3" d="M-6 108Q-14 125.5 -6 143"/><path class="vol-arc v3" d="M186 108Q194 125.5 186 143"/></g>
     <text class="lq-text" x="90" y="130" text-anchor="middle"><tspan class="lq-n"></tspan><tspan class="lq-u" dx="1">%</tspan></text>
     <g class="bp">${callout(76.4, 149.9)}${callout(8.5, 119.5)}${callout(157.5, 111)}${callout(22.5, 111)}</g>
   </g>
