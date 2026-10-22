@@ -350,6 +350,14 @@ export async function turnOn(id) {
   return a.turnOn();
 }
 
+// The maker's app for any added driver (profiles, docs/handoff/profiles-added-devices.md): { app } open, { unknown }
+// could not check (counts as open), or {} none open. A guarded driver uses its own deps; a person's own driver
+// DeviceHub's list by vendor id. Reads only (tasklist).
+export async function makerAppNow(a) {
+  if (typeof a?.makerAppNow === 'function') return a.makerAppNow();
+  return makerAppOf(a, makerAppByVid);
+}
+
 // library.json changed in place (temp file, then rename), keeping whatever else is in it (the wizard's learnedKeys)
 function saveMark(folder, change) {
   const file = path.join(folder, LIBRARY_FILE), tmp = `${file}.tmp`;
@@ -492,6 +500,10 @@ export function guard(a, folder, mark, deps = null) {
     if (!plan) return { ran: false, on: true, why: 'nothing needed checking: the settings already passed their check' };
     return { on: true, ...(await runCheck(plan.only)) };
   };
+  // for profiles (docs/handoff/profiles-added-devices.md): the same answer a write gets, asked before writing, and the
+  // maker's-app check with the driver's own deps. Neither writes anything.
+  a.mayWrite = (key) => allowed(key);
+  a.makerAppNow = async () => makerAppOf(a, (await depsNow()).makerApp);
   guarded.set(a.id, a);
   return a;
 }

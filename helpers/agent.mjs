@@ -17,6 +17,7 @@ import * as batteryCare from './battery-care.mjs';
 import { loadProfiles, apply } from '../public/core/profiles.js';
 import { provider, closeAll, setGoneHandler, setMovedHandler, devicesChanged, useKeyboardSpec, addSpec, useWindowsEvents, setAnnounceHandlers } from './hid-host.mjs';
 import * as myDevices from './my-devices.mjs';
+import { applyAdded } from './profile-added.mjs';
 import { useKeyboardIds } from '../public/devices/via.js';
 import { useLayout } from '../public/devices/keyboard-adapter.js';
 import { fromDefinition } from '../public/devices/via-layout.js';
@@ -98,6 +99,8 @@ export async function start({ port, corsairHelper }) {
     return j;
   };
   env.toast = () => ({ update() {}, close() {} });
+  // a profile's part for one added device (helpers/profile-added.mjs): public/core/profiles.js apply() calls it here
+  env.applyAdded = (body) => applyAdded(body, { core });
   env.onActivity = (entry) => send('activity', entry);
 
   setDeviceProvider(provider);
@@ -290,6 +293,8 @@ export async function op(name, b) {
     // the picker on the Headset page (two or more USB headsets): remembered in settings.json, then that one runs
     case 'headset-pick': return pickHeadset(b.pick);
     case 'log': core.log(String(b.text || '').slice(0, 300), b.kind === 'bad' ? 'bad' : b.kind === 'good' ? 'good' : 'info', b.device); return { ok: true };
+    // one added device's part of a profile, from a window's apply (public/core/profiles.js)
+    case 'profile-added': return applyAdded({ id: String(b.id || ''), values: b.values, name: b.name, quiet: b.quiet === true }, { core });
     case 'apply-profile': {
       const p = (await loadProfiles()).find((x) => x.name === b.name);
       if (!p) throw new Error(`no profile called "${b.name}"`);

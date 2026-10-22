@@ -10,6 +10,7 @@ import { artOf } from '../ui/art.js';
 import { button } from '../ui/controls.js';
 import { modal, toast } from '../ui/overlay.js';
 import { isDemo } from '../core/devices.js';
+import { getHelp } from '../ui/get-help.js';
 
 // ---------- "Share this driver" (22 Oct 2026; helpers/share-route.mjs, docs/handoff/share-route.md) ----------
 // One click: DeviceHub checks the folder for anything personal, says in plain words what would be shared, asks for an
@@ -144,7 +145,8 @@ export function devicePage(id) {
         return h('div', {}, head, h('div', { class: 'panel empty' }, artOf(d),
           h('h2', {}, d.status === 'error' ? `Couldn't reach the ${a.kind.toLowerCase()}` : `Waiting for the ${a.kind.toLowerCase()}`),
           h('p', {}, d.error || `Plug in the ${a.title}; DeviceHub finds it within a few seconds.`),
-          h('div', { class: 'actions' }, button('Look again', () => connect(id, false), { kind: 'primary', ic: 'plug' }))));
+          h('div', { class: 'actions' }, button('Look again', () => connect(id, false), { kind: 'primary', ic: 'plug' })),
+          getHelp(id)));
       }
       const shown = (a.settings || []).filter((s) => d.values?.[s.key] !== undefined);
       return h('div', {}, head, awayBanner(d),

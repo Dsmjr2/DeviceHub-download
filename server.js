@@ -534,6 +534,8 @@ async function api(req, res, url) {
   if (url.pathname.startsWith('/api/library/update')) { try { if (await (await import('./helpers/library-updates.mjs')).handle(url, req, res, send)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   // Learn a device: USB recordings -> a read-only driver.json, without Claude (helpers/learn-wizard.mjs, public/pages/learn.js)
   if (url.pathname.startsWith('/api/learn/')) { try { if (await (await import('./helpers/learn-wizard.mjs')).handle(url, req, res, send, readBody)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
+  // Get help: a short report with anything personal taken out, then a pre-filled GitHub issue on the person's click
+  if (url.pathname.startsWith('/api/help/')) { try { if (await (await import('./helpers/get-help.mjs')).handle(url, req, res, send, readBody)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   if (url.pathname.startsWith('/api/share/')) { try { if (await (await import('./helpers/share-route.mjs')).handle(url, req, res, send, readBody)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   // why a device isn't working, and the fix (helpers/diagnose.mjs; read-only apart from closing a maker's app on a confirmed press)
   // optional tools (Equalizer APO, ReaPlugs, USBPcap): download, check the signature or hash, run the maker's installer on a click

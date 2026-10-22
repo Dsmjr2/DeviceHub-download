@@ -4,6 +4,7 @@ import { button, pill } from '../ui/controls.js';
 import { connect, refresh, backupNow, isDemo, isRemote, undo } from '../core/devices.js';
 import { toast } from '../ui/overlay.js';
 import { artOf } from '../ui/art.js';
+import { getHelp } from '../ui/get-help.js';
 
 export const STATUS = {
   connected: ['Connected', 'good'], asleep: ['Asleep', 'warn'], connecting: ['Connecting', 'accent'],
@@ -126,7 +127,9 @@ function diagnosis(d) {
       h('div', { class: 'actions', style: { margin: '8px 0 0', justifyContent: 'flex-start' } }, diagAction(d, top.action, done)),
       note,
       rest.length ? h('details', { style: { marginTop: '8px' } }, h('summary', { style: { cursor: 'pointer', color: 'var(--muted)' } }, `More (${rest.length})`),
-        ...rest.map((f) => h('div', {}, line(f, false), f.action ? h('div', { class: 'actions', style: { margin: '6px 0 0', justifyContent: 'flex-start' } }, diagAction(d, f.action, done)) : null))) : null));
+        ...rest.map((f) => h('div', {}, line(f, false), f.action ? h('div', { class: 'actions', style: { margin: '6px 0 0', justifyContent: 'flex-start' } }, diagAction(d, f.action, done)) : null))) : null,
+      // Get help (helpers/get-help.mjs): the report shown here first; GitHub opens only on the person's click
+      getHelp(d.id)));
   };
   const key = `${d.status}|${d.error || ''}`;
   let c = diagCache[d.id];

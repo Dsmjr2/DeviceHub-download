@@ -167,6 +167,7 @@ public/ui/art.js, img/     the device drawings and product photos (the Realistic
 public/devices/demo.js     pretend devices for demo mode
 public/core/brands.js      the brand guide (made from docs/brands.json by helpers/make-brands.mjs; docs/BRANDS.md)
 helpers/fetch-bundled.mjs   the bundled tools for the zip (helpers/bundled-tools.json), pinned by SHA-256
+helpers/get-help.mjs      Get help: a short report, personal data taken out, a pre-filled GitHub issue opened on click
 helpers/learn-wizard.mjs   Learn a device: USB recordings -> driver.json (settings, readings, a second USB id), read-only toward the device (public/pages/learn.js)
 helpers/declarative-driver.mjs   driver.json drivers (docs/DRIVER-FORMAT.md): checked, then run with the device.mjs contract
 device-library/            shared drivers by USB id (README.md); helpers/device-library.mjs finds and installs them,
@@ -293,6 +294,9 @@ the person (a download or install, a learning session, or a check in the maker's
    liquid are written for the `mouse` and `headset` slots only (lists of those two ids in `helpers/battery-history.js`,
    `helpers/battery-care.mjs` and `public/ui/live-art.js`); a device added in `my-devices` does not get them yet. An
    added device gets a plain drawing on its tile; the photos and detailed drawings are only for the three originals.
+   Profiles (and auto-switch) save and apply an added device's settings (`profile.added`; `helpers/profile-added.mjs`):
+   readings are never saved; a setting is applied only when its driver allows the write now and the maker's app is
+   closed, backup first, one at a time, read back; anything skipped goes in one Activity line.
 5. **Show it.** Its page is drawn from `settings`: give each a clear label, a `unit`, a `hint` where it helps, and
    `live: true` on a slider that is quick and harmless to send often (a brightness). Restart DeviceHub to load it.
 6. **Prove it.** Read everything and compare with the maker's app (ask the person once to open it and confirm the
@@ -336,6 +340,9 @@ stand-in server written from OpenRGB's protocol document.
   test window on the second screen).
 - `node helpers/soak-test.mjs [rounds]`: every writable setting written with the value it already has, read back.
 - Settings > Self-test inside the app, and Settings > Health.
+- Someone without Claude presses **Get help** (device page's troubleshooting panel, or Settings > Health):
+  helpers/get-help.mjs shows a short report with anything personal taken out, then opens a filled-in GitHub issue on
+  their click (docs/handoff/get-help.md).
 - **When a device does not work, call `GET http://127.0.0.1:5577/api/diagnose?id=<device>` first** (or
   `node helpers/diagnose.mjs <device>`): it names the likeliest cause, the fix, and what it already checked
   (docs/handoff/diagnose.md). The same answer shows on the device's page, with a fix button.

@@ -30,7 +30,7 @@ const PERSONAL_NAME = [
 ];
 
 // what is personal inside a text file
-function personalText(user) {
+export function personalText(user) {
   const out = [
     [/[A-Za-z]:[\\/]+Users[\\/]+(?!(Public|Default)\b)[^\\/'"`\s]+/i, 'a path with a user\'s name (C:\\Users\\<name>)'],
     [/\/(Users|home)\/[A-Za-z0-9._-]+/, 'a path with a user\'s name (/Users or /home)'],

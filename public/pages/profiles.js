@@ -5,7 +5,7 @@ import { auto, saveSettings, runningWindows, onAuto } from '../core/autoswitch.j
 import { devices, isRemote, remoteAuto, isDemo } from '../core/devices.js';
 import { env } from '../core/env.js';
 import { topbar } from './common.js';
-import { loadProfiles, saveProfiles, capture, diff, apply, keyLabel, showValue, PROFILE_COLORS, loadMonitors, monitorList, captureMonitors } from '../core/profiles.js';
+import { loadProfiles, saveProfiles, capture, captureAdded, diff, apply, keyLabel, showValue, PROFILE_COLORS, loadMonitors, monitorList, captureMonitors } from '../core/profiles.js';
 import { modal, promptText, toast } from '../ui/overlay.js';
 
 let list = null;
@@ -17,9 +17,12 @@ export async function applyWithPreview(p) {
   if (p.monitors) await loadMonitors(true);
   const rows = diff(p);
   if (!rows.length) { toast(`Already on "${p.name}"`, 'good', { detail: 'Every connected device already matches.' }); return; }
-  const body = h('div', { class: 'diff' }, ...rows.map((r) => h('div', {},
-    h('span', { class: 'dev' }, r.id === 'monitor' ? r.monitorName : devices[r.id].adapter.kind), h('span', {}, keyLabel(r.id, r.key)), h('s', {}, showValue(r.id, r.key, r.from)), icon('arrow', 'ic faint'), r.ready ? h('b', {}, showValue(r.id, r.key, r.to)) : h('span', { class: 'faint' }, 'not connected'))));
-  const ok = await modal(`Apply "${p.name}"?`, h('div', {}, h('p', { style: { marginTop: 0 } }, `${rows.length} change${rows.length === 1 ? '' : 's'}. Each one is backed up, written and read back, one at a time.`), body),
+  // an added device's rows carry their own words (title, label, values); a setting it will skip says why
+  const body = h('div', { class: 'diff' }, ...rows.map((r) => (r.added ? h('div', {},
+    h('span', { class: 'dev' }, r.title), h('span', {}, r.label), h('s', {}, r.fromText), icon('arrow', 'ic faint'), r.ready ? h('b', {}, r.toText) : h('span', { class: 'faint' }, `skipped: ${r.blocked}`)) : h('div', {},
+    h('span', { class: 'dev' }, r.id === 'monitor' ? r.monitorName : devices[r.id].adapter.kind), h('span', {}, keyLabel(r.id, r.key)), h('s', {}, showValue(r.id, r.key, r.from)), icon('arrow', 'ic faint'), r.ready ? h('b', {}, showValue(r.id, r.key, r.to)) : h('span', { class: 'faint' }, 'not connected')))));
+  const changes = rows.filter((r) => !r.blocked).length;
+  const ok = await modal(`Apply "${p.name}"?`, h('div', {}, h('p', { style: { marginTop: 0 } }, `${changes} change${changes === 1 ? '' : 's'}. Each one is backed up, written and read back, one at a time.`), body),
     [{ label: 'Cancel', value: false, kind: 'ghost' }, { label: 'Apply', value: true, kind: 'primary' }]);
   if (!ok) return;
   const t = toast(`Applying "${p.name}"…`, 'busy', { ms: 0 });
@@ -29,15 +32,18 @@ export async function applyWithPreview(p) {
 
 async function saveCurrent(existing) {
   const snap = capture();
+  const added = captureAdded();
   await loadMonitors(true);
   const mons = captureMonitors();
-  if (!Object.keys(snap).length && !Object.keys(mons).length) { toast('Connect a device first', 'bad', { detail: 'A profile stores what the connected devices are set to.' }); return; }
+  if (!Object.keys(snap).length && !Object.keys(mons).length && !Object.keys(added).length) { toast('Connect a device first', 'bad', { detail: 'A profile stores what the connected devices are set to.' }); return; }
   const name = existing ? existing.name : await promptText('Save current setup', 'Profile name, e.g. "Valorant" or "Work"');
   if (!name) return;
   const others = (list || []).filter((p) => p.name !== name);
   const color = existing?.color || PROFILE_COLORS[others.length % PROFILE_COLORS.length];
-  await saveProfiles([...others, { name, color, games: existing?.games || [], devices: snap, ...(Object.keys(mons).length ? { monitors: mons } : {}), savedAt: new Date().toISOString() }]);
-  toast(existing ? `Updated "${name}"` : `Saved "${name}"`, 'good', { detail: [...Object.keys(snap).map((id) => devices[id].adapter.kind), ...(Object.keys(mons).length ? [`${Object.keys(mons).length} monitor${Object.keys(mons).length === 1 ? '' : 's'}`] : [])].join(' + ') });
+  // an added device that is not plugged in now keeps what the profile had for it
+  const keep = { ...(existing?.added || {}), ...added };
+  await saveProfiles([...others, { name, color, games: existing?.games || [], devices: snap, ...(Object.keys(mons).length ? { monitors: mons } : {}), ...(Object.keys(keep).length ? { added: keep } : {}), savedAt: new Date().toISOString() }]);
+  toast(existing ? `Updated "${name}"` : `Saved "${name}"`, 'good', { detail: [...Object.keys(snap).map((id) => devices[id].adapter.kind), ...Object.values(added).map((v) => v.title), ...(Object.keys(mons).length ? [`${Object.keys(mons).length} monitor${Object.keys(mons).length === 1 ? '' : 's'}`] : [])].join(' + ') });
   await refreshList();
 }
 
@@ -77,8 +83,9 @@ function autoPanel() {
 
 function profileCard(p, i) {
   const counts = [...Object.entries(p.devices || {}).map(([id, v]) => pill(`${devices[id]?.adapter.kind || id} · ${Object.keys(v).length}`)),
-    ...Object.values(p.monitors || {}).map((v) => pill(`${v.name || 'Monitor'} · ${Object.keys(v).filter((k) => k !== 'name').length}`))];
-  const pending = diff(p).length;
+    ...Object.values(p.monitors || {}).map((v) => pill(`${v.name || 'Monitor'} · ${Object.keys(v).filter((k) => k !== 'name').length}`)),
+    ...Object.entries(p.added || {}).map(([id, v]) => pill(`${devices[id]?.adapter.title || v?.title || id} · ${Object.keys(v?.values || {}).length}`))];
+  const pending = diff(p).filter((r) => !r.blocked).length;
   return h('div', { class: 'profile', style: { '--pc': p.color } },
     h('div', { class: 'actions', style: { justifyContent: 'space-between', alignItems: 'center' } }, h('h3', {}, p.name), pending ? pill(`${pending} differ`, 'accent') : pill('active', 'good')),
     h('div', { class: 'facts' }, ...counts),

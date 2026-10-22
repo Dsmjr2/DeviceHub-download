@@ -86,6 +86,9 @@ check(/slider needs min and max/.test(problem({ id: 'x-y', title: 'X', kind: 'Mo
   check(pcmap.RUNS['1b1c:0a6b'] === 'Headset page' && /^Headset page/.test(pcmap.RUNS['1b1c:0a69']) && /^Mouse page/.test(pcmap.RUNS['3710:3506']), 'RUNS: the HS80 receiver still names the Headset page; its cable and the Pulsar cable are listed too');
 }
 
+// profiles for added devices (tests/profiles-added.mjs; it runs here so test:offline covers it)
+for (const f of await (await import('./profiles-added.mjs')).run()) fails.push(`profiles: ${f}`);
+
 fs.rmSync(root, { recursive: true, force: true });
 console.log(fails.length ? `my-devices: FAILED: ${fails.join('; ')}` : 'my-devices (added devices): all good');
 process.exit(fails.length ? 1 : 0);

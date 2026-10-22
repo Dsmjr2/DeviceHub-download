@@ -23,6 +23,7 @@ import { ART_STYLES, saveArtStyle, THEME_ACCENTS, THEME_BGS, currentTheme, saveT
 import { artFor } from '../ui/art.js';
 import { copyDownloadLink, copyShortReport } from '../core/share.js';
 import { installerButton, installerStatus, installing } from '../ui/installer-button.js';
+import { getHelp } from '../ui/get-help.js';
 
 let startup = null;
 // DeviceHub's own updates from GitHub (helpers/self-update.js): null = not read yet
@@ -229,7 +230,20 @@ function healthCard() {
         line('Crashes today', x.crashes24h ? `${x.crashes24h}, restarted by itself` : 'none', !x.crashes24h),
         line('Last problem', x.lastProblem ? h('span', { title: x.lastProblem.text }, `${x.lastProblem.text.split(':')[0].slice(0, 40)} · ${ago(x.lastProblem.at)}`) : 'none', !x.lastProblem || Date.now() - new Date(x.lastProblem.at) > 24 * 3600 * 1000),
         line('Backups', `${x.backups.count} · ${x.backups.mb} MB`, true),
-        dailyLine(line)));
+        dailyLine(line)),
+    isDemo() ? null : helpRow());
+}
+
+// Get help (22 Oct 2026; helpers/get-help.mjs): a short report about one device or DeviceHub in general, shown here in
+// full; a filled-in GitHub issue opens only on the person's click, and they press Submit there
+let helpFor = '';
+function helpRow() {
+  const pick = h('select', { 'aria-label': 'What the report is about', onchange: (e) => { helpFor = e.target.value; } },
+    h('option', { value: '' }, 'DeviceHub in general'),
+    ...Object.values(devices).filter((d) => d?.adapter).map((d) => h('option', { value: d.id, selected: d.id === helpFor }, d.adapter.title || d.id)));
+  return h('div', { style: { marginTop: '14px' } },
+    row('Get help', 'Builds a short report and shows it here first. GitHub opens only when you press Open on GitHub; you press Submit there.', pick),
+    getHelp('health', () => helpFor));
 }
 
 // Appearance: how the device drawings look, picked from a live preview of each style.
