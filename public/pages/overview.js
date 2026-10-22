@@ -214,7 +214,7 @@ function linkStatus(d, off) {
   return h('div', { class: `link ${st}`, role: 'status', 'aria-label': text },
     h('span', { class: 'link-label' }, text),
     h('span', { class: 'link-track' }, h('i'), h('i'), h('i')),
-    h('span', { class: 'link-pc' }, icon('monitor')));
+    h('span', { class: 'link-pc' }, icon('tower')));
 }
 
 export default {

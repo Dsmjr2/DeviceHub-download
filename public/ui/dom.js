@@ -63,6 +63,7 @@ export const icons = {
   headset: N('<path d="M4.75 15V11.75a7.25 7.25 0 0 1 14.5 0V15"/><rect x="3.5" y="13.5" width="4.5" height="7" rx="2.1"/><rect x="16" y="13.5" width="4.5" height="7" rx="2.1"/>'),
   keyboard: N('<rect x="3.5" y="6.5" width="17" height="11" rx="2.5"/><path d="M6.75 10.25h.01M9.4 10.25h.01M12 10.25h.01M14.6 10.25h.01M17.25 10.25h.01M6.75 13.75h.01M17.25 13.75h.01" stroke-width="2.1"/><path d="M9.4 13.75h5.2"/>'),
   lighting: N('<circle cx="12" cy="12" r="3.75"/><path d="M12 3.5V5M12 19v1.5M3.5 12H5M19 12h1.5M5.99 5.99l1.06 1.06M16.95 16.95l1.06 1.06M5.99 18.01l1.06-1.06M16.95 7.05l1.06-1.06"/>'),
+  tower: N('<rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M9.5 6h5M9.5 8.5h5"/><circle cx="12" cy="16.5" r="1.4"/>'),
   monitor: N('<rect x="3" y="4.5" width="18" height="12" rx="2.25"/><path d="M9 20h6M12 16.5V20"/>'),
   thermo: N('<path d="M10 13.6V5a2 2 0 0 1 4 0v8.6a4 4 0 1 1-4 0Z"/><path d="M12 9.5v6"/>'),
   gauge: N('<path d="M4.5 16.5a8 8 0 1 1 15 0"/><path d="M12 13.5l3.5-4"/><circle cx="12" cy="14" r="1.2"/>'),
