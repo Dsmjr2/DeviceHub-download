@@ -331,6 +331,14 @@ fn 0x60 `[00, X, Y, LOD]`; Solaar `ExtendedAdjustableDpi`). Every write is refus
 Still left out: profile memory writes (the DPI of each stage, buttons, sleep timer), lights (0x8071 cannot be read back,
 0x8070 parameter layouts missing), button remaps (0x1B04 targets not documented), angle snapping, surface tuning.
 
+Covered (22 Oct 2026, by id alone, from libratbag `data/devices/*.device` @ 8235b5bb; features still found at connect):
+USB G Pro 0xC085 / 0xC08C, G102 / G103 / G203 0xC084 / 0xC092 / 0xC09D, G302 0xC07F, G303 0xC080, G303 Shroud 0xC097,
+G402 0xC07E, G403 0xC083, G403 HERO 0xC08F, G403 Wireless 0xC082, G502 HERO 0xC08B, G502 Proteus Core 0xC07D, G502
+Proteus Spectrum 0xC332, G703 0xC087, G705 0xC096, G900 0xC081, G903 0xC086, MX518 0xC08E; Bluetooth G603 0xB01C, G604
+0xB024, G705 0xB02E (report rate not offered); on a receiver also G603, G604, G703, G900, G903, G403 Wireless (their 40xx
+wpids are recorded, not opened). G502 HERO, G502 Proteus Spectrum and G604 read their profile 1-based (`INDEX_OFFSET`).
+Not covered: G602 (own C537 receiver, `HIDPP20_QUIRK_G602` DPI list).
+
 ## Covered in device-library/logitech-hidpp-headset and logitech-hidpp-keyboard (22 Oct 2026)
 
 Both are "untested" (simulated only: `tests/sim-logitech-headset.mjs`, `tests/sim-logitech-keyboard.mjs`); every write

@@ -5,7 +5,7 @@
 // 0x30 / 0x40) and DPI slot (0xB0 / 0xC0, libratbag), the profile numbering quirk, and the G HUB refusal.
 // Checks the driver's request bytes against the sheet byte for byte, and read / write / read-back.
 // Run: node tests/sim-logitech.mjs (no hardware)
-import driver, { useDevice, F, NEVER, HidppError, BLE, BLE_HID, isReplyTo, isReplyToBle } from '../device-library/logitech-hidpp-mouse/device.mjs';
+import driver, { useDevice, F, NEVER, HidppError, BLE, BLE_HID, isReplyTo, isReplyToBle, WIRED, WPIDS, RECEIVERS, PROFILE_READ_1BASED } from '../device-library/logitech-hidpp-mouse/device.mjs';
 driver.vendorApp = async () => null;   // no tasklist in the test; section 5 swaps in G HUB
 
 const fails = [];
@@ -298,14 +298,16 @@ driver.vendorApp = async () => null;
 }
 
 // ---- 7. Bluetooth (22 Oct 2026, docs/handoff/logitech-ble.md) ----
-// No source documents a Bluetooth id for a mouse this driver lists, so the shipped table is empty and every channel is
-// as before. The transport is proven with a TEST-ONLY id added to BLE here and removed again: device index 0xFF, replies
-// with index 0x00 taken (Solaar base.py), no report rate, the same bytes and values as on the cable.
+// The shipped Bluetooth ids are libratbag's G603 / G604 / G705 (section 8 runs one); every USB channel is as before. The
+// transport is proven with a TEST-ONLY id added to BLE here and removed again: device index 0xFF, replies with index
+// 0x00 taken (Solaar base.py), no report rate, the same bytes and values as on the cable.
 {
   const { hidSpecs, ownClash } = await import('../helpers/my-devices.mjs');
   const meta = JSON.parse((await import('node:fs')).readFileSync(new URL('../device-library/logitech-hidpp-mouse/device.json', import.meta.url), 'utf8'));
-  check(Object.keys(BLE).length === 0 && !meta.pids.some((p) => /^b/i.test(p)), 'no Bluetooth id is shipped for a mouse (none documented)');
-  check(Object.keys(driver.hid.byPid).length === 0 && hidSpecs(driver).every((s) => s.page === 'FF00' && s.usage === '0002' && s.inputLen === undefined), 'every mouse channel is the long collection on FF00 / 0002, as before');
+  const bleIds = Object.keys(BLE).map((p) => Number(p).toString(16));
+  check(bleIds.join() === 'b01c,b024,b02e' && meta.pids.filter((p) => /^b/i.test(p)).join() === bleIds.join(), `the shipped Bluetooth ids are libratbag's G603 / G604 / G705, in device.json too (${bleIds})`);
+  check(Object.keys(driver.hid.byPid).sort().join() === 'B01C,B024,B02E' && Object.values(driver.hid.byPid).every((c) => JSON.stringify(c) === JSON.stringify(BLE_HID)), 'only the Bluetooth ids get the Bluetooth collection');
+  check(hidSpecs(driver).filter((s) => !/^B0/i.test(s.pid)).every((s) => s.page === 'FF00' && s.usage === '0002' && s.inputLen === undefined), 'every USB mouse channel is the long collection on FF00 / 0002, as before');
   check(ownClash('046d', meta.pids).length === 0 && ownClash('046d', hidSpecs(driver).map((s) => s.pid)).length === 0, 'no mouse id is one DeviceHub runs itself (pc-map RUNS)');
   check(BLE_HID.page === '*' && BLE_HID.usage === '*' && BLE_HID.inputLen === 19 && BLE_HID.outputLen === 19, `the Bluetooth collection: any page / usage, 19-byte reports (${JSON.stringify(BLE_HID)})`);
   check([0x1816, 0x0309, 0x1500].every((id) => NEVER.includes(id)), 'BLE pre-pairing 0x1816, Lightspeed pairing 0x0309 and force pairing 0x1500 are on the never list');
@@ -342,6 +344,58 @@ driver.vendorApp = async () => null;
     e = await refusal(() => driver.write('reportRate', 1000));
     check(/report rate/.test(e?.message || '') && bt.state.rateIndex === 3, `Bluetooth: a report-rate write is refused unsent (${e?.message})`);
   } finally { delete BLE[0xb0aa]; }
+}
+
+// ---- 8. models added from libratbag data/devices @ 8235b5bb (22 Oct 2026): one new model on each link ----
+{
+  const { hidSpecs, ownClash } = await import('../helpers/my-devices.mjs');
+  const fsm = await import('node:fs');
+  const meta = JSON.parse(fsm.readFileSync(new URL('../device-library/logitech-hidpp-mouse/device.json', import.meta.url), 'utf8'));
+  const hx = (n) => Number(n).toString(16).padStart(4, '0');
+  const all = [...RECEIVERS, ...Object.keys(WIRED), ...Object.keys(BLE)].map(hx);
+  check(meta.pids.join() === all.join() && hidSpecs(driver).map((x) => x.pid.toLowerCase()).sort().join() === [...all].sort().join(), 'device.json pids = the channels = receivers + WIRED + BLE');
+  check(ownClash('046d', all).length === 0 && ownClash('046d', Object.keys(WPIDS).map(hx)).length === 0, 'no new id is one DeviceHub runs itself (pc-map RUNS)');
+  // the other library entries' ids (the keyboard and headset drivers share vendor 046d)
+  const lib = new URL('../device-library/', import.meta.url);
+  const others = fsm.readdirSync(lib).filter((d) => d !== 'logitech-hidpp-mouse' && fsm.existsSync(new URL(`${d}/device.json`, lib)))
+    .map((d) => JSON.parse(fsm.readFileSync(new URL(`${d}/device.json`, lib), 'utf8'))).filter((m) => (m.vid || '').toLowerCase() === '046d').flatMap((m) => m.pids.map((p) => p.toLowerCase()));
+  check(others.length > 0 && !all.some((p) => others.includes(p)) && !Object.keys(WPIDS).map(hx).some((p) => others.includes(p)), 'no mouse id is claimed by another library entry');
+  check(Object.keys(WPIDS).every((p) => !all.includes(hx(p))), 'receiver wpids (40xx) are never opened as channels');
+  check([0xc08b, 0xc332, 0xb024].every((p) => PROFILE_READ_1BASED.includes(p)), 'libratbag INDEX_OFFSET ids read their profile 1-based');
+
+  // cable: a G203 (c09d): no battery, DPI range, 0x8060, onboard profiles read 0-based
+  const g203 = simMouse({ pid: 0xc09d, slot: 0xff, features: { [F.ADJUSTABLE_DPI]: 4, [F.REPORT_RATE]: 5, [F.ONBOARD_PROFILES]: 6 },
+    dpiList: [200, 0xe000 | 50, 8000], rateMask: 0x8b, battery: {}, mode: 2, profiles: { count: 1, oneBasedRead: false, profile: 1, slot: 2 } });
+  useDevice(g203);
+  check(await driver.connect(false) && driver.index === 0xff && !driver.ble, 'G203 on its cable connects at index 0xFF');
+  const i1 = await driver.info();
+  check(i1.Model === 'Logitech G102 / G103 / G203' && i1.Connection === 'USB cable', `G203 named from its id (${i1.Model}, ${i1.Connection})`);
+  v = await driver.read();
+  check(v.dpi === 800 && v.reportRate === 1000 && v.mode === 'host' && v.profile === 1 && v.dpiStage === 3 && (await driver.battery()) === null, `G203 read: ${JSON.stringify(v)}`);
+  check((await driver.write('dpi', 1600)) === 1600 && has(g203, [0xff, 4, 0x3b, 0x00, 0x06, 0x40]) && (await driver.write('dpi', 800)) === 800, 'G203 DPI written, read back, put back with the cable bytes');
+
+  // receiver: a G603 behind its Lightspeed receiver (c539, slot 1): 0x1000 battery, 0x8060
+  const g603 = simMouse({ pid: 0xc539, slot: 1, features: { [F.BATTERY_STATUS]: 2, [F.ADJUSTABLE_DPI]: 3, [F.REPORT_RATE]: 4, [F.ONBOARD_PROFILES]: 5 },
+    dpiList: [200, 0xe000 | 50, 12000], rateMask: 0x8b, battery: { percent: 40, status: 0 }, mode: 1, profiles: { count: 1, oneBasedRead: false, profile: 1, slot: 0 } });
+  useDevice(g603);
+  check(await driver.connect(false) && driver.receiver && driver.index === 1, 'G603 on its receiver connects at slot 1');
+  v = await driver.read();
+  const b603 = await driver.battery();
+  check(v.dpi === 800 && v.reportRate === 1000 && v.mode === 'onboard' && b603?.percent === 40 && has(g603, [0x01, 2, 0x0b]), `G603 on receiver read: ${JSON.stringify(v)} ${JSON.stringify(b603)}`);
+
+  // Bluetooth: a G604 on b024: replies with index 0x00, no report rate, profile read 1-based (libratbag INDEX_OFFSET)
+  const g604 = simMouse({ pid: 0xb024, slot: 0xff, replyIndex: 0x00, features: { [F.BATTERY_STATUS]: 2, [F.ADJUSTABLE_DPI]: 3, [F.REPORT_RATE]: 4, [F.ONBOARD_PROFILES]: 5 },
+    dpiList: [100, 0xe000 | 50, 16000], rateMask: 0x8b, battery: { percent: 90, status: 0 }, mode: 2, profiles: { count: 3, oneBasedRead: true, profile: 2, slot: 1 } });
+  useDevice(g604);
+  check(await driver.connect(false) && driver.ble && driver.index === 0xff && driver.profileReadBase === 1, 'G604 on Bluetooth connects at 0xFF, profile base 1 from its id');
+  check(!frames(g604).some((b) => b[1] === 0 && (b[2] & 0xf0) === 0 && [0x8060, 0x8061].includes((b[3] << 8) | b[4])), 'G604 on Bluetooth: report rate not looked up');
+  const i3 = await driver.info();
+  check(i3.Model === 'Logitech G604' && i3.Connection === 'Bluetooth', `G604 named (${i3.Model}, ${i3.Connection})`);
+  v = await driver.read();
+  check(v.dpi === 800 && v.reportRate === undefined && v.profile === 2 && v.dpiStage === 2 && v.mode === 'host', `G604 read: ${JSON.stringify(v)}`);
+  check((await driver.write('profile', 3)) === 3 && g604.state.profile === 3 && (await driver.write('profile', 2)) === 2, 'G604 profile 3 selected, read back 1-based, put back');
+  e = await refusal(() => driver.write('reportRate', 500));
+  check(/report rate/.test(e?.message || '') && g604.state.rateMs === 1, `G604 on Bluetooth: report rate refused unsent (${e?.message})`);
 }
 
 console.log(fails.length ? `sim-logitech: FAILED: ${fails.join('; ')}` : 'sim-logitech (Logitech HID++ mouse driver, simulated): all good');

@@ -38,14 +38,45 @@ export const WIRED = {
   0xc09b: 'PRO X SUPERLIGHT 2', 0xc094: 'PRO X SUPERLIGHT', 0xc09a: 'PRO 2 LIGHTSPEED', 0xc098: 'G502 X LIGHTSPEED',
   0xc095: 'G502 X PLUS', 0xc099: 'G502 X', 0xc088: 'G PRO Wireless', 0xc090: 'G703 HERO', 0xc091: 'G903 HERO',
   0xc08d: 'G502 LIGHTSPEED',
+  // 22 Oct 2026: more HID++ 2.0 G mice, their USB ids exactly as libratbag data/devices @ 8235b5bb lists them (file
+  // named per line). The driver finds every feature at connect, so a model needs only its id; a setting appears only
+  // when the mouse answers its feature (no 0x2201 = refused as "not a mouse").
+  0xc085: 'G Pro', 0xc08c: 'G Pro',                                       // logitech-g-pro.device
+  0xc084: 'G102 / G103 / G203', 0xc092: 'G102 / G103 / G203', 0xc09d: 'G102 / G103 / G203', // logitech-g102-g203.device
+  0xc07f: 'G302',                                                         // logitech-g302.device
+  0xc080: 'G303',                                                         // logitech-g303.device
+  0xc097: 'G303 Shroud Edition',                                          // logitech-g303-shroud.device
+  0xc07e: 'G402',                                                         // logitech-g402.device
+  0xc083: 'G403',                                                         // logitech-g403.device
+  0xc08f: 'G403 HERO',                                                    // logitech-g403-hero.device
+  0xc082: 'G403 Wireless',                                                // logitech-g403-wireless.device
+  0xc08b: 'G502 HERO',                                                    // logitech-g502-hero.device (INDEX_OFFSET)
+  0xc07d: 'G502 Proteus Core',                                            // logitech-g502-proteus-core.device
+  0xc332: 'G502 Proteus Spectrum',                                        // logitech-g502-proteus-spectrum.device (INDEX_OFFSET)
+  0xc087: 'G703',                                                         // logitech-g703.device
+  0xc096: 'G705',                                                         // logitech-g705.device
+  0xc081: 'G900',                                                         // logitech-g900.device
+  0xc086: 'G903',                                                         // logitech-g903.device
+  0xc08e: 'MX518',                                                        // logitech-MX518.device
+};
+// The id libratbag gives a mouse behind a receiver (`usb:046d:40xx` in the same files: the child device Linux's
+// hid-logitech-dj makes). Windows has no such device: the mouse is reached through RECEIVERS at its pairing slot, so
+// these are never opened as channels; listed so the covered models and their documented ids are in one place.
+export const WPIDS = {
+  0x4079: 'G PRO Wireless', 0x4093: 'PRO X SUPERLIGHT', 0x4074: 'G305', 0x405d: 'G403 Wireless', 0x407f: 'G502 LIGHTSPEED',
+  0x4099: 'G502 X PLUS', 0x409f: 'G502 X LIGHTSPEED', 0x406c: 'G603', 0x4085: 'G604', 0x4070: 'G703', 0x4086: 'G703 HERO',
+  0x409d: 'G705', 0x4053: 'G900', 0x4067: 'G903', 0x4087: 'G903 HERO',
 };
 // Bluetooth (22 Oct 2026, docs/handoff/logitech-ble.md): a mouse on Bluetooth is its own HID device with its BLE product
-// id, HID++ 2.0 straight to it at device index 0xFF. Empty on purpose: no source read lists a Bluetooth id for any mouse
-// in WIRED (Solaar descriptors.py @ e7304c4c has btid only for MX / M-series mice; Linux hid-logitech-hidpp.c @
-// 3fabd8ec lists none for a G mouse; OpenRGB lists none). Solaar treats 0xB012-0xB0FF as its Bluetooth mouse range
-// (base.py get_unknown_logitech_device_info). A documented id for one of these models goes here, one line, and the
-// transport below (BLE_HID, isReplyToBle, no report rate) applies to it.
-export const BLE = {};
+// id, HID++ 2.0 straight to it at device index 0xFF. The only G mice with a documented Bluetooth id are these three, from
+// libratbag data/devices @ 8235b5bb (`bluetooth:046d:...`); no other source read lists one (Solaar descriptors.py @
+// e7304c4c: MX / M-series only; Linux hid-logitech-hidpp.c: none for a G mouse; OpenRGB: none). The transport below
+// (BLE_HID, isReplyToBle, no report rate) applies to them.
+export const BLE = {
+  0xb01c: 'G603',                                                         // logitech-g603.device
+  0xb024: 'G604',                                                         // logitech-g604.device (INDEX_OFFSET)
+  0xb02e: 'G705',                                                         // logitech-g705.device
+};
 const hex4 = (n) => n.toString(16).toUpperCase().padStart(4, '0');
 
 // sheet section 2 "Transport": HID++ long = report 0x11, 20 bytes in all (19 after the report id); the long collection
@@ -112,7 +143,8 @@ export const LOD = ['low', 'medium', 'high'];
 export const DPI_SLOTS = 5;
 // "Active profile" row + section 1: the G502 X family reads its active profile 1-based (libratbag HIDPP20_QUIRK_INDEX_OFFSET,
 // "devices that return 1-indexed profile"); every mouse is SET 1-based (libratbag set_current_profile sends index + 1)
-export const PROFILE_READ_1BASED = [0xc098, 0xc095, 0xc099];
+// + 22 Oct 2026, the other ids whose libratbag file carries Quirk=INDEX_OFFSET: G502 HERO, G502 Proteus Spectrum, G604 (Bluetooth)
+export const PROFILE_READ_1BASED = [0xc098, 0xc095, 0xc099, 0xc08b, 0xc332, 0xb024];
 // G HUB (sheet section 5 "Windows note": lghub_agent.exe holds the same HID++ collection; writing beside it fights)
 export const VENDOR_APPS = /^lghub(_agent|_system_tray|_updater)?\.exe$/i;
 

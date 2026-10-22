@@ -370,7 +370,7 @@ export async function diagnose(deviceId, deps = {}) {
   ]);
   const usbList = pc ? (Array.isArray(pc) ? pc : pc.usb || []).map((u) => u.id || `${u.vid}:${u.pid}`) : null;
   const present = usbList && profile.usb.some((u) => usbList.includes(u.id));
-  const facts = { id, snap, profile, serverMs: st.ms, log: parseLog(logT), usb: usbList, makers: tasks == null ? null : runningMakers(parseTasklist(tasks)) };
+  const facts = { id, snap, profile, serverMs: st.ms, log: parseLog(logT, deps.now ? deps.now() : Date.now()), usb: usbList, makers: tasks == null ? null : runningMakers(parseTasklist(tasks)) };
   // Bluetooth: for a device DeviceHub has no USB ids for, or that is not on USB
   if (notConnected && (!profile.usb.length || present === false)) {
     facts.bluetooth = await within(deps.bluetooth ? deps.bluetooth() : (pcMap || require('./pc-map.js')).bluetooth().catch(() => null), 30000);

@@ -48,7 +48,7 @@ const dev = (id, status, more = {}) => ({ id, status, info: {}, battery: null, v
 const state = (...devices) => () => ({ state: { devices }, ms: 40 });
 const USB = (...ids) => () => ids.map((id) => ({ id }));
 const none = () => '';
-const base = (devices, extra = {}) => ({ state: state(...devices), tasklist: none, usb: USB(), log: () => '', specs: [], probe: () => { throw new Error('probe should not run'); }, bluetooth: () => [], ...extra });
+const base = (devices, extra = {}) => ({ state: state(...devices), tasklist: none, usb: USB(), log: () => '', specs: [], probe: () => { throw new Error('probe should not run'); }, bluetooth: () => [], now: () => NOW, ...extra });  // the log's fixed times are read against NOW, not the real clock
 const first = async (id, deps) => (await diagnose(id, deps)).findings[0];
 
 let f = await first('mouse', base([dev('mouse', 'missing')]));

@@ -202,7 +202,7 @@ const since = (n) => lines.slice(n);
   const lg = (await import('../device-library/logitech-hidpp-mouse/device.mjs')).default;
   check(lg.settings.find((s) => s.key === 'mode') && lg.settings.find((s) => s.key === 'mode').selfCheck !== false, 'Logitech "Settings source" gets the normal self-check (the same mode written back)');
   const specs = hidSpecs(lg);
-  check(specs.length === 16 && specs.every((s) => s.reply === 'raw' && s.reportId === 0x11), `Logitech: one raw channel per receiver and wired mouse (${specs.length})`);
+  check(specs.length === 39 && specs.every((s) => s.reply === 'raw' && s.reportId === 0x11), `Logitech: one raw channel per receiver and wired mouse (${specs.length})`);
 }
 
 // ---- 8. input reports on request (inputReports, IGET) and extra collections (extra, extraChannel): both opt-in ----
