@@ -253,5 +253,16 @@ check(/row\('Lift-off distance', '[^']+'/.test(mouseSrc) && /h\('h2', \{\}, 'Tra
     check(chargerLifted(pct, mv) === want, `charging by voltage: ${pct}% at ${mv} mV reads ${want ? 'charging' : 'not charging'}`);
 }
 
+// 17. Every backdrop in the Appearance list is kept when saved (22 Oct 2026, Shawn: "why isnt it saving my prefrences
+//     when I reload the app": the server dropped Verde, which was missing from its list)
+{
+  const themeSrc = fs.readFileSync(path.join(ROOT, 'public/core/theme.js'), 'utf8');
+  const keys = [...themeSrc.slice(themeSrc.indexOf('export const THEME_BGS'), themeSrc.indexOf('const OLD_BGS')).matchAll(/\[\s*'([a-z-]+)',\s*'[^']+',\s*'#/g)].map((m) => m[1]);
+  const serverSrc = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  const allowed = serverSrc.match(/cur\.themeBg && !\[([^\]]+)\]/)?.[1] || '';
+  check(keys.length >= 5, `backdrops found in theme.js (${keys.length})`);
+  for (const k of keys) check(allowed.includes(`'${k}'`), `the server keeps the ${k} backdrop when saved`);
+}
+
 console.log(fails.length ? `regressions: FAILED: ${fails.join('; ')}` : 'regressions (20 Oct fixes): all good');
 process.exit(fails.length ? 1 : 0);
