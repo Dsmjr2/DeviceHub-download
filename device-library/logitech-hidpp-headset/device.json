@@ -1,0 +1,56 @@
+{
+  "id": "logitech-hidpp-headset",
+  "vendor": "Logitech",
+  "product": "Logitech G headsets (HID++ 2.0, and the PRO X 2 LIGHTSPEED over Centurion)",
+  "kind": "Headset",
+  "vid": "046d",
+  "pids": [
+    "0a5c",
+    "0a89",
+    "0a5b",
+    "0a87",
+    "0ab5",
+    "0afe",
+    "0b1f",
+    "0aa7",
+    "0aaa",
+    "0aba",
+    "0afb",
+    "0afc",
+    "0ac4",
+    "0af7"
+  ],
+  "models": [
+    "G633",
+    "G635",
+    "G933",
+    "G935",
+    "G733",
+    "G PRO",
+    "PRO X",
+    "PRO X 2 (HID++ ids 0AFB / 0AFC)",
+    "G535",
+    "PRO X 2 LIGHTSPEED"
+  ],
+  "works": [
+    "written from Solaar (e7304c4c) and HeadsetControl (91ee690a) and checked against simulated headsets only (tests/sim-logitech-headset.mjs)",
+    "feature lookup through Root getFeature (no fixed indexes), on the dongle and, for the PRO X 2, through its Centurion bridge",
+    "battery: 0x1004 / 0x1000, else 0x1F20 (millivolts, Solaar's voltage curve, charging flag); PRO X 2: 0x0104 percent and charging",
+    "sidetone: 0x8300 read fn 0x00 / write fn 0x10, 0-100 (Solaar Sidetone); PRO X 2: 0x0604 read 0x00 / write 0x10 in the headset's own gain steps (Solaar HeadsetSidetone)",
+    "turn off when idle: 0x1F20 v2+ read 0x10 / write 0x20, 0-255 min (Solaar ADCPower), the G535 limited to HeadsetControl's 0 / 1 / 2 / 5 / 10 / 15 / 30; PRO X 2: 0x0108 read 0x00 / write 0x10, the other timer slots sent back as read (Solaar HeadsetAutoSleep)",
+    "mic muted, shown only: 0x0601 read fn 0x10 (Solaar HeadsetMicMute)",
+    "EQ per band where the headset has 0x8310: range and band frequencies from the headset, read fn 0x20 [00], write fn 0x30 [02, gains] with every other band sent back as read (Solaar Equalizer)",
+    "every write read back; every write refused while G HUB (lghub*.exe) runs"
+  ],
+  "doesNotWork": [
+    "firmware updates, DFU, resets and pairing (never: Logitech's own app only)",
+    "setting the mic mute (only shown; the headset's own button mutes)",
+    "lights (HeadsetControl 04 3C is write-only, no read-back)",
+    "EQ on the PRO X 2 (0x020D / 0x0636: no plain read of the same value documented)",
+    "G432 / G431 / G433 and G533 sidetone (HeadsetControl writes it with fixed bytes and no read)",
+    "G522 (Centurion with a device address Solaar has to probe), G435 and ASTRO A50 X (in neither project), ASTRO A50 Gen 4 / 5 (their own protocol)"
+  ],
+  "status": "untested",
+  "tested": [],
+  "source": "Solaar lib/logitech_receiver (settings_templates.py, hidpp20.py, hidpp20_constants.py, descriptors.py) @ e7304c4c451cc9bb4f206a914844525e67856a28; HeadsetControl lib/devices (logitech_g633_g933_935.hpp, logitech_gpro.hpp, logitech_g535.hpp, logitech_gpro_x2_lightspeed.hpp, protocols/hidpp_protocol.hpp, protocols/logitech_centurion_protocol.hpp) @ 91ee690a5e302a10a6f4f75a46be05846a38a3b0; docs/brands/logitech.md"
+}

@@ -1,0 +1,51 @@
+{
+  "id": "logitech-hidpp-keyboard",
+  "vendor": "Logitech",
+  "product": "Logitech G keyboards (HID++ 2.0, cable or Lightspeed receiver)",
+  "kind": "Keyboard",
+  "vid": "046d",
+  "pids": [
+    "c541",
+    "c545",
+    "c33e",
+    "c343",
+    "c33f",
+    "c355",
+    "c33c",
+    "c336",
+    "c339"
+  ],
+  "models": [
+    "G915",
+    "G915 TKL",
+    "G815",
+    "G515 LIGHTSPEED TKL",
+    "G512",
+    "G213",
+    "PRO Gaming Keyboard"
+  ],
+  "works": [
+    "written from Solaar (e7304c4c) and libratbag (8235b5bb) and checked against simulated keyboards only (tests/sim-logitech-keyboard.mjs)",
+    "feature lookup through Root getFeature (no fixed indexes); receivers: slots 1-6 pinged, a mouse (0x2201) is refused",
+    "battery: 0x1004 / 0x1000 / 0x1001",
+    "report rate: 0x8061 or 0x8060, from the keyboard's own list (Solaar ExtendedReportRate / ReportRate), host mode only",
+    "settings source onboard / host: 0x8100 fn 0x20 / 0x10 (Solaar OnboardProfiles)",
+    "onboard profile select only: profile count from 0x8100 fn 0x00 byte 3 (libratbag), read fn 0x40, select fn 0x30 [sector] (Solaar OnboardProfiles); profiles are never edited",
+    "key locks, the Windows-key lock first: 0x4521 caps fn 0x00, read 0x10, write 0x20, the other bits sent back as read (Solaar DisableKeyboardKeys)",
+    "F-key swap: 0x40A2 or 0x40A0, read 0x00 / write 0x10 (Solaar NewFnSwap / FnSwap)",
+    "backlight brightness: 0x8040 info 0x00, read 0x10 / write 0x20, on/off 0x30 / 0x40, the keyboard's own steps when it has them (Solaar BrightnessControl)",
+    "every write read back; every write refused while G HUB (lghub*.exe) runs"
+  ],
+  "doesNotWork": [
+    "firmware updates, DFU, resets and pairing (never: Logitech's own app only)",
+    "editing onboard profiles (keys, macros, lights): profile memory writes rewrite flash and are never sent",
+    "lighting colours and effects (0x8071 / 0x8081 have no read-back)",
+    "G-key and M-key remaps, and a game mode beyond the key locks (no documented read-back)",
+    "PRO X TKL and G915 X (no product ids in any source read)",
+    "the K375s-style F-key swap 0x40A3 (needs the host-info feature; office keyboards)",
+    "the second G915 receiver C547: not claimed yet (tests/device-library.mjs uses it as an unclaimed receiver)"
+  ],
+  "status": "untested",
+  "tested": [],
+  "source": "Solaar lib/logitech_receiver (settings_templates.py, settings.py, settings_validator.py, special_keys.py, hidpp20_constants.py, descriptors.py, base_usb.py) @ e7304c4c451cc9bb4f206a914844525e67856a28; libratbag src/hidpp20.h @ 8235b5bb6032dea15901ab58a8218956f4494d08; docs/brands/logitech.md"
+}

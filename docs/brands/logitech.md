@@ -330,3 +330,27 @@ libratbag) and **lift-off** (0x2202: caps fn 0x10 `[00]` b2 bit1; read fn 0x50 `
 fn 0x60 `[00, X, Y, LOD]`; Solaar `ExtendedAdjustableDpi`). Every write is refused while G HUB (`lghub*.exe`) runs.
 Still left out: profile memory writes (the DPI of each stage, buttons, sleep timer), lights (0x8071 cannot be read back,
 0x8070 parameter layouts missing), button remaps (0x1B04 targets not documented), angle snapping, surface tuning.
+
+## Covered in device-library/logitech-hidpp-headset and logitech-hidpp-keyboard (22 Oct 2026)
+
+Both are "untested" (simulated only: `tests/sim-logitech-headset.mjs`, `tests/sim-logitech-keyboard.mjs`); every write
+is read back and refused while G HUB runs. Sources: Solaar @ e7304c4c, HeadsetControl @ 91ee690a, libratbag @ 8235b5bb
+(file by file in each device.mjs and in docs/handoff/drivers-round3a.md).
+
+**Headsets** (G633 / G635 / G733 / G933 / G935 / G PRO / PRO X / PRO X 2 HID++ ids, G535; PRO X 2 LIGHTSPEED 0x0AF7):
+features looked up by id, never at HeadsetControl's fixed indexes. Battery 0x1004 / 0x1000 / 0x1F20 (Solaar's voltage
+curve); sidetone 0x8300 read fn 0x00 / write fn 0x10 (Solaar `Sidetone`); auto-off 0x1F20 v2+ read 0x10 / write 0x20
+(Solaar `ADCPower`; the G535 limited to HeadsetControl's 0/1/2/5/10/15/30); mic mute 0x0601 fn 0x10, shown only; EQ
+0x8310 (Solaar `Equalizer`: caps 0x00, band frequencies 0x10, read 0x20 [00], write 0x30 [02, gains]). The PRO X 2 goes
+through Centurion frames (report 0x51) and the 0x0003 bridge exactly as HeadsetControl
+`logitech_centurion_protocol.hpp` builds them: battery 0x0104, sidetone 0x0604 in the headset's own gain steps and
+auto sleep 0x0108 with the other timer slots sent back as read (Solaar `HeadsetSidetone`, `HeadsetAutoSleep`).
+Not covered: lights (write-only), the PRO X 2 EQ, G432 / G533 sidetone (write-only), G522, G435, ASTRO A50 / A50 X.
+
+**Keyboards** (G915 / G915 TKL / G815 / G515 TKL / G512 / G213 / PRO; receivers C541, C545): battery, report rate
+0x8061 / 0x8060 (host mode only), settings source 0x8100 fn 0x20 / 0x10, onboard profile **select only** (count from fn
+0x00 byte 3, libratbag; read fn 0x40 / select fn 0x30 with the 2-byte sector, Solaar `OnboardProfiles`), key locks
+including the Windows key (0x4521, Solaar `DisableKeyboardKeys`, bits from `special_keys.DISABLE`), F-key swap 0x40A2 /
+0x40A0, backlight 0x8040 (Solaar `BrightnessControl`, in the keyboard's own halving steps when it has them). Not
+covered: profile editing, lights, G-key / M-key remaps, the C547 receiver (see the handoff), PRO X TKL and G915 X ids.
+Lightspeed pairing 0x0309 and BLE pre-pairing 0x1816 are now on helpers/never-commands.json and in both drivers' NEVER.

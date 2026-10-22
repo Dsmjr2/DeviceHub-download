@@ -286,6 +286,15 @@ setting in section 3 (sidetone on other models, auto-off, EQ, mic volume, mic li
 lights) has no read in any source, so DeviceHub does not write it (its rule: a write is read back). Mice and keyboards
 are not in the library yet. Details: docs/handoff/driver-coverage.md.
 
+## Covered in device-library/steelseries-mouse (22 Oct 2026, untested)
+
+Mice, reads only: battery and charging (`92`, `D2` through the receiver) on the Aerox 3 / 5 / 9 Wireless (and their
+editions) and the Prime Wireless, on cable and receiver; the Rival 3 firmware bytes (`10 00`). Every other mouse row of
+section 3 (DPI, polling, sleep, dim, lights, buttons) is write-only in rivalcfg, so the driver offers no settings and
+sends nothing else. The saves (`11 00`, `51 00`, `09 00`, `59`) are on helpers/never-commands.json. Not covered: the
+Prime Mini Wireless, Rival 3 Wireless and Aerox 3 Gen 2 battery (not in the battery row), wired-only mice with no read.
+Details: docs/handoff/drivers-round3b.md.
+
 ## Sources
 
 - HeadsetControl, shared protocol: [lib/devices/protocols/steelseries_protocol.hpp](https://github.com/Sapd/HeadsetControl/blob/master/lib/devices/protocols/steelseries_protocol.hpp)

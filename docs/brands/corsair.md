@@ -249,6 +249,20 @@ GET of them (the sheet marks them W only). Every write is read back. Not covered
 handle writes: no HS80 MAX frame in the helper), ANC `d1` (meaning unconfirmed), EQ presets (no bragi property), charge
 status `10` values. Details: docs/handoff/driver-coverage.md.
 
+### Covered in device-library/corsair-bragi-peripherals (22 Oct 2026, untested)
+
+Bragi mice and keyboards from section 1 whose packet is 64 bytes or not listed, on the helper's hs80 channel: M75 /
+M75 Wireless / M75 Air, M65 RGB Ultra (Wireless), Dark Core RGB Pro / Pro SE, Harpoon RGB Wireless, Sabre RGB Pro /
+Pro Wireless / Pro CS, Sabre V2 Pro / MG, Katar Pro / Pro XT / Pro Wireless, Scimitar RGB Elite Wireless (SE), Ironclaw
+RGB Wireless; K70 Core RGB, K70 Core TKL, K70 Pro TKL Wireless, K70 Max, K65 Plus Wireless, K100 Air, K55 Pro / Pro XT,
+K55 Core RGB / Core TKL, K95 Platinum XT; and the generic Slipstream receivers (`1BA6`, `1BDC`, `2B00`, `2B1B`), whose
+paired model is read from `12` on endpoint `09`. Battery `0f` and firmware `13` (all); DPI `21` / `22` and polling `01`
+shown as readings only (not in the helper's SET list); mice: sleep timer `0e` (1-60 min) and its on/off `0d`, written
+and read back; keyboards: brightness `02`, written and read back. Each is offered only when the device answers a GET
+of it. Not covered: DPI, DPI stage and polling writes, `07`, `06`, `52`, `b0`, `37`, lights, keys and macros; the
+128- / 1024-byte keyboards and the `1BE3` Scimitar. Unconfirmed: whether these devices take the headset frame (`02`
+prefix) the helper sends. Details: docs/handoff/drivers-round3b.md.
+
 ## 6. Gaps and unknowns
 
 - **HS65 Surround, HS55 Wireless:** no product ids and no protocol found in any open project.

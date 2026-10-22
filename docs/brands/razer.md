@@ -288,6 +288,22 @@ Scroll mode is read and shown raw (no mode values in this sheet). Not covered: e
 get), standard (class 0x03) lighting, device mode, dongle pair / unpair, macros and remaps. Writes are refused while
 Razer Synapse runs. Simulated only (tests/sim-razer.mjs); see docs/handoff/driver-coverage.md.
 
+### Covered in device-library/razer-keyboard (22 Oct 2026)
+
+"Untested" (simulated only: tests/sim-razer-keyboard.mjs), written from OpenRazer @ 477f4d6d (razerkbd_driver.c,
+razerchromacommon.c, razercommon.h, razerkbd_driver.h). 30 product ids: BlackWidow V4 / V4 Pro / V4 75% / V4 X / V4 Mini
+HyperSpeed / V4 TKL HyperSpeed, BlackWidow V3 / V3 Pro / V3 Mini HyperSpeed, Huntsman V3 Pro / TKL / Mini / 8KHz, Huntsman
+V2 / V2 TKL / Mini, DeathStalker V2 / V2 Pro / V2 Pro TKL, Ornata V3 / V3 TKL / V3 X. This settles two gaps above: the
+keyboard interface is OpenRazer's `razer_get_report_params` report_index (3, 2, or the default **1**), and keyboard
+polling is polling_rate2 (00/C0 get size 1, 00/40 set [00, code], once) on the BlackWidow V4 / V4 Pro / V4 75% / V4 TKL
+HyperSpeed and Huntsman V2 / V2 TKL. Each setting uses the transaction id OpenRazer uses for that keyboard and command:
+backlight brightness (extended 0F/84 + 0F/04 on LED 0x05; the Huntsman V3 Pro family writes extended but reads standard
+03/83), game mode (03/80 + 03/00 on the game LED 0x08: the firmware's Windows-key lock), the macro light (LED 0x07),
+battery and charging on the wireless boards (tid 9F on the dongle), and the BlackWidow V3 Pro's low-battery threshold.
+Not covered: static colour and effects (OpenRazer's matrix effect files are write-only), the Fn toggle (write-only),
+keyswitch optimization, device mode, the Huntsman V3 Pro TKL's brightness (no read in OpenRazer). Added to
+helpers/never-commands.json: dongle pair / unpair 00/46, 00/41, 00/42 and device mode 02 ("factory test mode").
+
 ## 6. Gaps and unknowns
 
 - BlackShark V2 Pro / V2 X, Barracuda, Nari, Kraken V4 Pro: no PIDs, no protocol in any source.
