@@ -24,7 +24,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { problem, ownClash, hasRealRecord, TURN_ON_LINE } from './my-devices.mjs';
+import { problem, ownClash, hasRealRecord, driverShaOf, TURN_ON_LINE } from './my-devices.mjs';
 import { cacheRoot, entryVersion } from './library-updates.mjs';   // no cycle: library-updates imports nothing from here
 
 export const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -110,15 +110,18 @@ export function match(usb, { root = ROOT, examples = showsExamples(), readOnly =
     const installed = fs.existsSync(path.join(root, 'my-devices', e.name));
     const ok = allowed(e.meta.status, readOnly, untested);
     const why = installed ? 'already in my-devices' : !ok ? `its status is "${e.meta.status}": ${allowedText(readOnly, untested)} install by themselves` : null;
-    const note = !why ? installNote(e.meta) : undefined;
-    out.push({ name: e.name, meta: e.meta, matched, installed, installable: !why, why, ...(note ? { note } : {}) });
+    // the driver's SHA-256: a "Works on my device" record counts only for the driver text it was made with
+    const driverSha = driverShaOf(e.dir);
+    const note = !why ? installNote(e.meta, driverSha) : undefined;
+    out.push({ name: e.name, meta: e.meta, matched, installed, installable: !why, why, driverSha, ...(note ? { note } : {}) });
   }
   return out;
 }
 
-// what installing it does, in plain words (the Set up card, POST /api/library/install)
-export function installNote(meta) {
-  if (!hasRealRecord(meta)) return `it reads the device by itself; its settings stay read-only until you press Turn on settings on its page. ${TURN_ON_LINE}`;
+// what installing it does, in plain words (the Set up card, POST /api/library/install). driverSha: the entry's driver's
+// SHA-256 (a works record counts only for it); left out, a works record in its full shape counts.
+export function installNote(meta, driverSha = null) {
+  if (!hasRealRecord(meta, { driverSha })) return `it reads the device by itself; its settings stay read-only until you press Turn on settings on its page. ${TURN_ON_LINE}`;
   if (meta.status === 'tested') return 'its settings change normally; DeviceHub checks each one once when the device connects';
   return "its settings stay read-only until each passes DeviceHub's check, which writes its current value back once and reads it the same, when the device connects";
 }
@@ -152,5 +155,6 @@ export async function installFromLibrary(name, { root = ROOT, examples = showsEx
   const last = entry.meta.tested.at(-1) || {};
   const mark = { source: `${entry.origin || 'device-library'}/${name}`, name, id: entry.meta.id, status: entry.meta.status, installedAt: now().toISOString(), devicehub: devicehubVersion(root), libraryTested: last.date || null, libraryDevicehub: last.devicehub || null };
   fs.writeFileSync(path.join(to, 'library.json'), JSON.stringify(mark, null, 2) + '\n', { flag: 'wx' });
-  return { ok: true, name, to, id: entry.meta.id, status: entry.meta.status, proven: hasRealRecord(entry.meta), note: `Installed: ${installNote(entry.meta)}.` };
+  const sha = driverShaOf(to);
+  return { ok: true, name, to, id: entry.meta.id, status: entry.meta.status, proven: hasRealRecord(entry.meta, { driverSha: sha || 'none' }), note: `Installed: ${installNote(entry.meta, sha || 'none')}.` };
 }

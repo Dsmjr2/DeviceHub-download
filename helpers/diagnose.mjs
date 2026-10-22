@@ -417,6 +417,8 @@ export async function action(b, { port = PORT } = {}) {
     if (!r.ok) throw new Error(j.error || r.statusText);
     return { ok: true, ran: !!j.ran, why: j.why || null, waiting: !!j.waiting, counts: j.counts || null, ...(kind === 'turn-on' ? { on: !!j.on } : {}) };
   }
+  // the Set up card's Turn on settings for all: each waiting, connected device in turn, the same path as its own button
+  if (kind === 'turn-on-all') return (await import('./turn-on-all.mjs')).turnOnAll({ port });
   if (kind === 'close-app') {
     // the person pressed Close, then confirmed: only then, and only a known maker's app
     if (b.confirm !== true) throw new Error('closing an app needs the confirm click');

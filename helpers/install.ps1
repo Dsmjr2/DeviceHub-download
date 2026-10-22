@@ -13,7 +13,9 @@ Step 'Checking this PC'
 $build = [Environment]::OSVersion.Version.Build
 if ($build -ge 22000) { Write-Host "   Windows 11 (build $build)" } else { Write-Host "   This is not Windows 11 (build $build). DeviceHub is made for Windows 11; parts may not work." -ForegroundColor Yellow }
 $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+$prebuilt = Test-Path (Join-Path $Source 'helpers\bin\helper-sources.sha256')
 if (Test-Path $csc) { Write-Host '   Windows'' C# compiler found (DeviceHub builds its device helper with it)' }
+elseif ($prebuilt) { Write-Host '   the device helper comes ready-built (Windows'' C# compiler is only needed if DeviceHub''s own code is changed on this PC)' }
 else { Write-Host '   Windows'' C# compiler (.NET Framework 4.8) is missing, so DeviceHub cannot reach your devices. Turn on ".NET Framework 4.8 Advanced Services" in Windows Features.' -ForegroundColor Yellow }
 $browser = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe", "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
 if ($browser) { Write-Host "   window: $(if ($browser -match 'msedge') { 'Microsoft Edge' } else { 'Google Chrome' })" } else { Write-Host '   Neither Chrome nor Edge was found: DeviceHub needs one of them for its window.' -ForegroundColor Yellow }
@@ -54,7 +56,8 @@ if ($shared -and -not $Overwrite -and (Get-Command git -ErrorAction SilentlyCont
 $prints = Join-Path $Target 'release-files.json'
 if (-not $Overwrite -and (Test-Path -LiteralPath $prints) -and -not (Test-Path -LiteralPath (Join-Path $Target '.git'))) {
   $was = Get-Content -LiteralPath $prints -Raw | ConvertFrom-Json
-  $changed = @($was.PSObject.Properties | Where-Object {
+  # helpers/bin is built output (the pre-built helper, rebuilt on this PC if its sources change): always replaced
+  $changed = @($was.PSObject.Properties | Where-Object { -not $_.Name.StartsWith('helpers/bin/') } | Where-Object {
     $p = Join-Path $Target ($_.Name -replace '/', '\')
     -not (Test-Path -LiteralPath $p) -or (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLower() -ne $_.Value
   } | ForEach-Object { $_.Name })
@@ -143,11 +146,32 @@ if (Test-Path (Join-Path $Target 'node_modules\cue-sdk')) { Write-Host '   inclu
 # the device helper is built here, once, so the first start is quick (built on the first start it held DeviceHub up
 # for up to two minutes on a slow PC, and its window gave up waiting; 20 Oct 2026)
 Step 'Building the device helper'
-if (Test-Path $csc) {
+# the zip carries it ready-built with the hash of the sources it was built from (22 Oct 2026,
+# docs/handoff/prebuilt-helper.md): while the sources match, nothing is compiled
+$helperExe = Join-Path $Target 'helpers\bin\DeviceHubHelper.exe'
+$helperHashFile = Join-Path $Target 'helpers\bin\helper-sources.sha256'
+$shipped = $false
+$nodeExe = if (Test-Path $bundled) { $bundled } else { (Get-Command node -ErrorAction SilentlyContinue).Source }
+if ((Test-Path $helperExe) -and (Test-Path $helperHashFile)) {
+  if ($nodeExe) {
+    $ErrorActionPreference = 'Continue'
+    $now = & $nodeExe (Join-Path $Target 'helpers\helper-sources.js') --hash (Join-Path $Target 'helpers') 2>$null | Select-Object -Last 1
+    $ErrorActionPreference = 'Stop'
+    $shipped = ($LASTEXITCODE -eq 0) -and $now -and ($now.Trim() -eq (Get-Content -LiteralPath $helperHashFile -Raw).Trim())
+  }
+}
+if ($shipped) { Write-Host '   included, ready-built for this version' }
+elseif (Test-Path $csc) {
   & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Target 'helpers\native\build.ps1') 2>&1 | Out-Null
-  if ($LASTEXITCODE -eq 0 -and (Test-Path (Join-Path $Target 'helpers\bin\DeviceHubHelper.exe'))) { Write-Host '   done' }
+  if ($LASTEXITCODE -eq 0 -and (Test-Path $helperExe)) {
+    # a copy that came with a ready-built helper records what this one was built from (helpers/native.js reads it)
+    if ((Test-Path $helperHashFile) -and $nodeExe) { & $nodeExe (Join-Path $Target 'helpers\helper-sources.js') --record (Join-Path $Target 'helpers') 2>&1 | Out-Null }
+    Write-Host '   done'
+  }
+  elseif (Test-Path $helperExe) { Write-Host '   It could not be rebuilt for the changed code; the ready-built one is used, and DeviceHub tries again when it starts.' -ForegroundColor Yellow }
   else { Write-Host '   It could not be built; DeviceHub tries again when it starts. Without it the devices are not reached.' -ForegroundColor Yellow }
-} else { Write-Host '   skipped: no C# compiler on this PC (see the check above)' -ForegroundColor Yellow }
+} elseif (Test-Path $helperExe) { Write-Host '   no C# compiler on this PC: the ready-built helper is used' -ForegroundColor Yellow }
+else { Write-Host '   skipped: no C# compiler on this PC (see the check above)' -ForegroundColor Yellow }
 
 Step 'Making shortcuts'
 $sh = New-Object -ComObject WScript.Shell

@@ -1,21 +1,40 @@
 // The one native helper process (helpers/bin/DeviceHubHelper.exe, source in helpers/native/): every device and
 // audio request goes through it on its own channel. Built here with Windows' C# compiler when missing or older
-// than its sources (helpers/native/build.ps1). If it stops, every waiting request answers GONE and the next one
+// than its sources (helpers/native/build.ps1), or, in an installed copy that carries a pre-built one, only when the
+// sources no longer match the hash it was built from (build() below). If it stops, every waiting request answers GONE and the next one
 // starts it again; the devices then reconnect the way they do after an unplug.
 const fs = require('fs');
 const path = require('path');
 const { spawn, execFileSync } = require('child_process');
 const bragiGuard = require('./bragi-guard');
 
-const EXE = path.join(__dirname, 'bin', 'DeviceHubHelper.exe');
-const SOURCES = ['native/helper.cs', 'native/hs80io.cs', 'native/tray.cs', 'native/winbrand.cs','hidio.cs', 'audio.cs', 'audio-topology.cs', 'audio-default.cs', 'audio-apps.cs', 'mic-rec.cs', 'mic-guard.cs', 'monitors.cs', 'camera.cs', 'pointer.cs'].map((f) => path.join(__dirname, f));
+const helperSources = require('./helper-sources');
+const EXE = path.join(__dirname, 'bin', helperSources.EXE_NAME);
 let CUE_DLL = null;
 try { CUE_DLL = path.join(path.dirname(require.resolve('cue-sdk')), 'prebuilds', 'win32-x64', 'iCUESDK.x64_2019.dll'); } catch {}
 
-function build() {
-  const t = fs.existsSync(EXE) ? fs.statSync(EXE).mtimeMs : 0;
-  if (t && SOURCES.every((s) => fs.statSync(s).mtimeMs <= t)) return;
-  execFileSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'native', 'build.ps1')], { windowsHide: true, stdio: 'ignore', timeout: 120000 });
+// Pre-built helper (22 Oct 2026, docs/handoff/prebuilt-helper.md): an installed copy carries the exe and the hash of
+// the sources it was built from (helpers/bin/helper-sources.sha256); while they match it is never rebuilt. A copy
+// without that file (a development copy) rebuilds when a source is newer than the exe, as before (helpers/helper-sources.js).
+// (dir and run are for tests/prebuilt-helper.mjs: another helpers folder, a stand-in for the compiler; returns the mode)
+const runBuildPs1 = (dir) => execFileSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(dir, 'native', 'build.ps1')], { windowsHide: true, stdio: 'ignore', timeout: 120000 });
+function build(dir = __dirname, run = runBuildPs1) {
+  const d = helperSources.decide(dir);
+  if (!d.build) return d.mode;
+  try {
+    run(dir);
+  } catch (e) {
+    // the sources changed but the build failed: the helper built from the earlier sources keeps running (start() logs
+    // this one line, and tries the build again at most every 10 minutes)
+    if (d.mode === 'changed' && fs.existsSync(path.join(dir, 'bin', helperSources.EXE_NAME))) {
+      const f = new Error(`the sources changed but the helper could not be rebuilt (${String(e.message).split('\n')[0]}); running the shipped helper built from the earlier sources`);
+      f.fallback = true;
+      throw f;
+    }
+    throw e;
+  }
+  if (d.mode === 'changed') { try { helperSources.recordHash(dir); } catch {} }
+  return d.mode;
 }
 
 let proc = null, buf = '', seq = 0;
@@ -36,7 +55,7 @@ let buildFailedAt = 0;
 function start() {
   if (proc) return;
   if (Date.now() - buildFailedAt > 600000) {
-    try { build(); buildFailedAt = 0; } catch (e) { buildFailedAt = Date.now(); console.log(`[helper] could not be built: ${String(e.message).split('\n')[0]}`); }
+    try { build(); buildFailedAt = 0; } catch (e) { buildFailedAt = Date.now(); console.log(e.fallback ? `[helper] ${e.message}` : `[helper] could not be built: ${String(e.message).split('\n')[0]}`); }
   }
   if (!fs.existsSync(EXE)) return;
   const p = spawn(EXE, CUE_DLL ? [CUE_DLL] : [], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
@@ -129,4 +148,4 @@ const onEvent = (chan, fn) => { if (fn) eventHandlers.set(chan, fn); else eventH
 const onExit = (fn) => exitHandlers.add(fn);
 function stop() { const p = proc; proc = null; if (p) p.stdin.end(); }
 
-module.exports = { request, onEvent, onExit, stop, start, watchdogState, heartbeat, callCounts };
+module.exports = { request, onEvent, onExit, stop, start, watchdogState, heartbeat, callCounts, buildHelper: build };

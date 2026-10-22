@@ -94,6 +94,7 @@ function firstRun(go, redraw) {
 // in); Dismiss hides it until the summary says something new (kept in setup.json).
 let setupInfo = null, setupAsked = false, setupHidden = false;
 const setupNote = {};   // an item's button: what it answered, by library entry name or device id
+const allNote = { busy: false, lines: [] };   // Turn on settings for all: its answer, one line per device
 function setupCard(redraw) {
   if (isDemo() || setupHidden) return null;
   if (!setupAsked) { setupAsked = true; fetch('/api/setup').then((r) => (r.ok ? r.json() : null)).then((j) => { setupInfo = j; if (j?.show) redraw(); }).catch(() => {}); }
@@ -122,11 +123,33 @@ function setupCard(redraw) {
       /^Installed/.test(note || '') ? null : button(a.label || (a.kind === 'library-install' ? 'Install' : a.kind === 'turn-on' ? 'Turn on settings' : 'Check again'), () => act(i), { kind: 'ghost small', ic: a.kind === 'check-again' ? 'search' : 'plug' }),
       note ? h('small', { class: 'faint' }, note) : null));
   };
+  // Turn on settings for all (helpers/turn-on-all.mjs): every waiting, connected device in turn, the same checks as each
+  // one's own button; one plain line per device, shown here and on that device's item
+  const waiting = (s.works || []).filter((i) => i.action?.kind === 'turn-on');
+  const allOn = async () => {
+    allNote.busy = true; allNote.lines = ['Turning on settings, one device at a time…']; redraw();
+    try {
+      const r = await fetch('/api/diagnose/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'turn-on-all' }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.error) allNote.lines = [`Not done: ${j.error || r.statusText}`];
+      else {
+        allNote.lines = [j.line, ...(j.results || []).map((x) => x.line)].filter(Boolean);
+        for (const x of j.results || []) setupNote[x.id] = x.line;
+      }
+    } catch (e) { allNote.lines = [`Not done: ${e.message}`]; }
+    allNote.busy = false; redraw();
+  };
+  const allRow = waiting.length || allNote.lines.length ? h('div', { class: 'setup-all', style: { margin: '0 0 10px' } },
+    h('div', { class: 'actions', style: { margin: 0, justifyContent: 'flex-start', alignItems: 'center' } },
+      waiting.length && !allNote.busy ? button('Turn on settings for all', allOn, { kind: 'primary small', ic: 'plug' }) : null,
+      waiting.length && !allNote.lines.length ? h('small', { class: 'faint' }, `${waiting.length} device${waiting.length === 1 ? '' : 's'} waiting. Close each maker's app first.`) : null),
+    ...allNote.lines.map((l) => h('small', { class: 'faint', style: { display: 'block', marginTop: '4px' } }, l))) : null;
   const part = (title, items) => (items?.length ? h('div', { class: 'setup-part' }, h('h3', {}, title), h('ul', { style: { margin: '4px 0 10px', paddingLeft: '18px' } }, ...items.map(itemOf))) : null);
   const dismiss = () => { setupHidden = true; redraw(); fetch('/api/setup/dismiss', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ signature: s.signature }) }).catch(() => {}); };
   return h('div', { class: 'panel setup-card', style: { marginBottom: '16px' } },
     h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } }, h('h2', { style: { margin: 0 } }, 'Set up'), h('span', { class: 'spacer', style: { flex: 1 } }), button('Dismiss', dismiss, { kind: 'ghost small' })),
     h('p', { class: 'faint', style: { margin: '4px 0 8px' } }, 'A ready-made driver reads your device at once. Press Turn on settings and DeviceHub tests each setting, then lets you change it.'),
+    allRow,
     part('Installed from the device library', s.installed),
     part('Works now', s.works),
     part('Still to do', s.learn),

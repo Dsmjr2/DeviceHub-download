@@ -245,5 +245,13 @@ check(/row\('Lift-off distance', '[^']+'/.test(mouseSrc) && /h\('h2', \{\}, 'Tra
   check(/startMicTest\(env\.api/.test(mm) && /micMatcher\(/.test(mm) && !/set-default/.test(mm), 'mic check page uses the pick and never changes Windows defaults');
 }
 
+// 16. The HS80 shows Charging near full too (22 Oct 2026, Shawn's HS80 measured at 99%: 4,183 mV on a wall charger,
+//     4,055 mV a minute after unplugging; at 32%: 4,168 mV charging, 3,723 / 3,735 mV at rest)
+{
+  const { chargerLifted } = await import('../public/devices/headset-adapter.js');
+  for (const [pct, mv, want] of [[99, 4183, true], [99, 4055, false], [32, 4168, true], [32, 3723, false], [32, 3735, false], [100, 4100, false], [80, 4140, false]])
+    check(chargerLifted(pct, mv) === want, `charging by voltage: ${pct}% at ${mv} mV reads ${want ? 'charging' : 'not charging'}`);
+}
+
 console.log(fails.length ? `regressions: FAILED: ${fails.join('; ')}` : 'regressions (20 Oct fixes): all good');
 process.exit(fails.length ? 1 : 0);

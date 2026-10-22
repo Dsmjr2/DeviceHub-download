@@ -1031,6 +1031,14 @@ html[data-art="live"] :not(.art-preview) > .art.mark.art-keyboard .accent, .art-
   fill: color-mix(in srgb, var(--kb, #fff) calc(var(--kbon, 0) * 85%), rgba(255, 255, 255, .16)); }
 html[data-art="live"] :not(.art-preview) > .art.mark.art-keyboard .solid, .art-preview[data-art-preview="live"] .art.mark.art.art.art-keyboard .solid { fill: rgba(255, 255, 255, .04); }
 html[data-art="live"] :not(.art-preview) > .art.mark.art-keyboard .shade, .art-preview[data-art-preview="live"] .art.mark.art.art.art-keyboard .shade { display: none; }
+/* the headset's Corsair logo and status light are see-through in Live battery (Shawn, 22 Oct 2026: "dont make the corsair
+   light red just make it transparent"); the mic tip keeps its own rules */
+html[data-art="live"] :not(.art-preview) > .art.mark.art-headset .led:not(.mic), .art-preview[data-art-preview="live"] .art.mark.art.art-headset .led:not(.mic) { fill: rgba(255, 255, 255, .18); opacity: 1; filter: none; }
+/* the keyboard is plain grey in Live battery (Shawn, 22 Oct 2026: "Keyboard should just be grey"): no backlight color, no glow */
+html[data-art="live"] :not(.art-preview) > .art.mark.art-keyboard .soft, .art-preview[data-art-preview="live"] .art.mark.art.art.art-keyboard .soft { fill: #4a4d55; filter: none; }
+html[data-art="live"] :not(.art-preview) > .art.mark.art-keyboard .accent, .art-preview[data-art-preview="live"] .art.mark.art.art.art-keyboard .accent { fill: #5c6069; }
+html[data-art="live"] :not(.art-preview) > .art.mark.art-keyboard .hi, .art-preview[data-art-preview="live"] .art.mark.art.art.art-keyboard .hi { fill: rgba(255, 255, 255, .1); }
+html[data-art="live"] :not(.art-preview) > .art.mark.art-keyboard, .art-preview[data-art-preview="live"] .art.mark.art.art.art-keyboard { filter: drop-shadow(0 12px 22px rgba(0, 0, 0, .5)); }
 /* seven looks: three tiles a row, the previews a little smaller, so Settings stays on one screen (21 Oct 2026) */
 .art-styles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .art-style { padding: 10px 4px 8px; gap: 4px; font-size: 12px; }

@@ -217,7 +217,7 @@ export function summary({ root = ROOT, sources = {} } = {}) {
   for (const m of matches) {
     // installed already, or ANY of its ids one DeviceHub's own drivers run: nothing to offer (safety round 2)
     if (m.installed || m.matched.some((u) => runs.has(idOf(u))) || ownClash(m.meta.vid, m.meta.pids).length) continue;
-    const after = hasRealRecord(m.meta)
+    const after = hasRealRecord(m.meta, { driverSha: m.driverSha || null })
       ? (m.meta.status === 'tested' ? 'its settings change normally' : "each setting opens once DeviceHub has written its current value back and read it the same, when the device connects")
       : `it reads the device; its settings change only after you press Turn on settings on its page (${TURN_ON_LINE})`;
     // a VIA keyboard already runs (keys and lights): a library driver for it only adds the maker's extra settings,

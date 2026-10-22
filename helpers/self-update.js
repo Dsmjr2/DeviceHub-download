@@ -47,7 +47,9 @@ async function releaseInfo() {
 function changedFiles() {
   let prints; try { prints = JSON.parse(fs.readFileSync(path.join(ROOT, 'release-files.json'), 'utf8')); } catch { return []; }
   const crypto = require('crypto');
-  return Object.entries(prints).filter(([f, h]) => { try { return crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, f))).digest('hex') !== h; } catch { return true; } }).map(([f]) => f);
+  // helpers/bin is built output (the pre-built helper, rebuilt here if its sources change; helpers/native.js): an
+  // update always replaces it, so it is never "changed on this PC" (22 Oct 2026, docs/handoff/prebuilt-helper.md)
+  return Object.entries(prints).filter(([f]) => !f.startsWith('helpers/bin/')).filter(([f, h]) => { try { return crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, f))).digest('hex') !== h; } catch { return true; } }).map(([f]) => f);
 }
 const blockedText = (c) => `${c.length} of DeviceHub's files were changed on this PC (${c.slice(0, 4).join(', ')}${c.length > 4 ? ', …' : ''}); updating would undo them. Ask Claude Code to "update DeviceHub" to bring them and the new version together.`;
 

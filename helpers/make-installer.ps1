@@ -2,7 +2,9 @@
 # (what git tracks), never this PC's data: backups, profiles, settings, activity, battery history and study, the mouse
 # level, light settings, seen devices, logs, captures or the window profile. It also carries Node.js and the headset
 # library, so the person needs nothing else installed. After building, it opens the zip and refuses to finish if any
-# of this PC's data got in. The person unzips it and runs "Install DeviceHub.bat".
+# of this PC's data got in. The person unzips it and runs "Install DeviceHub.bat". It also carries the device helper
+# ready-built (helpers\bin, 22 Oct 2026), so a new PC needs no C# compiler.
+# Test builds: -NoPublish (no publish-code.ps1), -NoTools (no bundled tools), -NoSign (version.json left unsigned).
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 # the code goes to the public download repository first (helpers/publish-code.ps1; only a committed version): an
@@ -16,6 +18,23 @@ try {
   $dist = Join-Path $root 'dist'
   New-Item -ItemType Directory -Force $dist | Out-Null
   $zip = Join-Path $dist 'DeviceHub-setup.zip'
+  # ---- PRE-BUILT HELPER (22 Oct 2026; docs/handoff/prebuilt-helper.md) ----
+  # the device helper is built here from the current sources, into a folder of its own (this PC's own
+  # helpers\bin\DeviceHubHelper.exe is never replaced), and goes in as helpers\bin\DeviceHubHelper.exe with
+  # helpers\bin\helper-sources.sha256, the hash of the sources it was built from (helpers/helper-sources.js). A new
+  # PC then runs it without compiling; it is rebuilt there only if the sources change (helpers/native.js).
+  $helperDir = Join-Path $env:TEMP "DeviceHub-helper-$PID"
+  if (Test-Path $helperDir) { Remove-Item $helperDir -Recurse -Force }
+  New-Item -ItemType Directory $helperDir | Out-Null
+  $helperExe = Join-Path $helperDir 'DeviceHubHelper.exe'
+  & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'native\build.ps1') -Out $helperExe
+  if ($LASTEXITCODE -or -not (Test-Path $helperExe)) { throw 'the device helper could not be built (see above); the installer must carry it' }
+  $helperHash = (& (Get-Command node).Source (Join-Path $PSScriptRoot 'helper-sources.js') --hash $PSScriptRoot | Select-Object -Last 1)
+  if ($LASTEXITCODE -or $helperHash -notmatch '^[0-9a-f]{64}$') { throw 'the device helper sources could not be hashed' }
+  $helperHashFile = Join-Path $helperDir 'helper-sources.sha256'
+  [IO.File]::WriteAllText($helperHashFile, "$helperHash`n")
+  $helperFiles = [ordered]@{ 'helpers/bin/DeviceHubHelper.exe' = $helperExe; 'helpers/bin/helper-sources.sha256' = $helperHashFile }
+  # ---- end PRE-BUILT HELPER ----
   if (Test-Path $zip) { Remove-Item $zip -Force }
   Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
   function Ent($p) { ('DeviceHub/' + $p) -replace '/', '\' }  # zip entry names, one separator
@@ -25,6 +44,7 @@ try {
       $full = Join-Path $root $f
       if (Test-Path $full -PathType Leaf) { [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($z, $full, (Ent $f), 'Optimal') }
     }
+    foreach ($k in $helperFiles.Keys) { [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($z, $helperFiles[$k], (Ent $k), 'Optimal') }
 
     # Node.js and the headset library (19 Oct 2026): the official node.exe already on this PC, copied unchanged, and
     # the production libraries from node_modules
@@ -59,6 +79,8 @@ try {
     # it and never writes over a file that was changed on that PC (helpers/install.ps1, helpers/self-update.js)
     $prints = [ordered]@{}
     foreach ($f in $files) { $full = Join-Path $root $f; if (Test-Path $full -PathType Leaf) { $prints[$f] = (Get-FileHash $full -Algorithm SHA256).Hash.ToLower() } }
+    # the pre-built helper too, like any other file (an update replaces it with the release's own)
+    foreach ($k in $helperFiles.Keys) { $prints[$k] = (Get-FileHash $helperFiles[$k] -Algorithm SHA256).Hash.ToLower() }
     $e = $z.CreateEntry((Ent 'release-files.json'))
     $w = New-Object System.IO.StreamWriter $e.Open(); $w.Write(($prints | ConvertTo-Json -Compress)); $w.Dispose()
     # ---- BUNDLED TOOLS (22 Oct 2026, the owner's decision; helpers/bundled-tools.json, docs/handoff/bundled-tools.md) ----
@@ -79,15 +101,22 @@ try {
   # the release's version file, published beside the zip: version, size and SHA-256, so an update is checked whole
   $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
   @{ commit = $commit; builtAt = $builtAt; appCommit = $appCommit; size = (Get-Item $zip).Length; sha256 = $hash } | ConvertTo-Json -Compress | Set-Content -Path (Join-Path $dist 'version.json') -Encoding ascii -NoNewline
-  # signed with the publisher's key, kept only on this PC (helpers/sign-release.mjs): copies install only what it signs
-  & (Get-Command node).Source (Join-Path $PSScriptRoot 'sign-release.mjs') (Join-Path $dist 'version.json')
-  if ($LASTEXITCODE) { throw 'the release could not be signed' }
+  Remove-Item $helperDir -Recurse -Force -ErrorAction SilentlyContinue
+  # signed with the publisher's key, kept only on this PC (helpers/sign-release.mjs): copies install only what it signs.
+  # -NoSign: a test build left unsigned (copies refuse it as an update), so the key is not used for it.
+  if ($args -notcontains '-NoSign') {
+    & (Get-Command node).Source (Join-Path $PSScriptRoot 'sign-release.mjs') (Join-Path $dist 'version.json')
+    if ($LASTEXITCODE) { throw 'the release could not be signed' }
+  }
   # ---- LIBRARY BUNDLE (22 Oct 2026; helpers/make-library-bundle.mjs, docs/handoff/library-updates.md) ----
   # dist\device-library.json: every device-library entry, signed with the same key over a payload of its own. UPLOAD IT
   # beside version.json on the release: copies fetch it once a day (helpers/library-updates.mjs). It can also be
   # rebuilt and uploaded on its own between app releases: node helpers/make-library-bundle.mjs
-  & (Get-Command node).Source (Join-Path $PSScriptRoot 'make-library-bundle.mjs') (Join-Path $dist 'device-library.json')
-  if ($LASTEXITCODE) { throw 'the device library bundle could not be built' }
+  # (-NoSign: not made either; it is signed with the same key)
+  if ($args -notcontains '-NoSign') {
+    & (Get-Command node).Source (Join-Path $PSScriptRoot 'make-library-bundle.mjs') (Join-Path $dist 'device-library.json')
+    if ($LASTEXITCODE) { throw 'the device library bundle could not be built' }
+  }
   # ---- end LIBRARY BUNDLE ----
 
   # never this PC's data
@@ -104,6 +133,9 @@ try {
     $extra = $names | Where-Object { $_ -like 'node_modules/*' } | ForEach-Object { $_.Split('/')[1] } | Sort-Object -Unique | Where-Object { $_ -notin $libs }
     if ($extra) { throw "unexpected libraries in the zip: $($extra -join ', ')" }
     if ($names -notcontains 'runtime/node.exe') { throw 'runtime/node.exe is missing from the zip' }
+    # helpers/bin holds exactly the pre-built helper and the hash of its sources
+    $bin = @($names | Where-Object { $_ -like 'helpers/bin/*' } | Sort-Object)
+    if (($bin -join ',') -ne 'helpers/bin/DeviceHubHelper.exe,helpers/bin/helper-sources.sha256') { throw "helpers/bin in the zip is not the pre-built helper and its hash: $($bin -join ', ')" }
     # never a driver or anything PawnIO, WinRing0 or inpout (helpers/bundled-tools.json neverKeep), anywhere in the zip
     $never = (Get-Content (Join-Path $PSScriptRoot 'bundled-tools.json') -Raw | ConvertFrom-Json).neverKeep
     $drv = $names | Where-Object { $n = $_.Split('/')[-1]; $_ -like 'tools/*' -and ($never | Where-Object { $n -match $_ }) }

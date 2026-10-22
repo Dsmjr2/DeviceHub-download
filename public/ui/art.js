@@ -42,11 +42,11 @@ export function artDefs() {
 let clipN = 0;
 const clipId = () => `dh-lq-${++clipN}`;
 // the liquid: two waves (one behind, slower) on a body of liquid, inside the device's shape; the group is moved down by
-// the empty share (style.css: --lvl), the waves slide sideways, and bubbles rise while charging
+// the empty share (style.css: --lvl), the waves slide sideways
 function liquid(clip, x, y, w, h) {
   const p = 36, a = 2.4, x0 = x - p * 2, x1 = x + w + p * 2;
   const wave = (dy) => { let d = `M${x0} ${y + dy}`; for (let wx = x0; wx < x1; wx += p) d += `q${p / 4} ${-a} ${p / 2} 0t${p / 2} 0`; return `${d}V${y + h + 4}H${x0}Z`; };
-  const bubbles = [0.22, 0.5, 0.76].map((f, i) => `<circle class="bubble b${i}" cx="${(x + w * f).toFixed(1)}" cy="${y + h - 3}" r="${1.1 + (i % 2) * 0.5}"/>`).join('');
+  // no bubbles (Shawn, 22 Oct 2026: "these 3 dots shouldnt be there at all")
   const g = `${clip}-g`, sh = `${clip}-s`;
   return `<defs><linearGradient id="${g}" gradientUnits="userSpaceOnUse" x1="0" y1="${y}" x2="0" y2="${y + h}"><stop offset="0" class="lq-top"/><stop offset=".22" class="lq-mid"/><stop offset="1" class="lq-deep"/></linearGradient>
       <linearGradient id="${sh}" x1="0" y1="0" x2="1" y2=".6"><stop offset=".18" stop-color="#fff" stop-opacity="0"/><stop offset=".3" stop-color="#fff" stop-opacity=".22"/><stop offset=".38" stop-color="#fff" stop-opacity="0"/><stop offset=".52" stop-color="#fff" stop-opacity=".08"/><stop offset=".58" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
@@ -54,7 +54,7 @@ function liquid(clip, x, y, w, h) {
       <path class="wave back" d="${wave(1.6)}"/><path class="wave front" d="${wave(0)}" style="fill: url(#${g})"/>
       <path class="wave-edge" d="${wave(0).split('V')[0]}"/>
       ${[0.15, 0.35, 0.55, 0.72, 0.88].map((f, i) => `<circle class="mote m${i}" cx="${(x + w * f).toFixed(1)}" cy="${y + 3}" r="${(0.7 + (i % 3) * 0.25).toFixed(2)}"/>`).join('')}
-    </g>${bubbles}<rect class="sheen" x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#${sh})"/></g>`;
+    </g><rect class="sheen" x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#${sh})"/></g>`;
 }
 // no words (Shawn, 21 Oct 2026: "remove all the words ... but make it still look cool"): a part is marked with a small
 // crosshair target, and a measurement is a line with end ticks and a centre tick
@@ -138,18 +138,22 @@ export function headsetArt() {
     <path class="shade" d="M46 124C46 111 56 101 69 101H74C61 103 54 113 54 126V168C54 181 61 190 74 192H69C56 192 46 182 46 169Z"/>
     <path class="solid" d="${CUP}"/>
     <path class="grain" d="${CUP}"/><path class="glaze" d="${CUP}"/>
-    <clipPath id="${lq}"><path d="${CUP}"/></clipPath>
-    ${liquid(lq, 66, 95, 93, 98)}
+    <!-- the Live battery liquid fills the whole headset as one shape, from the bottom: at 100% the band, both yokes,
+         the far cushion and the near cup (Shawn, 22 Oct 2026: "make the battery go up the full device when full") -->
+    <clipPath id="${lq}"><path d="${BAND}"/><path d="M57.5 67H70L74.5 88L79.5 67H91.5L80 99H71Z"/><path d="M97.5 67H110.5L119.5 86L126 67H138L125 98H117Z"/><rect x="46" y="101" width="50" height="91" rx="23"/><path d="${CUP}"/></clipPath>
+    ${liquid(lq, 46, 1, 113, 192)}
+    <path class="cut" d="M67 71H70.5L74.5 85L78.5 71H82.5L76.6 90H72.6Z"/>
+    <path class="cut" d="M107 71H111.5L119.5 84L124.6 71H129L122.4 89.5H118.8Z"/>
     <path class="shade" d="M159 123V165C159 181 147 193 131 193H124C140 191 151 180 151 165V123C151 110 143 99 131 96C146 97 159 108 159 123Z"/>
     <rect class="cut" x="93.5" y="111.5" width="57" height="66" rx="15"/>
     <rect class="soft" x="95.5" y="113.5" width="53" height="62" rx="13.5"/>
     <path class="hi" d="M98 117C104 114 120 114 128 115.5C116 116.5 106 118 98 124Z"/>
     ${sails(133, 128)}
     <path class="scan" d="${CUP}" pathLength="100"/>
-    <!-- the mic boom, out of the cup's lower front edge, forward to its tip with the mute light -->
+    <!-- the mic boom, out of the cup's lower front edge, forward to a squared-off tip with no light on it (Shawn, 22 Oct
+         2026: "none of the mics have the red dot at the end of the headset, should be just squared off") -->
     <path class="solid" d="M93 190.5C70 196 34 204 8 208.5L9 213.5C35 209.5 71 202 95.5 196Z"/>
-    <rect class="soft" x="1.5" y="207" width="9" height="7.5" rx="3.7" transform="rotate(-9 6 211)"/>
-    <circle class="led mic" cx="3.6" cy="211.3" r="1.6"/>
+    <rect class="soft" x="1.5" y="207" width="9" height="7.5" rx=".6" transform="rotate(-9 6 211)"/>
     <text class="lq-text" x="122" y="158" text-anchor="middle"><tspan class="lq-n"></tspan><tspan class="lq-u" dx="1">%</tspan></text>
     <g class="bp">${callout(4, 211)}${callout(133, 128)}${callout(82.8, 23)}${callout(75.5, 99)}</g>
   </g>

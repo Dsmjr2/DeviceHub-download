@@ -51,6 +51,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
+import { createHash } from 'node:crypto';
 
 const BUILT_IN = ['mouse', 'headset', 'keyboard'];
 const TYPES = ['slider', 'toggle', 'choice', 'display', 'color', 'remap'];
@@ -197,13 +198,54 @@ const SIMULATED = /simulat|never run on a real|not run on a real|nobody yet|not 
 // shared with (share-device.mjs); an older one without it takes the entry's status. A "read-only" share ("settings
 // read, nothing written") never counts, so it cannot skip Turn on settings.
 const READ_ONLY_HOW = /nothing written|settings read|read[- ]only/i;
-export const realRecord = (t, status) => !!t && typeof t === 'object' && t.simulation !== true && !SIMULATED.test(`${t.by || ''} ${t.how || ''}`)
-  && (t.status ?? status ?? 'tested') === 'tested' && !READ_ONLY_HOW.test(String(t.how || ''));
-export const hasRealRecord = (meta) => Array.isArray(meta?.tested) && meta.tested.some((t) => realRecord(t, meta.status));
-// a my-devices copy: does it keep today's behaviour (a real-device record, not learned on this PC)?
+// A "Works on my device" record (22 Oct 2026; helpers/works-report.mjs, helpers/accept-works-reports.mjs,
+// docs/handoff/works-reports.md): a person pressed the button after the driver's settings passed DeviceHub's self-check on
+// their device, and Shawn's accept script added it. It counts ONLY in exactly this shape: status "tested" written in the
+// record itself, real: true, the date, DeviceHub's version, the SHA-256 of the driver it was checked with, the model, the
+// firmware (text or null) and the settings that passed (at least one). No other field. When the driver's own SHA-256 is
+// known (provenCopy), the record counts only for that exact driver text: a changed driver needs a new report.
+export const WORKS_RECORD_FIELDS = ['status', 'real', 'by', 'how', 'date', 'devicehub', 'driver', 'driverSha', 'model', 'firmware', 'settings', 'checked', 'issue'];
+const SETTING_KEY = /^[A-Za-z0-9_:.-]{1,40}$/;
+export function worksRecordProblem(t) {
+  if (!plain(t)) return 'it is not an object';
+  const extra = Object.keys(t).filter((k) => !WORKS_RECORD_FIELDS.includes(k));
+  if (extra.length) return `it has fields a works record never has (${extra.join(', ')})`;
+  if (t.real !== true) return 'real must be true';
+  if (t.status !== 'tested') return 'its own status must be "tested"';
+  if (t.by !== 'works report') return 'by must be "works report"';
+  if (typeof t.how !== 'string' || !t.how.trim() || t.how.length > 200) return 'how must say how it was tested';
+  if (typeof t.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(t.date) || Number.isNaN(Date.parse(t.date))) return 'date must be YYYY-MM-DD';
+  if (typeof t.devicehub !== 'string' || !t.devicehub.trim() || t.devicehub.length > 60) return 'devicehub must be the DeviceHub version';
+  if (typeof t.driver !== 'string' || !/^[a-z0-9][a-z0-9-]{1,60}$/.test(t.driver)) return 'driver must be the library entry name';
+  if (typeof t.driverSha !== 'string' || !/^[0-9a-f]{64}$/.test(t.driverSha)) return "driverSha must be the driver's SHA-256 (64 hex digits)";
+  if (typeof t.model !== 'string' || !t.model.trim() || t.model.length > 80) return 'model must name the model';
+  if (!(t.firmware === null || (typeof t.firmware === 'string' && t.firmware.trim() && t.firmware.length <= 160))) return 'firmware must be text or null';
+  if (!Array.isArray(t.settings) || !t.settings.length || t.settings.length > 60 || !t.settings.every((k) => typeof k === 'string' && SETTING_KEY.test(k)) || new Set(t.settings).size !== t.settings.length) return 'settings must list the settings that passed (at least one)';
+  if (!Number.isInteger(t.checked) || t.checked < t.settings.length || t.checked > 60) return 'checked must be how many settings were checked';
+  if (!Number.isInteger(t.issue) || t.issue < 1) return 'issue must be the GitHub issue number';
+  return null;
+}
+const claimsWorks = (t) => 'real' in t || 'driverSha' in t || t.by === 'works report';
+export const realRecord = (t, status, driverSha = null) => !!t && typeof t === 'object' && t.simulation !== true && !SIMULATED.test(`${t.by || ''} ${t.how || ''}`)
+  && (t.status ?? status ?? 'tested') === 'tested' && !READ_ONLY_HOW.test(String(t.how || ''))
+  // a record that claims to be a works record counts only in its full shape, and only for the driver it was made with
+  && (!claimsWorks(t) || (worksRecordProblem(t) === null && (!driverSha || t.driverSha === driverSha)));
+export const hasRealRecord = (meta, { driverSha = null } = {}) => Array.isArray(meta?.tested) && meta.tested.some((t) => realRecord(t, meta.status, driverSha));
+// the SHA-256 a works record names: the driver's text with Windows line ends made plain, so a git checkout with CRLF and
+// one with LF give the same answer
+export const driverSha = (text) => createHash('sha256').update(String(text).replace(/\r\n/g, '\n'), 'utf8').digest('hex');
+// the driver file in a folder (device.mjs wins over driver.json, as loadOne loads them) and its SHA-256, or null
+export function driverShaOf(folder) {
+  for (const f of ['device.mjs', 'driver.json']) {
+    try { return driverSha(fs.readFileSync(path.join(folder, f), 'utf8')); } catch {}
+  }
+  return null;
+}
+// a my-devices copy: does it keep today's behaviour (a real-device record, not learned on this PC)? A works record
+// counts only when this copy's driver is the exact text the record was made with.
 export function provenCopy(folder, mark) {
   if (!mark || mark.learned) return false;
-  return hasRealRecord(readJson(path.join(folder, 'device.json')));
+  return hasRealRecord(readJson(path.join(folder, 'device.json')), { driverSha: driverShaOf(folder) || 'none' });
 }
 // is this setting still waiting for the person's Turn on settings? Every setting of a driver without a real-device
 // record (or a learned driver) until the click; on a proven driver, only the settings the learning wizard added
@@ -447,7 +489,7 @@ export function guard(a, folder, mark, deps = null) {
     a.library.turnOn = !ownDevice(a) && anyGated();
     a.library.proven = proven;
   };
-  a.library = { source: mark.source || null, status: mark.status || null, folder: path.basename(folder), proven, turnOn: false, turnOnLine: TURN_ON_LINE };
+  a.library = { source: mark.source || null, status: mark.status || null, folder: path.basename(folder), proven, turnOn: false, turnOnLine: TURN_ON_LINE, learned: !!mark.learned };
   relabel();
   const depsNow = async () => ({ ...(await agentDeps()), ...(deps || {}) });
   let makerSeen = null;   // { at, m }: the last "no maker's app open" answer (an open app or "could not check" is asked again)

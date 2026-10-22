@@ -55,6 +55,13 @@ not covered (a new device, a download nobody named), or when a step fails and th
    on settings on its page or the Set up card; DeviceHub then writes each setting's current value back once. "Could
    not check whether the maker's app is open" counts as waiting. The never list is checked in the HID send path for
    every library and my-devices driver (`helpers/never-guard.mjs`); DeviceHub's own Pulsar, P75 and HS80 paths are not.
+   **Works on my device** (docs/handoff/works-reports.md): once a library driver's settings passed their check, its page
+   has a button that shows a small record (driver SHA-256, version, model, firmware, settings that passed; nothing
+   personal) and opens a GitHub issue labeled `works` on the person's click. `node helpers/accept-works-reports.mjs
+   [--apply]` (Shawn's copy) checks each report against the library's current driver and, with --apply, adds a
+   `{ status: "tested", real: true, ... }` record to its device.json (never commits, pushes or closes anything). Only
+   that exact record, for that exact driver text, counts as real. The Set up card's **Turn on settings for all** does
+   Turn on settings for every waiting, connected device, one after another.
    No library driver installs, self-checks or writes when ANY id it declares is in `helpers/pc-map.js` RUNS, and a
    my-devices driver on such an id is not loaded. Every write of a library or learned driver asks for the maker's app
    first (kept 15 s when none is open); an open app or "could not check" refuses it. Only a record shared with status
@@ -167,7 +174,10 @@ server.js                  local server on 127.0.0.1:5577 (never on the network)
 helpers/agent.mjs          the background agent: owns the devices, registers the three adapters, auto-switch, wake
 helpers/hid-host.mjs       SPECS: each HID device's vendor id, product id, usage page, report length (one line each)
 helpers/native/            the Windows helper (C#, built on start with Windows' own compiler): HID, audio, tray,
-                           monitors (helpers/monitors.cs), mic recording; helpers/native.js talks to it
+                           monitors (helpers/monitors.cs), mic recording; helpers/native.js talks to it. The
+                           installer ships it ready-built with helpers/bin/helper-sources.sha256; an installed copy
+                           compiles only when its sources no longer match that hash, a development copy (no hash
+                           file) rebuilds when a source is newer (helpers/helper-sources.js)
 public/devices/            the drivers: one adapter per device slot (mouse-adapter.js, headset-adapter.js,
                            keyboard-adapter.js) over a protocol file (pulsar.js, via.js, the HS80 code in helpers/)
 public/pages/              one page per sidebar entry (mouse.js, headset.js, keyboard.js, ...)
@@ -267,6 +277,8 @@ the person (a download or install, a learning session, or a check in the maker's
    driver.json may hear reports the device sends by itself (`notice` reads: display and battery only, never a written
    setting) and hold one product id's own bytes (`byPid`): docs/DRIVER-FORMAT.md. Claude follows the steps below for what the
    wizard refuses.
+   Windows' own USB tracing (ETW, logman, pktmon, netsh trace) records no payload bytes on Windows 11 xHCI PCs, so
+   USBPcap stays the only way to listen (docs/handoff/learn-builtin-capture.md, checked 22 Oct 2026).
    **Learn it by listening (read-only, needs the person's yes for USBPcap).** With USBPcap installed:
    `helpers/usb-find.ps1` finds the device's capture number, `helpers/hs80-learn.ps1 -Match '<USB name>'` records while
    the person changes ONE setting in the maker's app, `node helpers/pcap-read.mjs <capture>` prints the messages.

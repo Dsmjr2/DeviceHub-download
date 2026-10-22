@@ -11,6 +11,7 @@ import { button } from '../ui/controls.js';
 import { modal, toast } from '../ui/overlay.js';
 import { isDemo } from '../core/devices.js';
 import { getHelp } from '../ui/get-help.js';
+import { worksReport, offersWorks } from '../ui/works-report.js';
 import { loadBatteryEstimates, batteryLeft } from '../ui/controls.js';
 import { batteryChart } from '../ui/battery-chart.js';
 import { showAdded } from '../core/profiles.js';
@@ -183,7 +184,8 @@ export function devicePage(id) {
             shown.length ? shown.map((s) => settingRow(d, s)) : h('p', { class: 'faint', style: { margin: 0 } }, 'It has not reported any settings yet.'),
             a.unsupported?.length ? h('p', { class: 'faint', style: { marginTop: '12px' } }, icon('external'), ` Still in its maker's app: ${a.unsupported.join(', ')}.`) : null,
             careLine(d),
-            checkAgain(d)),
+            checkAgain(d),
+            offersWorks(d) ? worksReport(d) : null),
           card([h('h2', {}, 'Device'), h('span', { class: 'spacer' }), deviceActions(d)], kv(d.info || {}), shareButton(d, shown))),
         a.battery ? batteryChart(id, () => ctx.redraw?.(), { title: a.title, kind: a.kind }) : null);
     },

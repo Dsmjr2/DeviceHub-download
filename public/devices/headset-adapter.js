@@ -26,11 +26,14 @@ let via = null;
 // Charging on any charger (22 Oct 2026): the HS80 says nothing over the receiver when a charger is plugged in or out,
 // but a charger lifts its battery voltage at once. Measured on Shawn's HS80 at 32%: 3,723 mV on its own, 4,168 mV
 // within 5 s of plugging in, back to 3,735 mV within 10 s of unplugging. So it is charging when the voltage stands
-// 200 mV or more above what a lithium cell at that level reads at rest (the usual curve; 3.72 V at 30%, 4.18 V full).
-// Near full the two meet, so from about 90% a charger may go unseen; on the PC's cable it is always seen.
-const REST = [[0, 3300], [10, 3550], [20, 3650], [30, 3720], [40, 3770], [50, 3820], [60, 3870], [70, 3930], [80, 4000], [90, 4080], [100, 4180]];
-const restMv = (pct) => { for (let i = 1; i < REST.length; i++) if (pct <= REST[i][0]) { const [p0, v0] = REST[i - 1], [p1, v1] = REST[i]; return v0 + ((pct - p0) / (p1 - p0)) * (v1 - v0); } return 4180; };
-export const chargerLifted = (pct, mv) => mv != null && pct != null && mv - restMv(pct) >= 200;
+// 200 mV or more above what a lithium cell at that level reads at rest (the usual curve; 3.72 V at 30%).
+// Near full the lift is smaller, so (measured at 99% on 22 Oct: 4,183 mV on a wall charger, 4,055 mV a minute after
+// unplugging; Shawn: "my headset is charging but the lights are still on") the curve's top follows the HS80, and 4,150 mV
+// or more counts as a charger at any level: the HS80 rests well below that even at 99%. On the PC's cable it is always seen.
+const REST = [[0, 3300], [10, 3550], [20, 3650], [30, 3720], [40, 3770], [50, 3820], [60, 3870], [70, 3930], [80, 3990], [90, 4030], [100, 4070]];
+const restMv = (pct) => { for (let i = 1; i < REST.length; i++) if (pct <= REST[i][0]) { const [p0, v0] = REST[i - 1], [p1, v1] = REST[i]; return v0 + ((pct - p0) / (p1 - p0)) * (v1 - v0); } return 4070; };
+export const CHARGER_MV = 4150;
+export const chargerLifted = (pct, mv) => mv != null && pct != null && (mv >= CHARGER_MV || mv - restMv(pct) >= 200);
 // Any USB headset (20 Oct 2026): with no HS80, the first USB headset Windows has (a USB device with headphones or a
 // headset output and a mic, helpers/audio-default.cs) runs here on its sound features alone: volume, mutes, mic level,
 // sidetone when Windows names one, and through the server its EQ, mic boost and mic filters. Its lights, battery and
@@ -155,7 +158,7 @@ const adapter = {
       // is the Sleep when silent slider, so it is not repeated here (Shawn, 21 Oct 2026)
       let kept = {};
       if (!f) try { kept = await call('last-firmware', {}); } catch {}
-      return { Model: 'CORSAIR HS80 RGB Wireless', Firmware: f ? `${f[0]}.${f[1]}.${f[2]}` : kept.firmware || 'turn the headset on to read it', Control: `DeviceHub direct over the ${via === 'wired' ? 'USB cable' : 'receiver'} (no iCUE)` };
+      return { Model: 'CORSAIR HS80 RGB Wireless', Firmware: f ? `${f[0]}.${f[1]}.${f[2]}` : kept.firmware || 'turn the headset on to read it', Control: `DeviceHub direct over the ${via === 'wired' ? 'USB cable' : 'receiver'} (no iCUE)`, ...(raw.voltage?.value != null ? { 'Battery voltage': `${raw.voltage.value} mV` } : {}) };
     }
     let i;
     try { i = await call('info', { id: dev.id }); } catch (e) { throw Object.assign(e, { gone: true }); }

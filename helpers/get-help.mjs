@@ -286,11 +286,14 @@ export async function gather(id, deps = {}) {
 // ---------- made reports, by token, so the browser can only open a link DeviceHub built and checked ----------
 const made = new Map();   // token -> { url, at }
 const KEEP_MS = 30 * 60e3;
-function remember(url) {
+// exported for "Works on my device" (helpers/works-report.mjs): its link opens through the same open() below
+// check(text, names) -> [{ why }]: its own personal-data check for open() (works-report: a firmware version is not an IP)
+export function rememberLink(url, check = null) { return remember(url, check); }
+function remember(url, check = null) {
   const now = Date.now();
   for (const [k, v] of made) if (now - v.at > KEEP_MS || made.size > 20) made.delete(k);
   const token = crypto.randomBytes(12).toString('hex');
-  made.set(token, { url, at: now });
+  made.set(token, { url, at: now, check: typeof check === 'function' ? check : null });
   return token;
 }
 
@@ -309,7 +312,7 @@ export async function open(token, deps = {}) {
   if (!u.startsWith(`${ISSUES}?`) || u.length > MAX_URL || !SAFE_URL.test(u)) return { ok: false, error: 'That link is not one DeviceHub can open.' };
   const q = new URL(u).searchParams;
   const names = personalNames([...(options.names || []), ...(deps.names || [])]);
-  if (findPersonal(`${q.get('title')}\n${q.get('body')}`, names).length) return { ok: false, error: 'The report still looks personal, so it was not opened.' };
+  if ((m.check || findPersonal)(`${q.get('title')}\n${q.get('body')}`, names).length) return { ok: false, error: 'The report still looks personal, so it was not opened.' };
   await (deps.open || options.open)(u);
   return { ok: true, url: u };
 }
@@ -332,6 +335,8 @@ export async function handle(url, req, res, send, readBody) {
   const port = req.socket?.localPort || PORT;
   try {
     if (url.pathname === '/api/help/report' && req.method === 'GET') { send(res, 200, await report(url.searchParams.get('id'), { port })); return true; }
+    // "Works on my device" (helpers/works-report.mjs): the record to show; it opens through /api/help/open like a report
+    if (url.pathname === '/api/help/works' && req.method === 'GET') { const r = await (await import('./works-report.mjs')).report(url.searchParams.get('id'), { port }); send(res, 200, r); return true; }
     if (url.pathname === '/api/help/open' && req.method === 'POST') { const r = await open((await readBody(req))?.token); send(res, r.ok ? 200 : 400, r); return true; }
     send(res, 404, { error: 'no such help route' });
   } catch (e) { send(res, e.code === 404 ? 404 : e.code === 503 ? 503 : 400, { error: e.message }); }
