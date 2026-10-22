@@ -22,9 +22,12 @@ export function paintLive(root = document) {
     for (const art of root.querySelectorAll(`.art.art-${id}`)) {
       art.style.setProperty('--lvl', b ? String(Math.max(0.04, b.percent / 100)) : '0');
       art.style.setProperty('--lq', b ? levelColor(b) : '#8d919c');
-      const t = art.querySelector('.lq-text');
-      const text = b ? `${b.percent}%${b.charging ? ' ⚡' : ''}` : 'off';
-      if (t && t.textContent !== text) t.textContent = text;
+      // the number, its % smaller beside it; "off" alone when there is no reading; bubbles while charging
+      const n = art.querySelector('.lq-n'), u = art.querySelector('.lq-u');
+      const text = b ? String(b.percent) : 'off';
+      if (n && n.textContent !== text) n.textContent = text;
+      if (u) u.style.display = b ? '' : 'none';
+      art.classList.toggle('charging', !!b?.charging);
     }
   }
   const hv = devices.headset?.values || {};
