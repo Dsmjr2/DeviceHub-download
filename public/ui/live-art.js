@@ -43,15 +43,15 @@ export function paintLive(root = document) {
       art.classList.toggle('charging', !!b?.charging);
       art.classList.toggle('low', !!b && !b.charging && b.percent <= 20);
       art.classList.toggle('sleeping', !!b?.asleep);
+      art.classList.toggle('no-level', !b);
     }
   }
   const hv = devices.headset?.values || {};
   for (const art of root.querySelectorAll('.art.art-headset')) {
     if (hv.led) art.style.setProperty('--glowc', hv.led);
     art.style.setProperty('--logo', hv.logoBrightness == null ? '1' : String(Math.max(0.12, hv.logoBrightness / 100)));
-    // the mic tip green when live, red when muted (the volume waves beside the cups read as stray lines: removed)
+    // the mic tip red while muted, unlit otherwise (Shawn: "the end of the mic shouldnt be lit")
     const on = devices.headset?.status === 'connected' && hv.headsetOn !== false;
-    art.classList.toggle('mic-live', on && hv['prop:micEnabled'] !== false && !hv['mute:recording']);
     art.classList.toggle('mic-off', on && (hv['prop:micEnabled'] === false || !!hv['mute:recording']));
   }
   const kv = devices.keyboard?.values || {};

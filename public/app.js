@@ -192,7 +192,10 @@ onChange((id) => {
 window.addEventListener('hashchange', () => render(true));
 // the jump links go on every page as it is put in place, also when a page redraws itself (the Mouse page does)
 // and the Live look's readings go on every drawing as it is put in place (ui/live-art.js)
-new MutationObserver(() => { const p = $('#main > .page'); if (p && !p.querySelector(':scope > .jump')) jumpLinks(p); if (p) paintLive(p); }).observe($('#main'), { childList: true });
+new MutationObserver(() => { const p = $('#main > .page'); if (p && !p.querySelector(':scope > .jump')) jumpLinks(p); }).observe($('#main'), { childList: true });
+// the Live battery's readings go on every drawing the moment it appears anywhere in the page (21 Oct 2026: the Overview
+// swaps a card's drawing in place, and the new one showed no level)
+new MutationObserver((list) => { if (list.some((m) => [...m.addedNodes].some((n) => n.nodeType === 1 && (n.matches?.('.art') || n.querySelector?.('.art'))))) paintLive(); }).observe($('#main'), { childList: true, subtree: true });
 window.addEventListener('keydown', (e) => {
   if (e.altKey && /^[1-8]$/.test(e.key)) { e.preventDefault(); go(PAGES[Number(e.key) - 1].id); }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); }  // Search, from anywhere
