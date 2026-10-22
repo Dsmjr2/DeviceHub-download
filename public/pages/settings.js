@@ -199,11 +199,11 @@ function healthCard() {
 function appearanceCard() {
   const cur = document.documentElement.dataset.art || 'frosted';  // applyArtStyle has already mapped an old look to its new one
   return card([h('h2', {}, 'Appearance')],
-    h('p', { class: 'faint', style: { margin: '-4px 0 12px', fontSize: '13px' } }, 'How the devices are drawn.'),
     h('div', { class: 'art-styles' }, ...ART_STYLES.map(([key, name]) => h('button', { class: `art-style${key === cur ? ' sel' : ''}`, 'aria-pressed': String(key === cur), dataset: { look: key },
       onclick: async () => { await saveArtStyle(key); toast(`Drawings: ${name}`, 'good', { ms: 1400 }); rerender(); } },
       h('div', { class: 'art-preview', dataset: { artPreview: key } }, artFor.mouse(), artFor.headset(), artFor.keyboard()),
-      h('span', {}, name)))));
+      h('span', {}, name)))),
+    themeControls());
 }
 
 // the theme: the accent color (six swatches and any color) and the backdrop (21 Oct 2026)
@@ -212,8 +212,7 @@ function themeControls() {
   const pickAccent = async (hex, name) => { await saveTheme({ themeAccent: hex }); toast(`Accent: ${name}`, 'good', { ms: 1400 }); rerender(); };
   const bgName = THEME_BGS.find(([k]) => k === t.bg)?.[1];
   // two compact rows, the name of the picked one beside each (no hover text in this app)
-  return card([h('h2', {}, 'Theme')],
-    h('div', { class: 'theme-grid' },
+  return h('div', { class: 'theme-grid' },
       h('span', { class: 'theme-label' }, 'Accent'),
       h('div', { class: 'theme-row' },
         ...THEME_ACCENTS.map(([hex, name]) => h('button', { class: `theme-swatch${t.accent === hex ? ' sel' : ''}`, style: { '--s': hex }, 'aria-label': `${name} accent`, 'aria-pressed': String(t.accent === hex), onclick: () => pickAccent(hex, name) })),
@@ -222,7 +221,7 @@ function themeControls() {
       h('div', { class: 'theme-row' },
         ...THEME_BGS.map(([key, name, bg, pool]) => h('button', { class: `theme-swatch${t.bg === key ? ' sel' : ''}`, style: { '--s': `radial-gradient(circle at 35% 30%, rgba(${pool}, .95), rgba(${pool}, .35) 45%, ${bg} 80%)` }, 'aria-label': `${name} backdrop`, 'aria-pressed': String(t.bg === key),
           onclick: async () => { await saveTheme({ themeBg: key }); rerender(); } })),
-        h('span', { class: 'theme-name' }, bgName))));
+        h('span', { class: 'theme-name' }, bgName)));
 }
 
 // Reads every connected device twice and checks the two readings agree and pass their own checks. Writes nothing.
@@ -291,7 +290,7 @@ export default {
               const r = await (await fetch('/api/startup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: on }) })).json();
               startup = r.enabled; toast(startup ? 'DeviceHub will start with Windows' : 'DeviceHub will not start with Windows', 'good'); rerender();
             } })),
-          ...syncRows(), ...updatesRows()), themeControls()),
+          ...syncRows(), ...updatesRows())),
         h('div', { class: 'stack' }, healthCard(),
           card([h('h2', {}, 'DeviceHub')],
             row('Share DeviceHub', 'Download link to send to people.', button('Copy link', copyDownloadLink, { kind: 'small', ic: 'external' })),

@@ -109,7 +109,7 @@ export async function copyPrompt(u) {
 
 function pcLights() {
   const o = st.orgb;
-  const head = [h('h2', {}, 'PC lights'), h('span', { class: 'sub' }, 'through OpenRGB')];
+  const head = [h('h2', {}, 'PC lights')];
   if (!o) return card(head, h('p', { class: 'faint' }, 'Looking for OpenRGB…'));
   if (!o.running) {
     return card(head,

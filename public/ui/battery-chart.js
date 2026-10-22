@@ -96,7 +96,7 @@ export function batteryChart(id, redraw) {
   const days = ui.days[id];
   const box = h('div', { class: 'bc-box' }, h('div', { class: 'faint', style: { padding: '40px 0', textAlign: 'center' } }, 'Loading…'));
   const table = h('details', { class: 'bc-table' }, h('summary', {}, 'Readings'));
-  const el = card([h('h2', {}, 'Battery'), h('span', { class: 'sub' }, days > 1 ? 'last 7 days' : 'last 24 hours'), h('span', { class: 'spacer' }),
+  const el = card([h('h2', {}, 'Battery'), h('span', { class: 'spacer' }),
     segmented({ value: days, compact: true, options: [{ value: 1, label: '24 h' }, { value: 7, label: '7 days' }], onCommit: async (v) => { ui.days[id] = v; redraw(); } })],
     box,
     h('div', { class: 'bc-key' }, h('i'), 'Charging'),

@@ -233,7 +233,7 @@ const balanceText = (v) => (v === 0 ? 'Centered' : v > 0 ? `Right +${v} dB` : `L
 export function soundTools() {
   if (!APO() || !ui.eq?.extras) return null;
   const x = ui.eq.extras;
-  return card([h('h2', {}, 'Sound tools'), h('span', { class: 'sub' }, 'headset and mic')],
+  return card([h('h2', {}, 'Sound tools')],
     // AutoEq's measurement of the HS80: offered for an HS80 only (another headset would need its own measurement)
     !ui.eq.headsetModel || ui.eq.headsetModel === 'HS80' ? row('Natural sound', 'Evens out the HS80\'s tuning. Best with Pure Direct.',
       toggle({ value: x.correction, label: 'Natural sound', onCommit: (on) => setExtras({ correction: on }) })) : null,

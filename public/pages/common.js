@@ -34,8 +34,10 @@ export function undoButton(d) {
   }, { kind: 'ghost small', ic: 'undo', title: `${d.undo.count} change${d.undo.count === 1 ? '' : 's'} can be undone` });
 }
 
+// the page title alone (21 Oct 2026, Shawn: remove the small line above it and other unneeded wording); the eyebrow
+// and lede the pages pass are no longer shown
 export function topbar(eyebrow, title, lede, right) {
-  return h('div', { class: 'topbar' }, h('div', {}, eyebrow ? h('div', { class: 'eyebrow' }, eyebrow) : null, h('h1', {}, title), lede ? h('p', { class: 'lede' }, lede) : null), right || null);
+  return h('div', { class: 'topbar' }, h('div', {}, h('h1', {}, title)), right || null);
 }
 
 const VENDOR_NAMES = { pulsar: 'the Pulsar app', icue: 'iCUE', epomaker: "Epomaker's web driver", via: 'VIA' };
