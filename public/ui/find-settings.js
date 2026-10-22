@@ -5,7 +5,7 @@
 
 const FILES = { mouse: 'mouse', headset: 'headset', 'eq-panel': 'headset', 'mic-meter': 'headset', speakers: 'headset', keyboard: 'keyboard',
   lighting: 'lighting', 'pc-lights': 'lighting', monitors: 'monitors', 'camera-card': 'monitors', fans: 'fans', profiles: 'profiles',
-  backups: 'backups', settings: 'settings' };
+  backups: 'backups', settings: 'settings', supported: 'supported' };
 let index = null, loading = null;
 
 // moves the page itself (#main scrolls, not the window), set outright: scrollIntoView did nothing in a test window

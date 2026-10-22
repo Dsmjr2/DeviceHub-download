@@ -185,7 +185,7 @@ const HOSTS = new Set([`localhost:${PORT}`, `127.0.0.1:${PORT}`]);
 // Isolated test mode only (DEVICEHUB_ISOLATED=1): answers every route that would reach a device, the native helper,
 // iCUE, OpenRGB, Equalizer APO, Windows (sound, pointer, startup, processes, PnP/WMI reads), GitHub or another program,
 // and returns true. The routes left to api() read or write only files in this copy's own folder.
-const ISOLATED_PASS = new Set(['/api/version', '/api/windows', '/api/backup', '/api/backups', '/api/client-status', '/api/activity', '/api/settings', '/api/profiles', '/api/vendor-apps', '/api/quit']);
+const ISOLATED_PASS = new Set(['/api/version', '/api/windows', '/api/backup', '/api/backups', '/api/client-status', '/api/activity', '/api/settings', '/api/profiles', '/api/vendor-apps', '/api/quit', '/api/supported-devices']);
 function isolatedApi(req, res, url) {
   const p = url.pathname;
   if (ISOLATED_PASS.has(p) || (p.startsWith('/api/backups/') && req.method === 'GET')) return false;
@@ -542,6 +542,8 @@ async function api(req, res, url) {
   // Get the layout: a VIA keyboard's official definition file on the person's click (helpers/via-fetch.mjs, pinned sources)
   if (url.pathname.startsWith('/api/via-fetch')) { try { if (await (await import('./helpers/via-fetch.mjs')).handle(url, req, res, send, readBody)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   if (url.pathname.startsWith('/api/installers')) { try { if (await (await import('./helpers/installers.mjs')).handle(url, req, res, send, readBody)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
+  // the plain-words list of what DeviceHub supports (reads the library, opens no device)
+  if (url.pathname === '/api/supported-devices') { try { if (await (await import('./helpers/supported-devices.mjs')).handle(url, req, res, send)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   if (url.pathname.startsWith('/api/diagnose')) { try { return await (await import('./helpers/diagnose.mjs')).handle(url, req, res, send); } catch (e) { return send(res, 500, { error: e.message }); } }
   if (url.pathname === '/api/library' && req.method === 'GET') {
     try { const lib = await import('./helpers/device-library.mjs'); return send(res, 200, { matches: lib.match((await pcMap.get(url.searchParams.has('fresh'))).usb, { readOnly: true }) }); } catch (e) { return send(res, 500, { error: e.message }); }

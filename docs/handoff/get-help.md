@@ -12,7 +12,7 @@ helpers/get-help.mjs        GET /api/help/report?id=<device>, POST /api/help/ope
 public/ui/get-help.js       the Get help button and the report shown in place (no pop-ups, toasts or tooltips)
 public/pages/common.js      Get help at the bottom of the troubleshooting panel (built-in device pages, not connected)
 public/pages/my-device.js   Get help on an added device's "Waiting for" panel
-public/pages/settings.js    Settings > Health: a "Get help" row with a picker (DeviceHub in general, or one device)
+public/pages/settings.js    Settings > Get help (its own card under Startup since 22 Oct 2026): a picker (DeviceHub in general, or one device)
 helpers/share-device.mjs    personalText is now exported (one word); nothing else changed
 tests/get-help.mjs          offline: report built, personal data taken out or refused, link within the limit
 ```
@@ -72,7 +72,7 @@ line numbers and reasons, and there is no Open button (`ok: false`, no url, no t
   Until then the button answers "Could not build the report: Not Found" in place.
 - package.json: add `&& node tests/get-help.mjs` to both `test` and `test:offline`, after `node tests/share-route.mjs`.
 - CLAUDE.md, Checks (after the diagnose line):
-  `- Someone without Claude presses **Get help** (device page's troubleshooting panel, or Settings > Health): helpers/get-help.mjs shows a short report with anything personal taken out, then opens a filled-in GitHub issue on their click (docs/handoff/get-help.md).`
+  `- Someone without Claude presses **Get help** (device page's troubleshooting panel, or Settings > Get help): helpers/get-help.mjs shows a short report with anything personal taken out, then opens a filled-in GitHub issue on their click (docs/handoff/get-help.md).`
   and in the Map: `helpers/get-help.mjs      Get help: a short report, personal data taken out, a pre-filled GitHub issue opened on the person's click`
 
 ## Not checked

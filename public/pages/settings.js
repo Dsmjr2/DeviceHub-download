@@ -137,6 +137,8 @@ function toolsRows() {
   r.style.padding = '6px 0';
   return r;
 }
+// rows with Optional tools' tighter padding (null rows are left out by card())
+const tight = (...rows) => rows.map((r) => { if (r) r.style.padding = '6px 0'; return r; });
 let results = null;
 let upd = null, updLoading = false, guide = null;
 let rerender = () => {};
@@ -230,20 +232,23 @@ function healthCard() {
         line('Crashes today', x.crashes24h ? `${x.crashes24h}, restarted by itself` : 'none', !x.crashes24h),
         line('Last problem', x.lastProblem ? h('span', { title: x.lastProblem.text }, `${x.lastProblem.text.split(':')[0].slice(0, 40)} · ${ago(x.lastProblem.at)}`) : 'none', !x.lastProblem || Date.now() - new Date(x.lastProblem.at) > 24 * 3600 * 1000),
         line('Backups', `${x.backups.count} · ${x.backups.mb} MB`, true),
-        dailyLine(line)),
-    isDemo() ? null : helpRow());
+        dailyLine(line)));
 }
 
 // Get help (22 Oct 2026; helpers/get-help.mjs): a short report about one device or DeviceHub in general, shown here in
-// full; a filled-in GitHub issue opens only on the person's click, and they press Submit there
+// full; a filled-in GitHub issue opens only on the person's click, and they press Submit there. Its own card under
+// Startup since 22 Oct 2026 (it was in Health, and the third column no longer fitted one screen at 1650 x 910)
 let helpFor = '';
-function helpRow() {
+function helpCard() {
+  if (isDemo()) return null;
   const pick = h('select', { 'aria-label': 'What the report is about', onchange: (e) => { helpFor = e.target.value; } },
     h('option', { value: '' }, 'DeviceHub in general'),
     ...Object.values(devices).filter((d) => d?.adapter).map((d) => h('option', { value: d.id, selected: d.id === helpFor }, d.adapter.title || d.id)));
-  return h('div', { style: { marginTop: '14px' } },
-    row('Get help', 'Builds a short report and shows it here first. GitHub opens only when you press Open on GitHub; you press Submit there.', pick),
-    getHelp('health', () => helpFor));
+  // compact (Settings must fit one screen at 1650 x 910): the picker in the heading, the button under it; the report
+  // opens in place below the button only when asked for
+  const box = getHelp('health', () => helpFor);
+  box.style.marginTop = '0';
+  return card([h('h2', {}, 'Get help'), h('span', { class: 'spacer' }), pick], box);
 }
 
 // Appearance: how the device drawings look, picked from a live preview of each style.
@@ -341,13 +346,18 @@ export default {
               const r = await (await fetch('/api/startup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: on }) })).json();
               startup = r.enabled; toast(startup ? 'DeviceHub will start with Windows' : 'DeviceHub will not start with Windows', 'good'); rerender();
             } })),
-          ...syncRows(), ...updatesRows())),
+          // Optional tools sits here with the updates since 22 Oct 2026 (it was in the DeviceHub card; the third column
+          // no longer fitted one screen at 1650 x 910)
+          ...syncRows(), toolsRows(), ...updatesRows()), helpCard()),
         h('div', { class: 'stack' }, healthCard(),
-          card([h('h2', {}, 'DeviceHub')],
+          // its rows as tight as Optional tools' (22 Oct 2026: the Supported devices row was added without making the
+          // column taller than it was)
+          card([h('h2', {}, 'DeviceHub')], ...tight(
             row('Share DeviceHub', 'Download link to send to people.', button('Copy link', copyDownloadLink, { kind: 'small', ic: 'external' })),
-            toolsRows(),
+            // the devices DeviceHub runs and what each gets (pages/supported.js, 22 Oct 2026): a page of its own, not a dialog
+            row('Supported devices', 'Which devices work, and what each gets.', button('Show', () => { location.hash = '#/supported'; }, { kind: 'ghost small' })),
             isDemo() ? null : row('Files', 'Where DeviceHub keeps its data.', button('Open folder', () => fetch('/api/reveal', { method: 'POST' }), { kind: 'ghost small', ic: 'external' })),
             isDemo() ? null : row('Demo mode', 'Try it with pretend devices.', button('Open demo', () => window.open('/?demo#/overview', '_blank'), { kind: 'ghost small', ic: 'play' })),
-            isDemo() ? null : row('Uninstall', 'Removes DeviceHub. Backups are kept.', button('Uninstall', uninstall, { kind: 'ghost small danger' }))))));
+            isDemo() ? null : row('Uninstall', 'Removes DeviceHub. Backups are kept.', button('Uninstall', uninstall, { kind: 'ghost small danger' })))))));
   },
 };

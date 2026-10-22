@@ -170,6 +170,7 @@ helpers/fetch-bundled.mjs   the bundled tools for the zip (helpers/bundled-tools
 helpers/get-help.mjs      Get help: a short report, personal data taken out, a pre-filled GitHub issue opened on click
 helpers/learn-wizard.mjs   Learn a device: USB recordings -> driver.json (settings, readings, a second USB id), read-only toward the device (public/pages/learn.js)
 helpers/declarative-driver.mjs   driver.json drivers (docs/DRIVER-FORMAT.md): checked, then run with the device.mjs contract
+helpers/supported-devices.mjs   Supported devices: the plain-words list (public/pages/supported.js; Settings > DeviceHub > Show, Search)
 device-library/            shared drivers by USB id (README.md); helpers/device-library.mjs finds and installs them,
                            helpers/share-device.mjs makes one from a working my-devices driver (refuses personal files)
 helpers/vendor-files.mjs   what makers' apps left on the PC (model names, ids, setting names), read-only
@@ -340,7 +341,7 @@ stand-in server written from OpenRGB's protocol document.
   test window on the second screen).
 - `node helpers/soak-test.mjs [rounds]`: every writable setting written with the value it already has, read back.
 - Settings > Self-test inside the app, and Settings > Health.
-- Someone without Claude presses **Get help** (device page's troubleshooting panel, or Settings > Health):
+- Someone without Claude presses **Get help** (device page's troubleshooting panel, or Settings > Get help):
   helpers/get-help.mjs shows a short report with anything personal taken out, then opens a filled-in GitHub issue on
   their click (docs/handoff/get-help.md).
 - **When a device does not work, call `GET http://127.0.0.1:5577/api/diagnose?id=<device>` first** (or

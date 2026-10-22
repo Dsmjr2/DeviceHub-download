@@ -21,6 +21,7 @@ import monitorsPage from './pages/monitors.js';
 import fansPage from './pages/fans.js';
 import settingsPage from './pages/settings.js';
 import learnPage from './pages/learn.js';
+import supportedPage from './pages/supported.js';
 import { devicePage } from './pages/my-device.js';
 import { commands } from './core/commands.js';
 import { startAutoSwitch, loadSettings, auto } from './core/autoswitch.js';
@@ -43,7 +44,7 @@ const LOCAL = !DEMO && !AGENT;
 const adapters = DEMO ? demoAdapters() : [mouse, headset, keyboard];
 if (!REMOTE) adapters.forEach(register);
 
-const PAGES = [overview, mousePage, headsetPage, keyboardPage, lightingPage, monitorsPage, fansPage, profilesPage, backupsPage, settingsPage, learnPage];
+const PAGES = [overview, mousePage, headsetPage, keyboardPage, lightingPage, monitorsPage, fansPage, profilesPage, backupsPage, settingsPage, learnPage, supportedPage];
 // devices added on this PC (my-devices/, 21 Oct 2026): a page each, after the built-in devices
 if (REMOTE) for (const d of Object.values(devices)) if (d.adapter?.plugin) PAGES.splice(PAGES.indexOf(lightingPage), 0, devicePage(d.id));
 let current = null;
@@ -79,7 +80,7 @@ function buildRail() {
     h('div', { class: 'nav-label' }, 'Desk'),
     ...PAGES.filter((p) => ['lighting', 'monitors', 'fans'].includes(p.id)).map(navBtn),
     h('div', { class: 'nav-label' }, 'App'),
-    // rail: false = reached from another page only (none today; Learn a device is listed here too, 22 Oct 2026)
+    // rail: false = reached from another page only (Supported devices: Settings and Search; Learn a device is listed here too, 22 Oct 2026)
     ...PAGES.filter((p) => !p.device && p.id !== 'overview' && p.rail !== false && !['lighting', 'monitors', 'fans'].includes(p.id)).map(navBtn),
     h('div', { class: 'rail-foot' },
       h('button', { class: 'cmd-hint', onclick: openPalette }, icon('search'), h('span', {}, 'Search'), h('kbd', { class: 'cmd-kbd' }, 'Ctrl K'))),
