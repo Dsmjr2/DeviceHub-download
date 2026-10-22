@@ -1,0 +1,55 @@
+# The device library
+
+Drivers for devices DeviceHub does not run by itself, written by someone who has the device (usually with their
+Claude) and shared so the next person with the same device simply gets it. It ships with DeviceHub.
+
+Each entry is one folder, `device-library\<vendor-product>\` (a-z, 0-9 and `-`, for example `logitech-g-pro-x`):
+
+- `device.mjs`: the driver, exactly as it runs in `my-devices\` (see "Adding your own devices" in CLAUDE.md and
+  `helpers\my-devices.mjs`).
+- `device.json`: what it is and how far it was tested:
+
+```text
+{
+  "id": "logi-gpro-x",               "the driver's id (device.mjs id)"
+  "vendor": "Logitech", "product": "G Pro X Superlight", "kind": "Mouse",
+  "vid": "046d", "pids": ["c547", "c094"],          "every product id it answers on (receiver, cable)"
+  "models": ["G Pro X Superlight"],
+  "works": ["DPI", "polling rate", "battery"],      "what was checked to work"
+  "doesNotWork": ["firmware updates"],
+  "status": "tested",                               "tested | read-only | untested"
+  "tested": [{ "by": "a public name", "date": "2026-10-22", "devicehub": "0.1.0", "how": "each setting written once and read back" }]
+}
+```
+
+`status` means:
+- **tested**: every setting was written once and read back on the real device. Only these install by themselves.
+- **read-only**: the driver reads the device correctly; its writes were not tried. Offered, not installed.
+- **untested**: written from a protocol description, not yet run on the device. Offered, not installed.
+
+## How it is used
+
+`helpers\device-library.mjs` compares the PC's USB devices (vendor and product ids, as `/api/pc` lists them) with the
+entries. `installFromLibrary(name)` copies a tested entry into `my-devices\<name>\` (never over a folder that is
+already there) and DeviceHub loads it on its next start. Nothing in the library is ever changed by that.
+
+## How to add one
+
+From a driver that works in `my-devices\`:
+
+```
+node helpers\share-device.mjs <my-devices folder> --status tested --by <a public name>
+```
+
+It copies `device.mjs`, writes `device.json`, and refuses the whole folder if anything in it is personal: backups,
+logs, USB captures (`*.pcap`, `*.pcapng`), settings dumps, memory dumps, serial numbers, device instance ids,
+Bluetooth addresses, e-mail addresses, the PC's user or computer name, or paths with a user's name. It lists every
+file and line it refused. Then it prints the steps to send the entry in: a pull request to
+[Dsmjr2/DeviceHub-download](https://github.com/Dsmjr2/DeviceHub-download), made by the person. DeviceHub never sends
+anything for them.
+
+Every rule in CLAUDE.md applies to a library driver as to any other: no firmware, resets or bootloader commands, only
+bytes seen in a capture or documented, one setting at a time with a read-back.
+
+Folders starting with `_` are examples. `_example-light` is a pretend light (FFFF:FFE0 is not a real product) that is
+offered and installs only in demo and tests (`DEVICEHUB_EXAMPLE_DEVICE=1`).

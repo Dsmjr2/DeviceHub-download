@@ -497,6 +497,25 @@ async function api(req, res, url) {
     try { return send(res, 200, await pcMap.bluetooth(url.searchParams.has('fresh'))); } catch (e) { return send(res, 500, { error: e.message }); }
   }
   if (url.pathname === '/api/openrgb') return send(res, 200, await openrgb.status(url.searchParams.has('fresh')));
+  // Less learning for other people's devices (22 Oct 2026): the shared device library, standard batteries and
+  // standard lights. Read-only, except the library install, which copies a tested driver into my-devices\ only.
+  if (url.pathname === '/api/library' && req.method === 'GET') {
+    try { const lib = await import('./helpers/device-library.mjs'); return send(res, 200, { matches: lib.match((await pcMap.get(url.searchParams.has('fresh'))).usb) }); } catch (e) { return send(res, 500, { error: e.message }); }
+  }
+  if (url.pathname === '/api/library/install' && req.method === 'POST') {
+    try {
+      const lib = await import('./helpers/device-library.mjs');
+      const r = await lib.installFromLibrary((await readBody(req)).name);
+      if (r?.ok) serverLog({ kind: 'good', text: `Device library: ${r.name || 'a driver'} installed (restart DeviceHub to load it)` });
+      return send(res, r?.ok ? 200 : 400, r);
+    } catch (e) { return send(res, 400, { error: e.message }); }
+  }
+  if (url.pathname === '/api/std-battery') {
+    try { const sb = require('./helpers/std-battery'); return send(res, 200, { bluetooth: await sb.read({ fresh: url.searchParams.has('fresh') }), hid: await sb.hidBatteryCaps() }); } catch (e) { return send(res, 500, { error: e.message }); }
+  }
+  if (url.pathname === '/api/lamparrays') {
+    try { const { findLampArrays } = await import('./helpers/lamparray.mjs'); return send(res, 200, { lamparrays: (await findLampArrays()).map(({ fields, ...d }) => d) }); } catch (e) { return send(res, 500, { error: e.message }); }
+  }
   if (url.pathname === '/api/openrgb/color' && req.method === 'POST') {
     const { target, hex } = await readBody(req);
     try { const r = await openrgb.setColor(target ?? 'all', String(hex)); serverLog({ kind: 'good', text: `PC lights (${r.changed.join(', ')}) → ${hex}` }); return send(res, 200, r); }

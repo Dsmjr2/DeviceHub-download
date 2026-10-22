@@ -44,6 +44,30 @@ value formats, each cited to the open project it comes from), safe reads vs risk
 - [Turtle Beach and ROCCAT](brands/turtle-beach.md): battery on the newest headsets (Airoha RACE), ROCCAT mice and
   keyboards. Gap: no open project sets any Turtle Beach headset setting; it would have to be learned.
 
+The next six (researched the same day, same layout):
+
+- [HyperX](brands/hyperx.md): six headset message formats (Cloud III Wireless, Alpha, II, Flight...). Warning: some
+  "reads" change things (one unmutes the Cloud II, one resets the Cloud III's pairing); no mouse DPI is documented.
+- [ASUS ROG](brands/asus-rog.md): one command family over ordinary output reports for mice (8K polling), keyboards and
+  headsets, from G-Helper; no feature reports needed. Gap: Delta S.
+- [Glorious](brands/glorious.md): feature-report protocols; the Sinowealth chip id is shared with other brands (a wrong
+  write has bricked Redragon keyboards), so match product id and firmware before any write. GMMK Pro/2 are QMK/VIA.
+- [Keychron](brands/keychron.md): VIA (which DeviceHub already speaks) plus Keychron's own commands for debounce,
+  sleep timers and report rate; Pro/Max/HE boards need Keychron's JSON file. Mice are undocumented.
+- [Wooting](brands/wooting.md): per-key lights and live key depth from Wooting's own open SDKs (feature reports);
+  actuation and rapid trigger only in Wootility.
+- [Cooler Master](brands/cooler-master.md): only lighting is documented (OpenRGB); DPI, polling and battery are not.
+
+## What needs no learning at all (22 Oct 2026)
+
+- **The shared device library** (`device-library/`): a driver one person made is matched to the next person's USB
+  id and installed for them.
+- **Batteries Windows already knows** (any Bluetooth device) and devices that declare the standard HID battery fields.
+- **Windows Dynamic Lighting (HID LampArray)** lights, from the device's own description.
+- **What the maker's app left on the PC** (model names, ids, setting names), read in place.
+- And for what is left, Claude changes the settings in the maker's app itself during a learning session
+  (`helpers/app-ui.ps1`), so the person only says yes once.
+
 ## What already works for anyone, whatever the brand
 
 These need nothing per brand, so a new user gets them on day one:

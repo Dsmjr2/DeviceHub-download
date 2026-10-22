@@ -42,7 +42,7 @@ export async function load(root, { register, addSpec, taken }) {
   let names = [];
   try { names = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name); } catch { return out; }
   for (const name of names.sort()) {
-    if (/^[_.]/.test(name) && !(name === '_example' && process.env.DEVICEHUB_EXAMPLE_DEVICE === '1')) continue;
+    if (/^[_.]/.test(name) && !(/^_example(-[a-z0-9-]+)?$/.test(name) && process.env.DEVICEHUB_EXAMPLE_DEVICE === '1')) continue;  // _example-*: the device library's example, installed
     const file = path.join(dir, name, 'device.mjs');
     if (!fs.existsSync(file)) { out.push({ name, error: 'no device.mjs in it' }); continue; }
     try {

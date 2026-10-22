@@ -17,6 +17,7 @@ public class HidIo : IDisposable {
   byte[] pendingBuf;
 
   public HidIo(string path, int reportLength, byte reportId) {
+    this.path = path;
     var h = CreateFile(path, 0xC0000000, 3, IntPtr.Zero, 3, 0x40000000, IntPtr.Zero);
     if (h.IsInvalid) throw new Exception("open failed " + Marshal.GetLastWin32Error());
     fs = new FileStream(h, FileAccess.ReadWrite, reportLength + 1, true);
@@ -46,7 +47,57 @@ public class HidIo : IDisposable {
     }
   }
 
-  public void Dispose() { fs.Dispose(); }
+  // ---- feature reports (22 Oct 2026: devices that speak a standard, HID LampArray first; Razer, SteelSeries, ROCCAT) ----
+  // On their own handle, opened without overlapped I/O on first use, so HidD_SetFeature / HidD_GetFeature wait for the
+  // device's answer and never meet the read kept in flight above. The buffer is always the collection's feature
+  // report length from Windows' parsed descriptor (byte 0 the report id), which is what hid.dll expects.
+  [DllImport("hid.dll", SetLastError = true)] static extern bool HidD_SetFeature(SafeFileHandle h, byte[] b, int len);
+  [DllImport("hid.dll", SetLastError = true)] static extern bool HidD_GetFeature(SafeFileHandle h, byte[] b, int len);
+  [DllImport("hid.dll")] static extern bool HidD_GetPreparsedData(SafeFileHandle h, out IntPtr pp);
+  [DllImport("hid.dll")] static extern bool HidD_FreePreparsedData(IntPtr pp);
+  [DllImport("hid.dll")] static extern int HidP_GetCaps(IntPtr pp, byte[] caps);
+  readonly string path;
+  SafeFileHandle feat;
+  int featLen = -1;
+
+  SafeFileHandle FeatureHandle() {
+    if (feat != null) return feat;
+    var h = CreateFile(path, 0xC0000000, 3, IntPtr.Zero, 3, 0, IntPtr.Zero);
+    if (h.IsInvalid) throw new Exception("open failed " + Marshal.GetLastWin32Error());
+    IntPtr pp; int n = 0;
+    if (HidD_GetPreparsedData(h, out pp)) { var c = new byte[64]; HidP_GetCaps(pp, c); n = BitConverter.ToUInt16(c, 8); HidD_FreePreparsedData(pp); }
+    feat = h; featLen = n;
+    return feat;
+  }
+
+  // The collection's feature report length with its report id byte (0: it has no feature reports).
+  public int FeatureLength { get { FeatureHandle(); return featLen; } }
+
+  // Sends one feature report: report[0] is its id, the rest its data (padded with zeros to the report length).
+  // false when the collection has none, the report is too long, or the device refused it; a device that is gone throws.
+  public bool FeatureSet(byte[] report) {
+    var h = FeatureHandle();
+    if (featLen <= 0 || report.Length > featLen) return false;
+    var b = new byte[featLen]; Array.Copy(report, b, report.Length);
+    if (HidD_SetFeature(h, b, b.Length)) return true;
+    if (Marshal.GetLastWin32Error() == 1167) throw new Exception("device not connected");  // ERROR_DEVICE_NOT_CONNECTED
+    return false;
+  }
+
+  // Reads feature report `id`: its first `len` data bytes, without the report id; null when the collection has none,
+  // `len` is longer than its reports, or the device did not answer it; a device that is gone throws.
+  public byte[] FeatureGet(byte id, int len) {
+    var h = FeatureHandle();
+    if (featLen <= 0 || len < 0 || len > featLen - 1) return null;
+    var b = new byte[featLen]; b[0] = id;
+    if (!HidD_GetFeature(h, b, b.Length)) {
+      if (Marshal.GetLastWin32Error() == 1167) throw new Exception("device not connected");
+      return null;
+    }
+    var r = new byte[len]; Array.Copy(b, 1, r, 0, len); return r;
+  }
+
+  public void Dispose() { fs.Dispose(); if (feat != null) feat.Dispose(); }
 }
 
 // Reports a device sends by itself (21 Oct 2026: the Pulsar mouse announces a DPI button press, command 0A), on a

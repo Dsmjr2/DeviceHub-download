@@ -29,6 +29,12 @@ asked for each part; stop only where a step below says to ask. Say in a line or 
      already runs; `name` can be empty, then take the model from `/api/agent/state` or BRANDS.md).
    - `/api/monitors`, `/api/cameras`, `/api/eq` (`engine: "eqapo"` = Equalizer APO is installed; `notOn` lists headset
      sound devices it is not switched on for), `/api/openrgb` (PC lights).
+   - **What needs no learning at all** (22 Oct 2026): `/api/library` (the shared device library: a driver someone
+     else already made for the same USB id; a "tested" one is installed with `POST /api/library/install {name}`, then
+     a restart), `/api/std-battery` (any Bluetooth device's battery from Windows, and USB devices that declare the
+     standard HID battery fields), `/api/lamparrays` (lights that speak Windows Dynamic Lighting, HID LampArray).
+   - What the maker's app left on the PC, read-only: `node helpers/vendor-files.mjs --vid <vid> --summary` (model
+     names, product ids, setting names; see "Adding your own devices" step 2).
    For each USB device DeviceHub does **not** already run, look its vendor id up in `docs/BRANDS.md` (and, for Logitech,
    Razer, Corsair, SteelSeries and Turtle Beach/ROCCAT, its sheet in `docs/brands/`: find the model there by product
    id; a model a sheet does not list, or lists as unconfirmed, is identified from its USB name and the `hid-caps`
@@ -41,8 +47,9 @@ asked for each part; stop only where a step below says to ask. Say in a line or 
      DDC/CI, webcams, and Windows sound (or that Equalizer APO is needed for the EQ, with the Headset page's button);
    - PC lights: the board, graphics card and RAM `/api/pc` found, and that their lights go through OpenRGB 1.1 or newer
      with its SDK server on (motherboard and RAM also need PawnIO), only if the person wants them;
-   - for each other device: whether its protocol is known (its brand sheet in `docs/brands/` maps it, or an open
-     project in BRANDS.md knows it) or needs a learning session, and what that needs from them.
+   - for each other device, the cheapest way in, in this order: a library driver; a standard (Bluetooth battery,
+     LampArray lights, VIA); its brand sheet in `docs/brands/`; an open project in BRANDS.md; and only then a learning
+     session, which Claude runs itself in the maker's app (step 3 of "Adding your own devices").
 4. **Then build, one device at a time, without waiting to be asked for each** (do not stop between steps), following "Adding your own devices"
    from step 2 (the most popular brand first; a device with a brand sheet before one that has to be learned). A keyboard with VIA needs no
    code: check it shows up with its layout. Ask before any download or install (Equalizer APO, USBPcap, a maker's
@@ -66,6 +73,8 @@ them together, in `%USERPROFILE%\DeviceHub`:
    the person when the two really cannot both stay.
 3. Check: `runtime\node.exe tests\check.mjs` (or `node tests/check.mjs`), then commit the merge.
 4. Restart DeviceHub so it runs the new code (the tray icon's Quit, then the DeviceHub shortcut).
+A driver the person shared sits in `device-library\` as an untracked folder; if `git merge` stops with "untracked
+working tree files would be overwritten", move that folder aside (it is already sent as a pull request) and merge again.
 Never `git reset --hard origin/app`, `git checkout -- .` or a reinstall with `-Overwrite` unless the person says to
 drop their changes. Anything they added in `my-devices\` is theirs and is never in conflict.
 A copy without that history (installed before 21 Oct 2026, or without git) updates as whole versions and refuses to
@@ -118,6 +127,13 @@ public/pages/              one page per sidebar entry (mouse.js, headset.js, key
 public/ui/art.js, img/     the device drawings and product photos (the Realistic look)
 public/devices/demo.js     pretend devices for demo mode
 public/core/brands.js      the brand guide (made from docs/brands.json by helpers/make-brands.mjs; docs/BRANDS.md)
+device-library/            shared drivers by USB id (README.md); helpers/device-library.mjs finds and installs them,
+                           helpers/share-device.mjs makes one from a working my-devices driver (refuses personal files)
+helpers/vendor-files.mjs   what makers' apps left on the PC (model names, ids, setting names), read-only
+helpers/std-battery.js     batteries Windows already knows (Bluetooth) and the standard HID battery fields, read-only
+helpers/lamparray.mjs      Windows Dynamic Lighting / HID LampArray: finder (read-only), attributes, one color, hand back
+helpers/app-ui.ps1         Windows UI Automation on a maker's app: list, get, set, click (refuses firmware/reset/update)
+docs/brands/, TOP-BRANDS.md  per-brand mapping sheets (ids, protocol, settings map, safe reads, build plan)
 helpers/pc-map.js          This PC, read-only: CPU, graphics card, board, RAM, USB devices (Lighting page)
 helpers/openrgb.js         PC lights through OpenRGB's SDK server (127.0.0.1:6742), backed up and read back
 helpers/camera.cs, .js     webcam picture settings (DirectShow's standard controls), backed up, one at a time, read back
@@ -137,8 +153,26 @@ the person (a download or install, a learning session, or a check in the maker's
 1. **Find out what is plugged in (read-only).** List the HID devices and their collections:
    `powershell -NoProfile -ExecutionPolicy Bypass -File helpers\hid-caps.ps1 -Vid <vendor id>` (the vendor id is in `/api/pc?fresh=1`'s USB list). Write down vendor id, product id, the vendor usage page (0xFF..) and report
    lengths. Note the exact model and whether it has a dongle and a cable (often two product ids).
-2. **Look for a known protocol before learning anything.** First the brand's **mapping sheet** if it has one
-   (`docs/brands/logitech.md`, `razer.md`, `corsair.md`, `steelseries.md`, `turtle-beach.md`; overview in
+2. **Look for a known protocol before learning anything.**
+   - **The library first:** `/api/library` (`helpers/device-library.mjs`). A matching "tested" entry is installed
+     and needs no learning; a "read-only" or "untested" one is the starting point, proven per step 6 before its writes
+     are used.
+   - **Then what the maker's app already left on the PC (read-only):** `node helpers/vendor-files.mjs --vid <vid>
+     --summary` reads the app's own JSON/XML/INI/SQLite/asar files in place (runs nothing, writes nothing): the product
+     ids and model names it knows, each model's saved setting names and values, and any ranges or command bytes it
+     keeps as plain text (rare: most apps keep the protocol compiled). Use it to name the model and the settings to
+     look for; check every id with a read, and treat command bytes from it as unconfirmed until seen in a capture.
+     Where each app keeps what: `docs/handoff/vendor-files.md`.
+   - **Standards need no learning:** a battery Windows already knows (Bluetooth, or the standard HID battery fields:
+     `helpers/std-battery.js`, `/api/std-battery`; a my-devices driver's `battery()` can take its level from
+     `read()`, matched by vid/pid) and **Windows Dynamic Lighting (HID LampArray, usage page 0x59)**:
+     `helpers/lamparray.mjs` finds them read-only (`findLampArrays()`, `/api/lamparrays`), reads their attributes and
+     lamps from the device's own descriptor, sets one color and hands control back (AutonomousMode). Turn off Windows'
+     Dynamic Lighting for that device first. Lamp colors cannot be read back (the standard has no way); read the
+     attributes before and after instead.
+   Then the brand's **mapping sheet** if it has one
+   (`docs/brands/`: logitech, razer, corsair, steelseries, turtle-beach, hyperx, asus-rog, glorious, keychron,
+   wooting, cooler-master; overview in
    `docs/TOP-BRANDS.md`): its models with USB ids, how they talk, a settings map with every id cited to its source, the
    safe reads, the risky writes to never send, and a build plan to follow in its order. Anything a sheet marks
    unconfirmed is checked on the device with a read before it is used, never assumed. Then `docs/BRANDS.md`: the 10 most popular brands
@@ -162,16 +196,26 @@ the person (a download or install, a learning session, or a check in the maker's
    - **Settings kept on the device** (Logitech onboard profiles and the like): DeviceHub changes the live settings;
      say once in a line that the maker's app may show them as changed. Never write onboard profile memory itself (the
      sheets mark it high risk).
-   - **Feature reports:** Razer, many SteelSeries keyboards and ROCCAT devices talk through HID *feature* reports.
-     DeviceHub's HID layer sends output reports only (`sendReport` in `helpers/hid-host.mjs`, the native helper's
-     `REQ`). This is the one core change a new device may need, and it is allowed: add `sendFeatureReport(id, data)`
-     and `receiveFeatureReport(id)` to `HostDevice` in `helpers/hid-host.mjs`, backed by two native helper commands
-     over `HidD_SetFeature` / `HidD_GetFeature` (hid.dll) beside `REQ`, then use them from the device's `my-devices`
-     driver. Everything else of the device stays in `my-devices\`.
+   - **Feature reports** (Razer, many SteelSeries keyboards, ROCCAT, Glorious, Wooting, LampArray): `sendFeatureReport(id,
+     data)` / `receiveFeatureReport(id, length)` on `HostDevice` (`helpers/hid-host.mjs`, the helper's `FSET` / `FGET`
+     over `HidD_SetFeature` / `HidD_GetFeature`, 22 Oct 2026), used from the device's `my-devices` driver. Untried on
+     a real device yet: check the first one with a read before any write.
 3. **Learn it by listening (read-only, needs the person's yes for USBPcap).** With USBPcap installed:
    `helpers/usb-find.ps1` finds the device's capture number, `helpers/hs80-learn.ps1 -Match '<USB name>'` records while
    the person changes ONE setting in the maker's app, `node helpers/pcap-read.mjs <capture>` prints the messages.
-   Change one setting at a time, from one known value to another, and write down which bytes moved. For devices with a
+   Change one setting at a time, from one known value to another, and write down which bytes moved.
+   **Claude changes the setting itself** (22 Oct 2026): at the start of the session ask once, "I'll change the
+   settings in <maker's app> myself, one at a time, while it records: OK?" With that yes, open the app (or ask the
+   person to), then `powershell -NoProfile -ExecutionPolicy Bypass -File helpers\app-ui.ps1 list -Window '<app>'`
+   to find each setting. For each one: start `hs80-learn.ps1 -Name <setting>-<from>-<to>`, wait 3 s, run
+   `app-ui.ps1 set -Window '<app>' -Name '<setting>' -Value <to>` (or `click` for an Apply/Save button the app needs),
+   wait for the recording to end, then put the old value back the same way, so the device ends as it started. Write
+   down app-ui's `old -> new (read back ...)` line beside the capture. app-ui refuses anything named firmware, update,
+   reset, factory, flash, bootloader, delete or format, and never presses them. If `list` exits 3 (the app shows UI
+   Automation nothing; common with Electron apps), a `set` exits 1 (an ARIA slider ignored the value; `-UseKeys` may
+   move it), or a setting is not in the list, fall back to asking the person to change that one setting. Never turn on
+   a screen reader, change a Windows setting or restart the maker's app with extra flags to make it visible without
+   asking. Details: docs/handoff/app-ui.md. For devices with a
    readable settings memory, a read-and-compare tool like `helpers/mouse-learn.mjs` (read-only) shows which bytes a
    setting lives in. Record every finding (bytes, values, what the app showed) in the protocol file's comments.
 4. **Write the driver in its own folder: `my-devices\<name>\device.mjs`** (21 Oct 2026). Copy `my-devices\_example\`
@@ -196,6 +240,10 @@ the person (a download or install, a learning session, or a check in the maker's
    values you list, then close it again). Then one write per setting: read the current value,
    write a different valid value, read back, put the original back, read back. `node helpers/soak-test.mjs 1` writes
    every setting with its own value. Then `npm test`.
+7. **Share it, so the next person needs no learning.** When it works, offer once: "Share this driver so others with
+   the same <model> get it without any setup?" On a yes, `node helpers/share-device.mjs <my-devices folder> --status
+   tested --by <a name they choose>`. It refuses anything personal (backups, captures, logs, serial numbers, user
+   names) and lists what it refused; the person opens the pull request it describes themselves.
 
 **Headset sound** works for **any USB headset** with nothing to add (20 Oct 2026): with no HS80, the headset slot runs
 the first USB headset Windows has (a USB device with a headphones or headset output and a mic: `usb-headsets` in
@@ -215,13 +263,17 @@ back (Lighting > PC lights). Use OpenRGB 1.1 or newer (1.0 mixed up device numbe
 versions below 6, which DeviceHub uses). On Windows, motherboard and RAM lights also need PawnIO (pawnio.eu, a signed
 kernel driver) with OpenRGB run as administrator or as its background service: the person's own decision, never
 installed for them. Windows Dynamic Lighting devices are counted on This PC; control stays in Windows Settings
-(a background controller must be a packaged app). `node tests/openrgb-mock.mjs` tests the OpenRGB client against a
+(a background controller must be a packaged app), or, with Windows' Dynamic Lighting turned off for it, DeviceHub
+through `helpers/lamparray.mjs`. `node tests/openrgb-mock.mjs` tests the OpenRGB client against a
 stand-in server written from OpenRGB's protocol document.
 
 ## Checks
 
 - `npm test`: every script parses, no stray control characters, JSON valid, then every page opened live and in demo
   without a script error (the page part needs DeviceHub running). `npm run test:offline` is the first part only.
+- The new building blocks' tests run in `npm test` (device-library, lamparray, std-battery, vendor-files).
+  `powershell -NoProfile -ExecutionPolicy Bypass -File tests\app-ui.ps1` is optional (about 25 s; it opens a small
+  test window on the second screen).
 - `node helpers/soak-test.mjs [rounds]`: every writable setting written with the value it already has, read back.
 - Settings > Self-test inside the app, and Settings > Health.
 

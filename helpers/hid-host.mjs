@@ -154,6 +154,32 @@ class HostDevice {
     setTimeout(() => { for (const fn of [...this.listeners]) fn(e); }, 0);
   }
 
+  // Feature reports (22 Oct 2026; HID LampArray in helpers/lamparray.mjs, and Razer, SteelSeries, ROCCAT), in WebHID's
+  // shape, over the helper's FSET / FGET (helpers/hidio.cs FeatureSet / FeatureGet, HidD_SetFeature / HidD_GetFeature).
+  // sendFeatureReport(id, data): data without the report id; resolves when the device took it, else throws
+  // (gone: true when unplugged). receiveFeatureReport(id, length): a DataView that, as in WebHID, starts with the report
+  // id when id is not 0; length = data bytes wanted (spec.featureLen, else spec.len, when left out).
+  async sendFeatureReport(id, data) {
+    return this.serial(async () => {
+      if (!this.opened) throw this.gone();
+      const hex = [id, ...Array.from(data)].map((b) => (b & 0xff).toString(16).padStart(2, '0')).join(' ');
+      const r = await this.line(`FSET ${hex}`, 5000);
+      if (r === 'GONE') throw this.gone();
+      if (r !== 'OK') throw new Error(`${this.productName} did not take feature report ${id} (${r})`);
+    });
+  }
+  async receiveFeatureReport(id, length = this.spec.featureLen || this.spec.len) {
+    return this.serial(async () => {
+      if (!this.opened) throw this.gone();
+      const r = await this.line(`FGET ${(id & 0xff).toString(16).padStart(2, '0')} ${length}`, 5000);
+      if (r === 'GONE') throw this.gone();
+      if (!/^([0-9a-f]{2}( |$))*$/.test(r) || r === '') throw new Error(`${this.productName} did not answer feature report ${id} (${r || 'empty'})`);
+      const bytes = r.split(' ').map((x) => parseInt(x, 16));
+      const u8 = Uint8Array.from(id ? [id, ...bytes] : bytes);
+      return new DataView(u8.buffer);
+    });
+  }
+
   close() { if (this.opened) native.request(this.chan, 'CLOSE', 3000); this.opened = false; this.pid = null; }
 }
 

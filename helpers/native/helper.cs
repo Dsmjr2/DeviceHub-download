@@ -7,6 +7,7 @@
 //            <channel> EVT <id hex> <value>        a headset reporting a change (mic flip, battery)
 //
 //   hid:<vid>:<pid>:<page>:<usage>:<len>:<reportId>[:tag]   mouse / keyboard: OPEN | REQ <echo> <ms> <hex...> | CLOSE
+//                                                           feature reports: FSET <hex...> | FGET <id hex> <len>
 //   hs80:<pid>:<ep>[:tag]                                   headset: OPEN | GET | SET | MODE | LIGHT | OPENLIGHT | CLOSE
 //   audio                                                   Windows audio, JSON requests
 //   cue                                                     iCUE SDK properties, JSON requests
@@ -174,6 +175,21 @@ public static class Helper {
         int echo = int.Parse(w[1]), ms = int.Parse(w[2]);
         var bytes = w.Skip(3).Select(x => Convert.ToByte(x, 16)).ToArray();
         var r = c.Hid.Req(bytes, echo, ms);
+        return r == null ? "NONE" : string.Join(" ", r.Select(x => x.ToString("x2")));
+      }
+      // FSET <hex...>: one feature report, its id first (hidio.cs FeatureSet over HidD_SetFeature; 22 Oct 2026, HID
+      // LampArray). OK; NONE when the device refused it or the collection has no feature report that long.
+      case "FSET": {
+        if (c.Hid == null) return "GONE";
+        if (w.Length < 2) return "ERR need the report";
+        var bytes = w.Skip(1).Select(x => Convert.ToByte(x, 16)).ToArray();
+        return c.Hid.FeatureSet(bytes) ? "OK" : "NONE";
+      }
+      // FGET <id hex> <len>: reads feature report <id> (HidD_GetFeature): its first <len> data bytes without the id, or NONE
+      case "FGET": {
+        if (c.Hid == null) return "GONE";
+        if (w.Length < 3) return "ERR need the id and length";
+        var r = c.Hid.FeatureGet(Convert.ToByte(w[1], 16), int.Parse(w[2]));
         return r == null ? "NONE" : string.Join(" ", r.Select(x => x.ToString("x2")));
       }
       case "CLOSE": if (c.Watch != null) { c.Watch.Dispose(); c.Watch = null; } if (c.Hid != null) { c.Hid.Dispose(); c.Hid = null; } return "OK";

@@ -1,0 +1,15 @@
+{
+  "example": true,
+  "note": "A pretend device for demo and tests only. FFFF:FFE0 is not a real product; no PC reports it.",
+  "id": "example-library-light",
+  "vendor": "Example",
+  "product": "Library light",
+  "kind": "Light",
+  "vid": "ffff",
+  "pids": ["ffe0"],
+  "models": ["Example library light"],
+  "works": ["lights on/off", "brightness 0-100%", "effect: steady, breathing, off", "battery level (read)"],
+  "doesNotWork": ["firmware updates (never: they stay in the maker's own updater)"],
+  "status": "tested",
+  "tested": [{ "by": "DeviceHub", "date": "2026-10-22", "devicehub": "0.1.0", "how": "tests/device-library.mjs: every setting written once and read back" }]
+}
