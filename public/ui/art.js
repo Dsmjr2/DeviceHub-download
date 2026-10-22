@@ -42,6 +42,7 @@ function liquid(clip, x, y, w, h) {
     <g clip-path="url(#${clip})"><g class="liquid" style="--lh: ${h}px">
       <path class="wave back" d="${wave(1.6)}"/><path class="wave front" d="${wave(0)}" style="fill: url(#${g})"/>
       <path class="wave-edge" d="${wave(0).split('V')[0]}"/>
+      ${[0.15, 0.35, 0.55, 0.72, 0.88].map((f, i) => `<circle class="mote m${i}" cx="${(x + w * f).toFixed(1)}" cy="${y + 3}" r="${(0.7 + (i % 3) * 0.25).toFixed(2)}"/>`).join('')}
     </g>${bubbles}<rect class="sheen" x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#${sh})"/></g>`;
 }
 // no words (Shawn, 21 Oct 2026: "remove all the words ... but make it still look cool"): a part is marked with a small
@@ -61,12 +62,14 @@ export function mouseArt() {
   return svgEl(`<svg class="art mark art-mouse" viewBox="0 0 100 160" aria-hidden="true">
     <g class="drawn">
     <ellipse class="floor" cx="50" cy="150" rx="34" ry="9"/>
+    <ellipse class="halo" cx="50" cy="152" rx="40" ry="7"/>
     <g transform="translate(50 0) scale(1.18 1) translate(-50 0)">
     <rect class="soft side-btn" x="18.3" y="50" width="2.4" height="12.5" rx="1.2"/>
     <rect class="soft side-btn" x="18.6" y="64.5" width="2.4" height="12.5" rx="1.2"/>
     <path class="solid" d="M50 5C66 5 76 9 78 22C80 38 81 54 82.5 72C84 92 86 108 84.5 124C82 146 68 156 50 156C32 156 18 146 16 128C14.5 114 16.5 100 19.5 88C21 80 20 70 19.5 58C19 42 20 22 23.5 13C28 7 38 5 50 5Z"/>
     <clipPath id="${lq}"><path d="M50 5C66 5 76 9 78 22C80 38 81 54 82.5 72C84 92 86 108 84.5 124C82 146 68 156 50 156C32 156 18 146 16 128C14.5 114 16.5 100 19.5 88C21 80 20 70 19.5 58C19 42 20 22 23.5 13C28 7 38 5 50 5Z"/></clipPath>
     ${liquid(lq, 10, 5, 80, 151)}
+    <path class="scan" d="M50 5C66 5 76 9 78 22C80 38 81 54 82.5 72C84 92 86 108 84.5 124C82 146 68 156 50 156C32 156 18 146 16 128C14.5 114 16.5 100 19.5 88C21 80 20 70 19.5 58C19 42 20 22 23.5 13C28 7 38 5 50 5Z" pathLength="100"/>
     <path class="shade" d="M78 22C80 38 81 54 82.5 72C84 92 86 108 84.5 124C82 146 68 156 56 156C69 146 76 128 76.5 110C77 82 75 52 72 26C73.5 24 76 22.5 78 22Z"/>
     <path class="hi" d="M24.5 16C21.5 30 21 45 23 57C27 45 31.5 30 39.5 13.5C33 12.5 27 13.5 24.5 16Z"/>
     <path class="hi" d="M33 98C30 112 32 130 41 141C37 126 37 111 41 96C38 94.5 35 95.5 33 98Z"/>
@@ -101,6 +104,7 @@ export function headsetArt() {
   return svgEl(`<svg class="art mark art-headset" viewBox="0 0 180 160" aria-hidden="true">
     <g class="drawn">
     <ellipse class="floor" cx="90" cy="153" rx="80" ry="8"/>
+    <ellipse class="halo" cx="90" cy="156" rx="86" ry="7"/>
     <path class="solid" d="M28 92C28 16 152 16 152 92H147C147 23 33 23 33 92Z"/>
     <path class="hi-line" d="M31 72C33.5 26 146.5 26 149 72"/>
     <path class="soft" d="M37 94C37 50 143 50 143 94V100C141 60 39 60 37 100Z"/>
@@ -115,6 +119,8 @@ export function headsetArt() {
     <rect class="solid" x="129" y="95" width="42" height="61" rx="17"/>
     <clipPath id="${lq}"><rect x="9" y="95" width="42" height="61" rx="17"/><rect x="129" y="95" width="42" height="61" rx="17"/></clipPath>
     ${liquid(lq, 9, 95, 162, 61)}
+    <rect class="scan" x="9" y="95" width="42" height="61" rx="17" pathLength="100"/>
+    <rect class="scan s2" x="129" y="95" width="42" height="61" rx="17" pathLength="100"/>
     <path class="shade" d="M9 113C9 103 15 95 27 95H23C16 97 13.5 104 13.5 113V138C13.5 147 17 153 25 156H27C15 156 9 148 9 138Z"/>
     <path class="shade" d="M171 113C171 103 165 95 153 95H157C164 97 166.5 104 166.5 113V138C166.5 147 163 153 155 156H153C165 156 171 148 171 138Z"/>
     <path class="hi" d="M21 99C27 96.5 37 96.5 43 99C36 98.5 28 98.5 21 102Z"/>
@@ -187,6 +193,7 @@ export function keyboardArt() {
   return svgEl(`<svg class="art mark art-keyboard" viewBox="0 0 ${f(W)} ${f(H)}" aria-hidden="true">
     <g class="drawn">
     <ellipse class="floor" cx="${f(W / 2)}" cy="${f(H - 2)}" rx="${f(W / 2 - 4)}" ry="10"/>
+    <ellipse class="halo" cx="${f(W / 2)}" cy="${f(H + 1)}" rx="${f(W / 2 + 4)}" ry="9"/>
     <rect class="solid" x="1" y="1" width="${f(W - 2)}" height="${f(H - 2)}" rx="9"/>
     <rect class="shade" x="1" y="${f(H - 6)}" width="${f(W - 2)}" height="5" rx="2.5"/>
     <rect class="hi" x="8" y="2.2" width="${f(W - 16)}" height="1.6" rx="0.8"/>
@@ -196,6 +203,7 @@ export function keyboardArt() {
     <circle class="solid" cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}"/>
     <circle class="line knurl" cx="${f(cx)}" cy="${f(cy)}" r="${f(r - 1.1)}"/>
     <circle class="hi" cx="${f(cx - 1.4)}" cy="${f(cy - 1.4)}" r="1.6"/>
+    <rect class="scan" x="1" y="1" width="${f(W - 2)}" height="${f(H - 2)}" rx="9" pathLength="100"/>
     <g class="bp">${callout(+f(cx), +f(cy))}${callout(pad + 5.3, pad + 5.3)}${dimH(+f(H + 6), 1, +f(W - 1))}</g>
   </g>
     <image class="photo" href="/img/p75.png" x="0" y="0" width="${f(W)}" height="${f(H)}" preserveAspectRatio="xMidYMid meet"/>

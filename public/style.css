@@ -1059,3 +1059,23 @@ html[data-art="live"] .art.mark .sheen, .art-preview[data-art-preview="live"] .a
 html[data-art="live"] .art.mark .solid, .art-preview[data-art-preview="live"] .art.mark.art .solid { fill: rgba(255, 255, 255, .045); stroke: rgba(255, 255, 255, .6); stroke-width: .9; filter: drop-shadow(0 0 1.5px rgba(255, 255, 255, .35)); }
 html[data-art="live"] .art.mark.art-keyboard .soft, .art-preview[data-art-preview="live"] .art.mark.art.art-keyboard .soft { stroke: rgba(255, 255, 255, calc(.22 - var(--kbon, 0) * .12)); stroke-width: .4; }
 html[data-art="live"] .art.mark.art-keyboard .hi, .art-preview[data-art-preview="live"] .art.mark.art.art-keyboard .hi { fill: rgba(255, 255, 255, calc(.1 + var(--kbon, 0) * .18)); }
+/* Live look, the light show (21 Oct 2026, "make it better, its not unique and cool enough"): a beam of light keeps
+   tracing each device's outline in its battery color (the headset's two cups in turn; the keyboard in its backlight
+   color, or white with the lights off); particles rise through the glowing liquid; a ring ripples out on the desk.
+   Hidden in every other look, still for anyone who turns off motion in Windows. */
+.art.mark .scan, .art.mark .mote, .art.mark .halo { display: none; }
+html[data-art="live"] .art.mark .scan, .art-preview[data-art-preview="live"] .art.mark.art .scan { display: inline; fill: none; stroke: color-mix(in srgb, var(--lq, #3ddc97) 60%, #fff); stroke-width: 1.6; stroke-linecap: round; stroke-dasharray: 9 91; animation: scan 4.8s linear infinite; filter: drop-shadow(0 0 2.5px var(--lq, #3ddc97)) drop-shadow(0 0 6px var(--lq, #3ddc97)); }
+html[data-art="live"] .art.mark .scan.s2, .art-preview[data-art-preview="live"] .art.mark.art .scan.s2 { animation-delay: -2.4s; }
+html[data-art="live"] .art.mark.art-keyboard .scan, .art-preview[data-art-preview="live"] .art.mark.art.art-keyboard .scan { stroke: color-mix(in srgb, var(--kb, #fff) calc(var(--kbon, 0) * 70%), #fff); filter: drop-shadow(0 0 3px color-mix(in srgb, var(--kb, #fff) calc(var(--kbon, 0) * 100%), #9fd6ff)); animation-duration: 7s; }
+@keyframes scan { to { stroke-dashoffset: -100; } }
+html[data-art="live"] .art.mark .liquid, .art-preview[data-art-preview="live"] .art.mark.art .liquid { filter: drop-shadow(0 0 5px color-mix(in srgb, var(--lq, #3ddc97) 55%, transparent)); }
+html[data-art="live"] .art.mark .mote, .art-preview[data-art-preview="live"] .art.mark.art .mote { display: inline; fill: #fff; opacity: 0; animation: mote 4.2s linear infinite; }
+html[data-art="live"] .art.mark .mote.m1, .art-preview[data-art-preview="live"] .art.mark.art .mote.m1 { animation-delay: -.8s; animation-duration: 5s; }
+html[data-art="live"] .art.mark .mote.m2, .art-preview[data-art-preview="live"] .art.mark.art .mote.m2 { animation-delay: -1.9s; }
+html[data-art="live"] .art.mark .mote.m3, .art-preview[data-art-preview="live"] .art.mark.art .mote.m3 { animation-delay: -2.7s; animation-duration: 5.6s; }
+html[data-art="live"] .art.mark .mote.m4, .art-preview[data-art-preview="live"] .art.mark.art .mote.m4 { animation-delay: -3.4s; }
+@keyframes mote { 0% { transform: translateY(calc(var(--lvl, 0) * var(--lh) - 4px)); opacity: 0; } 20% { opacity: .85; } 85% { opacity: .6; } 100% { transform: translateY(0); opacity: 0; } }
+html[data-art="live"] .art.mark .halo, .art-preview[data-art-preview="live"] .art.mark.art .halo { display: inline; fill: none; stroke: var(--lq, #3ddc97); stroke-width: 1; transform-box: fill-box; transform-origin: center; animation: halo 3.6s ease-out infinite; }
+html[data-art="live"] .art.mark.art-keyboard .halo, .art-preview[data-art-preview="live"] .art.mark.art.art-keyboard .halo { stroke: color-mix(in srgb, var(--kb, #fff) calc(var(--kbon, 0) * 100%), #9fd6ff); }
+@keyframes halo { 0% { transform: scale(.55); opacity: .55; } 100% { transform: scale(1.12); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { html[data-art="live"] .art.mark :is(.scan, .mote, .halo) { animation: none; } }
