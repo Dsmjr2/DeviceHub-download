@@ -2,8 +2,6 @@
 // Headset > Sleep when silent, and picking one opens that page, scrolls to the setting and marks it for a moment.
 // The list is read from the pages' own code (every row('Name', 'description') and every card heading), so a setting
 // added later is found with no list to keep; it is read once, the first time Search is opened.
-// Also the jump links: a page with four or more sections gets a row of their names under its heading.
-import { h } from './dom.js';
 
 const FILES = { mouse: 'mouse', headset: 'headset', 'eq-panel': 'headset', 'mic-meter': 'headset', speakers: 'headset', keyboard: 'keyboard',
   lighting: 'lighting', 'pc-lights': 'lighting', monitors: 'monitors', 'camera-card': 'monitors', fans: 'fans', profiles: 'profiles',
@@ -55,19 +53,4 @@ export function showSetting(s, go) {
     setTimeout(() => document.querySelectorAll('#main .found').forEach((x) => x.classList.remove('found')), 1600);
   };
   setTimeout(look, 50);
-}
-
-// the row of section names under a page's heading (four or more sections)
-export function jumpLinks(page) {
-  if (page.hasAttribute('data-no-jump')) return;
-  const heads = [...page.querySelectorAll('.panel-head h2')].filter((x) => x.textContent.trim());
-  if (heads.length < 4) return;
-  // the section is looked up when pressed: pages redraw themselves, so the heading seen here may be gone by then
-  const nav = h('nav', { class: 'jump', 'aria-label': 'Sections on this page' }, ...heads.map((x, i) => { const name = x.textContent.trim(); return h('button', { class: 'jump-link', onclick: () => {
-    const now = [...document.querySelectorAll('#main .panel-head h2')], at = now.filter((y) => y.textContent.trim() === name);
-    const head = at.length ? at[0] : now[i];
-    scrollTo(head?.closest('.panel') || head);  // not smooth: a reading redraws the page and stops a smooth scroll halfway
-  } }, name); }));
-  const top = page.querySelector('.topbar');
-  if (top) top.after(nav); else page.prepend(nav);
 }

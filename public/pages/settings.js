@@ -274,7 +274,7 @@ export default {
     // what DeviceHub always does to keep the devices safe (short, plain; 20 Oct 2026)
     const SAFETY = ['Never flashes firmware', 'Never sends reset or bootloader commands', 'Backs up before every change', 'Reads back every change to confirm it', 'Stays offline, except to check for updates'];
     // one screen, no scrolling and nothing folded (Shawn, 21 Oct 2026): three columns that keep their own heights; the
-    // self-test and the safety promises share one small card. No jump links on this page.
+    // self-test and the safety promises share one small card. (data-no-jump only scopes the tighter rows now).
     return h('div', { 'data-no-jump': '' },
       topbar('App', 'Settings', null),
       h('div', { class: 'grid settings-cols top' },
