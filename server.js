@@ -343,7 +343,7 @@ async function api(req, res, url) {
       // the theme (Settings > Appearance): an accent color as #rrggbb and one of the backdrops
       if (cur.themeAccent && !/^#[0-9a-f]{6}$/i.test(cur.themeAccent)) delete cur.themeAccent;
       if (cur.themeBg && !['graphite', 'black', 'midnight', 'plum', 'forest'].includes(cur.themeBg)) delete cur.themeBg;
-      if (cur.artStyle && !['photo', 'frosted', 'blueprint', 'neon', 'duo', 'pop', 'arctic', 'studio', 'glow', 'matte', 'night'].includes(cur.artStyle)) delete cur.artStyle;  // Settings > Appearance
+      if (cur.artStyle && !['photo', 'frosted', 'blueprint', 'neon', 'duo', 'pop', 'arctic', 'live', 'studio', 'glow', 'matte', 'night'].includes(cur.artStyle)) delete cur.artStyle;  // Settings > Appearance
       writeAtomic(SETTINGS, JSON.stringify(cur, null, 2));
       agent?.reloadSettings();
       return send(res, 200, cur);

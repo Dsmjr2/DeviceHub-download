@@ -17,7 +17,7 @@ export function setGlow(hex) {
 // the looks are variations of the real-color drawings ('frosted' is the stored name of Classic, the drawn look; 'photo' is Realistic)
 // six clearly different looks (21 Oct 2026, Shawn: the old ones were "not different enough"); a look saved before then
 // is shown as the nearest new one
-export const ART_STYLES = [['photo', 'Realistic'], ['frosted', 'Classic'], ['blueprint', 'Blueprint'], ['neon', 'Neon'], ['duo', 'Duotone'], ['arctic', 'Arctic']];
+export const ART_STYLES = [['photo', 'Realistic'], ['frosted', 'Classic'], ['blueprint', 'Blueprint'], ['neon', 'Neon'], ['duo', 'Duotone'], ['arctic', 'Arctic'], ['live', 'Live']];
 const RENAMED = { studio: 'frosted', glow: 'neon', matte: 'duo', night: 'neon', pop: 'duo' };
 export function applyArtStyle(style) { style = RENAMED[style] || style; document.documentElement.dataset.art = ART_STYLES.some(([k]) => k === style) ? style : 'frosted'; }
 export async function loadArtStyle() {

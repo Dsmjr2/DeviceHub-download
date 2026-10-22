@@ -997,3 +997,29 @@ html[data-art="arctic"] .art.mark .led.mic, .art-preview[data-art-preview="arcti
 /* a card header's buttons: they wrap under the title rather than run past the card's edge (21 Oct 2026) */
 .panel-head { flex-wrap: wrap; row-gap: 6px; }
 .head-actions { display: flex; flex-wrap: wrap; gap: 2px; margin-left: auto; }
+/* The Live look (21 Oct 2026): glass shells the battery fills like liquid, the level in numbers, the headset logos in
+   their real color and brightness, the keyboard lit in its real backlight. ui/live-art.js sets --lvl (0-1), --lq (the
+   level's color), --glowc and --logo (headset), --kb and --kbon (keyboard) on every drawing from the live readings.
+   The liquid and the numbers are hidden in every other look. */
+.art.mark .liquid, .art.mark .lq-text { display: none; }
+html[data-art="live"] .art.mark, .art-preview[data-art-preview="live"] .art.mark.art { filter: drop-shadow(0 12px 22px rgba(0, 0, 0, .5)); }
+html[data-art="live"] .art.mark .solid, .art-preview[data-art-preview="live"] .art.mark.art .solid { fill: rgba(255, 255, 255, .05); stroke: rgba(255, 255, 255, .42); stroke-width: .8; }
+html[data-art="live"] .art.mark .soft, .art-preview[data-art-preview="live"] .art.mark.art .soft { fill: rgba(255, 255, 255, .1); stroke: none; }
+html[data-art="live"] .art.mark .accent, .art-preview[data-art-preview="live"] .art.mark.art .accent { fill: rgba(255, 255, 255, .22); stroke: none; }
+html[data-art="live"] .art.mark .cut, .art-preview[data-art-preview="live"] .art.mark.art .cut { fill: rgba(0, 0, 0, .45); stroke: none; }
+html[data-art="live"] .art.mark .cut-line, .art-preview[data-art-preview="live"] .art.mark.art .cut-line { stroke: rgba(255, 255, 255, .22); stroke-width: 1; }
+html[data-art="live"] .art.mark .shade, .art-preview[data-art-preview="live"] .art.mark.art .shade { display: none; }
+html[data-art="live"] .art.mark .hi, .art-preview[data-art-preview="live"] .art.mark.art .hi { display: inline; fill: rgba(255, 255, 255, .14); }
+html[data-art="live"] .art.mark .hi-line, .art-preview[data-art-preview="live"] .art.mark.art .hi-line { display: inline; stroke: rgba(255, 255, 255, .3); stroke-width: .8; }
+html[data-art="live"] .art.mark .line, .art-preview[data-art-preview="live"] .art.mark.art .line { stroke: rgba(255, 255, 255, .3); stroke-width: .6; }
+html[data-art="live"] .art.mark .logo-text, .art-preview[data-art-preview="live"] .art.mark.art .logo-text { fill: rgba(255, 255, 255, .55); }
+html[data-art="live"] .art.mark .floor, .art-preview[data-art-preview="live"] .art.mark.art .floor { fill: color-mix(in srgb, var(--lq, #3ddc97) 40%, transparent); filter: blur(9px); opacity: calc(.25 + var(--lvl, 0) * .5); }
+html[data-art="live"] .art.mark .liquid, .art-preview[data-art-preview="live"] .art.mark.art .liquid { display: inline; fill: var(--lq, #3ddc97); opacity: .78;
+  transform-box: fill-box; transform-origin: 50% 100%; transform: scaleY(var(--lvl, 0)); transition: transform .8s var(--ease), fill .4s; }
+html[data-art="live"] .art.mark .lq-text, .art-preview[data-art-preview="live"] .art.mark.art .lq-text { display: inline; fill: #fff; font: 700 12px var(--ui); paint-order: stroke; stroke: rgba(0, 0, 0, .45); stroke-width: 2.4px; }
+html[data-art="live"] .art.mark .led, .art-preview[data-art-preview="live"] .art.mark.art .led { fill: var(--glowc, #fff); opacity: var(--logo, 1); filter: drop-shadow(0 0 3px var(--glowc, #fff)); }
+html[data-art="live"] .art.mark .led.mic, .art-preview[data-art-preview="live"] .art.mark.art .led.mic { fill: rgba(255, 255, 255, .18); opacity: 1; filter: none; }
+html[data-art="live"] .art-keyboard .soft, .art-preview[data-art-preview="live"] .art.mark.art.art-keyboard .soft { fill: color-mix(in srgb, var(--kb, #fff) calc(var(--kbon, 0) * 75%), #23252c); }
+html[data-art="live"] .art-keyboard .accent, .art-preview[data-art-preview="live"] .art.mark.art.art-keyboard .accent { fill: color-mix(in srgb, var(--kb, #fff) calc(var(--kbon, 0) * 90%), #33363e); }
+html[data-art="live"] .art.mark.art-keyboard, .art-preview[data-art-preview="live"] .art.mark.art.art-keyboard { filter: drop-shadow(0 0 calc(var(--kbon, 0) * 12px) color-mix(in srgb, var(--kb, #fff) 70%, transparent)) drop-shadow(0 12px 22px rgba(0, 0, 0, .5)); }
+.art-style[data-look="live"] { background: linear-gradient(180deg, transparent 45%, rgba(61, 220, 151, .12)); }

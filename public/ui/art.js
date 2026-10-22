@@ -25,6 +25,11 @@ export function artDefs() {
 // Detail layers every drawing carries (21 Oct 2026, Shawn: "put more effort into the details"): .floor, the soft shadow
 // the device casts on the desk (each look colors it: a glow in Neon, a flat offset in Pop, none in Blueprint); .bp, the
 // Blueprint look's callouts and real measurements (hidden in every other look)
+// the Live look's layers (21 Oct 2026, Shawn: "2 sounds cool"): .liquid, the battery filling the body from the bottom
+// (ui/live-art.js sets its level and color from the real reading), and .lq-text, the level in numbers; hidden in every
+// other look. Each drawing gets its own clip id, since a page shows several.
+let clipN = 0;
+const clipId = () => `dh-lq-${++clipN}`;
 const callout = (x1, y1, x2, y2, text, anchor = 'start') => `<path class="bp-lead" d="M${x1} ${y1}L${x2} ${y2}"/><circle class="bp-dot" cx="${x1}" cy="${y1}" r="1.1"/><text class="bp-text" x="${x2 + (anchor === 'end' ? -1.5 : 1.5)}" y="${y2 + 1.8}" text-anchor="${anchor}">${text}</text>`;
 const dimV = (x, y1, y2, text) => `<path class="bp-lead" d="M${x} ${y1}V${y2}M${x - 2} ${y1}H${x + 2}M${x - 2} ${y2}H${x + 2}"/><text class="bp-text" transform="translate(${x - 2.5} ${(y1 + y2) / 2}) rotate(-90)" text-anchor="middle">${text}</text>`;
 const dimH = (y, x1, x2, text) => `<path class="bp-lead" d="M${x1} ${y}H${x2}M${x1} ${y - 2}V${y + 2}M${x2} ${y - 2}V${y + 2}"/><text class="bp-text" x="${(x1 + x2) / 2}" y="${y + 6.5}" text-anchor="middle">${text}</text>`;
@@ -34,6 +39,7 @@ const dimH = (y, x1, x2, text) => `<path class="bp-lead" d="M${x1} ${y}H${x2}M${
 // wheel in its slot, and the small PULSAR wordmark under the left button (its only mark). Drawn at the real
 // proportions: 115.6 x 63.4 mm ----
 export function mouseArt() {
+  const lq = clipId();
   let ridges = '';
   for (let y = 20; y <= 42; y += 3.2) ridges += `<path class="line" d="M46.5 ${y.toFixed(1)}H53.5"/>`;
   return svgEl(`<svg class="art mark art-mouse" viewBox="0 0 100 160" aria-hidden="true">
@@ -43,6 +49,8 @@ export function mouseArt() {
     <rect class="soft side-btn" x="18.3" y="50" width="2.4" height="12.5" rx="1.2"/>
     <rect class="soft side-btn" x="18.6" y="64.5" width="2.4" height="12.5" rx="1.2"/>
     <path class="solid" d="M50 5C66 5 76 9 78 22C80 38 81 54 82.5 72C84 92 86 108 84.5 124C82 146 68 156 50 156C32 156 18 146 16 128C14.5 114 16.5 100 19.5 88C21 80 20 70 19.5 58C19 42 20 22 23.5 13C28 7 38 5 50 5Z"/>
+    <clipPath id="${lq}"><path d="M50 5C66 5 76 9 78 22C80 38 81 54 82.5 72C84 92 86 108 84.5 124C82 146 68 156 50 156C32 156 18 146 16 128C14.5 114 16.5 100 19.5 88C21 80 20 70 19.5 58C19 42 20 22 23.5 13C28 7 38 5 50 5Z"/></clipPath>
+    <rect class="liquid" x="10" y="5" width="80" height="151" clip-path="url(#${lq})"/>
     <path class="shade" d="M78 22C80 38 81 54 82.5 72C84 92 86 108 84.5 124C82 146 68 156 56 156C69 146 76 128 76.5 110C77 82 75 52 72 26C73.5 24 76 22.5 78 22Z"/>
     <path class="hi" d="M24.5 16C21.5 30 21 45 23 57C27 45 31.5 30 39.5 13.5C33 12.5 27 13.5 24.5 16Z"/>
     <path class="hi" d="M33 98C30 112 32 130 41 141C37 126 37 111 41 96C38 94.5 35 95.5 33 98Z"/>
@@ -53,6 +61,7 @@ export function mouseArt() {
     ${ridges}
     </g>
     <text class="logo-text" x="35" y="74" text-anchor="middle">PULSAR</text>
+    <text class="lq-text" x="50" y="114" text-anchor="middle"></text>
     <g class="bp">${dimV(4, 5, 156, '115.6 mm')}${dimH(160, 10, 90, '63.4 mm')}${callout(50, 30, 72, 8, 'WHEEL')}${callout(22, 63, 6, 92, 'M4 M5', 'start')}</g>
   </g>
     <image class="photo" href="/img/xlite.png" x="0" y="0" width="100" height="160" preserveAspectRatio="xMidYMid meet"/>
@@ -72,6 +81,7 @@ export function headsetArt() {
       <path d="M27.73,32.7A46,46,0,0,1,29.68,39l-5.8-1.44c.6-3.9-3.08-8.62-3.08-8.62Z"/>
       <path d="M40.35,23.32S66.19,41.47,67.89,48.51c1.29,5.3-2.450,10.19-2.45,10.19s-2-13.82-51.51,7.17a26.630,26.630,0,0,0,7-20.44,26.3,26.3,0,0,0-2.43-8.88l11.6,6.16c0,.18,0,.36.05.55a40.11,40.11,0,0,1-1,13.53,31.68,31.68,0,0,0,2.95-16.6A31.93,31.93,0,0,0,29.54,30.1l12.4,8.27c.05.41.08.82.12,1.24a40,40,0,0,1-1.34,14.88,32,32,0,0,0-.37-31.17Z"/>
     </g>`;
+  const lq = clipId();
   return svgEl(`<svg class="art mark art-headset" viewBox="0 0 180 160" aria-hidden="true">
     <g class="drawn">
     <ellipse class="floor" cx="90" cy="153" rx="80" ry="8"/>
@@ -87,6 +97,8 @@ export function headsetArt() {
     <rect class="soft" x="6.5" y="112" width="4" height="15" rx="2"/>
     <rect class="solid" x="9" y="95" width="42" height="61" rx="17"/>
     <rect class="solid" x="129" y="95" width="42" height="61" rx="17"/>
+    <clipPath id="${lq}"><rect x="9" y="95" width="42" height="61" rx="17"/><rect x="129" y="95" width="42" height="61" rx="17"/></clipPath>
+    <rect class="liquid" x="9" y="95" width="162" height="61" clip-path="url(#${lq})"/>
     <path class="shade" d="M9 113C9 103 15 95 27 95H23C16 97 13.5 104 13.5 113V138C13.5 147 17 153 25 156H27C15 156 9 148 9 138Z"/>
     <path class="shade" d="M171 113C171 103 165 95 153 95H157C164 97 166.5 104 166.5 113V138C166.5 147 163 153 155 156H153C165 156 171 148 171 138Z"/>
     <path class="hi" d="M21 99C27 96.5 37 96.5 43 99C36 98.5 28 98.5 21 102Z"/>
@@ -102,6 +114,7 @@ export function headsetArt() {
     <circle class="cut" cx="44.6" cy="129" r="1.8"/>
     <rect class="soft" x="65.5" y="146.2" width="13" height="7.4" rx="3.7"/>
     <circle class="led mic" cx="76.4" cy="149.9" r="1.4"/>
+    <text class="lq-text" x="90" y="128" text-anchor="middle"></text>
     <g class="bp">${callout(78, 150, 100, 146, 'MIC · MUTE LIGHT')}${callout(8.5, 119, 2, 108, 'VOL', 'start')}${callout(157.5, 111, 166, 88, 'RGB', 'start')}${callout(90, 22, 112, 10, 'FLOATING STRAP')}</g>
   </g>
     <image class="photo" href="/img/hs80.png" x="0" y="0" width="180" height="160" preserveAspectRatio="xMidYMid meet"/>
