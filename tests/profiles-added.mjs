@@ -202,6 +202,8 @@ export async function run() {
   core.activity.length = 0;
   // "When to use it" on the Profiles page (tests/profile-use.mjs; it runs here so test:offline covers it)
   for (const f of await (await import('./profile-use.mjs')).run()) fails.push(`when to use it: ${f}`);
+  // the Backups page's plain words (tests/backup-words.mjs; it runs here so test:offline covers it)
+  for (const f of await (await import('./backup-words.mjs')).run()) fails.push(`backups page: ${f}`);
   return fails;
 }
 

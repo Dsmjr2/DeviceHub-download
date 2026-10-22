@@ -1,20 +1,20 @@
-// Backups: every file DeviceHub wrote before a change, with view and restore.
+// Backups (redesigned 22 Oct 2026, docs/handoff/backups-redesign.md): one card for the whole setup (save a copy, load
+// a setup file, the weekly copies) and one card per device with the copies DeviceHub took before each change. Every
+// "Go back to this" and every setup file load asks first, inside its own row (no pop-ups), and says how it went in one
+// line in the same place. Routes, file formats and the restore itself are unchanged: restorePlan below, core/setup.js.
 import { h, icon } from '../ui/dom.js';
-import { button, pill, card } from '../ui/controls.js';
+import { button, card } from '../ui/controls.js';
 import { devices, writeBatch, isDemo } from '../core/devices.js';
 import { topbar } from './common.js';
-import { modal, toast } from '../ui/overlay.js';
 import { PulsarMouse } from '../devices/pulsar.js';
 import { SETTINGS as MOUSE_SETTINGS } from '../devices/mouse-adapter.js';
 import { PROFILE_KEYS, keyLabel, showValue } from '../core/profiles.js';
 import { keyName } from '../devices/keycodes.js';
 import { splitMacros, decodeMacro } from '../devices/macros.js';
 import { saveSetup, planSetup, loadSetup } from '../core/setup.js';
+import { SHOWN, friendlyWhen, whenInSentence, weeklyWhen, sizeText, whyText, groupOf, OTHER_NAMES, contentLines } from '../core/backup-words.js';
+import { demoBackups } from '../devices/demo-backups.js';
 
-let files = null;
-let rerender = () => {};
-const load = async () => { try { files = await (await fetch('/api/backups')).json(); } catch { files = []; } rerender(); };
-const deviceOf = (name) => name.split('-')[0];
 
 // Turn a backup into the list of writes that would put the device back. `allow` says which settings may be written
 // (a single backup restores the profile settings; a whole-setup file, core/setup.js, allows more).
@@ -62,115 +62,266 @@ export function restorePlan(id, b, allow = (k) => !!PROFILE_KEYS[id]?.[k], label
   return plan;
 }
 
-async function view(f) {
-  const b = await (await fetch(`/api/backups/${encodeURIComponent(f.name)}`)).json();
-  // lists of numbers (keymaps, memory dumps) on one line each: the same content, many times fewer lines to draw
-  // (20 Oct 2026: a keyboard backup took 368 ms to open with every key code on its own line)
-  const text = JSON.stringify(b, null, 1).replace(/\[\s*(-?\d+(?:\s*,\s*-?\d+)*)\s*\]/g, (_, nums) => `[${nums.replace(/\s+/g, '')}]`);
-  await modal(f.name, h('pre', { class: 'json' }, text.slice(0, 60000)), [{ label: 'Close', value: true, kind: 'ghost' }]);
+// ---------- where the lists come from: the server, or in demo mode the pretend ones (devices/demo-backups.js) ----------
+const getJson = async (url) => { const r = await fetch(url); if (!r.ok) throw new Error(`the file could not be read (${r.status})`); return r.json(); };
+const source = {
+  list: () => (isDemo() ? demoBackups.list() : getJson('/api/backups')),
+  read: async (name) => (isDemo() ? demoBackups.read(name) : getJson(`/api/backups/${encodeURIComponent(name)}`)),
+  weekly: () => (isDemo() ? demoBackups.weekly() : getJson('/api/setups')),
+  readWeekly: async (name) => (isDemo() ? demoBackups.readWeekly(name) : getJson(`/api/setups/${encodeURIComponent(name)}`)),
+};
+
+let files = null, weeklyFiles = null;
+let rerender = () => {};
+const load = async () => { try { files = await source.list(); } catch { files = []; } rerender(); };
+const loadWeekly = async () => { try { weeklyFiles = await source.weekly(); } catch { weeklyFiles = []; } rerender(); };
+
+// What the page is in the middle of, kept here so a redraw does not lose it. Keys: 'b:<file>' a device backup,
+// 'w:<file>' a weekly copy, 'file' a setup file picked by hand, 'setup' the whole-setup card's own line.
+const ui = {
+  confirm: null,       // the one question open: { key, kind: 'device', f, id, plan } | { key, kind: 'setup', file, planned, count, when }
+  view: null,          // the backup whose "See what's in it" is open: { key, b } (b null while it is read)
+  raw: false,          // that view shows the whole file
+  older: new Set(),    // device cards showing their older backups
+  note: {},            // key -> { text, kind }: one plain line after something happened
+  busy: null,          // the key being put back right now
+};
+const why = new Map();   // file name -> its "before ..." words (null when it says nothing), read once per file
+const whyLoading = new Set();
+
+const devName = (id) => devices[id]?.adapter.title || OTHER_NAMES[id] || id;
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const note = (key, text, kind = '') => { ui.note[key] = { text, kind }; };
+const ask = (c) => { ui.confirm = c; ui.note = {}; ui.view = null; rerender(); };
+const cancel = () => { ui.confirm = null; rerender(); };
+
+// the "before ..." words of the backups on screen, read one file at a time (a file is small; most are under 10 KB)
+async function readWhy(list, id) {
+  for (const f of list) {
+    if (why.has(f.name) || whyLoading.has(f.name)) continue;
+    whyLoading.add(f.name);
+    try { const b = await source.read(f.name); why.set(f.name, whyText(b.why, (k) => keyLabel(id, k))); } catch { why.set(f.name, null); }
+    whyLoading.delete(f.name);
+    redrawSoon();
+  }
+}
+// one redraw for many files read close together
+let soon = null;
+const redrawSoon = () => { if (!soon) soon = setTimeout(() => { soon = null; rerender(); }, 60); };
+
+// ---------- one device backup ----------
+async function askDevice(f, id) {
+  const key = `b:${f.name}`, d = devices[id], when = whenInSentence(f.at);
+  ui.note = {};
+  if (d?.status !== 'connected') { note(key, `Connect your ${d?.adapter.title || id} first, then try again.`, 'bad'); rerender(); return; }
+  let b, plan;
+  try { b = await source.read(f.name); } catch (e) { note(key, `This copy could not be read: ${e.message}.`, 'bad'); rerender(); return; }
+  if (b.device !== id) { note(key, 'This file is not a copy of this device, so it is not used.', 'bad'); rerender(); return; }
+  try { plan = restorePlan(id, b); } catch (e) { note(key, `Not used: ${e.message}.`, 'bad'); rerender(); return; }
+  if (!plan.length) { note(key, `Nothing to change: your ${d.adapter.title} already matches how it was ${when}.`); rerender(); return; }
+  ask({ key, kind: 'device', f, id, plan, when });
 }
 
-async function restore(f) {
-  const id = deviceOf(f.name);
+async function yesDevice() {
+  const { key, f, id, plan, when } = ui.confirm;
   const d = devices[id];
-  if (d?.status !== 'connected') { toast(`Connect the ${d?.adapter.kind.toLowerCase() || id} first`, 'bad'); return; }
-  const b = await (await fetch(`/api/backups/${encodeURIComponent(f.name)}`)).json();
-  if (b.device !== id) { toast('This file is not a backup of that device', 'bad'); return; }
-  let plan;
-  try { plan = restorePlan(id, b); } catch (e) { toast('Not restored', 'bad', { detail: e.message }); return; }
-  if (!plan.length) { toast('Nothing to restore', 'good', { detail: 'The device already matches this backup.' }); return; }
-  const ok = await modal(`Restore ${d.adapter.title}?`, h('div', {}, h('p', { style: { marginTop: 0 } }, `${plan.length} setting${plan.length === 1 ? '' : 's'} differ from this backup. The current state is backed up first, then each one is written and checked.`),
-    h('div', { class: 'diff' }, ...plan.slice(0, 60).map((p) => h('div', {}, h('span', { class: 'dev' }, d.adapter.kind), h('span', {}, p.label), h('s', {}, p.from), icon('arrow', 'ic faint'), h('b', {}, p.show)))),
-    plan.length > 60 ? h('p', {}, `…and ${plan.length - 60} more`) : null),
-  [{ label: 'Cancel', value: false, kind: 'ghost' }, { label: 'Restore', value: true, kind: 'primary' }]);
-  if (!ok) return;
-  const t = toast('Restoring…', 'busy', { ms: 0 });
-  const { done, failed } = await writeBatch(id, plan.map((p) => ({ key: p.key, value: p.to, label: p.label, display: p.show })), `before restoring ${f.name}`);
-  t.update(failed ? 'Restore finished with problems' : 'Restored', failed ? 'bad' : 'good', `${done} restored${failed ? `, ${failed} failed (see Activity)` : ''}`);
-  load();
-}
-
-async function saveSetupFile() {
-  const t = toast('Saving your setup…', 'busy', { ms: 0 });
+  ui.confirm = null; ui.busy = key;
+  note(key, `Putting your ${d.adapter.title} back…`);
+  rerender();
   try {
-    const r = await saveSetup();
-    t.update('Setup file saved', 'good', `In your Downloads folder${r.skipped.length ? `. Not connected, so not in it: ${r.skipped.join(', ')}` : ''}.`);
-  } catch (e) { t.update('Setup file not saved', 'bad', e.message); }
+    const { done, failed } = await writeBatch(id, plan.map((p) => ({ key: p.key, value: p.to, label: p.label, display: p.show })), `before restoring ${f.name}`);
+    note(key, failed ? `Finished with problems: ${done} put back, ${failed} not (see Activity).` : `Done. Your ${d.adapter.title} is back to how it was ${when} (${plural(done, 'setting')}).`, failed ? 'bad' : 'good');
+  } catch (e) { note(key, `Not finished: ${e.message}.`, 'bad'); }
+  ui.busy = null;
   load();
 }
 
-// Pick a setup file, show every difference, and load it only after "Load".
-function loadSetupFile() {
+// ---------- a whole setup file (a weekly copy or one picked by hand) ----------
+async function askSetup(key, file, when) {
+  ui.note = {};
+  let planned;
+  try { planned = await planSetup(file); } catch (e) { note(key, `Not loaded: ${e.message}.`, 'bad'); rerender(); return; }
+  if (isDemo()) planned.sound = null;   // demo mode never writes the real sound settings
+  const count = planned.changes.reduce((n, c) => n + c.plan.length, 0) + (planned.profiles ? 1 : 0) + (planned.sound ? 1 : 0);
+  if (!count) {
+    note(key, `Nothing to load: your devices already match this file${planned.notConnected.length ? ` (not connected: ${planned.notConnected.join(', ')})` : ''}.`);
+    rerender(); return;
+  }
+  ask({ key, kind: 'setup', file, planned, count, when });
+}
+
+async function yesSetup() {
+  const { key, file, planned } = ui.confirm;
+  ui.confirm = null; ui.busy = key;
+  note(key, 'Loading the setup…');
+  rerender();
+  try {
+    const r = await loadSetup(file, planned);
+    note(key, r.failed ? `Finished with problems: ${r.done} changed, ${r.failed} not (see Activity).` : `Done. ${plural(r.done, 'setting')} changed.`, r.failed ? 'bad' : 'good');
+  } catch (e) { note(key, `Not finished: ${e.message}.`, 'bad'); }
+  ui.busy = null;
+  load();
+}
+
+async function askWeekly(f) {
+  const key = `w:${f.name}`;
+  let file;
+  try { file = await source.readWeekly(f.name); } catch (e) { ui.note = {}; note(key, `This copy could not be read: ${e.message}.`, 'bad'); rerender(); return; }
+  await askSetup(key, file, weeklyWhen(file.savedAt || f.at));
+}
+
+function pickSetupFile() {
   const input = Object.assign(document.createElement('input'), { type: 'file', accept: '.json,application/json' });
   input.onchange = async () => {
     const f = input.files?.[0];
     if (!f) return;
     let file;
-    try { file = JSON.parse(await f.text()); } catch (e) { toast('Not loaded', 'bad', { detail: e.message }); return; }
-    await loadSetupJson(file);
+    try { file = JSON.parse(await f.text()); } catch { ui.note = {}; note('file', `"${f.name}" could not be read. Pick a DeviceHub setup file (.json).`, 'bad'); rerender(); return; }
+    await askSetup('file', file, file?.savedAt ? weeklyWhen(file.savedAt) : 'at an unknown time');
   };
   input.click();
 }
 
-// A setup file's contents (picked by hand or one of the weekly ones): show every difference, load only after "Load".
-async function loadSetupJson(file) {
-  {
-    let planned;
-    try { planned = await planSetup(file); } catch (e) { toast('Not loaded', 'bad', { detail: e.message }); return; }
-    const rows = planned.changes.flatMap((c) => c.plan.map((p) => ({ ...p, dev: c.kind })));
-    const count = rows.length + (planned.profiles ? 1 : 0) + (planned.sound ? 1 : 0);
-    const missing = planned.notConnected.length ? h('p', { class: 'faint' }, `Not connected, so left as they are: ${planned.notConnected.join(', ')}.`) : null;
-    if (!count) { toast('Nothing to load', 'good', { detail: `Your devices already match this setup file${planned.notConnected.length ? ` (not connected: ${planned.notConnected.join(', ')})` : ''}.` }); return; }
-    const ok = await modal('Load this setup?', h('div', {},
-      h('p', { style: { marginTop: 0 } }, `Saved ${new Date(file.savedAt).toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}. ${count} setting${count === 1 ? '' : 's'} differ from now. Each device is backed up first, then each setting is written and checked.`),
-      h('div', { class: 'diff' }, ...rows.slice(0, 80).map((p) => h('div', {}, h('span', { class: 'dev' }, p.dev), h('span', {}, p.label), h('s', {}, p.from), icon('arrow', 'ic faint'), h('b', {}, p.show))),
-        planned.profiles ? h('div', {}, h('span', { class: 'dev' }, 'DeviceHub'), h('span', {}, 'Profiles'), h('s', {}, `${planned.profiles.from} saved`), icon('arrow', 'ic faint'), h('b', {}, `${planned.profiles.to} from the file`)) : null,
-        planned.sound ? h('div', {}, h('span', { class: 'dev' }, 'Sound'), h('span', {}, 'EQ, speakers, mics'), h('s', {}, 'now'), icon('arrow', 'ic faint'), h('b', {}, 'from the file')) : null),
-      rows.length > 80 ? h('p', {}, `…and ${rows.length - 80} more`) : null, missing),
-    [{ label: 'Cancel', value: false, kind: 'ghost' }, { label: 'Load', value: true, kind: 'primary' }]);
-    if (!ok) return;
-    const t = toast('Loading the setup…', 'busy', { ms: 0 });
-    const r = await loadSetup(file, planned);
-    t.update(r.failed ? 'Setup loaded with problems' : 'Setup loaded', r.failed ? 'bad' : 'good', `${r.done} changed${r.failed ? `, ${r.failed} failed (see Activity)` : ''}`);
-    load();
-  }
+async function saveCopy() {
+  ui.note = {}; ui.confirm = null;
+  if (isDemo()) { note('setup', 'Demo mode: nothing is saved.'); rerender(); return; }
+  note('setup', 'Saving…'); rerender();
+  try {
+    const r = await saveSetup();
+    note('setup', `Saved in your Downloads folder.${r.skipped.length ? ` Not connected, so not in it: ${r.skipped.join(', ')}.` : ''}`, 'good');
+  } catch (e) { note('setup', `Not saved: ${e.message}.`, 'bad'); }
+  load();
 }
 
-// Weekly setup files (server: helpers/weekly-setup.mjs, /api/setups): saved once a week, newest 6 kept.
-let weeklyFiles = null;
-const loadWeekly = async () => { try { weeklyFiles = await (await fetch('/api/setups')).json(); } catch { weeklyFiles = []; } rerender(); };
-function weeklyCard() {
-  if (weeklyFiles === null) loadWeekly();
+// ---------- the pieces each row shows ----------
+const noteLine = (key) => (ui.note[key] ? h('div', { class: `bk-note${ui.note[key].kind ? ` ${ui.note[key].kind}` : ''}`, role: 'status' }, ui.note[key].text) : null);
+const askBox = (text, extra, yes, onYes) => h('div', { class: 'prof-confirm bk-ask', role: 'group', 'aria-label': text },
+  h('p', {}, text), ...[].concat(extra || []).filter(Boolean),
+  h('div', { class: 'actions' }, button(yes, onYes, { kind: 'primary small' }), button('Cancel', cancel, { kind: 'ghost small' })));
+const changeList = (rows, more) => h('div', { class: 'bk-changes' },
+  ...rows.map((p) => h('div', {}, p.dev ? h('span', { class: 'bk-dev' }, `${p.dev} · `) : null, `${p.label}: `, h('s', {}, String(p.from)), ' → ', h('b', {}, String(p.show)))),
+  more > 0 ? h('div', { class: 'faint' }, `and ${more} more`) : null);
+const LIST_MAX = 6;
+
+function deviceAsk(c) {
+  const d = devices[c.id];
+  return askBox(`Put your ${d.adapter.title} back to how it was ${c.when}? Settings you changed since then will be replaced.`,
+    [h('div', { class: 'bk-sub' }, `${plural(c.plan.length, 'setting')} will change:`), changeList(c.plan.slice(0, LIST_MAX), c.plan.length - LIST_MAX),
+      h('div', { class: 'bk-sub' }, 'DeviceHub saves how it is now first, so you can come back to that too.')],
+    'Yes, go back', yesDevice);
+}
+
+function setupAsk(c) {
+  const p = c.planned;
+  const has = [...Object.keys(c.file.devices || {}).map(devName), Array.isArray(c.file.profiles) ? plural(c.file.profiles.length, 'profile') : null, c.file.sound ? 'sound settings' : null].filter(Boolean);
+  const rows = p.changes.flatMap((x) => x.plan.map((r) => ({ ...r, dev: x.kind })));
+  if (p.profiles) rows.push({ dev: 'DeviceHub', label: 'Profiles', from: `${p.profiles.from} now`, show: `${p.profiles.to} from the file` });
+  if (p.sound) rows.push({ dev: 'Sound', label: 'EQ, speakers, mics', from: 'now', show: 'from the file' });
+  return askBox(`Load the setup saved ${c.when}?`,
+    [h('div', { class: 'bk-sub' }, `It holds: ${has.join(', ') || 'nothing DeviceHub knows'}.`),
+      h('div', { class: 'bk-sub' }, `${plural(c.count, 'setting')} will change:`), changeList(rows.slice(0, LIST_MAX), rows.length - LIST_MAX),
+      p.notConnected.length ? h('div', { class: 'bk-sub' }, `Not connected, so left as they are: ${p.notConnected.join(', ')}.`) : null,
+      h('div', { class: 'bk-sub' }, 'Each device is saved first, so you can come back to how it is now.')],
+    'Yes, load it', yesSetup);
+}
+
+async function toggleView(f, id) {
+  const key = `b:${f.name}`;
+  if (ui.view?.key === key) { ui.view = null; rerender(); return; }
+  ui.view = { key, id, b: null }; ui.raw = false; rerender();
+  try { const b = await source.read(f.name); if (ui.view?.key === key) ui.view.b = b; } catch (e) { if (ui.view?.key === key) ui.view.error = e.message; }
+  rerender();
+}
+
+function viewBox() {
+  const v = ui.view;
+  if (v.error) return h('div', { class: 'bk-view' }, h('div', { class: 'bk-note bad' }, `This copy could not be read: ${v.error}.`));
+  if (!v.b) return h('div', { class: 'bk-view' }, h('div', { class: 'faint' }, 'Reading…'));
+  const { lines, extra } = contentLines(v.b, (k) => keyLabel(v.id, k), (k, x) => showValue(v.id, k, x));
+  // numbers in lists (keymaps, memory dumps) on one line each (20 Oct 2026: a keyboard backup took 368 ms to show)
+  const text = () => JSON.stringify(v.b, null, 1).replace(/\[\s*(-?\d+(?:\s*,\s*-?\d+)*)\s*\]/g, (_, nums) => `[${nums.replace(/\s+/g, '')}]`).slice(0, 60000);
+  return h('div', { class: 'bk-view' },
+    lines.length ? h('div', { class: 'bk-lines' }, ...lines.map((l) => h('div', {}, h('span', {}, l.label), h('b', {}, l.text)))) : null,
+    extra && lines.length ? h('div', { class: 'bk-sub' }, `Also in it: ${extra}.`) : null,
+    ui.raw || !lines.length ? h('pre', { class: 'json' }, text()) : null,
+    lines.length ? button(ui.raw ? 'Hide the whole file' : 'Show the whole file', () => { ui.raw = !ui.raw; rerender(); }, { kind: 'ghost small' }) : null);
+}
+
+function backupRow(f, id, canRestore) {
+  const key = `b:${f.name}`;
+  const asking = ui.confirm?.key === key;
+  const viewing = ui.view?.key === key;
+  const w = why.get(f.name);
+  return h('div', { class: 'bk-item' },
+    h('div', { class: 'file bk-row', style: { '--cc': `var(--c-${id})` } },
+      h('div', { class: 'bk-what' }, h('b', {}, friendlyWhen(f.at)), h('small', {}, [w, sizeText(f.size)].filter(Boolean).join(' · '))),
+      asking ? null : h('div', { class: 'bk-acts' },
+        button(viewing ? 'Hide' : "See what's in it", () => toggleView(f, id), { kind: 'ghost small' }),
+        canRestore ? button('Go back to this', () => askDevice(f, id), { kind: 'small', disabled: !!ui.busy }) : null)),
+    viewing ? viewBox() : null,
+    asking ? deviceAsk(ui.confirm) : null,
+    noteLine(key));
+}
+
+function deviceCard(id, list) {
+  const canRestore = !!devices[id];
+  const open = ui.older.has(id);
+  const first = list.slice(0, SHOWN), rest = list.slice(SHOWN);
+  readWhy(open ? list : first, id);
+  return card([icon(devices[id] ? id : 'backups'), h('h2', {}, `${devName(id)}: before each change`)],
+    h('div', { class: 'files' }, ...first.map((f) => backupRow(f, id, canRestore))),
+    rest.length && open ? h('div', { class: 'files bk-older' }, ...rest.map((f) => backupRow(f, id, canRestore))) : null,
+    rest.length ? h('button', { class: 'pill bk-more', 'aria-expanded': String(open), onclick: () => { if (open) ui.older.delete(id); else ui.older.add(id); rerender(); } },
+      open ? 'Show fewer' : `Show older (${rest.length})`) : null,
+    canRestore ? null : h('div', { class: 'bk-sub' }, 'You can look at these; they are not put back from here.'));
+}
+
+function weeklyRow(f) {
+  const key = `w:${f.name}`;
+  const asking = ui.confirm?.key === key;
+  return h('div', { class: 'bk-item' },
+    h('div', { class: 'file bk-row' },
+      h('div', { class: 'bk-what' }, h('b', {}, weeklyWhen(f.at)), h('small', {}, sizeText(f.size))),
+      asking ? null : h('div', { class: 'bk-acts' }, button('Go back to this', () => askWeekly(f), { kind: 'small', disabled: !!ui.busy }))),
+    asking ? setupAsk(ui.confirm) : null,
+    noteLine(key));
+}
+
+function setupCard() {
   const list = weeklyFiles || [];
-  return card([h('h2', {}, 'Weekly setup files'), h('span', { class: 'sub' }, 'weekly, last 6 kept'), h('span', { class: 'spacer' }),
-    button('Save one now', async () => { if (isDemo()) { toast('Demo mode: nothing is saved', 'info'); return; } const r = await (await fetch('/api/setups/save-now', { method: 'POST' })).json().catch(() => ({})); toast(r.name ? 'Setup file saved' : 'Not saved', r.name ? 'good' : 'bad', { detail: r.name || 'No device could be read.' }); loadWeekly(); }, { kind: 'ghost small', ic: 'backups' })],
-    list.length ? h('div', { class: 'files' }, ...list.map((f) => h('div', { class: 'file', style: { gridTemplateColumns: '38px 1fr auto' } }, icon('backups'),
-      h('div', {}, new Date(f.at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }), h('small', {}, `${(f.size / 1024).toFixed(1)} KB`)),
-      button('Load', async () => { try { const file = await (await fetch(`/api/setups/${encodeURIComponent(f.name)}`)).json(); await loadSetupJson(file); } catch (e) { toast('Not loaded', 'bad', { detail: e.message }); } }, { kind: 'small', ic: 'undo' }))))
-      : h('div', { class: 'feed-empty' }, 'The first one is saved a minute or so after DeviceHub starts.'));
+  return card([icon('backups'), h('h2', {}, 'Your whole setup')],
+    h('p', { class: 'bk-lede' }, 'A setup file holds all your devices, profiles and DeviceHub settings in one file.'),
+    ui.confirm?.key === 'file' ? setupAsk(ui.confirm) : h('div', { class: 'actions' },
+      button('Save a copy now', saveCopy, { kind: 'primary small', ic: 'backups' }),
+      button('Load a setup file…', pickSetupFile, { kind: 'small', ic: 'undo', disabled: !!ui.busy })),
+    noteLine('setup'), noteLine('file'),
+    h('div', { class: 'bk-label' }, 'Saved every week (the last 6 are kept)'),
+    weeklyFiles === null ? h('div', { class: 'faint' }, 'Reading…')
+      : list.length ? h('div', { class: 'files' }, ...list.map(weeklyRow))
+        : h('div', { class: 'feed-empty' }, 'The first one is saved a minute or so after DeviceHub starts.'));
 }
 
 export default {
   id: 'backups', title: 'Backups', icon: 'backups', accent: 'var(--good)',
   watches: [],  // the list is read from the server; device readings do not redraw it (21 Oct 2026)
-  render() {
-    rerender = () => { const el = document.querySelector('#main .page'); if (el && location.hash === '#/backups') el.replaceWith(Object.assign(this.render(), { className: 'page no-anim' })); };
-    if (!files) load();
-    const groups = { mouse: [], keyboard: [], headset: [] };
-    for (const f of files || []) (groups[deviceOf(f.name)] ||= []).push(f);
+  render(opts = {}) {
+    rerender = () => { const el = document.querySelector('#main .page'); if (el && location.hash === '#/backups') el.replaceWith(Object.assign(this.render({ own: true }), { className: 'page no-anim' })); };
+    // the lists are read again each time the page is opened (no Refresh button)
+    if (!opts.own && (opts.fresh || files === null)) {
+      if (!ui.busy) { ui.confirm = null; ui.view = null; ui.note = {}; }
+      load(); loadWeekly();
+    }
+    const groups = new Map();
+    for (const id of ['mouse', 'keyboard', 'headset']) if (devices[id]) groups.set(id, []);
+    const ids = Object.keys(devices);
+    for (const f of files || []) { const g = groupOf(f.name, ids); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(f); }
+    const cards = [...groups].map(([id, list]) => (list.length ? deviceCard(id, list)
+      : card([icon(devices[id] ? id : 'backups'), h('h2', {}, `${devName(id)}: before each change`)], h('div', { class: 'feed-empty' }, 'None yet. One is saved before the first change.'))));
     return h('div', {},
-      topbar('Safety net', 'Backups', 'Every change is backed up first.',
-        h('div', { class: 'actions' },
-          button('Refresh', load, { kind: 'ghost', ic: 'refresh' }),
-          button('Load setup file', loadSetupFile, { ic: 'undo' }),
-          button('Save setup file', saveSetupFile, { kind: 'primary', ic: 'backups' }))),
-      h('div', { style: { marginBottom: '16px' } }, weeklyCard()),
-      h('div', { class: 'grid three' }, ...Object.entries(groups).map(([id, list]) => card([icon(id), h('h2', {}, devices[id]?.adapter.title || id), h('span', { class: 'spacer' }), pill(`${list.length}`)],
-        list.length ? h('div', { class: 'files' }, ...list.slice(0, 30).map((f) => h('div', { class: 'file', style: { '--cc': `var(--c-${id})` } }, icon(id),
-          h('div', {}, new Date(f.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }), h('small', {}, `${(f.size / 1024).toFixed(1)} KB`)),
-          button('', () => view(f), { kind: 'ghost small', ic: 'search', title: 'View' }),
-          button('', () => restore(f), { kind: 'ghost small', ic: 'undo', title: 'Restore' }))))
-          : h('div', { class: 'feed-empty' }, 'No backups yet. One is made before the first change.')))),
+      topbar('Safety net', 'Backups'),
+      h('p', { class: 'lede bk-intro' }, 'DeviceHub saves your settings before every change, so you can always go back.'),
+      h('div', { class: 'bk-top' }, setupCard()),
+      files === null ? h('div', { class: 'faint' }, 'Reading…') : h('div', { class: 'grid three top bk-grid' }, ...cards),
       h('p', { class: 'faint', style: { marginTop: '18px', fontSize: '12.5px' } }, 'Stored in DeviceHub\\backups.'));
   },
 };
