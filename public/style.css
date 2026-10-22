@@ -1081,3 +1081,6 @@ html[data-art="live"] .art.mark .scan, .art-preview[data-art-preview="live"] .ar
 html[data-art="live"] .art.mark.art-keyboard .scan, .art-preview[data-art-preview="live"] .art.mark.art.art-keyboard .scan { stroke: color-mix(in srgb, var(--kb, #fff) calc(var(--kbon, 0) * 70%), #fff); filter: drop-shadow(0 0 2.5px rgba(255, 255, 255, .8)) drop-shadow(0 0 6px rgba(200, 220, 255, .5)); }
 html[data-art="live"] .art.mark .floor, .art-preview[data-art-preview="live"] .art.mark.art .floor { fill: rgba(0, 0, 0, .55); opacity: 1; filter: blur(7px); }
 html[data-art="live"] .art.mark.mic-live .led.mic, .art-preview[data-art-preview="live"] .art.mark.art.mic-live .led.mic { fill: #fff; filter: drop-shadow(0 0 2.5px #fff); }
+/* smooth devices (Shawn, 21 Oct 2026: "why are these extra lines there I want the devices to be smooth"): in the Live look
+   no seams, shine streaks, detail lines, glass sheen or moving beam; only each device's clean outline and its battery */
+html[data-art="live"] .art.mark :is(.cut-line, .hi, .hi-line, .line, .sheen, .scan), .art-preview[data-art-preview="live"] .art.mark.art :is(.cut-line, .hi, .hi-line, .line, .sheen, .scan) { display: none; }
