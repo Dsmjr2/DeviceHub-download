@@ -6,7 +6,7 @@
 //  3. Apply: backup first, one setting at a time, read back; read-only, Turn on settings, a reading, a bad value, the
 //     maker's app open or unknown, a failed backup: skipped with ONE Activity line; not plugged in: quiet.
 //  4. The real guard (helpers/my-devices.mjs guard): Turn on settings and the self-check decide what a profile writes.
-// Run: node tests/profiles-added.mjs (tests/my-devices.mjs runs it too)
+// Run: node tests/profiles-added.mjs (tests/my-devices.mjs runs it too; it runs tests/profile-use.mjs at the end)
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -200,6 +200,8 @@ export async function run() {
   for (const id of ['mouse', 'headset', 'keyboard', 'test-light', 'own-pad', 'guarded-pad', 'guarded-pad2']) delete core.devices[id];
   Object.assign(env, saved);
   core.activity.length = 0;
+  // "When to use it" on the Profiles page (tests/profile-use.mjs; it runs here so test:offline covers it)
+  for (const f of await (await import('./profile-use.mjs')).run()) fails.push(`when to use it: ${f}`);
   return fails;
 }
 
