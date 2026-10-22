@@ -1,4 +1,4 @@
-// Battery graph for the Mouse and Headset pages (19 Oct 2026): the recorded levels (server: /api/battery-history, a
+// Battery graph for the Mouse, Headset and added device pages (19 Oct 2026): the recorded levels (server: /api/battery-history, a
 // reading every 5 minutes plus every plug and unplug) as one 2 px line in the device's color over the last 24 hours or
 // 7 days, charging time as a faint green band, a crosshair with the time and level on hover, and the readings as a
 // table. The line breaks where no reading came for over 30 minutes (DeviceHub off, the device off or asleep).
@@ -6,6 +6,13 @@ import { h } from './dom.js';
 import { card, segmented } from './controls.js';
 
 const LINE = { mouse: '#5a86c7', headset: '#d4635a' };  // validated against the dark panel (dataviz validator)
+// a device added in my-devices (22 Oct 2026, docs/handoff/battery-added-devices.md): the same graph, its line in the
+// color of its kind (a mouse blue, a headset red, anything else the mouse's blue), named by its title
+const lineOf = (id, kind) => LINE[id] || (/headset|headphone|earbud/i.test(kind || '') ? LINE.headset : LINE.mouse);
+const named = {};
+// in demo mode a pretend added device brings its own readings (public/devices/demo.js), so nothing is asked of the server
+const demoRows = {};
+export function useDemoHistory(id, fn) { demoRows[id] = fn; }
 const GAP_MS = 30 * 60 * 1000;
 const H = 190, PAD = { l: 34, r: 14, t: 12, b: 26 };
 const ui = { days: { mouse: 1, headset: 1 } };
@@ -17,17 +24,18 @@ const timeText = (t, days) => new Date(t).toLocaleString([], days > 1 ? { weekda
 async function load(id, days) {
   const key = `${id}:${days}`;
   if (cache[key] && Date.now() - cache[key].at < 60000) return cache[key].rows;
+  if (demoRows[id]) { cache[key] = { at: Date.now(), rows: demoRows[id](days) }; return cache[key].rows; }
   const rows = await (await fetch(`/api/battery-history?id=${id}&days=${days}`)).json();
   cache[key] = { at: Date.now(), rows: Array.isArray(rows) ? rows : [] };
   return cache[key].rows;
 }
 
-function draw(box, id, rows, days) {
+function draw(box, id, rows, days, line = lineOf(id)) {
   const W = Math.max(280, box.clientWidth || 600);
   const now = Date.now(), t0 = now - days * 24 * 3600 * 1000;
   const x = (t) => PAD.l + ((t - t0) / (now - t0)) * (W - PAD.l - PAD.r);
   const y = (p) => PAD.t + (1 - p / 100) * (H - PAD.t - PAD.b);
-  const root = svg('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, class: 'bchart', role: 'img', 'aria-label': `${id} battery over the last ${days > 1 ? `${days} days` : '24 hours'}` });
+  const root = svg('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, class: 'bchart', role: 'img', 'aria-label': `${named[id] || id} battery over the last ${days > 1 ? `${days} days` : '24 hours'}` });
 
   // recessive grid: hairlines at 0, 50 and 100%, labels in muted ink
   for (const p of [0, 50, 100]) {
@@ -57,19 +65,19 @@ function draw(box, id, rows, days) {
   if (cur.length) segs.push(cur);
   for (const s of segs) {
     const d = s.map((r, i) => `${i ? 'L' : 'M'}${x(r.at).toFixed(1)} ${y(r.pct).toFixed(1)}`).join('');
-    if (s.length > 1) root.append(svg('path', { d: `${d}L${x(s[s.length - 1].at).toFixed(1)} ${y(0)}L${x(s[0].at).toFixed(1)} ${y(0)}Z`, fill: LINE[id], 'fill-opacity': 0.1 }));
-    root.append(svg('path', { d, fill: 'none', stroke: LINE[id], 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+    if (s.length > 1) root.append(svg('path', { d: `${d}L${x(s[s.length - 1].at).toFixed(1)} ${y(0)}L${x(s[0].at).toFixed(1)} ${y(0)}Z`, fill: line, 'fill-opacity': 0.1 }));
+    root.append(svg('path', { d, fill: 'none', stroke: line, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
   }
   // the latest reading: an end dot with a surface ring, and its value
   const last = rows[rows.length - 1];
   if (last) {
-    root.append(svg('circle', { cx: x(last.at), cy: y(last.pct), r: 4, fill: LINE[id], class: 'bc-dot' }));
+    root.append(svg('circle', { cx: x(last.at), cy: y(last.pct), r: 4, fill: line, class: 'bc-dot' }));
     const tx = svg('text', { x: Math.min(x(last.at), W - PAD.r) - 8, y: y(last.pct) - 9, class: 'bc-value', 'text-anchor': 'end' }); tx.textContent = `${last.pct}%`; root.append(tx);
   }
 
   // hover: a crosshair at the nearest reading, with a tooltip
   const cross = svg('line', { y1: PAD.t, y2: H - PAD.b, class: 'bc-cross', visibility: 'hidden' });
-  const dot = svg('circle', { r: 4, fill: LINE[id], class: 'bc-dot', visibility: 'hidden' });
+  const dot = svg('circle', { r: 4, fill: line, class: 'bc-dot', visibility: 'hidden' });
   root.append(cross, dot);
   const tip = h('div', { class: 'bc-tip', hidden: true });
   const hit = svg('rect', { x: PAD.l, y: 0, width: W - PAD.l - PAD.r, height: H, fill: 'transparent' });
@@ -92,8 +100,11 @@ function draw(box, id, rows, days) {
 }
 
 // The card: range control above, the graph, a key for the charging band, and the readings as a table.
-export function batteryChart(id, redraw) {
-  const days = ui.days[id];
+// opts (an added device): { title, kind }
+export function batteryChart(id, redraw, { title, kind } = {}) {
+  if (title) named[id] = title;
+  const line = lineOf(id, kind);
+  const days = ui.days[id] ?? 1;
   const box = h('div', { class: 'bc-box' }, h('div', { class: 'faint', style: { padding: '40px 0', textAlign: 'center' } }, 'Loading…'));
   const table = h('details', { class: 'bc-table' }, h('summary', {}, 'Readings'));
   const el = card([h('h2', {}, 'Battery'), h('span', { class: 'spacer' }),
@@ -104,9 +115,9 @@ export function batteryChart(id, redraw) {
   load(id, days).then((rows) => {
     if (rows.length < 2) { box.replaceChildren(h('div', { class: 'faint', style: { padding: '40px 0', textAlign: 'center' } }, 'Not enough readings yet. DeviceHub records the level every 5 minutes.')); return; }
     // redrawn when its width changes; the watcher stops once the page has replaced this card (pages redraw often)
-    const ro = new ResizeObserver(() => { if (!box.isConnected) { ro.disconnect(); return; } draw(box, id, rows, days); });
+    const ro = new ResizeObserver(() => { if (!box.isConnected) { ro.disconnect(); return; } draw(box, id, rows, days, line); });
     ro.observe(box);
-    requestAnimationFrame(() => draw(box, id, rows, days));
+    requestAnimationFrame(() => draw(box, id, rows, days, line));
   }).catch(() => box.replaceChildren(h('div', { class: 'faint' }, 'Battery history is not available.')));
   // the table always covers the whole 7 days, whatever the graph shows
   load(id, 7).then((rows) => table.append(readings(rows))).catch(() => {});

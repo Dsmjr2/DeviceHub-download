@@ -10,6 +10,8 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { writeAtomic } = require('./safe-write.js');
+import { fits, writable, batteryCareProblem, makerAppNow as makerAppDefault } from './my-devices.mjs';
+import { showAdded } from '../public/core/profiles.js';
 
 const LOW = 20, BACK = 30;
 // per device: what is turned down, and how
@@ -81,7 +83,93 @@ async function tick() {
         for (const it of back) await core.write(id, it.key, it.was, { label: `${plan.find((p) => p.key === it.key).label} (charging)`, display: plan.find((p) => p.key === it.key).show(it.was), noUndo: true }).catch(() => {});
       }
     }
+    await addedTick();
   } finally { busy = false; }
+}
+
+// ---------- Devices added in my-devices (22 Oct 2026; docs/handoff/battery-added-devices.md) ----------
+// Only a driver that declares batteryCare (helpers/my-devices.mjs batteryCareProblem) gets these, and only the one
+// setting it names per rule. The same thresholds and the same saved entries as above (battery-care.json: "<id>" for
+// low battery, "<id>:charging" while charging; { at, items: [{ key, was, to }] }). Every change, down and back, goes the
+// way a profile's does (helpers/profile-added.mjs): the driver must allow the write now (a library driver's guard:
+// Turn on settings pressed and its check passed; the person's own driver: not marked read-only), the maker's app must be
+// closed (and known to be), a backup must succeed first, then one write through core.write, and the value it confirms
+// must be the one asked for. Nothing is asked of the device or Windows unless a change is due; a change that was left
+// out waits RETRY_MS before it is tried again, so a low device does not take a backup every 20 s.
+const RETRY_MS = 30 * 60 * 1000;
+const tried = {};          // slot -> when a change was last left out (in memory)
+let makerApp = makerAppDefault;
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const addedOf = () => Object.values(core.devices || {}).filter((d) => d?.adapter?.plugin && d.adapter.batteryCare && !batteryCareProblem(d.adapter));
+const settingOf = (a, key) => { try { return (Array.isArray(a.settings) ? a.settings : []).find((s) => s?.key === key) || null; } catch { return null; } };
+const labelOf = (a, key) => settingOf(a, key)?.label || key;
+// may this setting be written with this value now? { ok, s } or { ok: false, why }
+function mayChange(a, key, value) {
+  const s = settingOf(a, key);
+  if (!s) return { ok: false, why: `${key} is not on this device now` };
+  if (!writable(s)) return { ok: false, why: `${s.label} is a reading` };
+  if (!fits(s, value)) return { ok: false, why: `${showAdded(s, value)} is not a value ${s.label} takes` };
+  const w = typeof a.mayWrite === 'function' ? a.mayWrite(key) : { ok: !s.readOnly, why: s.hint || 'it is read-only' };
+  return w?.ok ? { ok: true, s } : { ok: false, why: w?.why || 'its driver does not allow it now' };
+}
+// one change: { ok, s } written and read back as asked; { left: why } nothing written; { failed: why } the write failed
+async function change(d, key, value, why) {
+  const a = d.adapter, id = d.id;
+  const w = mayChange(a, key, value);
+  if (!w.ok) return { left: w.why };
+  let m = {};
+  try { m = (await makerApp(a)) || {}; } catch (e) { m = { unknown: e.message }; }
+  if (m.app) return { left: `${m.app} is open: close it first` };
+  if (m.unknown) return { left: "could not check whether the maker's app is open" };
+  try { await core.backupNow(id, `before ${w.s.label} (${why})`); } catch { return { left: 'no backup could be taken' }; }
+  try {
+    const got = await core.write(id, key, value, { label: `${w.s.label} (${why})`, display: showAdded(w.s, value), noUndo: true });
+    return same(got, value) ? { ok: true, s: w.s } : { failed: `it read back ${showAdded(w.s, got)}` };
+  } catch (e) { return { failed: e.message }; }
+}
+// one rule for one device: slot is "<id>" (low battery) or "<id>:charging"; down = the rule's condition holds now
+async function rule(d, slot, r, down, back, why, says) {
+  const a = d.adapter, id = d.id, now = Date.now();
+  if (tried[slot] && now - tried[slot] < RETRY_MS) return;
+  const leftOut = (text) => { tried[slot] = now; core.log(text.slice(0, 300), 'info', id); };
+  const mine = saved[slot];
+  if (!mine && down) {
+    const was = d.values?.[r.key];
+    if (was === undefined || same(was, r.value)) return;   // not read yet, or already easy on its battery
+    const c = await change(d, r.key, r.value, why);
+    if (!c.ok) { leftOut(`${a.title}: ${says.down}, but ${labelOf(a, r.key)} was not changed: ${c.left || c.failed}`); return; }
+    saved[slot] = { at: new Date().toISOString(), items: [{ key: r.key, was, to: r.value }] }; save();
+    core.log(`${a.title}: ${says.down}, so ${c.s.label} ${showAdded(c.s, was)} → ${showAdded(c.s, r.value)} ${says.until}`, 'info', id);
+  } else if (mine && back) {
+    const items = mine.items.filter((it) => same(d.values?.[it.key], it.to));  // not changed by hand meanwhile
+    if (!items.length) { delete saved[slot]; save(); return; }
+    for (const it of items) {
+      const c = await change(d, it.key, it.was, why);
+      // left out (the maker's app open, not allowed now, no backup): kept, tried again later
+      if (c.left) { leftOut(`${a.title}: ${labelOf(a, it.key)} not put back yet: ${c.left}`); return; }
+      delete saved[slot]; save();
+      if (c.ok) core.log(`${a.title}: ${says.back}, so ${c.s.label} back to ${showAdded(c.s, it.was)}`, says.backKind, id);
+      else core.log(`${a.title}: ${labelOf(a, it.key)} could not be put back (${c.failed}); set it on its page`, 'bad', id);
+    }
+  }
+}
+async function addedTick() {
+  for (const d of addedOf()) {
+    if (d.status !== 'connected' || !d.battery) continue;
+    const care = d.adapter.batteryCare, id = d.id;
+    const pct = d.battery.percent, charging = !!d.battery.charging;
+    // low battery: down at 20% or less and not charging (with the Save device battery switch on); back once it charges,
+    // is at 30% again or the switch is off; left alone while the charging rule holds its setting
+    if (care.lowBattery && pct != null && !saved[`${id}:charging`]) {
+      await rule(d, id, care.lowBattery, on() && pct <= LOW && !charging, charging || pct >= BACK || !on(), 'battery care',
+        { down: `battery ${pct}%`, until: 'to save it (put back once it charges)', back: charging ? 'charging' : `battery ${pct}%`, backKind: 'good' });
+    }
+    // while charging: down whatever the switch says (as the HS80's lights); back when it is unplugged
+    if (care.charging) {
+      await rule(d, `${id}:charging`, care.charging, charging, !charging, 'charging',
+        { down: 'charging', until: '(put back when it is unplugged)', back: 'unplugged', backKind: 'info' });
+    }
+  }
 }
 
 export function start(root, coreModule) {
@@ -93,4 +181,5 @@ export function start(root, coreModule) {
   setTimeout(() => tick().catch(() => {}), 30000).unref?.();
 }
 export const state = () => ({ on: on(), saved });
-export const _test = { tick, PLAN, CHARGING, set: (c, f, s) => { core = c; file = f; settingsFile = s; saved = {}; } };
+export const _test = { tick, PLAN, CHARGING, RETRY_MS, saved: () => saved, forget: () => { for (const k of Object.keys(tried)) delete tried[k]; },
+  set: (c, f, s, opts = {}) => { core = c; file = f; settingsFile = s; saved = {}; for (const k of Object.keys(tried)) delete tried[k]; makerApp = opts.makerApp || makerAppDefault; } };

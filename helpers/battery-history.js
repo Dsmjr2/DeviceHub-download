@@ -11,6 +11,9 @@ const path = require('path');
 
 let file, timer, watchTimer, getState;
 const KEEP_MS = 7 * 24 * 3600 * 1000;
+// a device id the graph and the estimate take: the built-in two, or an added device's id (helpers/my-devices.mjs problem())
+const ID = /^[a-z][a-z0-9-]{1,30}$/;
+const validId = (id) => typeof id === 'string' && ID.test(id);
 
 function read() {
   if (!fs.existsSync(file)) return [];
@@ -49,11 +52,14 @@ function watch() {
   append(edges.map((r) => ({ ...r, edge: r.charging ? 'plugged' : 'unplugged' })));
 }
 
-// { mouse: { hoursLeft, ratePerHour } | null, headset: ... }
+// { mouse: { hoursLeft, ratePerHour } | null, headset: ..., <added device id>: ... }
+// The mouse and headset always have an entry (null until known), as before; a device added in my-devices that reports
+// a battery has one once it has rows in the file (22 Oct 2026: rowsNow already records every connected device with a
+// battery, keyed by its id, so its rows were there; only the estimate and the graph left them out).
 function estimates() {
   const all = read();
   const out = {};
-  for (const id of ['mouse', 'headset']) {
+  for (const id of ['mouse', 'headset', ...new Set(all.map((r) => r.id).filter((x) => x !== 'mouse' && x !== 'headset' && validId(x)))]) {
     const rows = all.filter((r) => r.id === id).sort((a, b) => a.at - b.at);
     if (rows.length < 2) { out[id] = null; continue; }
     const last = rows[rows.length - 1];
@@ -88,4 +94,4 @@ function history(id, days = 7) {
   return read().filter((r) => r.id === id && r.at >= since).sort((a, b) => a.at - b.at).map((r) => ({ at: r.at, pct: r.pct, charging: !!r.charging }));
 }
 
-module.exports = { start, stop, estimates, history };
+module.exports = { start, stop, estimates, history, validId, _test: { rowsNow, append, read, setFile: (f, stateFn) => { file = f; getState = stateFn; } } };

@@ -86,6 +86,36 @@ check(/slider needs min and max/.test(problem({ id: 'x-y', title: 'X', kind: 'Mo
   check(pcmap.RUNS['1b1c:0a6b'] === 'Headset page' && /^Headset page/.test(pcmap.RUNS['1b1c:0a69']) && /^Mouse page/.test(pcmap.RUNS['3710:3506']), 'RUNS: the HS80 receiver still names the Headset page; its cable and the Pulsar cable are listed too');
 }
 
+// batteryCare (22 Oct 2026, docs/handoff/battery-added-devices.md): optional, checked, and declared by no shipped driver
+{
+  const md = await import('../helpers/my-devices.mjs');
+  const base = (care, extra = {}) => ({ id: 'x-y', title: 'X', kind: 'Mouse', connect() {}, info() {}, read() {}, write() {}, battery() {},
+    settings: [{ key: 'lights', label: 'Lights', type: 'toggle' }, { key: 'rate', label: 'Rate', type: 'choice', options: [{ value: 1000, label: '1000 Hz' }] }, { key: 'sig', label: 'Signal', type: 'display' }], batteryCare: care, ...extra });
+  check(md.problem(base(undefined)) === null, 'no batteryCare: fine (it is optional)');
+  check(md.problem(base({ lowBattery: { key: 'rate', value: 1000 }, charging: { key: 'lights', value: false } })) === null, 'a good batteryCare is taken');
+  check(md.problem(base({ lowBattery: { key: 'later', value: 3 } })) === null, 'a setting listed only once the model connects is checked later, before each change');
+  const bad = [
+    [base('lights'), /must be/], [base({}), /empty/], [base({ sleep: { key: 'lights', value: false } }), /only lowBattery and charging/],
+    [base({ lowBattery: { key: 'lights' } }), /must be \{ key, value \}/], [base({ lowBattery: { key: 'lights', value: false, extra: 1 } }), /must be \{ key, value \}/],
+    [base({ lowBattery: { key: 'sig', value: 'x' } }), /a reading/], [base({ charging: { key: 'rate', value: 8000 } }), /not a value rate takes/],
+    [base({ charging: { key: 'lights', value: false } }, { battery: undefined }), /needs battery\(\)/],
+  ];
+  for (const [a, re] of bad) check(re.test(md.problem(a) || ''), `a bad batteryCare is refused: ${JSON.stringify(a.batteryCare)} -> ${md.problem(a)}`);
+  // loaded from a folder like any driver: a good one loads, a bad one is refused with its reason
+  put('care-good', dev("battery: async () => ({ percent: 50 }), batteryCare: { lowBattery: { key: 'dpi', value: 800 } },").replace("'test-mouse'", "'care-good'"));
+  put('care-bad', dev("batteryCare: { lowBattery: { key: 'dpi', value: 800 } },").replace("'test-mouse'", "'care-bad'"));
+  registered.length = 0; specs.length = 0;
+  const rr = Object.fromEntries((await run()).map((x) => [x.name, x]));
+  check(rr['care-good']?.id === 'care-good' && registered.find((a) => a.id === 'care-good')?.batteryCare?.lowBattery?.value === 800, `a driver with batteryCare loads (${JSON.stringify(rr['care-good'])})`);
+  check(/needs battery\(\)/.test(rr['care-bad']?.error || ''), `a batteryCare without battery() is refused (${rr['care-bad']?.error})`);
+  // no shipped library driver declares it, so nothing changes for them
+  const libDir = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..', 'device-library');
+  const declaring = [];
+  const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (/\.(mjs|js|json)$/.test(e.name) && /batteryCare/.test(fs.readFileSync(p, 'utf8'))) declaring.push(path.relative(libDir, p)); } };
+  walk(libDir);
+  check(declaring.length === 0, `no shipped library driver declares batteryCare yet (${declaring.join(', ')})`);
+}
+
 // profiles for added devices (tests/profiles-added.mjs; it runs here so test:offline covers it)
 for (const f of await (await import('./profiles-added.mjs')).run()) fails.push(`profiles: ${f}`);
 

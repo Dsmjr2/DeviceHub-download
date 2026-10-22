@@ -10,6 +10,8 @@ import mouse from './devices/mouse-adapter.js';
 import headset from './devices/headset-adapter.js';
 import keyboard from './devices/keyboard-adapter.js';
 import { demoAdapters } from './devices/demo.js';
+import { useDemoHistory } from './ui/battery-chart.js';
+import { useDemoEstimate } from './ui/controls.js';
 import overview from './pages/overview.js';
 import mousePage from './pages/mouse.js';
 import keyboardPage from './pages/keyboard.js';
@@ -43,10 +45,12 @@ if (AGENT) {
 const LOCAL = !DEMO && !AGENT;
 const adapters = DEMO ? demoAdapters() : [mouse, headset, keyboard];
 if (!REMOTE) adapters.forEach(register);
+// demo mode's pretend added device (?demo&added, public/devices/demo.js): its graph readings and time left are its own
+if (DEMO) for (const a of adapters) if (a.demoHistory) { useDemoHistory(a.id, a.demoHistory); if (a.demoEstimate) useDemoEstimate(a.id, a.demoEstimate); }
 
 const PAGES = [overview, mousePage, headsetPage, keyboardPage, lightingPage, monitorsPage, fansPage, profilesPage, backupsPage, settingsPage, learnPage, supportedPage];
 // devices added on this PC (my-devices/, 21 Oct 2026): a page each, after the built-in devices
-if (REMOTE) for (const d of Object.values(devices)) if (d.adapter?.plugin) PAGES.splice(PAGES.indexOf(lightingPage), 0, devicePage(d.id));
+if (REMOTE || DEMO) for (const d of Object.values(devices)) if (d.adapter?.plugin) PAGES.splice(PAGES.indexOf(lightingPage), 0, devicePage(d.id));
 let current = null;
 
 // ---------- hover tilt ----------

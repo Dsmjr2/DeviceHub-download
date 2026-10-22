@@ -166,8 +166,14 @@ let estimates = {}, estimatesAt = 0;
 export function loadBatteryEstimates(onChange) {
   if (Date.now() - estimatesAt < 60 * 1000) return;
   estimatesAt = Date.now();
-  fetch('/api/battery-estimate').then((r) => r.json()).then((e) => { estimates = e || {}; onChange?.(); }).catch(() => {});
+  fetch('/api/battery-estimate').then((r) => r.json()).then((e) => { estimates = { ...(e || {}), ...demoEstimates }; onChange?.(); }).catch(() => {});
 }
+// in demo mode a pretend added device brings its own estimate (public/devices/demo.js)
+const demoEstimates = {};
+export function useDemoEstimate(id, e) { demoEstimates[id] = e; estimates[id] = e; }
+// the time left as words ("~6 h left"), or null until DeviceHub has watched the battery drain for a while; for an added
+// device's page (22 Oct 2026), which shows it as plain text
+export const batteryLeft = (id, charging) => (charging ? null : estimates[id]?.hoursLeft ? timeLeft(estimates[id].hoursLeft) : null);
 const timeLeft = (h) => (h >= 48 ? `~${Math.round(h / 24)} days left` : h >= 1 ? `~${Math.round(h)} h left` : `~${Math.max(1, Math.round(h * 60))} min left`);
 // The mouse's percent is DeviceHub's own level (helpers/mouse-level.js); its raw voltage reading is in `reported`.
 export function batteryCell({ id, percent, charging, big, reported, compact }) {
@@ -177,7 +183,8 @@ export function batteryCell({ id, percent, charging, big, reported, compact }) {
   const est = estimates[id];
   // time left once DeviceHub has watched the battery drain for a while (30 min and 2%); nothing until then
   const note = charging ? (p >= 100 ? 'Charged' : 'Charging') : est?.hoursLeft ? timeLeft(est.hoursLeft) : null;
-  const tip = reported != null && reported !== p ? `The mouse itself reads ${reported}%: its reading comes from the battery voltage, which the charger lifts. ${p}% is DeviceHub's level.`
+  // the hover note is the mouse's and the headset's only (an added device shows no tooltip)
+  const tip = id !== 'mouse' && id !== 'headset' ? null : reported != null && reported !== p ? `The mouse itself reads ${reported}%: its reading comes from the battery voltage, which the charger lifts. ${p}% is DeviceHub's level.`
     : est?.ratePerHour && !charging ? `Draining about ${est.ratePerHour}% an hour lately` : null;
   if (compact) return h('div', { class: `bcell compact${charging ? ' charging' : ''}`, style: { '--bt': tone }, title: tip }, compactBattery(p));
   return h('div', { class: `bcell${big ? ' big' : ''}${charging ? ' charging' : ''}`, style: { '--bt': tone }, title: tip },

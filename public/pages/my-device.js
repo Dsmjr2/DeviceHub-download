@@ -11,6 +11,33 @@ import { button } from '../ui/controls.js';
 import { modal, toast } from '../ui/overlay.js';
 import { isDemo } from '../core/devices.js';
 import { getHelp } from '../ui/get-help.js';
+import { loadBatteryEstimates, batteryLeft } from '../ui/controls.js';
+import { batteryChart } from '../ui/battery-chart.js';
+import { showAdded } from '../core/profiles.js';
+
+// ---------- Battery (22 Oct 2026, docs/handoff/battery-added-devices.md) ----------
+// A device that reports a battery gets the same graph as the mouse and headset (its readings are in battery-history.jsonl
+// like theirs), its time left once DeviceHub has watched it drain, and, only when its driver says which setting to change
+// (batteryCare), one plain line for what DeviceHub does on a low battery and while it charges (helpers/battery-care.mjs).
+function careLine(d) {
+  const care = d.adapter?.batteryCare;
+  if (!care || typeof care !== 'object') return null;
+  const set = (key) => (d.adapter.settings || []).find((s) => s.key === key);
+  const part = (r) => { const s = set(r?.key); return s ? [s, `${s.label} ${showAdded(s, r.value)}`] : null; };
+  const low = part(care.lowBattery), chg = part(care.charging);
+  const lines = [];
+  if (low) lines.push(`At 20% or less: ${low[1]}, back once it charges (Settings, Save device battery).`);
+  if (chg) lines.push(`While charging: ${chg[1]}, back when unplugged.`);
+  if (!lines.length) return null;
+  const waits = [low, chg].some((x) => x && x[0].readOnly);
+  return h('p', { class: 'faint', style: { marginTop: '12px', fontSize: '12.5px' } }, `Battery saving. ${lines.join(' ')}${waits ? ' It waits while that setting is read-only.' : ''}`);
+}
+const batteryPill = (d) => {
+  const b = d.battery;
+  if (b?.percent == null) return null;
+  const left = batteryLeft(d.id, !!b.charging);
+  return pill(`battery ${b.percent}%${b.charging ? ', charging' : left ? `, ${left}` : ''}`);
+};
 
 // ---------- "Share this driver" (22 Oct 2026; helpers/share-route.mjs, docs/handoff/share-route.md) ----------
 // One click: DeviceHub checks the folder for anything personal, says in plain words what would be shared, asks for an
@@ -137,9 +164,10 @@ export function devicePage(id) {
   const d0 = devices[id];
   return {
     id, title: d0.adapter.title, icon: ICON[String(d0.adapter.kind).toLowerCase()] || 'plug', device: id, watches: [id], accent: 'var(--signal)',
-    render() {
+    render(ctx = {}) {
       const d = devices[id];
       const a = d.adapter;
+      if (a.battery) loadBatteryEstimates(() => ctx.redraw?.());
       const head = topbar(`${a.kind} · added on this PC`, a.title, null, h('div', { class: 'chips' }, undoButton(d), statusPill(d)));
       if (d.status !== 'connected' && !isAway(d)) {
         return h('div', {}, head, h('div', { class: 'panel empty' }, artOf(d),
@@ -151,11 +179,13 @@ export function devicePage(id) {
       const shown = (a.settings || []).filter((s) => d.values?.[s.key] !== undefined);
       return h('div', {}, head, awayBanner(d),
         h('div', { class: 'grid two top' },
-          card([h('h2', {}, 'Settings'), d.battery?.percent != null ? pill(`battery ${d.battery.percent}%${d.battery.charging ? ', charging' : ''}`) : null],
+          card([h('h2', {}, 'Settings'), batteryPill(d)],
             shown.length ? shown.map((s) => settingRow(d, s)) : h('p', { class: 'faint', style: { margin: 0 } }, 'It has not reported any settings yet.'),
             a.unsupported?.length ? h('p', { class: 'faint', style: { marginTop: '12px' } }, icon('external'), ` Still in its maker's app: ${a.unsupported.join(', ')}.`) : null,
+            careLine(d),
             checkAgain(d)),
-          card([h('h2', {}, 'Device'), h('span', { class: 'spacer' }), deviceActions(d)], kv(d.info || {}), shareButton(d, shown))));
+          card([h('h2', {}, 'Device'), h('span', { class: 'spacer' }), deviceActions(d)], kv(d.info || {}), shareButton(d, shown))),
+        a.battery ? batteryChart(id, () => ctx.redraw?.(), { title: a.title, kind: a.kind }) : null);
     },
   };
 }

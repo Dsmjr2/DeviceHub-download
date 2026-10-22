@@ -647,10 +647,10 @@ async function api(req, res, url) {
   }
   // Battery time left, from the recorded levels (helpers/battery-history.js).
   if (url.pathname === '/api/battery-estimate') return send(res, 200, batteryHistory.estimates());
-  // the battery graph on the device pages: ?id=mouse|headset&days=1..7
+  // the battery graph on the device pages: ?id=mouse|headset|<added device id>&days=1..7
   if (url.pathname === '/api/battery-history') {
     const id = url.searchParams.get('id'), days = Math.min(7, Math.max(1, Number(url.searchParams.get('days')) || 7));
-    if (!['mouse', 'headset'].includes(id)) return send(res, 400, { error: 'id must be mouse or headset' });
+    if (!batteryHistory.validId(id)) return send(res, 400, { error: 'id must be mouse, headset or an added device\'s id' });
     return send(res, 200, batteryHistory.history(id, days));
   }
   // Windows pointer settings (helpers/pointer.cs, the native helper's "pointer" channel): read; or back up, change ONE,

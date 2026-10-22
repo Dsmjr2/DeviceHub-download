@@ -239,7 +239,7 @@ function adapterMeta(d) {
   const a = d.adapter;
   const meta = { id: a.id, title: a.title, kind: a.kind, vendor: a.vendor, unsupported: a.unsupported, autoReconnect: true, pollRead: !!a.pollRead, hasLighting: !!a.hasLighting?.() };
   // a device added in my-devices/: its page is drawn from its settings list (public/pages/my-device.js)
-  if (a.plugin) Object.assign(meta, { plugin: a.plugin, settings: a.settings, battery: typeof a.battery === 'function', ...(a.library ? { library: a.library } : {}) });
+  if (a.plugin) Object.assign(meta, { plugin: a.plugin, settings: a.settings, battery: typeof a.battery === 'function', ...(a.library ? { library: a.library } : {}), ...(a.batteryCare ? { batteryCare: a.batteryCare } : {}) });
   // while the mouse is away its flash is not read: which settings read back cleanly is taken from its last visit
   if (a.id === 'mouse') meta.trusted = Object.fromEntries(Object.keys(d.values || {}).map((k) => [k, d.status !== 'connected' && d.savedTrusted ? !!d.savedTrusted[k] : !!a.trusted?.(k)]));
   if (a.id === 'headset') { meta.props = a.props; meta.endpoints = a.endpoints; meta.mode = a.mode; meta.generic = a.generic ? { usb: a.generic.usb, device: a.generic.device } : null; meta.headsets = a.headsets; meta.picked = a.picked; }

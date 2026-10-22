@@ -83,6 +83,47 @@ export function demoAdapters() {
     lightingKeys(r, g, b, brightness) { const { hue, sat } = rgbToHsv255(r, g, b); return [['hue', hue], ['saturation', sat], ['brightness', Math.round((brightness / 100) * 255)]]; },
     hasLighting: () => true,
   };
-  return [mouse, headset, keyboard];
+  const added = addedDemo();
+  return added ? [mouse, headset, keyboard, added] : [mouse, headset, keyboard];
+}
+
+// A pretend device added in my-devices that reports a battery (22 Oct 2026, docs/handoff/battery-added-devices.md),
+// only with ?demo&added: its tile's Live liquid, its page's battery graph (pretend readings, no server request), its time
+// left and its battery-saving line. &pct=<0-100> sets its level, &charging=1 says it charges, &kind=Headset (or
+// Keyboard, or anything else for the plain tile) changes its drawing. Nothing is written anywhere.
+function addedDemo() {
+  const q = new URLSearchParams(globalThis.location?.search || '');
+  if (!q.has('added')) return null;
+  const pct = Math.max(0, Math.min(100, Number(q.get('pct') ?? 42) || 0)), charging = q.get('charging') === '1';
+  const kind = String(q.get('kind') || 'Mouse').slice(0, 20);
+  const v = { lights: true, dpi: 1600, signal: 'Strong' };
+  // a week of readings every 5 minutes, ending at the level asked for: about 1.5% an hour down, a charge each evening
+  const history = (days) => {
+    const now = Date.now(), step = 5 * 60 * 1000, rows = [];
+    let level = pct;
+    for (let t = now; t > now - days * 24 * 3600 * 1000; t -= step) {
+      const hour = new Date(t).getHours(), chg = hour === 19 || hour === 20;
+      rows.push({ at: t, pct: Math.round(Math.max(0, Math.min(100, level))), charging: chg || (t === now && charging) });
+      level = Math.min(100, Math.max(0, level + (chg ? -4 : 0.125)));   // going back in time: before a charge it was lower
+    }
+    return rows.reverse();
+  };
+  const title = `Pretend wireless ${kind.toLowerCase()}`;
+  return {
+    id: 'demo-added', title, kind, plugin: 'demo-added', vendor: { label: "its maker's app", app: null }, unsupported: [],
+    settings: [
+      { key: 'lights', label: 'Lights', type: 'toggle' },
+      { key: 'dpi', label: 'DPI', type: 'slider', min: 400, max: 3200, step: 400 },
+      { key: 'signal', label: 'Signal', type: 'display' },
+    ],
+    batteryCare: { lowBattery: { key: 'lights', value: false }, charging: { key: 'lights', value: false } },
+    connect: async () => (await wait(), true),
+    info: async () => ({ Model: title, Connection: '2.4 GHz receiver' }),
+    battery: async () => ({ percent: pct, charging }),
+    read: async () => (await wait(), { ...v }),
+    write: async (k, x) => (await wait(200), (v[k] = x)),
+    demoHistory: history,
+    demoEstimate: charging ? null : { ratePerHour: 1.5, hoursLeft: +(pct / 1.5).toFixed(1) },
+  };
 }
 export { DPI_SLOTS };

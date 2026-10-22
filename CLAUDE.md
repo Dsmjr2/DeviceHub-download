@@ -290,10 +290,11 @@ the person (a download or install, a learning session, or a check in the maker's
    together with every new version. Only add settings whose bytes were seen in step 3 or are documented.
    **What the rest of DeviceHub picks up by itself:** `battery()` returning `{ percent, charging }` gives the battery
    (and Charging) on the device's tile and page. A device that can only tell charging from its voltage does it the way
-   `chargerLifted` in `public/devices/headset-adapter.js` does for the HS80 on a wall charger. The battery history graph,
-   low-battery saving (`helpers/battery-care.mjs`), the lights-off-while-charging rule and the Live battery look's
-   liquid are written for the `mouse` and `headset` slots only (lists of those two ids in `helpers/battery-history.js`,
-   `helpers/battery-care.mjs` and `public/ui/live-art.js`); a device added in `my-devices` does not get them yet. An
+   `chargerLifted` in `public/devices/headset-adapter.js` does for the HS80 on a wall charger. It also gives the device its battery history graph and time left
+   (`helpers/battery-history.js`, rows keyed by its id) and the Live look's liquid on its tile (`public/ui/live-art.js`).
+   Low-battery saving and lights off while charging (`helpers/battery-care.mjs`) change an added device only when its
+   driver declares `batteryCare: { lowBattery: { key, value }, charging: { key, value } }`, the write is allowed now,
+   the maker's app is closed and a backup succeeds first (docs/handoff/battery-added-devices.md). An
    added device gets a plain drawing on its tile; the photos and detailed drawings are only for the three originals.
    Profiles (and auto-switch) save and apply an added device's settings (`profile.added`; `helpers/profile-added.mjs`):
    readings are never saved; a setting is applied only when its driver allows the write now and the maker's app is

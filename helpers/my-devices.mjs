@@ -23,6 +23,8 @@
 //        pids: [...] + byPid: { pid: overrides } = one channel per product id (hidSpecs below); the options for
 //        choosing and driving a collection (iface, col, lengths, featureOnly, reply 'raw', reportIds, routes,
 //        refusals) are in helpers/hid-host.mjs and docs/handoff/hid-core.md
+//   batteryCare: { lowBattery: { key, value }, charging: { key, value } }   optional (22 Oct 2026): the one setting
+//        DeviceHub may change to save its battery, and to what (helpers/battery-care.mjs; batteryCareProblem below)
 //
 // Drivers from the device library (22 Oct 2026; helpers/device-library.mjs, docs/handoff/auto-setup.md): a folder with
 // library.json was copied from device-library/ and is loaded GUARDED. A "read-only" (or "untested") entry's writes are
@@ -81,6 +83,36 @@ export function problem(a) {
     if (s.type === 'remap' && !(named(s.buttons) && named(s.targets))) return `setting ${s.key}: a remap needs buttons and targets, each a list of { value, label } with distinct values`;
   }
   if (a.hid && !(/^[0-9A-F]{4}$/i.test(a.hid.vid || '') && /^[0-9A-F]{4}$/i.test(a.hid.pid || ''))) return 'hid needs vid and pid (4 hex digits each)';
+  const care = batteryCareProblem(a);
+  if (care) return care;
+  return null;
+}
+
+// batteryCare (22 Oct 2026, optional; helpers/battery-care.mjs, docs/handoff/battery-added-devices.md): which ONE
+// setting the low-battery saving and the lights-off-while-charging rule may change, and to what:
+//   batteryCare: { lowBattery: { key, value }, charging: { key, value } }   (either or both)
+// Without it DeviceHub changes nothing on the device for its battery. The key must be one of its settings that is
+// written (not a display), the value one that setting takes, and the driver must have battery(). A driver whose
+// settings are listed only once a model connects is checked again before every change.
+export const BATTERY_CARE_RULES = ['lowBattery', 'charging'];
+export function batteryCareProblem(a) {
+  const c = a?.batteryCare;
+  if (c === undefined) return null;
+  if (!plain(c)) return 'batteryCare must be { lowBattery: { key, value }, charging: { key, value } }';
+  const names = Object.keys(c);
+  if (!names.length) return 'batteryCare is empty: give lowBattery, charging or both';
+  const other = names.find((n) => !BATTERY_CARE_RULES.includes(n));
+  if (other) return `batteryCare has "${other}": only lowBattery and charging are known`;
+  if (typeof a.battery !== 'function') return 'batteryCare needs battery(): DeviceHub must read the battery to act on it';
+  for (const n of names) {
+    const r = c[n];
+    if (!plain(r) || typeof r.key !== 'string' || !r.key || !('value' in r) || r.value === undefined || Object.keys(r).some((k) => k !== 'key' && k !== 'value')) return `batteryCare.${n} must be { key, value }`;
+    let list = [];
+    try { list = Array.isArray(a.settings) ? a.settings : []; } catch {}
+    const s = list.find((x) => x?.key === r.key);
+    if (s && !writable(s)) return `batteryCare.${n}: ${r.key} is a reading, which DeviceHub never writes`;
+    if (s && !fits(s, r.value)) return `batteryCare.${n}: ${JSON.stringify(r.value)} is not a value ${r.key} takes`;
+  }
   return null;
 }
 

@@ -29,10 +29,15 @@ function battery(id) {
   return { percent: p, charging: !!d.battery.charging };
 }
 
+// Devices added in my-devices that report a battery (22 Oct 2026, docs/handoff/battery-added-devices.md): their drawing
+// (ui/art.js artOf) is marked data-dev="<id>" and gets the same liquid, from that device's own reading. The built-in
+// mouse and headset paint only drawings without data-dev, so an added mouse or headset never shows their level.
+const addedIds = () => Object.keys(devices).filter((id) => devices[id]?.adapter?.plugin && devices[id].adapter.battery && /^[a-z][a-z0-9-]{1,30}$/.test(id));
 export function paintLive(root = document) {
-  for (const id of ['mouse', 'headset']) {
+  for (const id of ['mouse', 'headset', ...addedIds()]) {
     const b = battery(id);
-    for (const art of root.querySelectorAll(`.art.art-${id}`)) {
+    const sel = id === 'mouse' || id === 'headset' ? `.art.art-${id}:not([data-dev])` : `.art[data-dev="${id}"]`;
+    for (const art of root.querySelectorAll(sel)) {
       art.style.setProperty('--lvl', b ? String(Math.max(0.04, b.percent / 100)) : '0');
       art.style.setProperty('--lq', b ? levelColor(b) : '#8d919c');
       // the number, its % smaller beside it; "off" alone when there is no reading; bubbles while charging
@@ -47,7 +52,7 @@ export function paintLive(root = document) {
     }
   }
   const hv = devices.headset?.values || {};
-  for (const art of root.querySelectorAll('.art.art-headset')) {
+  for (const art of root.querySelectorAll('.art.art-headset:not([data-dev])')) {
     if (hv.led) art.style.setProperty('--glowc', hv.led);
     art.style.setProperty('--logo', hv.logoBrightness == null ? '1' : String(Math.max(0.12, hv.logoBrightness / 100)));
     // the mic tip red while muted, unlit otherwise (Shawn: "the end of the mic shouldnt be lit")
@@ -56,7 +61,7 @@ export function paintLive(root = document) {
   }
   const kv = devices.keyboard?.values || {};
   const on = devices.keyboard?.status === 'connected' && kv.effect !== 0 && kv.brightness > 0;
-  for (const art of root.querySelectorAll('.art.art-keyboard')) {
+  for (const art of root.querySelectorAll('.art.art-keyboard:not([data-dev])')) {
     art.style.setProperty('--kbon', on ? String(0.35 + 0.65 * (kv.brightness / 255)) : '0');
     if (kv.hue != null) art.style.setProperty('--kb', kbColor(kv));
   }
