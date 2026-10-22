@@ -1084,3 +1084,13 @@ html[data-art="live"] .art.mark.mic-live .led.mic, .art-preview[data-art-preview
 /* smooth devices (Shawn, 21 Oct 2026: "why are these extra lines there I want the devices to be smooth"): in the Live look
    no seams, shine streaks, detail lines, glass sheen or moving beam; only each device's clean outline and its battery */
 html[data-art="live"] .art.mark :is(.cut-line, .hi, .hi-line, .line, .sheen, .scan), .art-preview[data-art-preview="live"] .art.mark.art :is(.cut-line, .hi, .hi-line, .line, .sheen, .scan) { display: none; }
+/* the keyboard in the Live look, matching the mouse and headset (Shawn, 21 Oct 2026: "keyboard looks odd"): a smooth
+   dark glass case, the plate darker, the keys dark glass with no outlines, Esc and Enter a little lighter; with the
+   backlight on, the keys glow in its color */
+html[data-art="live"] .art.mark.art-keyboard .cut, .art-preview[data-art-preview="live"] .art.mark.art.art.art-keyboard .cut { fill: rgba(0, 0, 0, .55); stroke: none; }
+html[data-art="live"] .art.mark.art-keyboard .soft, .art-preview[data-art-preview="live"] .art.mark.art.art.art-keyboard .soft { stroke: none;
+  fill: color-mix(in srgb, var(--kb, #fff) calc(var(--kbon, 0) * 70%), rgba(255, 255, 255, .075)); filter: drop-shadow(0 0 calc(var(--kbon, 0) * 2px) var(--kb, transparent)); }
+html[data-art="live"] .art.mark.art-keyboard .accent, .art-preview[data-art-preview="live"] .art.mark.art.art.art-keyboard .accent { stroke: none;
+  fill: color-mix(in srgb, var(--kb, #fff) calc(var(--kbon, 0) * 85%), rgba(255, 255, 255, .16)); }
+html[data-art="live"] .art.mark.art-keyboard .solid, .art-preview[data-art-preview="live"] .art.mark.art.art.art-keyboard .solid { fill: rgba(255, 255, 255, .04); }
+html[data-art="live"] .art.mark.art-keyboard .shade, .art-preview[data-art-preview="live"] .art.mark.art.art.art-keyboard .shade { display: none; }
