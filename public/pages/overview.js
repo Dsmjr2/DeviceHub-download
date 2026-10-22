@@ -218,7 +218,7 @@ function gpuChip(go) {
 // switched off or not connected, the line is broken in red. CSS only (transform and opacity), so it costs nothing.
 function linkStatus(d, off) {
   const st = off ? 'off' : d.status === 'connected' ? 'live' : d.status === 'asleep' ? 'asleep' : d.status === 'connecting' ? 'asleep' : 'none';
-  const text = off ? 'Headset off' : { live: 'Connected', asleep: d.status === 'connecting' ? 'Connecting' : 'Asleep', none: 'Not connected' }[st];
+  const text = off ? 'Headset off' : st === 'live' && d.battery?.charging ? 'Charging' : { live: 'Connected', asleep: d.status === 'connecting' ? 'Connecting' : 'Asleep', none: 'Not connected' }[st];
   return h('div', { class: `link ${st}`, role: 'status', 'aria-label': text },
     h('span', { class: 'link-label' }, text),
     h('span', { class: 'link-track' }, h('i'), h('i'), h('i')),

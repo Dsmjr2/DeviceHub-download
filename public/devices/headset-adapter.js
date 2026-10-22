@@ -119,7 +119,8 @@ const adapter = {
   async battery() {
     if (mode === 'generic') return null;
     const b = props.batteryLevel;
-    return b && b.value != null ? { percent: b.value } : null;
+    // the HS80 charges only over its USB cable, so on the cable (direct mode) it is charging
+    return b && b.value != null ? { percent: b.value, ...(mode === 'direct' ? { charging: via === 'wired' } : {}) } : null;
   },
 
   async read() {

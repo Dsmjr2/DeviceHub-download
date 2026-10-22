@@ -57,6 +57,19 @@ fs.writeFileSync(settings, '{}'); core.devices.mouse.values = { dpiEffect: 'off'
 await _test.tick();
 check(!writes.length, 'a mouse already at 1000 Hz with its light off is not touched');
 
+// the headset charging (22 Oct 2026): all its lights off, whatever the switch says; back when it is unplugged
+writes.length = 0; fs.writeFileSync(settings, JSON.stringify({ batteryCare: false }));
+core.devices.headset.values = { logoBrightness: 60, micLight: true }; core.devices.headset.battery = { percent: 40, charging: true };
+await _test.tick();
+check(writes.some(([i, k, v]) => i === 'headset' && k === 'logoBrightness' && v === 0) && writes.some(([i, k, v]) => i === 'headset' && k === 'micLight' && v === false), `charging headset: lights off (${JSON.stringify(writes)})`);
+check(JSON.parse(fs.readFileSync(file, 'utf8'))['headset:charging']?.items.length === 2, 'what was turned off while charging is saved');
+writes.length = 0; await _test.tick();
+check(!writes.length, 'nothing more while it keeps charging');
+core.devices.headset.battery = { percent: 45, charging: false };
+await _test.tick();
+check(writes.some(([i, k, v]) => i === 'headset' && k === 'logoBrightness' && v === 60) && writes.some(([i, k, v]) => i === 'headset' && k === 'micLight' && v === true), `unplugged: lights back (${JSON.stringify(writes)})`);
+check(!JSON.parse(fs.readFileSync(file, 'utf8'))['headset:charging'], 'nothing left saved after unplugging');
+
 fs.rmSync(dir, { recursive: true, force: true });
 console.log(fails.length ? `battery care: FAILED: ${fails.join('; ')}` : 'battery care (pretend devices): all good');
 process.exit(fails.length ? 1 : 0);
