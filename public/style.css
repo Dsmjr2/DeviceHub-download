@@ -1105,3 +1105,9 @@ html[data-art="live"] :not(.art-preview) > .art.mark.sleeping { animation: aslee
 @media (prefers-reduced-motion: reduce) { html[data-art="live"] :not(.art-preview) > .art.mark.sleeping { animation: none; opacity: .75; } }
 /* no battery reading: no liquid at all (not even its surface line) (21 Oct 2026) */
 html[data-art="live"] :not(.art-preview) > .art.mark.no-level :is(.liquid, .mote, .bubble) { display: none; }
+/* the Live battery look on the Mouse and Headset pages: the battery as a small number among the page's figures, no
+   battery icon (the drawing is the battery) (Shawn, 21 Oct 2026: "show the percent ... somewhere small") */
+html[data-art="live"] .hero .bcell.big { display: flex; }
+html[data-art="live"] .hero .bcell.big .bcell-shape { display: none; }
+html[data-art="live"] .hero .bcell.big .bcell-text b { font-size: 15px; }
+html[data-art="live"] .hero .bcell.big .bcell-text span { font-size: 11.5px; }
