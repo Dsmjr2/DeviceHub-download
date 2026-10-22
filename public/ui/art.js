@@ -36,10 +36,13 @@ function liquid(clip, x, y, w, h) {
   const p = 36, a = 2.4, x0 = x - p * 2, x1 = x + w + p * 2;
   const wave = (dy) => { let d = `M${x0} ${y + dy}`; for (let wx = x0; wx < x1; wx += p) d += `q${p / 4} ${-a} ${p / 2} 0t${p / 2} 0`; return `${d}V${y + h + 4}H${x0}Z`; };
   const bubbles = [0.22, 0.5, 0.76].map((f, i) => `<circle class="bubble b${i}" cx="${(x + w * f).toFixed(1)}" cy="${y + h - 3}" r="${1.1 + (i % 2) * 0.5}"/>`).join('');
-  return `<g clip-path="url(#${clip})"><g class="liquid" style="--lh: ${h}px">
-      <path class="wave back" d="${wave(1.6)}"/><path class="wave front" d="${wave(0)}"/>
+  const g = `${clip}-g`, sh = `${clip}-s`;
+  return `<defs><linearGradient id="${g}" gradientUnits="userSpaceOnUse" x1="0" y1="${y}" x2="0" y2="${y + Math.min(h, 45)}"><stop offset="0" class="lq-top"/><stop offset=".55" class="lq-mid"/><stop offset="1" class="lq-deep"/></linearGradient>
+      <linearGradient id="${sh}" x1="0" y1="0" x2="1" y2=".6"><stop offset=".18" stop-color="#fff" stop-opacity="0"/><stop offset=".3" stop-color="#fff" stop-opacity=".22"/><stop offset=".38" stop-color="#fff" stop-opacity="0"/><stop offset=".52" stop-color="#fff" stop-opacity=".08"/><stop offset=".58" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
+    <g clip-path="url(#${clip})"><g class="liquid" style="--lh: ${h}px">
+      <path class="wave back" d="${wave(1.6)}"/><path class="wave front" d="${wave(0)}" style="fill: url(#${g})"/>
       <path class="wave-edge" d="${wave(0).split('V')[0]}"/>
-    </g>${bubbles}</g>`;
+    </g>${bubbles}<rect class="sheen" x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#${sh})"/></g>`;
 }
 // no words (Shawn, 21 Oct 2026: "remove all the words ... but make it still look cool"): a part is marked with a small
 // crosshair target, and a measurement is a line with end ticks and a centre tick
@@ -127,7 +130,6 @@ export function headsetArt() {
     <circle class="cut" cx="44.6" cy="129" r="1.8"/>
     <rect class="soft" x="65.5" y="146.2" width="13" height="7.4" rx="3.7"/>
     <circle class="led mic" cx="76.4" cy="149.9" r="1.4"/>
-    <g class="vol-arcs"><path class="vol-arc v1" d="M4 118Q0 125.5 4 133"/><path class="vol-arc v1" d="M176 118Q180 125.5 176 133"/><path class="vol-arc v2" d="M-1 113Q-7 125.5 -1 138"/><path class="vol-arc v2" d="M181 113Q187 125.5 181 138"/><path class="vol-arc v3" d="M-6 108Q-14 125.5 -6 143"/><path class="vol-arc v3" d="M186 108Q194 125.5 186 143"/></g>
     <text class="lq-text" x="90" y="130" text-anchor="middle"><tspan class="lq-n"></tspan><tspan class="lq-u" dx="1">%</tspan></text>
     <g class="bp">${callout(76.4, 149.9)}${callout(8.5, 119.5)}${callout(157.5, 111)}${callout(22.5, 111)}</g>
   </g>

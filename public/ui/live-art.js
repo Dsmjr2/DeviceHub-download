@@ -35,10 +35,8 @@ export function paintLive(root = document) {
   for (const art of root.querySelectorAll('.art.art-headset')) {
     if (hv.led) art.style.setProperty('--glowc', hv.led);
     art.style.setProperty('--logo', hv.logoBrightness == null ? '1' : String(Math.max(0.12, hv.logoBrightness / 100)));
-    // the volume as one to three waves (none when muted or off), and the mic tip green when live, red when muted
+    // the mic tip green when live, red when muted (the volume waves beside the cups read as stray lines: removed)
     const on = devices.headset?.status === 'connected' && hv.headsetOn !== false;
-    const vol = hv['vol:playback'];
-    art.dataset.vol = !on || hv['mute:playback'] || vol == null ? '0' : String(vol <= 0 ? 0 : vol < 34 ? 1 : vol < 67 ? 2 : 3);
     art.classList.toggle('mic-live', on && hv['prop:micEnabled'] !== false && !hv['mute:recording']);
     art.classList.toggle('mic-off', on && (hv['prop:micEnabled'] === false || !!hv['mute:recording']));
   }
