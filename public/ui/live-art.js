@@ -1,11 +1,15 @@
 // The Live look (21 Oct 2026, Shawn: "2 sounds cool"): every drawing of the mouse, headset and keyboard shows that
-// device's real state. Battery: the liquid's level and color (green, amber at 20% or less, red at 10% or less, mint
-// while charging) and the number; headset: its logos in their real color and brightness; keyboard: its keys lit in the
+// device's real state. Battery: the liquid's level and color (green, sliding to yellow, then red); headset: its logos in their real color and brightness; keyboard: its keys lit in the
 // real backlight color, dark when the lights are off. Only CSS variables and two text nodes change, set from the
 // readings DeviceHub already has (no extra requests to the devices). style.css draws it (html[data-art="live"]).
 import { devices } from '../core/devices.js';
 
-const levelColor = (b) => (b.charging ? '#5fd3a4' : b.percent <= 10 ? '#ff5a5a' : b.percent <= 20 ? '#ffbe46' : '#3ddc97');
+// the battery's color slides with its level (Shawn, 21 Oct 2026: green, then yellow, then red): green from 60% up, yellow
+// at 30%, red at 10% and below, blended in between
+const levelColor = (b) => {
+  const p = b.percent, hue = p >= 60 ? 140 : p >= 30 ? 50 + ((p - 30) / 30) * 90 : p > 10 ? ((p - 10) / 20) * 50 : 0;
+  return `hsl(${Math.round(hue)} 72% 54%)`;
+};
 // the keyboard's hue and saturation are 0-255 (VIA): to a CSS color
 const kbColor = (v) => `hsl(${Math.round((v.hue / 255) * 360)} ${Math.round((v.saturation / 255) * 100)}% ${Math.round(100 - (v.saturation / 255) * 45)}%)`;
 
