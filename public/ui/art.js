@@ -62,7 +62,6 @@ export function mouseArt() {
   return svgEl(`<svg class="art mark art-mouse" viewBox="0 0 100 160" aria-hidden="true">
     <g class="drawn">
     <ellipse class="floor" cx="50" cy="150" rx="34" ry="9"/>
-    <ellipse class="halo" cx="50" cy="152" rx="40" ry="7"/>
     <g transform="translate(50 0) scale(1.18 1) translate(-50 0)">
     <rect class="soft side-btn" x="18.3" y="50" width="2.4" height="12.5" rx="1.2"/>
     <rect class="soft side-btn" x="18.6" y="64.5" width="2.4" height="12.5" rx="1.2"/>
@@ -104,7 +103,6 @@ export function headsetArt() {
   return svgEl(`<svg class="art mark art-headset" viewBox="0 0 180 160" aria-hidden="true">
     <g class="drawn">
     <ellipse class="floor" cx="90" cy="153" rx="80" ry="8"/>
-    <ellipse class="halo" cx="90" cy="156" rx="86" ry="7"/>
     <path class="solid" d="M28 92C28 16 152 16 152 92H147C147 23 33 23 33 92Z"/>
     <path class="hi-line" d="M31 72C33.5 26 146.5 26 149 72"/>
     <path class="soft" d="M37 94C37 50 143 50 143 94V100C141 60 39 60 37 100Z"/>
@@ -193,7 +191,6 @@ export function keyboardArt() {
   return svgEl(`<svg class="art mark art-keyboard" viewBox="0 0 ${f(W)} ${f(H)}" aria-hidden="true">
     <g class="drawn">
     <ellipse class="floor" cx="${f(W / 2)}" cy="${f(H - 2)}" rx="${f(W / 2 - 4)}" ry="10"/>
-    <ellipse class="halo" cx="${f(W / 2)}" cy="${f(H + 1)}" rx="${f(W / 2 + 4)}" ry="9"/>
     <rect class="solid" x="1" y="1" width="${f(W - 2)}" height="${f(H - 2)}" rx="9"/>
     <rect class="shade" x="1" y="${f(H - 6)}" width="${f(W - 2)}" height="5" rx="2.5"/>
     <rect class="hi" x="8" y="2.2" width="${f(W - 16)}" height="1.6" rx="0.8"/>

@@ -13,11 +13,17 @@ const levelColor = (b) => {
 // the keyboard's hue and saturation are 0-255 (VIA): to a CSS color
 const kbColor = (v) => `hsl(${Math.round((v.hue / 255) * 360)} ${Math.round((v.saturation / 255) * 100)}% ${Math.round(100 - (v.saturation / 255) * 45)}%)`;
 
+// the last level seen, kept for the moment after a restart before the first reading arrives (so the drawing is not
+// shown empty); a per-window convenience, so browser storage, and it works without it
+const KEEP = 'devicehub.liveLevels';
+let kept = {}; try { kept = JSON.parse(localStorage.getItem(KEEP) || '{}') || {}; } catch {}
 function battery(id) {
   const d = devices[id];
-  if (!d || d.status !== 'connected' || (id === 'headset' && d.values?.headsetOn === false)) return null;
+  if (!d || (d.status !== 'connected' && d.status !== 'connecting') || (id === 'headset' && d.values?.headsetOn === false)) return null;
   const p = d.battery?.percent;
-  return p == null ? null : { percent: p, charging: !!d.battery.charging };
+  if (p == null) return kept[id] != null && d.status === 'connected' ? { percent: kept[id], charging: false } : null;
+  if (kept[id] !== p) { kept[id] = p; try { localStorage.setItem(KEEP, JSON.stringify(kept)); } catch {} }
+  return { percent: p, charging: !!d.battery.charging };
 }
 
 export function paintLive(root = document) {
