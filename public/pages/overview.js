@@ -3,7 +3,7 @@ import { h, icon, fmt } from '../ui/dom.js';
 import { env } from '../core/env.js';
 import { ring, button, card, pill, batteryCell, loadBatteryEstimates, skeleton } from '../ui/controls.js';
 import { devices, activity, connect, isDemo, isRemote, shownDevices, noDevicesYet, stillLooking } from '../core/devices.js';
-import { artOf, artFor } from '../ui/art.js';
+import { artOf } from '../ui/art.js';
 import { prettyExe } from '../core/autoswitch.js';
 import { statusPill } from './common.js';
 import { loadProfiles, apply } from '../core/profiles.js';
@@ -55,14 +55,15 @@ function readouts(d, redraw) {
 // A PC with none of the supported devices (yet): what DeviceHub supports, and how to add your own (ADD-YOUR-DEVICES.md).
 // While the window has just opened it only says it is looking, so a PC that has them never flashes this.
 function firstRun(go, redraw) {
-  // the first seconds: the three device tiles as faint drawings with a light sweeping over them, marked Looking, and
+  // the first seconds: the three device tiles as faint outlines with a light sweeping over them, marked Looking, and
   // shimmering lines where their readings will be (21 Oct 2026, Shawn: a splash that shows the tiles loading)
   if (stillLooking()) {
     setTimeout(redraw, 12500);
     return h('div', { class: 'bays', style: { gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' } }, ...[['mouse', 'Mouse'], ['headset', 'Headset'], ['keyboard', 'Keyboard']].map(([id, kind]) =>
       h('div', { class: 'bay ghost', 'aria-label': `Looking for the ${kind.toLowerCase()}` },
         h('div', { class: 'bay-top' }, h('span', { class: 'bay-kind' }, kind), h('span', { class: 'ghost-pill' }, h('i'), 'Looking')),
-        h('div', { class: 'bay-art' }, artFor[id]()),
+        // a plain outline of the kind of device, not a particular model (Shawn: "generic so anyone with any device just sees it")
+        h('div', { class: 'bay-art' }, icon(id, 'ghost-ic')),
         h('div', { class: 'bay-head' }, skeleton([62])),
         h('div', { class: 'readouts' }, skeleton([80, 64, 72])))));
   }
