@@ -273,3 +273,23 @@ Read only, simulated only (tests/sim-turtle-beach-battery.mjs), never run on a r
   of the two this transmitter answers is not measured yet.
 - Not covered: Stealth Pro II (request bytes only in a capture), Stealth 600 Gen 3, Stealth 700 G2, every headset
   setting, ROCCAT mice and keyboards.
+
+## Covered in device-library/roccat-peripherals (22 Oct 2026, untested)
+
+Simulated only (tests/sim-roccat-peripherals.mjs); status "untested", `tested: []`. Sources beyond this sheet, read at
+pinned commits: libratbag `8235b5bb`, the Linux kernel's `drivers/hid/hid-roccat-*` `7be4bc52` (Stefan Achatz, who
+wrote roccat-tools; roccat-tools' own source could not be fetched) and OpenRGB `bbc77470`. Details:
+docs/handoff/drivers-round4.md.
+- **Kone Pure 2DBE / 2DC2 / 2DCB, Kone Pure Optical 2DB4, Kone XTD 2E22, Kone EMP 2E24:** active profile (`05`, set
+  `05 03 <n>`), DPI stage in use and each enabled DPI stage (settings block `06` after `04 <profile> 80`: Pure 31 bytes,
+  no checksum; XTD 43, EMP 41, Sum16), polling rate writable on the EMP, a reading on the Pure and XTD; firmware `09`.
+- **Kone XP 2C8B:** lighting brightness (block `06`, 174 bytes, byte 0x20; select `04 <p> 80 FF`); active profile and
+  firmware as readings. **Burst Pro 2DE1 / Burst Core 2DE6:** lighting brightness (block `06`, 63 bytes, byte 32).
+- **Kova 2CEE, Vulcan family (2F4E 2F09 2EE2 30F7 311A 314C 3124 69A0 307A 3098 2FEE):** firmware (and the Vulcan's
+  layout), read only.
+- Every block write: the block exactly as just read, one setting changed, Sum16 recomputed, always sent, read back in
+  full; anything else that moved sends the block read before back. Reads go on while Swarm II runs; writes refused.
+- **Never list:** firmware write `1B` and its control `1C` (any ROCCAT id), the Ryos reset `11` (Ryos ids only).
+- **Not covered:** battery (no source reads one), Kone Pro (no faithful block read in OpenRGB), Kone Pro Air, Burst Pro
+  Air, Kone Aimo, Horde Aimo (write-only lights), Kone XP / Burst DPI and polling, lights other than brightness,
+  buttons, macros, Vulcan lighting, and the Turtle Beach-branded Vulcan II (10F5: one vendor id per library entry).

@@ -47,6 +47,9 @@
 
     { "brand": "Turtle Beach (Airoha RACE)", "vid": "10F5", "reportId": 6, "bytes": "?? ?? 05 ?? ?? ?? 01 0A", "what": "RACE nvkey write (id 0x0A01): persists across power cycles; the tool's author warns of bricking", "source": "docs/brands/turtle-beach.md section 2 RACE framing and section 4 (stealth600-gen3-usb-fix)" },
     { "brand": "Turtle Beach / ROCCAT", "vid": ["10F5", "1E7D"], "bytes": null, "what": "dongle-side firmware flash", "source": "docs/brands/turtle-beach.md section 4" },
+    { "brand": "ROCCAT", "vid": "1E7D", "reportId": 27, "bytes": "??", "what": "firmware write (feature report 1B, 0x402 bytes): any report 1B", "source": "Linux drivers/hid/hid-roccat-koneplus.h KONEPLUS_COMMAND_FIRMWARE_WRITE = 0x1b, KONEPLUS_SIZE_FIRMWARE_WRITE 0x0402 @ 7be4bc52fd9e0e55dc9a2e0232b89427d2c4b614 (docs/handoff/drivers-round4.md)" },
+    { "brand": "ROCCAT", "vid": "1E7D", "reportId": 28, "bytes": "??", "what": "firmware write control (feature report 1C): any report 1C", "source": "Linux drivers/hid/hid-roccat-koneplus.h KONEPLUS_COMMAND_FIRMWARE_WRITE_CONTROL = 0x1c @ 7be4bc52fd9e0e55dc9a2e0232b89427d2c4b614" },
+    { "brand": "ROCCAT", "vid": "1E7D", "pids": ["3138", "31CE", "3232"], "reportId": 17, "bytes": "??", "what": "Ryos MK reset (feature report 11, 3 bytes); on the Vulcan family report 11 is the lighting mode, so this one is scoped to the Ryos ids", "source": "Linux drivers/hid/hid-roccat-ryos.c ROCCAT_COMMON2_BIN_ATTRIBUTE_W(reset, 0x11, 0x03); hid-ids.h USB_DEVICE_ID_ROCCAT_RYOS_MK / _GLOW / _PRO @ 7be4bc52fd9e0e55dc9a2e0232b89427d2c4b614" },
 
     { "brand": "Wooting", "vid": ["31E3", "03EB"], "bytes": "D? DA 02", "what": "ResetToBootloader (command 2)", "source": "docs/brands/wooting.md section 2 frame and section 4 'Never' (wooting-rgb-sdk, the Gist)" },
     { "brand": "Wooting", "vid": ["31E3", "03EB"], "bytes": "D? DA 2B", "what": "ResetSettings (command 43)", "source": "docs/brands/wooting.md section 4 'Never'" },

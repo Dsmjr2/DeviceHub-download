@@ -328,3 +328,15 @@ Details: docs/handoff/drivers-round3b.md.
 - OpenRGB, zone keyboards: [SteelSeriesApex8ZoneController.cpp](https://gitlab.com/CalcProgrammer1/OpenRGB/-/blob/master/Controllers/SteelSeriesController/SteelSeriesApex8ZoneController/SteelSeriesApex8ZoneController.cpp)
 - libratbag, protocol versions: [src/driver-steelseries.c](https://github.com/libratbag/libratbag/blob/master/src/driver-steelseries.c)
 - Actuation search (nothing found): [AstroSnail/apexctl](https://github.com/AstroSnail/apexctl), [daiyam/steelkeys](https://github.com/daiyam/steelkeys)
+
+## Covered in device-library/steelseries-apex (22 Oct 2026, untested)
+
+Keyboards, from OpenRGB `bbc77470` (SteelSeriesApexController ReadBrightness / SetBrightness, SteelSeriesApex8Zone
+Controller), simulated only (tests/sim-steelseries-apex.mjs). The one setting is **lighting brightness**, offered only
+when the keyboard answers its read: `00 A3` -> `A3 00 <0-10>` (Apex Pro / Pro TKL / 2023 / Gen 3 and their wireless
+ids, Apex Pro Gen 3 `1640`, Apex 7 / 7 TKL, Apex 5, Apex 9 TKL / Mini), written `00 23 <b>`; the Apex 3 TKL (`1622`,
+8-zone) reads `A3 <0-16>`. Every write is sent, even unchanged, and read back. Firmware (`00 90`) shows in the device
+info. Reads go on while SteelSeries GG runs; writes are refused. Write-only, so not offered: per-key colour and direct
+mode (`3A` / `40` / `61`), onboard switch (`3B` / `41`), Gen 3 init (`4B`), profile select (`89`), the Apex 3's
+T-zone brightness, the Apex M750 and the old Apex / 350. OmniPoint actuation stays a gap. No firmware or reset command
+is documented for the Apex, so nothing was added to the never list. Details: docs/handoff/drivers-round4.md.

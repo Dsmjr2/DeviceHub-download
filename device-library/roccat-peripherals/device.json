@@ -1,0 +1,29 @@
+{
+  "id": "roccat-peripherals",
+  "vendor": "ROCCAT",
+  "product": "ROCCAT mice and keyboards (feature reports)",
+  "kind": "Mouse or keyboard",
+  "vid": "1e7d",
+  "pids": ["2dbe", "2dc2", "2dcb", "2db4", "2e22", "2e24", "2c8b", "2de1", "2de6", "2cee", "2f4e", "2f09", "2ee2", "30f7", "311a", "314c", "3124", "69a0", "307a", "3098", "2fee"],
+  "models": ["Kone Pure", "Kone Pure Optical", "Kone XTD", "Kone EMP", "Kone XP", "Burst Pro", "Burst Core", "Kova", "Vulcan II", "Vulcan II Mini", "Vulcan II Max", "Vulcan Pro", "Vulcan TKL Pro", "Pyro", "Magma", "Magma Mini", "Vulcan 100 Aimo", "Vulcan 120 Aimo", "Vulcan TKL"],
+  "works": [
+    "written from libratbag (8235b5bb), the Linux kernel's hid-roccat drivers (7be4bc52) and OpenRGB (bbc77470), and checked against simulated devices only (tests/sim-roccat-peripherals.mjs)",
+    "Kone Pure / Pure Optical / XTD / EMP: active profile (05, set 05 03 <n>), the DPI stage in use and each enabled DPI stage (settings block 06 after 04 <profile> 80); polling rate writable on the EMP, a reading on the Pure and XTD",
+    "Kone XP, Burst Pro, Burst Core: lighting brightness 0-255 (profile block 06); the Kone XP's active profile and firmware as readings",
+    "Kova, Vulcan family: firmware (and the Vulcan's layout) in the device info, read only",
+    "every block write is the whole block as just read with one setting changed and its Sum16 recomputed, always sent, then read back in full; anything else that moved sends the block read before back",
+    "reads go on while Swarm II runs; every write is refused while it runs"
+  ],
+  "doesNotWork": [
+    "firmware updates (never: reports 1B and 1C, and the Ryos reset 11, are on DeviceHub's never list)",
+    "battery: no source reads one on any ROCCAT mouse (Kone Pro Air and Burst Pro Air are write-only in OpenRGB)",
+    "Kone Pro (2c88): OpenRGB reads its block with report id 0 and overwrites bytes 3-5, so no read-back is documented",
+    "Kone Pro Air (2c8e, 2c92), Burst Pro Air (2ca6), Kone Aimo (2e27, 2e2c), Horde Aimo (303e): lights are write-only",
+    "DPI and polling rate on the Kone XP and Burst (units and codes not documented); lights other than brightness; buttons and macros",
+    "Vulcan lighting (effect mode, per-key colours: write-only); Turtle Beach Vulcan II (10f5:501b, 5023, 5001): a library entry has one vendor id",
+    "unconfirmed: the Kone Pure / XTD / EMP collection on Windows (interface 0, chosen by feature length) and whether the Burst's block 06 is the active profile's"
+  ],
+  "status": "untested",
+  "tested": [],
+  "source": "libratbag src/driver-roccat-kone-pure.c, driver-roccat.c, driver-roccat-kone-emp.c @ 8235b5bb6032dea15901ab58a8218956f4494d08; Linux drivers/hid/hid-roccat-konepure.c, hid-roccat-koneplus.h, hid-roccat-common.c @ 7be4bc52fd9e0e55dc9a2e0232b89427d2c4b614; OpenRGB Controllers/RoccatController @ bbc77470a7cba56af60989e54ba910d5ac66a3ac; docs/brands/turtle-beach.md"
+}

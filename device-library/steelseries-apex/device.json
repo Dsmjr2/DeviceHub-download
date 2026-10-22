@@ -1,0 +1,25 @@
+{
+  "id": "steelseries-apex",
+  "vendor": "SteelSeries",
+  "product": "Apex keyboards (brightness and info)",
+  "kind": "Keyboard",
+  "vid": "1038",
+  "pids": ["1610", "1614", "1628", "1630", "1632", "1642", "1644", "1646", "1640", "1612", "1618", "161c", "1634", "1620", "1622"],
+  "models": ["Apex Pro", "Apex Pro TKL", "Apex Pro TKL (2023)", "Apex Pro TKL Wireless (2023)", "Apex Pro TKL Gen 3", "Apex Pro TKL Gen 3 Wireless", "Apex Pro Gen 3", "Apex 7", "Apex 7 TKL", "Apex 5", "Apex 9 TKL", "Apex 9 Mini", "Apex 3 TKL"],
+  "works": [
+    "written from OpenRGB (bbc77470: SteelSeriesApexController ReadBrightness / SetBrightness, SteelSeriesApex8ZoneController) and checked against simulated keyboards only (tests/sim-steelseries-apex.mjs)",
+    "lighting brightness: read 00 A3 (reply A3 00 <0-10>; the Apex 3 TKL A3 <0-16>), written 00 23 <value>, always sent and read back; offered only when the keyboard answers the read",
+    "firmware version (00 90) in the device info, read only",
+    "reads go on while SteelSeries GG runs; every write is refused while it runs"
+  ],
+  "doesNotWork": [
+    "firmware updates (SteelSeries GG only)",
+    "per-key colours, direct mode, onboard switch (3A / 40 / 61, 3B / 41), Gen 3 init (4B) and profile select (89): write-only in OpenRGB, so not sent",
+    "OmniPoint actuation: no open source documents it",
+    "Apex 3 (161a: T-zone brightness is write-only), Apex M750 (0616), Apex / Apex 350 (1202, 1206): no read-back documented",
+    "unconfirmed: the wired boards' collection on interface 1 (chosen by its 64-byte output report); Gen 3 boards may not answer the brightness read without OpenRGB's 4B init"
+  ],
+  "status": "untested",
+  "tested": [],
+  "source": "OpenRGB Controllers/SteelSeriesController (SteelSeriesApexBaseController, SteelSeriesApexController, SteelSeriesApex8ZoneController, SteelSeriesDevices.h, SteelSeriesControllerDetect.cpp) @ bbc77470a7cba56af60989e54ba910d5ac66a3ac; docs/brands/steelseries.md"
+}
