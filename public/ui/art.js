@@ -4,9 +4,8 @@
 // .cut-line seams; and for depth .shade (the far side in shadow), .hi (a sheen where light catches), .led (the parts
 // that light up: the HS80's logos and mic light), .line (fine detail: wheel ridges, stitching, knurling).
 // The body and the soft parts are lit with gradients (light from the top left), their colors per look in style.css.
-// Every look shows the makers' own product photos (public/img: Pulsar, Corsair, Epomaker, 19 Oct 2026) in place of the
-// drawing (.drawn), each turned into its look by an SVG filter (PHOTO_FX, 21 Oct 2026); the drawing stays for the
-// Lighting previews, another keyboard's layout and devices added on a PC.
+// In the Realistic look all three devices show the makers' own product photos (public/img: Pulsar, Corsair, Epomaker, 19 Oct
+// 2026) in place of the drawing (.drawn); the other looks and the Lighting previews keep the drawing.
 // Hover lifts a drawing; a settings change gives one small bounce (style.css).
 import { svgEl } from './dom.js';
 import { ART_STYLES } from '../core/theme.js';
@@ -19,7 +18,7 @@ export function artDefs() {
     + `<linearGradient id="dhs-${dev}-${look}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color: var(--gs1)"/><stop offset="1" style="stop-color: var(--gs2)"/></linearGradient>`;
   // each look's set sits in a group that takes that look's colors (style.css), so a preview box shows its own look
   const set = (look) => `<g class="art-preview" data-art-preview="${look}">${['mouse', 'headset', 'keyboard'].map((d) => `<g class="art art-${d}">${g(d, look)}</g>`).join('')}</g>`;
-  return svgEl(`<svg class="art-defs" width="0" height="0" aria-hidden="true" style="position: absolute"><defs>${ART_LOOKS.map(set).join('')}${PHOTO_FX}</defs></svg>`);
+  return svgEl(`<svg class="art-defs" width="0" height="0" aria-hidden="true" style="position: absolute"><defs>${ART_LOOKS.map(set).join('')}</defs></svg>`);
 }
 
 
@@ -33,14 +32,14 @@ let clipN = 0;
 const clipId = () => `dh-lq-${++clipN}`;
 // the liquid: two waves (one behind, slower) on a body of liquid, inside the device's shape; the group is moved down by
 // the empty share (style.css: --lvl), the waves slide sideways, and bubbles rise while charging
-function liquid(clip, x, y, w, h, ref = `clip-path="url(#${clip})"`) {
+function liquid(clip, x, y, w, h) {
   const p = 36, a = 2.4, x0 = x - p * 2, x1 = x + w + p * 2;
   const wave = (dy) => { let d = `M${x0} ${y + dy}`; for (let wx = x0; wx < x1; wx += p) d += `q${p / 4} ${-a} ${p / 2} 0t${p / 2} 0`; return `${d}V${y + h + 4}H${x0}Z`; };
   const bubbles = [0.22, 0.5, 0.76].map((f, i) => `<circle class="bubble b${i}" cx="${(x + w * f).toFixed(1)}" cy="${y + h - 3}" r="${1.1 + (i % 2) * 0.5}"/>`).join('');
   const g = `${clip}-g`, sh = `${clip}-s`;
   return `<defs><linearGradient id="${g}" gradientUnits="userSpaceOnUse" x1="0" y1="${y}" x2="0" y2="${y + Math.min(h, 45)}"><stop offset="0" class="lq-top"/><stop offset=".55" class="lq-mid"/><stop offset="1" class="lq-deep"/></linearGradient>
       <linearGradient id="${sh}" x1="0" y1="0" x2="1" y2=".6"><stop offset=".18" stop-color="#fff" stop-opacity="0"/><stop offset=".3" stop-color="#fff" stop-opacity=".22"/><stop offset=".38" stop-color="#fff" stop-opacity="0"/><stop offset=".52" stop-color="#fff" stop-opacity=".08"/><stop offset=".58" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
-    <g ${ref}><g class="liquid" style="--lh: ${h}px">
+    <g clip-path="url(#${clip})"><g class="liquid" style="--lh: ${h}px">
       <path class="wave back" d="${wave(1.6)}"/><path class="wave front" d="${wave(0)}" style="fill: url(#${g})"/>
       <path class="wave-edge" d="${wave(0).split('V')[0]}"/>
       ${[0.15, 0.35, 0.55, 0.72, 0.88].map((f, i) => `<circle class="mote m${i}" cx="${(x + w * f).toFixed(1)}" cy="${y + 3}" r="${(0.7 + (i % 3) * 0.25).toFixed(2)}"/>`).join('')}
@@ -48,153 +47,98 @@ function liquid(clip, x, y, w, h, ref = `clip-path="url(#${clip})"`) {
 }
 // no words (Shawn, 21 Oct 2026: "remove all the words ... but make it still look cool"): a part is marked with a small
 // crosshair target, and a measurement is a line with end ticks and a centre tick
-// the Live battery's liquid over a product photo: drawn through a mask made from the photo itself (its shape in white,
-// filter dh-fx-shape), so it fills the real outline
-const photoLiquid = (id, href, vw, vh, x, y, w, h) => `<mask id="${id}-pm" maskUnits="userSpaceOnUse" x="0" y="0" width="${vw}" height="${vh}"><image href="${href}" x="0" y="0" width="${vw}" height="${vh}" preserveAspectRatio="xMidYMid meet" filter="url(#dh-fx-shape)"/></mask>
-    <g class="pliquid">${liquid(`${id}p`, x, y, w, h, `mask="url(#${id}-pm)"`)}</g>`;
 const callout = (x, y) => `<g class="bp-mark"><circle class="bp-lead" cx="${x}" cy="${y}" r="3.2"/><path class="bp-lead" d="M${x - 5.5} ${y}H${x - 2}M${x + 2} ${y}H${x + 5.5}M${x} ${y - 5.5}V${y - 2}M${x} ${y + 2}V${y + 5.5}"/><circle class="bp-dot" cx="${x}" cy="${y}" r=".9"/></g>`;
 const dimV = (x, y1, y2) => `<path class="bp-lead" d="M${x} ${y1}V${y2}M${x - 2} ${y1}H${x + 2}M${x - 2} ${y2}H${x + 2}M${x - 1.2} ${(y1 + y2) / 2}H${x + 1.2}"/>`;
 const dimH = (y, x1, x2) => `<path class="bp-lead" d="M${x1} ${y}H${x2}M${x1} ${y - 2}V${y + 2}M${x2} ${y - 2}V${y + 2}M${(x1 + x2) / 2} ${y - 1.2}V${y + 1.2}"/>`;
 
-// Every look is made from the makers' product photos (21 Oct 2026, Shawn: "base it off the current realistic version for
-// each of these themes ... accurate yet still keep the same themes"): an SVG filter per look turns the photo into it.
-// Edges are found with a 3 x 3 edge kernel on the grey image, the outline from the photo's own transparency; colors
-// that follow the theme come from CSS (flood-color on .fx-accent, .fx-duo-dark, .fx-duo-light).
-const GREY = '<feColorMatrix in="SourceGraphic" type="matrix" values=".3 .59 .11 0 0  .3 .59 .11 0 0  .3 .59 .11 0 0  0 0 0 1 0" result="grey"/>';
-const EDGES = (k) => `${GREY}<feConvolveMatrix in="grey" order="3" kernelMatrix="-1 -1 -1 -1 8 -1 -1 -1 -1" preserveAlpha="true" result="e"/>
-  <feColorMatrix in="e" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  ${k} ${k} ${k} 0 0" result="lines"/>
-  <feComposite in="lines" in2="SourceAlpha" operator="in" result="lines"/>`;
-const RING = (r) => `<feMorphology in="SourceAlpha" operator="dilate" radius="${r}" result="d"/><feComposite in="d" in2="SourceAlpha" operator="out" result="ring"/>`;
-const FLAT = (tones) => `<feGaussianBlur in="grey" stdDeviation=".7" result="soft"/><feComponentTransfer in="soft" result="flat"><feFuncR type="discrete" tableValues="${tones}"/><feFuncG type="discrete" tableValues="${tones}"/><feFuncB type="discrete" tableValues="${tones}"/></feComponentTransfer>`;
-const fx = (id, body) => `<filter id="dh-fx-${id}" x="-8%" y="-8%" width="116%" height="116%" color-interpolation-filters="sRGB">${body}</filter>`;
-const PHOTO_FX = [
-  // Classic: a flat illustration in the devices' real colors: the photo cut into four flat tones, its outline lit
-  fx('frosted', `${GREY}${FLAT('.09 .2 .42 .86')}${RING(.8)}
-    <feFlood flood-color="#fff" flood-opacity=".45"/><feComposite in2="ring" operator="in" result="edge"/>
-    <feMerge><feMergeNode in="flat"/><feMergeNode in="edge"/></feMerge>`),
-  // Blueprint: the edges as cyan lines, the outline brighter, a faint blue fill
-  fx('blueprint', `${EDGES(2.4)}${RING(1.1)}
-    <feMerge result="all"><feMergeNode in="lines"/><feMergeNode in="ring"/></feMerge>
-    <feFlood flood-color="#8fd2ff"/><feComposite in2="all" operator="in" result="cy"/>
-    <feFlood flood-color="#3c8cff" flood-opacity=".1"/><feComposite in2="SourceAlpha" operator="in" result="fill"/>
-    <feMerge><feMergeNode in="fill"/><feMergeNode in="cy"/></feMerge>`),
-  // Neon: a near-black body, its edges and outline glowing in the theme accent
-  fx('neon', `${EDGES(1.6)}${RING(1.4)}
-    <feMerge result="all"><feMergeNode in="lines"/><feMergeNode in="ring"/></feMerge>
-    <feFlood class="fx-accent"/><feComposite in2="all" operator="in" result="c"/><feGaussianBlur in="c" stdDeviation="3" result="glow"/>
-    <feFlood flood-color="#07080c"/><feComposite in2="SourceAlpha" operator="in" result="body"/>
-    <feMerge><feMergeNode in="body"/><feMergeNode in="glow"/><feMergeNode in="c"/></feMerge>`),
-  // Duotone: the photo cut into three flat steps, drawn in a deep, a middle and a light shade of the theme accent
-  fx('duo', `${GREY}<feGaussianBlur in="grey" stdDeviation=".7" result="soft"/>
-    <feColorMatrix in="soft" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  2.6 0 0 0 -.05" result="lum"/>
-    <feComponentTransfer in="lum" result="mid"><feFuncA type="discrete" tableValues="0 1 1"/></feComponentTransfer>
-    <feComponentTransfer in="lum" result="top"><feFuncA type="discrete" tableValues="0 0 1"/></feComponentTransfer>
-    <feFlood class="fx-duo-dark"/><feComposite in2="SourceAlpha" operator="in" result="dark"/>
-    <feFlood class="fx-duo-mid"/><feComposite in2="mid" operator="in" result="m"/>
-    <feFlood class="fx-duo-light"/><feComposite in2="top" operator="in" result="light"/>
-    <feMerge result="all"><feMergeNode in="dark"/><feMergeNode in="m"/><feMergeNode in="light"/></feMerge><feComposite in="all" in2="SourceAlpha" operator="in"/>`),
-  // Arctic: a flat illustration in white and ice, light and shade turned round (the black devices white)
-  fx('arctic', `${GREY}<feGaussianBlur in="grey" stdDeviation=".7" result="soft"/><feComponentTransfer in="soft" result="flat"><feFuncR type="discrete" tableValues=".97 .86 .66 .5"/><feFuncG type="discrete" tableValues=".98 .9 .74 .58"/><feFuncB type="discrete" tableValues="1 .96 .86 .74"/></feComponentTransfer>${RING(.8)}
-    <feFlood flood-color="#8fd2ff" flood-opacity=".7"/><feComposite in2="ring" operator="in" result="edge"/>
-    <feMerge><feMergeNode in="flat"/><feMergeNode in="edge"/></feMerge>`),
-  // Live battery: a smooth dark shape in the device's exact outline, a soft white edge, no photo detail (the liquid is
-  // drawn over it, through the photo's shape)
-  fx('live', `<feFlood flood-color="#16171d"/><feComposite in2="SourceAlpha" operator="in" result="body"/>${RING(.9)}
-    <feFlood flood-color="#fff" flood-opacity=".6"/><feComposite in2="ring" operator="in" result="edge"/>
-    <feMerge><feMergeNode in="body"/><feMergeNode in="edge"/></feMerge>`),
-  // the photo's shape in white, the mask the Live battery's liquid is drawn through
-  fx('shape', '<feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1 0"/>'),
-].join('');
-
-// ---- Pulsar X-Lite CrazyLight, from above: the right-hand ergonomic shell (the left side carries the thumb groove and
-// the two side buttons, the right side slopes in for the ring and little finger), the long split buttons, the ridged
-// wheel in its slot, and the small PULSAR wordmark under the left button (its only mark). Drawn at the real
-// proportions: 115.6 x 63.4 mm ----
+// ---- Pulsar X-Lite CrazyLight, from above (redrawn 21 Oct 2026 from Pulsar's own product photo, Shawn: "more closely
+// accurate to the real thing"): the outline traced from the photo (wide, nearly straight sides, the rear a little
+// fuller on the right), the long wheel in its slot, the split between the buttons running down to the seam just above
+// the middle, the two side buttons on the left, and the small pulsar wordmark under the left button ----
+const MOUSE_SHAPE = 'M47.9 2.3C52.8 2.3 57.3 1.9 62.1 2.6C66.9 3.3 73.0 5.2 76.7 6.5C80.4 7.8 82.4 9.1 84.5 10.4C86.6 11.7 88.1 12.9 89.3 14.2C90.6 15.5 91.2 16.8 91.9 18.1C92.6 19.4 93.1 20.7 93.5 22.0C93.9 23.3 94.0 24.6 94.2 25.9C94.3 27.2 94.4 28.5 94.5 29.8C94.6 31.1 94.4 32.4 94.5 33.7C94.6 35.0 94.8 36.2 94.8 37.5C94.9 38.8 94.8 40.1 94.8 41.4C94.8 42.7 94.8 44.0 94.8 45.3C94.8 46.6 94.8 47.9 94.8 49.2C94.8 50.5 94.8 51.8 94.8 53.1C94.8 54.4 94.8 55.7 94.8 57.0C94.8 58.3 94.8 59.5 94.8 60.8C94.8 62.1 94.8 63.4 94.8 64.7C94.9 66.0 95.1 67.3 95.1 68.6C95.2 69.9 95.0 71.2 95.1 72.5C95.3 73.8 95.6 75.1 95.8 76.4C96.0 77.7 96.0 79.0 96.1 80.3C96.2 81.6 96.3 82.8 96.4 84.1C96.5 85.4 96.6 86.7 96.8 88.0C96.9 89.3 97.2 90.6 97.4 91.9C97.6 93.2 97.6 94.5 97.7 95.8C97.8 97.1 98.0 98.4 98.1 99.7C98.2 101.0 98.3 102.3 98.4 103.6C98.4 104.9 98.3 106.1 98.4 107.4C98.4 108.7 98.7 110.0 98.7 111.3C98.8 112.6 98.7 113.9 98.7 115.2C98.7 116.5 98.8 117.8 98.7 119.1C98.7 120.4 98.5 121.7 98.4 123.0C98.3 124.3 98.2 125.6 98.1 126.9C97.9 128.2 97.6 129.4 97.4 130.7C97.2 132.0 97.0 133.3 96.8 134.6C96.5 135.9 96.1 137.2 95.8 138.5C95.5 139.8 95.3 141.1 94.8 142.4C94.4 143.7 93.7 145.0 93.2 146.3C92.7 147.6 92.2 148.9 91.6 150.2C91.0 151.5 90.3 152.8 89.6 154.0C88.9 155.3 88.2 156.6 87.4 157.9C86.5 159.2 85.5 160.5 84.5 161.8C83.4 163.1 82.5 164.4 81.2 165.7C80.0 167.0 78.6 168.3 77.0 169.6C75.5 170.9 73.8 172.2 71.8 173.5C69.8 174.8 69.1 176.1 65.0 177.3C60.9 178.6 53.3 180.9 47.2 180.9C41.2 180.9 32.9 178.6 28.5 177.3C24.1 176.1 22.9 174.8 20.7 173.5C18.6 172.2 17.1 170.9 15.5 169.6C14.0 168.3 12.5 167.0 11.3 165.7C10.1 164.4 9.3 163.1 8.4 161.8C7.5 160.5 6.5 159.2 5.8 157.9C5.1 156.6 4.7 155.3 4.2 154.0C3.7 152.8 3.2 151.5 2.9 150.2C2.6 148.9 2.5 147.6 2.3 146.3C2.0 145.0 1.7 143.7 1.6 142.4C1.5 141.1 1.6 139.8 1.6 138.5C1.6 137.2 1.6 135.9 1.6 134.6C1.6 133.3 1.6 132.0 1.6 130.7C1.7 129.4 1.8 128.2 1.9 126.9C2.0 125.6 2.1 124.3 2.3 123.0C2.4 121.7 2.8 120.4 2.9 119.1C3.1 117.8 3.1 116.5 3.2 115.2C3.4 113.9 3.7 112.6 3.9 111.3C4.0 110.0 4.1 108.7 4.2 107.4C4.3 106.1 4.5 104.9 4.5 103.6C4.6 102.3 4.5 101.0 4.5 99.7C4.5 98.4 4.5 97.1 4.5 95.8C4.5 94.5 4.6 93.2 4.5 91.9C4.5 90.6 4.0 89.3 4.2 88.0C4.4 86.7 5.5 85.4 5.5 84.1C5.5 82.8 4.4 81.6 4.2 80.3C4.0 79.0 4.3 77.7 4.2 76.4C4.2 75.1 3.9 73.8 3.9 72.5C3.8 71.2 3.9 69.9 3.9 68.6C3.9 67.3 3.9 66.0 3.9 64.7C3.8 63.4 3.6 62.1 3.6 60.8C3.5 59.5 3.4 58.3 3.6 57.0C3.7 55.7 4.4 54.4 4.5 53.1C4.6 51.8 4.3 50.5 4.2 49.2C4.1 47.9 4.0 46.6 3.9 45.3C3.8 44.0 3.7 42.7 3.6 41.4C3.5 40.1 3.3 38.8 3.2 37.5C3.1 36.2 3.0 35.0 2.9 33.7C2.9 32.4 2.9 31.1 2.9 29.8C3.0 28.5 3.1 27.2 3.2 25.9C3.3 24.6 3.3 23.3 3.6 22.0C3.8 20.7 4.3 19.4 4.9 18.1C5.4 16.8 5.7 15.5 6.8 14.2C7.9 12.9 9.4 11.7 11.3 10.4C13.3 9.1 14.8 7.8 18.4 6.5C22.1 5.2 28.1 3.3 33.0 2.6C37.9 1.9 43.0 2.3 47.9 2.3Z';
 export function mouseArt() {
   const lq = clipId();
   let ridges = '';
-  for (let y = 20; y <= 42; y += 3.2) ridges += `<path class="line" d="M46.5 ${y.toFixed(1)}H53.5"/>`;
-  return svgEl(`<svg class="art mark art-mouse" viewBox="0 0 100 160" aria-hidden="true">
+  for (let y = 12; y <= 46; y += 3.4) ridges += `<path class="line" d="M45.6 ${y.toFixed(1)}H54.4"/>`;
+  return svgEl(`<svg class="art mark art-mouse" viewBox="0 0 100 183" aria-hidden="true">
     <g class="drawn">
-    <ellipse class="floor" cx="50" cy="150" rx="34" ry="9"/>
-    <g transform="translate(50 0) scale(1.18 1) translate(-50 0)">
-    <rect class="soft side-btn" x="18.3" y="50" width="2.4" height="12.5" rx="1.2"/>
-    <rect class="soft side-btn" x="18.6" y="64.5" width="2.4" height="12.5" rx="1.2"/>
-    <path class="solid" d="M50 5C66 5 76 9 78 22C80 38 81 54 82.5 72C84 92 86 108 84.5 124C82 146 68 156 50 156C32 156 18 146 16 128C14.5 114 16.5 100 19.5 88C21 80 20 70 19.5 58C19 42 20 22 23.5 13C28 7 38 5 50 5Z"/>
-    <clipPath id="${lq}"><path d="M50 5C66 5 76 9 78 22C80 38 81 54 82.5 72C84 92 86 108 84.5 124C82 146 68 156 50 156C32 156 18 146 16 128C14.5 114 16.5 100 19.5 88C21 80 20 70 19.5 58C19 42 20 22 23.5 13C28 7 38 5 50 5Z"/></clipPath>
-    ${liquid(lq, 10, 5, 80, 151)}
-    <path class="scan" d="M50 5C66 5 76 9 78 22C80 38 81 54 82.5 72C84 92 86 108 84.5 124C82 146 68 156 50 156C32 156 18 146 16 128C14.5 114 16.5 100 19.5 88C21 80 20 70 19.5 58C19 42 20 22 23.5 13C28 7 38 5 50 5Z" pathLength="100"/>
-    <path class="shade" d="M78 22C80 38 81 54 82.5 72C84 92 86 108 84.5 124C82 146 68 156 56 156C69 146 76 128 76.5 110C77 82 75 52 72 26C73.5 24 76 22.5 78 22Z"/>
-    <path class="hi" d="M24.5 16C21.5 30 21 45 23 57C27 45 31.5 30 39.5 13.5C33 12.5 27 13.5 24.5 16Z"/>
-    <path class="hi" d="M33 98C30 112 32 130 41 141C37 126 37 111 41 96C38 94.5 35 95.5 33 98Z"/>
-    <path class="cut-line" d="M50 5C49.6 26 49.4 44 49.2 63"/>
-    <path class="cut-line" d="M19.4 58Q50 71 82 61"/>
-    <rect class="cut" x="43.5" y="15" width="13" height="32" rx="6.5"/>
-    <rect class="soft" x="45.6" y="17.5" width="8.8" height="27" rx="4.4"/>
+    <ellipse class="floor" cx="50" cy="176" rx="40" ry="9"/>
+    <rect class="soft side-btn" x="2.6" y="55" width="3.6" height="26" rx="1.8"/>
+    <rect class="soft side-btn" x="2.6" y="86.5" width="3.6" height="26.5" rx="1.8"/>
+    <path class="solid" d="${MOUSE_SHAPE}"/>
+    <clipPath id="${lq}"><path d="${MOUSE_SHAPE}"/></clipPath>
+    ${liquid(lq, 0, 2, 100, 180)}
+    <path class="shade" d="M93 30C95 60 96 95 97 112C98 135 96 158 84 172C76 180 64 182 56 182C72 176 85 160 88 136C90 112 89 70 86 30Z"/>
+    <path class="hi" d="M14 16C10 32 9 55 10 80C14 60 19 36 30 9C23 9 17 11 14 16Z"/>
+    <path class="hi" d="M22 118C18 136 22 156 34 168C29 150 28 134 31 116C28 114 24 115 22 118Z"/>
+    <path class="cut-line" d="M50.2 51.5V85"/>
+    <path class="cut-line" d="M7.5 83.5Q50 86.5 92.5 83.5"/>
+    <rect class="cut" x="41.4" y="3.5" width="17.4" height="48.5" rx="8.2"/>
+    <rect class="soft" x="44.2" y="8" width="11.6" height="40.5" rx="5.8"/>
     ${ridges}
-    </g>
-    <text class="logo-text" x="35" y="74" text-anchor="middle">PULSAR</text>
-    <text class="lq-text" x="50" y="116" text-anchor="middle"><tspan class="lq-n"></tspan><tspan class="lq-u" dx="1">%</tspan></text>
-    <g class="bp">${dimV(4, 5, 156)}${dimH(160, 10, 90)}${callout(50, 30)}${callout(21, 63)}</g>
+    <path class="scan" d="${MOUSE_SHAPE}" pathLength="100"/>
+    <text class="logo-text" x="26.5" y="96.5" text-anchor="middle">pulsar</text>
+    <text class="lq-text" x="50" y="128" text-anchor="middle"><tspan class="lq-n"></tspan><tspan class="lq-u" dx="1">%</tspan></text>
+    <g class="bp">${dimV(-3, 2, 181)}${dimH(186, 2, 98)}${callout(50, 28)}${callout(4.4, 70)}</g>
   </g>
-    <image class="photo" href="/img/xlite.png" x="0" y="0" width="100" height="160" preserveAspectRatio="xMidYMid meet"/>
-    ${photoLiquid(lq, '/img/xlite.png', 100, 160, 0, 2, 100, 157)}
+    <image class="photo" href="/img/xlite.png" x="0" y="0" width="100" height="183" preserveAspectRatio="xMidYMid meet"/>
   </svg>`);
 }
 
-// ---- Corsair HS80 RGB Wireless, from the front: the slim frame band with the wide fabric suspension strap under it
-// (fixed to the inner sides of both yokes), the yoke sliders on their pivots, the tall rounded cups with the lit Corsair
-// sails in their upper outer corners, the thick memory-foam cushions turned inward, the volume wheel on the left cup,
-// and the slim flip-up mic boom on its hinge on the left cup, curving down to the capsule with its mute light ----
+// ---- Corsair HS80 RGB Wireless, three-quarter view (redrawn 21 Oct 2026 from Corsair's own product photo, Shawn: "more
+// closely accurate to the real thing"): the wide flat headband with its two fabric pads and the status light on top,
+// the metal Y yokes down to their pivots, the thick fabric cushion, the rounded-square cup with its inset plate and
+// the lit Corsair sails, and the mic boom sweeping forward to its tip, where the mute light is. Every part placed from
+// the photo (its pixels scaled to this 160 x 220 box) ----
 export function headsetArt() {
-  // the Corsair sails emblem (the shapes of Corsair's 2020 logo, Wikimedia Commons), lit, in the upper outer corner of
-  // each cup as on the HS80, the same way round on both
-  const sails = (x, y) => `<g class="led" transform="translate(${x - 7.3} ${y - 7.1}) scale(0.27) translate(-13.93 -13.5)">
+  // the Corsair sails emblem (the shapes of Corsair's 2020 logo, Wikimedia Commons), lit, on the cup's plate
+  const sails = (x, y, k = 0.36) => `<g class="led" transform="translate(${x} ${y}) scale(${k}) translate(-40 -40)">
       <path d="M43.47,13.5S47.79,22.27,47,25.93c0,0,11.27,3.64,12.52,9.65C59.52,35.58,65.69,27.46,43.47,13.5Z"/>
-      <path d="M39.13,26.66A39.68,39.68,0,0,1,41.37,34L35,31.59c.59-3.9-3.2-9.83-3.2-9.83Z"/>
+      <path d="M39.13,26.66A39.68,39.68,0,0,1,41.37,34L35,31.59c.59-3.9-3.2-9.83-3.2-9.830Z"/>
       <path d="M27.73,32.7A46,46,0,0,1,29.68,39l-5.8-1.44c.6-3.9-3.08-8.62-3.08-8.62Z"/>
-      <path d="M40.35,23.32S66.19,41.47,67.89,48.51c1.29,5.3-2.450,10.19-2.45,10.19s-2-13.82-51.51,7.17a26.630,26.630,0,0,0,7-20.44,26.3,26.3,0,0,0-2.43-8.88l11.6,6.16c0,.18,0,.36.05.55a40.11,40.11,0,0,1-1,13.53,31.68,31.68,0,0,0,2.95-16.6A31.93,31.93,0,0,0,29.54,30.1l12.4,8.27c.05.41.08.82.12,1.24a40,40,0,0,1-1.34,14.88,32,32,0,0,0-.37-31.17Z"/>
+      <path d="M40.35,23.32S66.19,41.47,67.89,48.51c1.29,5.3-2.450,10.19-2.45,10.19s-2-13.82-51.51,7.17a26.630,26.630,0,0,0,7-20.44,26.3,26.3,0,0,0-2.43-8.88l11.6,6.16c0,.18,0,.36.05.55a40.11,40.11,0,0,1-1,13.53,31.68,31.68,0,0,0,2.95-16.6A31.930,31.930,0,0,0,29.54,30.1l12.4,8.27c.05.41.08.82.12,1.24a40,40,0,0,1-1.34,14.88,32,32,0,0,0-.37-31.170Z"/>
     </g>`;
   const lq = clipId();
-  return svgEl(`<svg class="art mark art-headset" viewBox="0 0 180 160" aria-hidden="true">
+  const CUP = 'M94 95H131C147 95 159 107 159 123V165C159 181 147 193 131 193H94C78 193 66 181 66 165V123C66 107 78 95 94 95Z';
+  return svgEl(`<svg class="art mark art-headset" viewBox="0 0 160 220" aria-hidden="true">
     <g class="drawn">
-    <ellipse class="floor" cx="90" cy="153" rx="80" ry="8"/>
-    <path class="solid" d="M28 92C28 16 152 16 152 92H147C147 23 33 23 33 92Z"/>
-    <path class="hi-line" d="M31 72C33.5 26 146.5 26 149 72"/>
-    <path class="soft" d="M37 94C37 50 143 50 143 94V100C141 60 39 60 37 100Z"/>
-    <path class="line" d="M38.5 92C40 55 140 55 141.5 92"/>
-    <path class="shade" d="M37 100C39 60 141 60 143 100V97C141 63 39 63 37 97Z"/>
-    <rect class="solid" x="24" y="80" width="12" height="22" rx="3.5"/>
-    <rect class="solid" x="144" y="80" width="12" height="22" rx="3.5"/>
-    <rect class="cut" x="27.5" y="84" width="5" height="9" rx="2.5"/>
-    <rect class="cut" x="147.5" y="84" width="5" height="9" rx="2.5"/>
-    <rect class="soft" x="6.5" y="112" width="4" height="15" rx="2"/>
-    <rect class="solid" x="9" y="95" width="42" height="61" rx="17"/>
-    <rect class="solid" x="129" y="95" width="42" height="61" rx="17"/>
-    <clipPath id="${lq}"><rect x="9" y="95" width="42" height="61" rx="17"/><rect x="129" y="95" width="42" height="61" rx="17"/></clipPath>
-    ${liquid(lq, 9, 95, 162, 61)}
-    <rect class="scan" x="9" y="95" width="42" height="61" rx="17" pathLength="100"/>
-    <rect class="scan s2" x="129" y="95" width="42" height="61" rx="17" pathLength="100"/>
-    <path class="shade" d="M9 113C9 103 15 95 27 95H23C16 97 13.5 104 13.5 113V138C13.5 147 17 153 25 156H27C15 156 9 148 9 138Z"/>
-    <path class="shade" d="M171 113C171 103 165 95 153 95H157C164 97 166.5 104 166.5 113V138C166.5 147 163 153 155 156H153C165 156 171 148 171 138Z"/>
-    <path class="hi" d="M21 99C27 96.5 37 96.5 43 99C36 98.5 28 98.5 21 102Z"/>
-    <path class="hi" d="M137 99C143 96.5 153 96.5 159 99C152 98.5 144 98.5 137 102Z"/>
-    <rect class="soft" x="47" y="99" width="15" height="54" rx="7.5"/>
-    <rect class="soft" x="118" y="99" width="15" height="54" rx="7.5"/>
-    <path class="shade" d="M47 106.5C47 102 50 99 54.5 99V153C50 153 47 150 47 145.5Z"/>
-    <path class="shade" d="M133 106.5C133 102 130 99 125.5 99V153C130 153 133 150 133 145.5Z"/>
-    ${sails(22.5, 111)}
-    ${sails(157.5, 111)}
-    <path class="solid" d="M43.4 131.5C45.5 142 54.5 150.5 67.5 152.2L67.9 148.8C56.5 147 48.8 139.6 46.9 130.6Z"/>
-    <circle class="solid" cx="44.6" cy="129" r="4.6"/>
-    <circle class="cut" cx="44.6" cy="129" r="1.8"/>
-    <rect class="soft" x="65.5" y="146.2" width="13" height="7.4" rx="3.7"/>
-    <circle class="led mic" cx="76.4" cy="149.9" r="1.4"/>
-    <text class="lq-text" x="90" y="130" text-anchor="middle"><tspan class="lq-n"></tspan><tspan class="lq-u" dx="1">%</tspan></text>
-    <g class="bp">${callout(76.4, 149.9)}${callout(8.5, 119.5)}${callout(157.5, 111)}${callout(22.5, 111)}</g>
+    <ellipse class="floor" cx="100" cy="204" rx="58" ry="9"/>
+    <!-- headband: one wide flat strip (as in the photo, no gap through it), its far half in shadow, the two fabric pads
+         and the status light on its inside -->
+    <path class="solid" d="M72 4C82 1 112 1 124 4C131 6 135 12 136 22L137.5 69H57.5L60.5 20C61.5 11 65 6 72 4Z"/>
+    <path class="shade" d="M60.5 20C61.5 11 65 6 72 4C80 2.3 90 1.8 98 1.9C91 3 87 7 86.5 15L95 69H57.5Z"/>
+    <path class="hi-line" d="M100 3.6C114 3.4 126 5 131 11C134 15 134.8 19 135 24"/>
+    <path class="cut-line" d="M95 69L86.5 15C87 7 91 3 98 1.9"/>
+    <rect class="soft" x="70" y="25" width="22" height="26" rx="4" transform="rotate(-5 81 38)"/>
+    <rect class="soft" x="100" y="29" width="29" height="22" rx="4" transform="rotate(3 114.5 40)"/>
+    <path class="line dash" d="M72.5 29.5L90 28M101.5 33H127.5"/>
+    <rect class="led" x="79" y="20.5" width="6" height="2" rx="1"/>
+    <!-- the Y yokes, from the band's feet down to the pivots on the cup -->
+    <path class="solid" d="M57.5 67H70L74.5 88L79.5 67H91.5L80 99H71Z"/>
+    <path class="solid" d="M97.5 67H110.5L119.5 86L126 67H138L125 98H117Z"/>
+    <path class="cut" d="M67 71H70.5L74.5 85L78.5 71H82.5L76.6 90H72.6Z"/>
+    <path class="cut" d="M107 71H111.5L119.5 84L124.6 71H129L122.4 89.5H118.8Z"/>
+    <circle class="soft" cx="75.5" cy="99" r="3.2"/><circle class="soft" cx="121" cy="97.5" r="3.4"/>
+    <!-- the far cushion's thick fabric, the near cup with its inset plate and the lit sails -->
+    <rect class="soft" x="46" y="101" width="50" height="91" rx="23"/>
+    <path class="shade" d="M46 124C46 111 56 101 69 101H74C61 103 54 113 54 126V168C54 181 61 190 74 192H69C56 192 46 182 46 169Z"/>
+    <path class="solid" d="${CUP}"/>
+    <clipPath id="${lq}"><path d="${CUP}"/></clipPath>
+    ${liquid(lq, 66, 95, 93, 98)}
+    <path class="shade" d="M159 123V165C159 181 147 193 131 193H124C140 191 151 180 151 165V123C151 110 143 99 131 96C146 97 159 108 159 123Z"/>
+    <rect class="cut" x="93.5" y="111.5" width="57" height="66" rx="15"/>
+    <rect class="soft" x="95.5" y="113.5" width="53" height="62" rx="13.5"/>
+    <path class="hi" d="M98 117C104 114 120 114 128 115.5C116 116.5 106 118 98 124Z"/>
+    ${sails(133, 128)}
+    <path class="scan" d="${CUP}" pathLength="100"/>
+    <!-- the mic boom, out of the cup's lower front edge, forward to its tip with the mute light -->
+    <path class="solid" d="M93 190.5C70 196 34 204 8 208.5L9 213.5C35 209.5 71 202 95.5 196Z"/>
+    <rect class="soft" x="1.5" y="207" width="9" height="7.5" rx="3.7" transform="rotate(-9 6 211)"/>
+    <circle class="led mic" cx="3.6" cy="211.3" r="1.6"/>
+    <text class="lq-text" x="122" y="158" text-anchor="middle"><tspan class="lq-n"></tspan><tspan class="lq-u" dx="1">%</tspan></text>
+    <g class="bp">${callout(4, 211)}${callout(133, 128)}${callout(82.8, 23)}${callout(75.5, 99)}</g>
   </g>
-    <image class="photo" href="/img/hs80.png" x="0" y="0" width="180" height="160" preserveAspectRatio="xMidYMid meet"/>
-    ${photoLiquid(lq, '/img/hs80.png', 180, 160, 0, 2, 180, 157)}
+    <image class="photo" href="/img/hs80.png" x="0" y="0" width="160" height="220" preserveAspectRatio="xMidYMid meet"/>
   </svg>`);
 }
 
@@ -234,7 +178,8 @@ export function keyboardArt() {
     [[0, 2.25], ...Array.from({ length: 10 }, (_, i) => [2.25 + i, 1]), [12.25, 1.75], [14, 1]],
     [[0, 1.25], [1.25, 1.25], [2.5, 1.25], [3.75, 6.25], [10, 1], [11, 1], [12, 1], [13, 1], [14, 1], [15, 1]],
   ];
-  const ACCENT = new Set(['0:0', '3:12.75']);  // Esc and Enter
+  // the P75's navy keys (from Epomaker's photo, 21 Oct 2026): Esc, Enter, the spacebar and the four arrows
+  const ACCENT = new Set(['0:0', '3:12.75', '5:3.75', '4:14', '5:13', '5:14', '5:15']);
   const u = 13, gap = 2.4, pad = 10, W = pad * 2 + 16 * u - gap, H = pad * 2 + 6 * u - gap + 2.6;
   const f = (n) => n.toFixed(1);
   let keys = '';

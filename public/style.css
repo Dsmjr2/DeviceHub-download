@@ -333,7 +333,7 @@ select.text option { background: var(--panel-solid); color: var(--text); }
 .art.mark .solid { fill: var(--body, color-mix(in srgb, var(--tone) 52%, #d4d8e0)); stroke: rgba(255, 255, 255, .55); stroke-width: .6; }
 .art.mark .accent { fill: var(--accent-key, color-mix(in srgb, var(--tone) 52%, #d4d8e0)); stroke: none; }
 .art.mark .logo { fill: var(--logo, rgba(16, 17, 22, .6)); stroke: none; }
-.art.mark .logo-text { fill: var(--logo, rgba(16, 17, 22, .6)); stroke: none; font: 700 4.4px var(--ui); letter-spacing: .08em; }
+.art.mark .logo-text { fill: var(--logo, rgba(16, 17, 22, .6)); stroke: none; font: 700 6.6px var(--ui); letter-spacing: -.01em; }
 .art.mark .soft { fill: var(--body-soft, color-mix(in srgb, var(--tone) 45%, #6c717d)); stroke: none; }
 .art.mark .cut { fill: rgba(16, 17, 22, .78); stroke: none; }
 .art.mark .cut-line { fill: none; stroke: var(--seam, rgba(16, 17, 22, .78)); stroke-width: 3; stroke-linecap: round; }
@@ -365,7 +365,7 @@ select.text option { background: var(--panel-solid); color: var(--text); }
 /* the devices' real colors (Shawn, 19 Oct 2026: the mouse and headset black, the keyboard silver); black parts get a
    light rim and lighter seams so they read on the dark app; the Lighting page's previews keep the picked color */
 .art.art-mouse, .art.art-headset { --body: #1f2026; --body-soft: #33353d; --seam: rgba(255, 255, 255, .16); --logo: rgba(255, 255, 255, .5); }
-.art.art-keyboard { --body: #c9cdd4; --body-soft: #eceef2; --accent-key: #8b909a; --seam: rgba(16, 17, 22, .5); }
+.art.art-keyboard { --body: #c9cdd4; --body-soft: #eceef2; --accent-key: #2f3f5f; --seam: rgba(16, 17, 22, .5); }  /* silver case, white keys, navy accents, as the real P75 */
 .target .art, html[data-art] .target .art { --body: initial !important; --body-soft: initial !important; --seam: initial; --accent-key: initial; --logo: initial; }
 .art-preview[data-art-preview="frosted"] .art.mark .accent, .art-preview[data-art-preview="photo"] .art.mark .accent { fill: var(--accent-key, color-mix(in srgb, var(--tone) 52%, #d4d8e0)); stroke: none; }
 .art-preview[data-art-preview="frosted"] .art.mark .logo, .art-preview[data-art-preview="photo"] .art.mark .logo { fill: var(--logo, rgba(16,17,22,.6)); stroke: none; }
@@ -392,11 +392,9 @@ html[data-art="frosted"] :not(.art-preview) > .art.art-keyboard, .art-preview[da
    follows the chosen look; each preview box on the Appearance card follows its own look (those rules come last and win) */
 .art .photo { display: none; filter: drop-shadow(0 0 .6px rgba(255,255,255,.35)) drop-shadow(0 0 3px rgba(150,160,180,.18)); }
 html[data-art="photo"] :not(.art-preview) > .art .photo { display: inline; } html[data-art="photo"] :not(.art-preview) > .art:has(.photo) .drawn { display: none; }
-/* every look shows the photo, turned into the look by its filter (21 Oct 2026); a drawing without a photo (another
-   keyboard's layout, a device added on this PC, the Lighting previews) keeps the drawn look */
-html[data-art] :not(.art-preview) > .art .photo { display: inline; } html[data-art] :not(.art-preview) > .art:has(.photo) .drawn { display: none; }
+html[data-art]:not([data-art="photo"]) .art .photo { display: none; } html[data-art]:not([data-art="photo"]) .art .drawn { display: inline; }
 html .art-preview[data-art-preview="photo"] .art .photo { display: inline; } html .art-preview[data-art-preview="photo"] .art:has(.photo) .drawn { display: none; }
-html .art-preview[data-art-preview] .art .photo { display: inline; } html .art-preview[data-art-preview] .art:has(.photo) .drawn { display: none; }
+html .art-preview[data-art-preview]:not([data-art-preview="photo"]) .art .photo { display: none; } html .art-preview[data-art-preview]:not([data-art-preview="photo"]) .art .drawn { display: inline; }
 .target .art .photo { display: none !important; } .target .art .drawn { display: inline !important; }
 /* the mic light: off unless muted, in every look */
 html[data-art="frosted"] :not(.art-preview) > .art.mark .led.mic, .art-preview[data-art-preview="frosted"] .art.mark .led.mic, html[data-art="photo"] :not(.art-preview) > .art.mark .led.mic, .art-preview[data-art-preview="photo"] .art.mark .led.mic { fill: rgba(255,255,255,.18); filter: none; }
@@ -1098,23 +1096,8 @@ html[data-art="live"] :not(.art-preview) > .art.mark.art-keyboard .accent, .art-
   fill: color-mix(in srgb, var(--kb, #fff) calc(var(--kbon, 0) * 85%), rgba(255, 255, 255, .16)); }
 html[data-art="live"] :not(.art-preview) > .art.mark.art-keyboard .solid, .art-preview[data-art-preview="live"] .art.mark.art.art.art-keyboard .solid { fill: rgba(255, 255, 255, .04); }
 html[data-art="live"] :not(.art-preview) > .art.mark.art-keyboard .shade, .art-preview[data-art-preview="live"] .art.mark.art.art.art-keyboard .shade { display: none; }
-/* the looks made from the photos (ui/art.js PHOTO_FX) */
-html[data-art="frosted"] :not(.art-preview) > .art .photo, .art-preview[data-art-preview="frosted"] .art.art .photo { filter: url(#dh-fx-frosted) drop-shadow(0 12px 20px rgba(0, 0, 0, .5)); }
-html[data-art="blueprint"] :not(.art-preview) > .art .photo, .art-preview[data-art-preview="blueprint"] .art.art .photo { filter: url(#dh-fx-blueprint) drop-shadow(0 0 4px rgba(90, 190, 255, .45)); }
-html[data-art="neon"] :not(.art-preview) > .art .photo, .art-preview[data-art-preview="neon"] .art.art .photo { filter: url(#dh-fx-neon); }
-html[data-art="duo"] :not(.art-preview) > .art .photo, .art-preview[data-art-preview="duo"] .art.art .photo { filter: url(#dh-fx-duo) drop-shadow(4px 5px 0 rgba(0, 0, 0, .45)); }
-html[data-art="arctic"] :not(.art-preview) > .art .photo, .art-preview[data-art-preview="arctic"] .art.art .photo { filter: url(#dh-fx-arctic) drop-shadow(0 10px 18px rgba(80, 170, 255, .3)); }
-html[data-art="live"] :not(.art-preview) > .art .photo, .art-preview[data-art-preview="live"] .art.art .photo { filter: url(#dh-fx-live) drop-shadow(0 12px 22px rgba(0, 0, 0, .5)); }
-.fx-accent { flood-color: var(--theme-art); }
-.fx-duo-dark { flood-color: color-mix(in srgb, var(--theme-art) 42%, #0a0b10); }
-.fx-duo-light { flood-color: color-mix(in srgb, var(--theme-art) 70%, #fff); }
-/* the Live battery's liquid inside the photo's shape: only in that look and only where the photo shows */
-.art .pliquid { display: none; }
-html[data-art="live"] :not(.art-preview) > .art:has(.photo) .pliquid, .art-preview[data-art-preview="live"] .art.art:has(.photo) .pliquid { display: inline; }
-html[data-art="live"] :not(.art-preview) > .art .pliquid .wave.front, .art-preview[data-art-preview="live"] .art.art .pliquid .wave.front { opacity: .88; }
 /* seven looks: three tiles a row, the previews a little smaller, so Settings stays on one screen (21 Oct 2026) */
 .art-styles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .art-style { padding: 10px 4px 8px; gap: 4px; font-size: 12px; }
 .art-preview { height: 40px; gap: 3px; }
 .art-preview .art-headset { height: 30px; } .art-preview .art-mouse { height: 28px; } .art-preview .art-keyboard { width: 34px; }
-.fx-duo-mid { flood-color: color-mix(in srgb, var(--theme-art) 75%, #0a0b10); }
