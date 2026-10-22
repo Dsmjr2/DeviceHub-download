@@ -209,6 +209,8 @@ function startLights() {
 }
 function stopLights() { clearInterval(lights.timer); lights.timer = null; }
 // A mic flip shows at once instead of on the next tick.
+// (22 Oct 2026, listened to read-only: the HS80 sends no notice when a charger is plugged in or out; charging is told
+// from its battery voltage instead, public/devices/headset-adapter.js chargerLifted)
 onEvent = (id, v) => { if (id === 0xa6) { lights.muted = v === 1; lightTick().catch(() => {}); } };
 
 // One setting (02 brightness 0-1000, 0E auto-shutoff ms; the host refuses anything else), then read back.
