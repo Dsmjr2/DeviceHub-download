@@ -889,7 +889,7 @@ html[data-art="blueprint"] .art.mark .hi-line, .art-preview[data-art-preview="bl
 html[data-art="blueprint"] .art.mark .line, .art-preview[data-art-preview="blueprint"] .art.mark.art .line { stroke: rgba(124, 200, 255, .7); stroke-width: .5; }
 html[data-art="blueprint"] .art.mark .line.knurl, .art-preview[data-art-preview="blueprint"] .art.mark.art .line.knurl { stroke: rgba(124, 200, 255, .7); }
 html[data-art="blueprint"] .art.mark .led, .art-preview[data-art-preview="blueprint"] .art.mark.art .led { fill: #c9ecff; filter: drop-shadow(0 0 2px #7cc8ff); }
-html[data-art="blueprint"] .art.mark .logo-text, .art-preview[data-art-preview="blueprint"] .art.mark.art .logo-text { fill: #7cc8ff; }
+html[data-art="blueprint"] .art.mark .logo-text, .art-preview[data-art-preview="blueprint"] .art.mark.art .logo-text { display: none; }  /* no words in Blueprint (Shawn, 21 Oct 2026) */
 html[data-art="blueprint"] .art.mark .bp, .art-preview[data-art-preview="blueprint"] .art.mark.art .bp { display: inline; }
 html[data-art="blueprint"] .art.mark .bp-lead, .art-preview[data-art-preview="blueprint"] .art.mark.art .bp-lead { fill: none; stroke: rgba(160, 215, 255, .6); stroke-width: .45; }
 html[data-art="blueprint"] .art.mark .bp-dot, .art-preview[data-art-preview="blueprint"] .art.mark.art .bp-dot { fill: #9fd6ff; }

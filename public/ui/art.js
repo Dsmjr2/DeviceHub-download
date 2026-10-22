@@ -30,9 +30,11 @@ export function artDefs() {
 // other look. Each drawing gets its own clip id, since a page shows several.
 let clipN = 0;
 const clipId = () => `dh-lq-${++clipN}`;
-const callout = (x1, y1, x2, y2, text, anchor = 'start') => `<path class="bp-lead" d="M${x1} ${y1}L${x2} ${y2}"/><circle class="bp-dot" cx="${x1}" cy="${y1}" r="1.1"/><text class="bp-text" x="${x2 + (anchor === 'end' ? -1.5 : 1.5)}" y="${y2 + 1.8}" text-anchor="${anchor}">${text}</text>`;
-const dimV = (x, y1, y2, text) => `<path class="bp-lead" d="M${x} ${y1}V${y2}M${x - 2} ${y1}H${x + 2}M${x - 2} ${y2}H${x + 2}"/><text class="bp-text" transform="translate(${x - 2.5} ${(y1 + y2) / 2}) rotate(-90)" text-anchor="middle">${text}</text>`;
-const dimH = (y, x1, x2, text) => `<path class="bp-lead" d="M${x1} ${y}H${x2}M${x1} ${y - 2}V${y + 2}M${x2} ${y - 2}V${y + 2}"/><text class="bp-text" x="${(x1 + x2) / 2}" y="${y + 6.5}" text-anchor="middle">${text}</text>`;
+// no words (Shawn, 21 Oct 2026: "remove all the words ... but make it still look cool"): a part is marked with a small
+// crosshair target, and a measurement is a line with end ticks and a centre tick
+const callout = (x, y) => `<g class="bp-mark"><circle class="bp-lead" cx="${x}" cy="${y}" r="3.2"/><path class="bp-lead" d="M${x - 5.5} ${y}H${x - 2}M${x + 2} ${y}H${x + 5.5}M${x} ${y - 5.5}V${y - 2}M${x} ${y + 2}V${y + 5.5}"/><circle class="bp-dot" cx="${x}" cy="${y}" r=".9"/></g>`;
+const dimV = (x, y1, y2) => `<path class="bp-lead" d="M${x} ${y1}V${y2}M${x - 2} ${y1}H${x + 2}M${x - 2} ${y2}H${x + 2}M${x - 1.2} ${(y1 + y2) / 2}H${x + 1.2}"/>`;
+const dimH = (y, x1, x2) => `<path class="bp-lead" d="M${x1} ${y}H${x2}M${x1} ${y - 2}V${y + 2}M${x2} ${y - 2}V${y + 2}M${(x1 + x2) / 2} ${y - 1.2}V${y + 1.2}"/>`;
 
 // ---- Pulsar X-Lite CrazyLight, from above: the right-hand ergonomic shell (the left side carries the thumb groove and
 // the two side buttons, the right side slopes in for the ring and little finger), the long split buttons, the ridged
@@ -62,7 +64,7 @@ export function mouseArt() {
     </g>
     <text class="logo-text" x="35" y="74" text-anchor="middle">PULSAR</text>
     <text class="lq-text" x="50" y="114" text-anchor="middle"></text>
-    <g class="bp">${dimV(4, 5, 156, '115.6 mm')}${dimH(160, 10, 90, '63.4 mm')}${callout(50, 30, 72, 8, 'WHEEL')}${callout(22, 63, 6, 92, 'M4 M5', 'start')}</g>
+    <g class="bp">${dimV(4, 5, 156)}${dimH(160, 10, 90)}${callout(50, 30)}${callout(21, 63)}</g>
   </g>
     <image class="photo" href="/img/xlite.png" x="0" y="0" width="100" height="160" preserveAspectRatio="xMidYMid meet"/>
   </svg>`);
@@ -115,7 +117,7 @@ export function headsetArt() {
     <rect class="soft" x="65.5" y="146.2" width="13" height="7.4" rx="3.7"/>
     <circle class="led mic" cx="76.4" cy="149.9" r="1.4"/>
     <text class="lq-text" x="90" y="128" text-anchor="middle"></text>
-    <g class="bp">${callout(78, 150, 100, 146, 'MIC · MUTE LIGHT')}${callout(8.5, 119, 2, 108, 'VOL', 'start')}${callout(157.5, 111, 166, 88, 'RGB', 'start')}${callout(90, 22, 112, 10, 'FLOATING STRAP')}</g>
+    <g class="bp">${callout(76.4, 149.9)}${callout(8.5, 119.5)}${callout(157.5, 111)}${callout(22.5, 111)}</g>
   </g>
     <image class="photo" href="/img/hs80.png" x="0" y="0" width="180" height="160" preserveAspectRatio="xMidYMid meet"/>
   </svg>`);
@@ -180,7 +182,7 @@ export function keyboardArt() {
     <circle class="solid" cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}"/>
     <circle class="line knurl" cx="${f(cx)}" cy="${f(cy)}" r="${f(r - 1.1)}"/>
     <circle class="hi" cx="${f(cx - 1.4)}" cy="${f(cy - 1.4)}" r="1.6"/>
-    <g class="bp">${callout(+f(cx), +f(cy - r), +f(cx - 20), -6, 'KNOB', 'end')}${callout(pad + 5, pad + 4, pad + 18, -6, 'ESC')}${dimH(+f(H + 6), 1, +f(W - 1), '75% LAYOUT')}</g>
+    <g class="bp">${callout(+f(cx), +f(cy))}${callout(pad + 5.3, pad + 5.3)}${dimH(+f(H + 6), 1, +f(W - 1))}</g>
   </g>
     <image class="photo" href="/img/p75.png" x="0" y="0" width="${f(W)}" height="${f(H)}" preserveAspectRatio="xMidYMid meet"/>
   </svg>`);
