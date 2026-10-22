@@ -217,8 +217,12 @@ function gamePicker(p) {
 // ---------- the cards ----------
 function autoPanel() {
   const on = !!auto.settings.autoSwitch;
+  // "New profile" sits here, small, so it is never in the way of the profiles (Shawn, 22 Oct 2026)
+  const startNew = () => { ui.adding = { step: 'name', name: '', error: '' }; ui.focusNew = true; ui.note = {}; rerender(); };
   return card(null, row('DeviceHub switches profiles for you when games start', on ? null : 'Off: profiles change only when you pick one.',
-    toggle({ value: on, label: 'Switch profiles when games start', onCommit: async (v) => { await saveSettings({ autoSwitch: v }); rerender(); } })));
+    h('div', { class: 'actions', style: { alignItems: 'center', flexWrap: 'nowrap' } },
+      ui.adding ? null : button('New profile', startNew, { kind: 'ghost small', ic: 'plus' }),
+      toggle({ value: on, label: 'Switch profiles when games start', onCommit: async (v) => { await saveSettings({ autoSwitch: v }); rerender(); } }))));
 }
 
 function confirmBox(text, yes, yesKind, onYes) {
@@ -326,10 +330,7 @@ function flowGroup(a, g) {
 function newTile() {
   const a = ui.adding;
   const cancel = () => { ui.adding = null; rerender(); };
-  if (!a) {
-    return h('button', { class: 'profile new', onclick: () => { ui.adding = { step: 'name', name: '', error: '' }; ui.focusNew = true; ui.note = {}; rerender(); } },
-      h('div', { style: { display: 'grid', justifyItems: 'center', gap: '8px' } }, icon('plus'), h('b', {}, 'New profile from my current settings'), h('span', { class: 'faint', style: { fontSize: '12.5px' } }, 'Pick a name, then what to keep')));
-  }
+  if (!a) return null;   // started from the top card's New profile button
   const err = a.error ? h('div', { class: 'prof-note bad', role: 'status' }, a.error) : null;
   if (a.step === 'name') {
     return h('div', { class: 'profile prof-flow' }, h('h3', {}, 'New profile'),
@@ -369,6 +370,6 @@ export default {
     return h('div', {},
       topbar('Setups', 'Profiles', 'Switch every device at once.'),
       h('div', { style: { marginBottom: '18px' } }, autoPanel()),
-      h('div', { class: 'profiles' }, ...(list || []).map((p) => profileCard(p)), newTile()));
+      h('div', { class: 'profiles' }, newTile(), ...(list || []).map((p) => profileCard(p))));
   },
 };
