@@ -324,7 +324,9 @@ select.text option { background: var(--panel-solid); color: var(--text); }
   .page.ov .bay .readout b { font-size: 13px; }
 }
 
-/* ---------- device drawings (ui/art.js): solid shapes, details cut out; Settings > Appearance picks the style ---------- */
+/* ---------- device drawings (ui/art.js): solid shapes, details cut out; Settings > Appearance picks the style ----------
+   html[data-art="x"] rules are written ":not(.art-preview) > .art" so the page's look never reaches the Appearance
+   tiles, which each show their own look (.art-preview[data-art-preview="x"] rules) */
 .art { --tone: var(--cc, var(--accent)); overflow: visible; contain: paint; }
 /* Frosted, the default: frosted silver with the device color clearly there */
 .art.mark { overflow: visible; transition: transform .14s var(--ease); filter: drop-shadow(0 14px 24px rgba(0, 0, 0, .45)); }
@@ -369,33 +371,33 @@ select.text option { background: var(--panel-solid); color: var(--text); }
 .art-preview[data-art-preview="frosted"] .art.mark .logo, .art-preview[data-art-preview="photo"] .art.mark .logo { fill: var(--logo, rgba(16,17,22,.6)); stroke: none; }
 /* the drawing looks (Settings > Appearance): variations of the real-color drawings; each sets the same properties
    for the page and for its own preview box */
-html[data-art="frosted"] .art.mark, .art-preview[data-art-preview="frosted"] .art.mark, html[data-art="photo"] .art.mark, .art-preview[data-art-preview="photo"] .art.mark { filter: drop-shadow(0 14px 24px rgba(0,0,0,.45)); }
-html[data-art="frosted"] .art.mark .solid, .art-preview[data-art-preview="frosted"] .art.mark .solid, html[data-art="photo"] .art.mark .solid, .art-preview[data-art-preview="photo"] .art.mark .solid { stroke: rgba(255,255,255,.55); stroke-width: .6; }
-html[data-art="frosted"] .art.mark .hi, .art-preview[data-art-preview="frosted"] .art.mark .hi, html[data-art="photo"] .art.mark .hi, .art-preview[data-art-preview="photo"] .art.mark .hi { display: inline; fill: rgba(255,255,255,.2); }
-html[data-art="frosted"] .art.mark .hi-line, .art-preview[data-art-preview="frosted"] .art.mark .hi-line, html[data-art="photo"] .art.mark .hi-line, .art-preview[data-art-preview="photo"] .art.mark .hi-line { display: inline; stroke: rgba(255,255,255,.3); }
-html[data-art="frosted"] .art.mark .shade, .art-preview[data-art-preview="frosted"] .art.mark .shade, html[data-art="photo"] .art.mark .shade, .art-preview[data-art-preview="photo"] .art.mark .shade { fill: rgba(0,0,0,.24); }
-html[data-art="frosted"] .art.mark .led, .art-preview[data-art-preview="frosted"] .art.mark .led, html[data-art="photo"] .art.mark .led, .art-preview[data-art-preview="photo"] .art.mark .led { fill: color-mix(in srgb, var(--glowc, var(--tone)) 60%, #fff); filter: drop-shadow(0 0 2.5px color-mix(in srgb, var(--glowc, var(--tone)) 85%, #fff)); }
-html[data-art="frosted"] .art.art-mouse, .art-preview[data-art-preview="frosted"] .art.art-mouse, html[data-art="frosted"] .art.art-headset, .art-preview[data-art-preview="frosted"] .art.art-headset, html[data-art="photo"] .art.art-mouse, .art-preview[data-art-preview="photo"] .art.art-mouse, html[data-art="photo"] .art.art-headset, .art-preview[data-art-preview="photo"] .art.art-headset { --body: #1f2026; --body-soft: #33353d; }
-html[data-art="frosted"] .art.art-keyboard, .art-preview[data-art-preview="frosted"] .art.art-keyboard, html[data-art="photo"] .art.art-keyboard, .art-preview[data-art-preview="photo"] .art.art-keyboard { --body: #c9cdd4; --body-soft: #eceef2; }
+html[data-art="frosted"] :not(.art-preview) > .art.mark, .art-preview[data-art-preview="frosted"] .art.mark, html[data-art="photo"] :not(.art-preview) > .art.mark, .art-preview[data-art-preview="photo"] .art.mark { filter: drop-shadow(0 14px 24px rgba(0,0,0,.45)); }
+html[data-art="frosted"] :not(.art-preview) > .art.mark .solid, .art-preview[data-art-preview="frosted"] .art.mark .solid, html[data-art="photo"] :not(.art-preview) > .art.mark .solid, .art-preview[data-art-preview="photo"] .art.mark .solid { stroke: rgba(255,255,255,.55); stroke-width: .6; }
+html[data-art="frosted"] :not(.art-preview) > .art.mark .hi, .art-preview[data-art-preview="frosted"] .art.mark .hi, html[data-art="photo"] :not(.art-preview) > .art.mark .hi, .art-preview[data-art-preview="photo"] .art.mark .hi { display: inline; fill: rgba(255,255,255,.2); }
+html[data-art="frosted"] :not(.art-preview) > .art.mark .hi-line, .art-preview[data-art-preview="frosted"] .art.mark .hi-line, html[data-art="photo"] :not(.art-preview) > .art.mark .hi-line, .art-preview[data-art-preview="photo"] .art.mark .hi-line { display: inline; stroke: rgba(255,255,255,.3); }
+html[data-art="frosted"] :not(.art-preview) > .art.mark .shade, .art-preview[data-art-preview="frosted"] .art.mark .shade, html[data-art="photo"] :not(.art-preview) > .art.mark .shade, .art-preview[data-art-preview="photo"] .art.mark .shade { fill: rgba(0,0,0,.24); }
+html[data-art="frosted"] :not(.art-preview) > .art.mark .led, .art-preview[data-art-preview="frosted"] .art.mark .led, html[data-art="photo"] :not(.art-preview) > .art.mark .led, .art-preview[data-art-preview="photo"] .art.mark .led { fill: color-mix(in srgb, var(--glowc, var(--tone)) 60%, #fff); filter: drop-shadow(0 0 2.5px color-mix(in srgb, var(--glowc, var(--tone)) 85%, #fff)); }
+html[data-art="frosted"] :not(.art-preview) > .art.art-mouse, .art-preview[data-art-preview="frosted"] .art.art-mouse, html[data-art="frosted"] :not(.art-preview) > .art.art-headset, .art-preview[data-art-preview="frosted"] .art.art-headset, html[data-art="photo"] :not(.art-preview) > .art.art-mouse, .art-preview[data-art-preview="photo"] .art.art-mouse, html[data-art="photo"] :not(.art-preview) > .art.art-headset, .art-preview[data-art-preview="photo"] .art.art-headset { --body: #1f2026; --body-soft: #33353d; }
+html[data-art="frosted"] :not(.art-preview) > .art.art-keyboard, .art-preview[data-art-preview="frosted"] .art.art-keyboard, html[data-art="photo"] :not(.art-preview) > .art.art-keyboard, .art-preview[data-art-preview="photo"] .art.art-keyboard { --body: #c9cdd4; --body-soft: #eceef2; }
 /* the lit gradients (ui/art.js defs): the body and the soft parts of each device, per look */
-html[data-art="frosted"] .art.mark.art-mouse .solid, .art-preview[data-art-preview="frosted"] .art.mark.art-mouse .solid, html[data-art="photo"] .art.mark.art-mouse .solid, .art-preview[data-art-preview="photo"] .art.mark.art-mouse .solid { fill: url(#dhb-mouse-frosted); }html[data-art="frosted"] .art.mark.art-mouse .soft, .art-preview[data-art-preview="frosted"] .art.mark.art-mouse .soft, html[data-art="photo"] .art.mark.art-mouse .soft, .art-preview[data-art-preview="photo"] .art.mark.art-mouse .soft { fill: url(#dhs-mouse-frosted); }
-html[data-art="frosted"] .art.mark.art-headset .solid, .art-preview[data-art-preview="frosted"] .art.mark.art-headset .solid, html[data-art="photo"] .art.mark.art-headset .solid, .art-preview[data-art-preview="photo"] .art.mark.art-headset .solid { fill: url(#dhb-headset-frosted); }html[data-art="frosted"] .art.mark.art-headset .soft, .art-preview[data-art-preview="frosted"] .art.mark.art-headset .soft, html[data-art="photo"] .art.mark.art-headset .soft, .art-preview[data-art-preview="photo"] .art.mark.art-headset .soft { fill: url(#dhs-headset-frosted); }
-html[data-art="frosted"] .art.mark.art-keyboard .solid, .art-preview[data-art-preview="frosted"] .art.mark.art-keyboard .solid, html[data-art="photo"] .art.mark.art-keyboard .solid, .art-preview[data-art-preview="photo"] .art.mark.art-keyboard .solid { fill: url(#dhb-keyboard-frosted); }html[data-art="frosted"] .art.mark.art-keyboard .soft, .art-preview[data-art-preview="frosted"] .art.mark.art-keyboard .soft, html[data-art="photo"] .art.mark.art-keyboard .soft, .art-preview[data-art-preview="photo"] .art.mark.art-keyboard .soft { fill: url(#dhs-keyboard-frosted); }
+html[data-art="frosted"] :not(.art-preview) > .art.mark.art-mouse .solid, .art-preview[data-art-preview="frosted"] .art.mark.art-mouse .solid, html[data-art="photo"] :not(.art-preview) > .art.mark.art-mouse .solid, .art-preview[data-art-preview="photo"] .art.mark.art-mouse .solid { fill: url(#dhb-mouse-frosted); }html[data-art="frosted"] :not(.art-preview) > .art.mark.art-mouse .soft, .art-preview[data-art-preview="frosted"] .art.mark.art-mouse .soft, html[data-art="photo"] :not(.art-preview) > .art.mark.art-mouse .soft, .art-preview[data-art-preview="photo"] .art.mark.art-mouse .soft { fill: url(#dhs-mouse-frosted); }
+html[data-art="frosted"] :not(.art-preview) > .art.mark.art-headset .solid, .art-preview[data-art-preview="frosted"] .art.mark.art-headset .solid, html[data-art="photo"] :not(.art-preview) > .art.mark.art-headset .solid, .art-preview[data-art-preview="photo"] .art.mark.art-headset .solid { fill: url(#dhb-headset-frosted); }html[data-art="frosted"] :not(.art-preview) > .art.mark.art-headset .soft, .art-preview[data-art-preview="frosted"] .art.mark.art-headset .soft, html[data-art="photo"] :not(.art-preview) > .art.mark.art-headset .soft, .art-preview[data-art-preview="photo"] .art.mark.art-headset .soft { fill: url(#dhs-headset-frosted); }
+html[data-art="frosted"] :not(.art-preview) > .art.mark.art-keyboard .solid, .art-preview[data-art-preview="frosted"] .art.mark.art-keyboard .solid, html[data-art="photo"] :not(.art-preview) > .art.mark.art-keyboard .solid, .art-preview[data-art-preview="photo"] .art.mark.art-keyboard .solid { fill: url(#dhb-keyboard-frosted); }html[data-art="frosted"] :not(.art-preview) > .art.mark.art-keyboard .soft, .art-preview[data-art-preview="frosted"] .art.mark.art-keyboard .soft, html[data-art="photo"] :not(.art-preview) > .art.mark.art-keyboard .soft, .art-preview[data-art-preview="photo"] .art.mark.art-keyboard .soft { fill: url(#dhs-keyboard-frosted); }
 .target .art.mark .solid { fill: color-mix(in srgb, var(--tone) 52%, #d4d8e0) !important; } .target .art.mark .soft { fill: color-mix(in srgb, var(--tone) 45%, #6c717d) !important; }
 .art.art-mouse, .art.art-headset { --gb1: #6a6e7a; --gb2: #34363e; --gb3: #1c1d22; --gs1: #747884; --gs2: #3a3c44; }
 .art.art-keyboard { --gb1: #f3f5f7; --gb2: #c8ccd3; --gb3: #959aa3; --gs1: #ffffff; --gs2: #d2d5db; }
-html[data-art="frosted"] .art.art-mouse, html[data-art="frosted"] .art.art-headset, .art-preview[data-art-preview="frosted"] .art.art-mouse, .art-preview[data-art-preview="frosted"] .art.art-headset, html[data-art="photo"] .art.art-mouse, html[data-art="photo"] .art.art-headset, .art-preview[data-art-preview="photo"] .art.art-mouse, .art-preview[data-art-preview="photo"] .art.art-headset { --gb1: #6a6e7a; --gb2: #34363e; --gb3: #1c1d22; --gs1: #747884; --gs2: #3a3c44; }
-html[data-art="frosted"] .art.art-keyboard, .art-preview[data-art-preview="frosted"] .art.art-keyboard, html[data-art="photo"] .art.art-keyboard, .art-preview[data-art-preview="photo"] .art.art-keyboard { --gb1: #f3f5f7; --gb2: #c8ccd3; --gb3: #959aa3; --gs1: #ffffff; --gs2: #d2d5db; }
+html[data-art="frosted"] :not(.art-preview) > .art.art-mouse, html[data-art="frosted"] :not(.art-preview) > .art.art-headset, .art-preview[data-art-preview="frosted"] .art.art-mouse, .art-preview[data-art-preview="frosted"] .art.art-headset, html[data-art="photo"] :not(.art-preview) > .art.art-mouse, html[data-art="photo"] :not(.art-preview) > .art.art-headset, .art-preview[data-art-preview="photo"] .art.art-mouse, .art-preview[data-art-preview="photo"] .art.art-headset { --gb1: #6a6e7a; --gb2: #34363e; --gb3: #1c1d22; --gs1: #747884; --gs2: #3a3c44; }
+html[data-art="frosted"] :not(.art-preview) > .art.art-keyboard, .art-preview[data-art-preview="frosted"] .art.art-keyboard, html[data-art="photo"] :not(.art-preview) > .art.art-keyboard, .art-preview[data-art-preview="photo"] .art.art-keyboard { --gb1: #f3f5f7; --gb2: #c8ccd3; --gb3: #959aa3; --gs1: #ffffff; --gs2: #d2d5db; }
 /* the Realistic look shows the product photos; every other look, and the Lighting previews, the drawing. The page
    follows the chosen look; each preview box on the Appearance card follows its own look (those rules come last and win) */
 .art .photo { display: none; filter: drop-shadow(0 0 .6px rgba(255,255,255,.35)) drop-shadow(0 0 3px rgba(150,160,180,.18)); }
-html[data-art="photo"] .art .photo { display: inline; } html[data-art="photo"] .art:has(.photo) .drawn { display: none; }
+html[data-art="photo"] :not(.art-preview) > .art .photo { display: inline; } html[data-art="photo"] :not(.art-preview) > .art:has(.photo) .drawn { display: none; }
 html[data-art]:not([data-art="photo"]) .art .photo { display: none; } html[data-art]:not([data-art="photo"]) .art .drawn { display: inline; }
 html .art-preview[data-art-preview="photo"] .art .photo { display: inline; } html .art-preview[data-art-preview="photo"] .art:has(.photo) .drawn { display: none; }
 html .art-preview[data-art-preview]:not([data-art-preview="photo"]) .art .photo { display: none; } html .art-preview[data-art-preview]:not([data-art-preview="photo"]) .art .drawn { display: inline; }
 .target .art .photo { display: none !important; } .target .art .drawn { display: inline !important; }
 /* the mic light: off unless muted, in every look */
-html[data-art="frosted"] .art.mark .led.mic, .art-preview[data-art-preview="frosted"] .art.mark .led.mic, html[data-art="photo"] .art.mark .led.mic, .art-preview[data-art-preview="photo"] .art.mark .led.mic { fill: rgba(255,255,255,.18); filter: none; }
+html[data-art="frosted"] :not(.art-preview) > .art.mark .led.mic, .art-preview[data-art-preview="frosted"] .art.mark .led.mic, html[data-art="photo"] :not(.art-preview) > .art.mark .led.mic, .art-preview[data-art-preview="photo"] .art.mark .led.mic { fill: rgba(255,255,255,.18); filter: none; }
 html[data-art] .mic-muted .art.mark .led.mic { fill: #ff4d4d; filter: drop-shadow(0 0 2.5px #ff4d4d); }
 /* Appearance card: one button per look, each with the three devices in that look */
 .art-styles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
@@ -875,81 +877,81 @@ html[data-page="mouse"] #main input[type=range]::-webkit-slider-thumb, html[data
 .art.mark .floor { fill: rgba(0, 0, 0, .55); filter: blur(6px); }
 .art.mark .bp { display: none; }
 html[data-art="blueprint"] .bay-art { background: linear-gradient(rgba(124, 200, 255, .06) 1px, transparent 1px) 0 0 / 16px 16px, linear-gradient(90deg, rgba(124, 200, 255, .06) 1px, transparent 1px) 0 0 / 16px 16px; border-radius: 14px; }
-html[data-art="blueprint"] .art.mark, .art-preview[data-art-preview="blueprint"] .art.mark.art { filter: drop-shadow(0 0 4px rgba(90, 190, 255, .35)); }
-html[data-art="blueprint"] .art.mark .floor, .art-preview[data-art-preview="blueprint"] .art.mark.art .floor { display: none; }
-html[data-art="blueprint"] .art.mark .solid, .art-preview[data-art-preview="blueprint"] .art.mark.art .solid { fill: rgba(70, 160, 255, .10); stroke: #7cc8ff; stroke-width: 1.2; }
-html[data-art="blueprint"] .art.mark .soft, .art-preview[data-art-preview="blueprint"] .art.mark.art .soft { fill: rgba(70, 160, 255, .06); stroke: #7cc8ff; stroke-width: .7; }
-html[data-art="blueprint"] .art.mark .accent, .art-preview[data-art-preview="blueprint"] .art.mark.art .accent { fill: rgba(124, 200, 255, .3); stroke: #7cc8ff; stroke-width: .7; }
-html[data-art="blueprint"] .art.mark .cut, .art-preview[data-art-preview="blueprint"] .art.mark.art .cut { fill: rgba(6, 20, 40, .55); stroke: rgba(124, 200, 255, .7); stroke-width: .6; }
-html[data-art="blueprint"] .art.mark .cut-line, .art-preview[data-art-preview="blueprint"] .art.mark.art .cut-line { stroke: rgba(124, 200, 255, .75); stroke-width: .7; stroke-dasharray: 3 2; }
-html[data-art="blueprint"] .art.mark .shade, .art-preview[data-art-preview="blueprint"] .art.mark.art .shade { display: none; }
-html[data-art="blueprint"] .art.mark .hi, .art-preview[data-art-preview="blueprint"] .art.mark.art .hi { display: none; }
-html[data-art="blueprint"] .art.mark .hi-line, .art-preview[data-art-preview="blueprint"] .art.mark.art .hi-line { display: inline; stroke: rgba(124, 200, 255, .4); stroke-width: .6; stroke-dasharray: 2 2; }
-html[data-art="blueprint"] .art.mark .line, .art-preview[data-art-preview="blueprint"] .art.mark.art .line { stroke: rgba(124, 200, 255, .7); stroke-width: .5; }
-html[data-art="blueprint"] .art.mark .line.knurl, .art-preview[data-art-preview="blueprint"] .art.mark.art .line.knurl { stroke: rgba(124, 200, 255, .7); }
-html[data-art="blueprint"] .art.mark .led, .art-preview[data-art-preview="blueprint"] .art.mark.art .led { fill: #c9ecff; filter: drop-shadow(0 0 2px #7cc8ff); }
-html[data-art="blueprint"] .art.mark .logo-text, .art-preview[data-art-preview="blueprint"] .art.mark.art .logo-text { display: none; }  /* no words in Blueprint (Shawn, 21 Oct 2026) */
-html[data-art="blueprint"] .art.mark .bp, .art-preview[data-art-preview="blueprint"] .art.mark.art .bp { display: inline; }
-html[data-art="blueprint"] .art.mark .bp-lead, .art-preview[data-art-preview="blueprint"] .art.mark.art .bp-lead { fill: none; stroke: rgba(160, 215, 255, .6); stroke-width: .45; }
-html[data-art="blueprint"] .art.mark .bp-dot, .art-preview[data-art-preview="blueprint"] .art.mark.art .bp-dot { fill: #9fd6ff; }
-html[data-art="blueprint"] .art.mark .bp-text, .art-preview[data-art-preview="blueprint"] .art.mark.art .bp-text { fill: #a9dbff; font: 600 6px var(--mono, monospace); letter-spacing: .06em; }
-html[data-art="blueprint"] .art.mark .led.mic, .art-preview[data-art-preview="blueprint"] .art.mark.art .led.mic { fill: rgba(255, 255, 255, .18); filter: none; }
-html[data-art="neon"] .art, .art-preview[data-art-preview="neon"] .art.art { --neon: var(--theme-art); }  /* one light color for all three: the theme accent (Shawn, 21 Oct 2026) */
-html[data-art="neon"] .art.mark, .art-preview[data-art-preview="neon"] .art.mark.art { filter: drop-shadow(0 0 2.5px var(--neon)) drop-shadow(0 0 10px color-mix(in srgb, var(--neon) 40%, transparent)); }
-html[data-art="neon"] .art.mark .floor, .art-preview[data-art-preview="neon"] .art.mark.art .floor { display: inline; fill: var(--neon); opacity: .28; filter: blur(9px); }
-html[data-art="neon"] .art.mark .solid, .art-preview[data-art-preview="neon"] .art.mark.art .solid { fill: #0b0c11; stroke: var(--neon); stroke-width: 1.4; }
-html[data-art="neon"] .art.mark .soft, .art-preview[data-art-preview="neon"] .art.mark.art .soft { fill: #13141b; stroke: color-mix(in srgb, var(--neon) 55%, transparent); stroke-width: .6; }
-html[data-art="neon"] .art.mark .accent, .art-preview[data-art-preview="neon"] .art.mark.art .accent { fill: color-mix(in srgb, var(--neon) 80%, #fff); stroke: none; }
-html[data-art="neon"] .art.mark .cut, .art-preview[data-art-preview="neon"] .art.mark.art .cut { fill: #040406; stroke: none; }
-html[data-art="neon"] .art.mark .cut-line, .art-preview[data-art-preview="neon"] .art.mark.art .cut-line { stroke: color-mix(in srgb, var(--neon) 60%, transparent); stroke-width: .9; }
-html[data-art="neon"] .art.mark .shade, .art-preview[data-art-preview="neon"] .art.mark.art .shade { display: none; }
-html[data-art="neon"] .art.mark .hi, .art-preview[data-art-preview="neon"] .art.mark.art .hi { display: inline; fill: color-mix(in srgb, var(--neon) 10%, transparent); }
-html[data-art="neon"] .art.mark .hi-line, .art-preview[data-art-preview="neon"] .art.mark.art .hi-line { display: inline; stroke: color-mix(in srgb, var(--neon) 45%, transparent); stroke-width: .8; }
-html[data-art="neon"] .art.mark .line, .art-preview[data-art-preview="neon"] .art.mark.art .line { stroke: color-mix(in srgb, var(--neon) 60%, transparent); stroke-width: .6; }
-html[data-art="neon"] .art.mark .line.knurl, .art-preview[data-art-preview="neon"] .art.mark.art .line.knurl { stroke: var(--neon); }
-html[data-art="neon"] .art.mark .led, .art-preview[data-art-preview="neon"] .art.mark.art .led { fill: #fff; filter: drop-shadow(0 0 3px var(--neon)); }
-html[data-art="neon"] .art.mark .logo-text, .art-preview[data-art-preview="neon"] .art.mark.art .logo-text { fill: var(--neon); }
-html[data-art="neon"] .art.mark .led.mic, .art-preview[data-art-preview="neon"] .art.mark.art .led.mic { fill: rgba(255, 255, 255, .18); filter: none; }
-html[data-art="duo"] .art, .art-preview[data-art-preview="duo"] .art.art { --d1: color-mix(in srgb, var(--theme-art) 58%, #0d0e13); --d2: color-mix(in srgb, var(--theme-art) 72%, #fff); --d3: color-mix(in srgb, var(--theme-art) 32%, #08090c); }  /* one color, the theme accent (Shawn, 21 Oct 2026) */
-html[data-art="duo"] .art.mark, .art-preview[data-art-preview="duo"] .art.mark.art { filter: none; }
-html[data-art="duo"] .art.mark .floor, .art-preview[data-art-preview="duo"] .art.mark.art .floor { display: inline; fill: rgba(0, 0, 0, .5); filter: none; transform: translate(5px, 4px); }
-html[data-art="duo"] .art.mark .solid, .art-preview[data-art-preview="duo"] .art.mark.art .solid { fill: var(--d1); stroke: none; }
-html[data-art="duo"] .art.mark .soft, .art-preview[data-art-preview="duo"] .art.mark.art .soft { fill: var(--d2); stroke: none; }
-html[data-art="duo"] .art.mark .accent, .art-preview[data-art-preview="duo"] .art.mark.art .accent { fill: var(--d3); stroke: none; }
-html[data-art="duo"] .art.mark .cut, .art-preview[data-art-preview="duo"] .art.mark.art .cut { fill: var(--d3); stroke: none; }
-html[data-art="duo"] .art.mark .cut-line, .art-preview[data-art-preview="duo"] .art.mark.art .cut-line { stroke: var(--d3); stroke-width: 2; }
-html[data-art="duo"] .art.mark .shade, .art-preview[data-art-preview="duo"] .art.mark.art .shade { display: inline; fill: var(--d3); opacity: .55; }
-html[data-art="duo"] .art.mark .hi, .art-preview[data-art-preview="duo"] .art.mark.art .hi { display: inline; fill: rgba(255, 255, 255, .16); }
-html[data-art="duo"] .art.mark .hi-line, .art-preview[data-art-preview="duo"] .art.mark.art .hi-line { display: inline; stroke: rgba(255, 255, 255, .25); stroke-width: 1; }
-html[data-art="duo"] .art.mark .line, .art-preview[data-art-preview="duo"] .art.mark.art .line { stroke: var(--d3); stroke-width: .8; }
-html[data-art="duo"] .art.mark .line.knurl, .art-preview[data-art-preview="duo"] .art.mark.art .line.knurl { stroke: var(--d3); }
-html[data-art="duo"] .art.mark .led, .art-preview[data-art-preview="duo"] .art.mark.art .led { fill: #fff; filter: none; }
-html[data-art="duo"] .art.mark .logo-text, .art-preview[data-art-preview="duo"] .art.mark.art .logo-text { fill: rgba(255, 255, 255, .8); }
-html[data-art="duo"] .art.mark .led.mic, .art-preview[data-art-preview="duo"] .art.mark.art .led.mic { fill: rgba(255, 255, 255, .18); filter: none; }
-html[data-art="arctic"] .art.art-mouse, .art-preview[data-art-preview="arctic"] .art.art.art-mouse { --gb1: #ffffff; --gb2: #edf4fc; --gb3: #c2d8ee; --gs1: #f6faff; --gs2: #d0e2f4; }
-html[data-art="arctic"] .art.art-headset, .art-preview[data-art-preview="arctic"] .art.art.art-headset { --gb1: #ffffff; --gb2: #edf4fc; --gb3: #c2d8ee; --gs1: #f6faff; --gs2: #d0e2f4; }
-html[data-art="arctic"] .art.art-keyboard, .art-preview[data-art-preview="arctic"] .art.art.art-keyboard { --gb1: #ffffff; --gb2: #edf4fc; --gb3: #c2d8ee; --gs1: #ffffff; --gs2: #dbe8f5; }
-html[data-art="arctic"] .art.mark, .art-preview[data-art-preview="arctic"] .art.mark.art { filter: drop-shadow(0 8px 16px rgba(80, 170, 255, .22)); }
-html[data-art="arctic"] .art.mark .floor, .art-preview[data-art-preview="arctic"] .art.mark.art .floor { display: inline; fill: rgba(90, 184, 255, .45); filter: blur(8px); }
-html[data-art="arctic"] .art.mark .solid, .art-preview[data-art-preview="arctic"] .art.mark.art .solid { stroke: #9fd6ff; stroke-width: .7; }
-html[data-art="arctic"] .art.mark .soft, .art-preview[data-art-preview="arctic"] .art.mark.art .soft { stroke: rgba(143, 208, 255, .5); stroke-width: .4; }
-html[data-art="arctic"] .art.mark .accent, .art-preview[data-art-preview="arctic"] .art.mark.art .accent { fill: #5ab8ff; stroke: none; }
-html[data-art="arctic"] .art.mark .cut, .art-preview[data-art-preview="arctic"] .art.mark.art .cut { fill: rgba(40, 80, 130, .32); stroke: none; }
-html[data-art="arctic"] .art.mark .cut-line, .art-preview[data-art-preview="arctic"] .art.mark.art .cut-line { stroke: rgba(40, 90, 150, .28); stroke-width: 1.5; }
-html[data-art="arctic"] .art.mark .shade, .art-preview[data-art-preview="arctic"] .art.mark.art .shade { display: inline; fill: rgba(60, 120, 190, .15); }
-html[data-art="arctic"] .art.mark .hi, .art-preview[data-art-preview="arctic"] .art.mark.art .hi { display: inline; fill: rgba(255, 255, 255, .75); }
-html[data-art="arctic"] .art.mark .hi-line, .art-preview[data-art-preview="arctic"] .art.mark.art .hi-line { display: inline; stroke: rgba(255, 255, 255, .85); stroke-width: 1; }
-html[data-art="arctic"] .art.mark .line, .art-preview[data-art-preview="arctic"] .art.mark.art .line { stroke: rgba(40, 90, 150, .35); stroke-width: .7; }
-html[data-art="arctic"] .art.mark .line.knurl, .art-preview[data-art-preview="arctic"] .art.mark.art .line.knurl { stroke: rgba(40, 90, 150, .45); }
-html[data-art="arctic"] .art.mark .led, .art-preview[data-art-preview="arctic"] .art.mark.art .led { fill: #5ab8ff; filter: drop-shadow(0 0 3px #5ab8ff); }
-html[data-art="arctic"] .art.mark .logo-text, .art-preview[data-art-preview="arctic"] .art.mark.art .logo-text { fill: rgba(40, 90, 150, .6); }
-html[data-art="arctic"] .art-mouse .solid, .art-preview[data-art-preview="arctic"] .art.mark.art.art-mouse .solid { fill: url(#dhb-mouse-arctic); }
-html[data-art="arctic"] .art-mouse .soft, .art-preview[data-art-preview="arctic"] .art.mark.art.art-mouse .soft { fill: url(#dhs-mouse-arctic); }
-html[data-art="arctic"] .art-headset .solid, .art-preview[data-art-preview="arctic"] .art.mark.art.art-headset .solid { fill: url(#dhb-headset-arctic); }
-html[data-art="arctic"] .art-headset .soft, .art-preview[data-art-preview="arctic"] .art.mark.art.art-headset .soft { fill: url(#dhs-headset-arctic); }
-html[data-art="arctic"] .art-keyboard .solid, .art-preview[data-art-preview="arctic"] .art.mark.art.art-keyboard .solid { fill: url(#dhb-keyboard-arctic); }
-html[data-art="arctic"] .art-keyboard .soft, .art-preview[data-art-preview="arctic"] .art.mark.art.art-keyboard .soft { fill: url(#dhs-keyboard-arctic); }
-html[data-art="arctic"] .art.mark .led.mic, .art-preview[data-art-preview="arctic"] .art.mark.art .led.mic { fill: rgba(255, 255, 255, .18); filter: none; }
+html[data-art="blueprint"] :not(.art-preview) > .art.mark, .art-preview[data-art-preview="blueprint"] .art.mark.art { filter: drop-shadow(0 0 4px rgba(90, 190, 255, .35)); }
+html[data-art="blueprint"] :not(.art-preview) > .art.mark .floor, .art-preview[data-art-preview="blueprint"] .art.mark.art .floor { display: none; }
+html[data-art="blueprint"] :not(.art-preview) > .art.mark .solid, .art-preview[data-art-preview="blueprint"] .art.mark.art .solid { fill: rgba(70, 160, 255, .10); stroke: #7cc8ff; stroke-width: 1.2; }
+html[data-art="blueprint"] :not(.art-preview) > .art.mark .soft, .art-preview[data-art-preview="blueprint"] .art.mark.art .soft { fill: rgba(70, 160, 255, .06); stroke: #7cc8ff; stroke-width: .7; }
+html[data-art="blueprint"] :not(.art-preview) > .art.mark .accent, .art-preview[data-art-preview="blueprint"] .art.mark.art .accent { fill: rgba(124, 200, 255, .3); stroke: #7cc8ff; stroke-width: .7; }
+html[data-art="blueprint"] :not(.art-preview) > .art.mark .cut, .art-preview[data-art-preview="blueprint"] .art.mark.art .cut { fill: rgba(6, 20, 40, .55); stroke: rgba(124, 200, 255, .7); stroke-width: .6; }
+html[data-art="blueprint"] :not(.art-preview) > .art.mark .cut-line, .art-preview[data-art-preview="blueprint"] .art.mark.art .cut-line { stroke: rgba(124, 200, 255, .75); stroke-width: .7; stroke-dasharray: 3 2; }
+html[data-art="blueprint"] :not(.art-preview) > .art.mark .shade, .art-preview[data-art-preview="blueprint"] .art.mark.art .shade { display: none; }
+html[data-art="blueprint"] :not(.art-preview) > .art.mark .hi, .art-preview[data-art-preview="blueprint"] .art.mark.art .hi { display: none; }
+html[data-art="blueprint"] :not(.art-preview) > .art.mark .hi-line, .art-preview[data-art-preview="blueprint"] .art.mark.art .hi-line { display: inline; stroke: rgba(124, 200, 255, .4); stroke-width: .6; stroke-dasharray: 2 2; }
+html[data-art="blueprint"] :not(.art-preview) > .art.mark .line, .art-preview[data-art-preview="blueprint"] .art.mark.art .line { stroke: rgba(124, 200, 255, .7); stroke-width: .5; }
+html[data-art="blueprint"] :not(.art-preview) > .art.mark .line.knurl, .art-preview[data-art-preview="blueprint"] .art.mark.art .line.knurl { stroke: rgba(124, 200, 255, .7); }
+html[data-art="blueprint"] :not(.art-preview) > .art.mark .led, .art-preview[data-art-preview="blueprint"] .art.mark.art .led { fill: #c9ecff; filter: drop-shadow(0 0 2px #7cc8ff); }
+html[data-art="blueprint"] :not(.art-preview) > .art.mark .logo-text, .art-preview[data-art-preview="blueprint"] .art.mark.art .logo-text { display: none; }  /* no words in Blueprint (Shawn, 21 Oct 2026) */
+html[data-art="blueprint"] :not(.art-preview) > .art.mark .bp, .art-preview[data-art-preview="blueprint"] .art.mark.art .bp { display: inline; }
+html[data-art="blueprint"] :not(.art-preview) > .art.mark .bp-lead, .art-preview[data-art-preview="blueprint"] .art.mark.art .bp-lead { fill: none; stroke: rgba(160, 215, 255, .6); stroke-width: .45; }
+html[data-art="blueprint"] :not(.art-preview) > .art.mark .bp-dot, .art-preview[data-art-preview="blueprint"] .art.mark.art .bp-dot { fill: #9fd6ff; }
+html[data-art="blueprint"] :not(.art-preview) > .art.mark .bp-text, .art-preview[data-art-preview="blueprint"] .art.mark.art .bp-text { fill: #a9dbff; font: 600 6px var(--mono, monospace); letter-spacing: .06em; }
+html[data-art="blueprint"] :not(.art-preview) > .art.mark .led.mic, .art-preview[data-art-preview="blueprint"] .art.mark.art .led.mic { fill: rgba(255, 255, 255, .18); filter: none; }
+html[data-art="neon"] :not(.art-preview) > .art, .art-preview[data-art-preview="neon"] .art.art { --neon: var(--theme-art); }  /* one light color for all three: the theme accent (Shawn, 21 Oct 2026) */
+html[data-art="neon"] :not(.art-preview) > .art.mark, .art-preview[data-art-preview="neon"] .art.mark.art { filter: drop-shadow(0 0 2.5px var(--neon)) drop-shadow(0 0 10px color-mix(in srgb, var(--neon) 40%, transparent)); }
+html[data-art="neon"] :not(.art-preview) > .art.mark .floor, .art-preview[data-art-preview="neon"] .art.mark.art .floor { display: inline; fill: var(--neon); opacity: .28; filter: blur(9px); }
+html[data-art="neon"] :not(.art-preview) > .art.mark .solid, .art-preview[data-art-preview="neon"] .art.mark.art .solid { fill: #0b0c11; stroke: var(--neon); stroke-width: 1.4; }
+html[data-art="neon"] :not(.art-preview) > .art.mark .soft, .art-preview[data-art-preview="neon"] .art.mark.art .soft { fill: #13141b; stroke: color-mix(in srgb, var(--neon) 55%, transparent); stroke-width: .6; }
+html[data-art="neon"] :not(.art-preview) > .art.mark .accent, .art-preview[data-art-preview="neon"] .art.mark.art .accent { fill: color-mix(in srgb, var(--neon) 80%, #fff); stroke: none; }
+html[data-art="neon"] :not(.art-preview) > .art.mark .cut, .art-preview[data-art-preview="neon"] .art.mark.art .cut { fill: #040406; stroke: none; }
+html[data-art="neon"] :not(.art-preview) > .art.mark .cut-line, .art-preview[data-art-preview="neon"] .art.mark.art .cut-line { stroke: color-mix(in srgb, var(--neon) 60%, transparent); stroke-width: .9; }
+html[data-art="neon"] :not(.art-preview) > .art.mark .shade, .art-preview[data-art-preview="neon"] .art.mark.art .shade { display: none; }
+html[data-art="neon"] :not(.art-preview) > .art.mark .hi, .art-preview[data-art-preview="neon"] .art.mark.art .hi { display: inline; fill: color-mix(in srgb, var(--neon) 10%, transparent); }
+html[data-art="neon"] :not(.art-preview) > .art.mark .hi-line, .art-preview[data-art-preview="neon"] .art.mark.art .hi-line { display: inline; stroke: color-mix(in srgb, var(--neon) 45%, transparent); stroke-width: .8; }
+html[data-art="neon"] :not(.art-preview) > .art.mark .line, .art-preview[data-art-preview="neon"] .art.mark.art .line { stroke: color-mix(in srgb, var(--neon) 60%, transparent); stroke-width: .6; }
+html[data-art="neon"] :not(.art-preview) > .art.mark .line.knurl, .art-preview[data-art-preview="neon"] .art.mark.art .line.knurl { stroke: var(--neon); }
+html[data-art="neon"] :not(.art-preview) > .art.mark .led, .art-preview[data-art-preview="neon"] .art.mark.art .led { fill: #fff; filter: drop-shadow(0 0 3px var(--neon)); }
+html[data-art="neon"] :not(.art-preview) > .art.mark .logo-text, .art-preview[data-art-preview="neon"] .art.mark.art .logo-text { fill: var(--neon); }
+html[data-art="neon"] :not(.art-preview) > .art.mark .led.mic, .art-preview[data-art-preview="neon"] .art.mark.art .led.mic { fill: rgba(255, 255, 255, .18); filter: none; }
+html[data-art="duo"] :not(.art-preview) > .art, .art-preview[data-art-preview="duo"] .art.art { --d1: color-mix(in srgb, var(--theme-art) 58%, #0d0e13); --d2: color-mix(in srgb, var(--theme-art) 72%, #fff); --d3: color-mix(in srgb, var(--theme-art) 32%, #08090c); }  /* one color, the theme accent (Shawn, 21 Oct 2026) */
+html[data-art="duo"] :not(.art-preview) > .art.mark, .art-preview[data-art-preview="duo"] .art.mark.art { filter: none; }
+html[data-art="duo"] :not(.art-preview) > .art.mark .floor, .art-preview[data-art-preview="duo"] .art.mark.art .floor { display: inline; fill: rgba(0, 0, 0, .5); filter: none; transform: translate(5px, 4px); }
+html[data-art="duo"] :not(.art-preview) > .art.mark .solid, .art-preview[data-art-preview="duo"] .art.mark.art .solid { fill: var(--d1); stroke: none; }
+html[data-art="duo"] :not(.art-preview) > .art.mark .soft, .art-preview[data-art-preview="duo"] .art.mark.art .soft { fill: var(--d2); stroke: none; }
+html[data-art="duo"] :not(.art-preview) > .art.mark .accent, .art-preview[data-art-preview="duo"] .art.mark.art .accent { fill: var(--d3); stroke: none; }
+html[data-art="duo"] :not(.art-preview) > .art.mark .cut, .art-preview[data-art-preview="duo"] .art.mark.art .cut { fill: var(--d3); stroke: none; }
+html[data-art="duo"] :not(.art-preview) > .art.mark .cut-line, .art-preview[data-art-preview="duo"] .art.mark.art .cut-line { stroke: var(--d3); stroke-width: 2; }
+html[data-art="duo"] :not(.art-preview) > .art.mark .shade, .art-preview[data-art-preview="duo"] .art.mark.art .shade { display: inline; fill: var(--d3); opacity: .55; }
+html[data-art="duo"] :not(.art-preview) > .art.mark .hi, .art-preview[data-art-preview="duo"] .art.mark.art .hi { display: inline; fill: rgba(255, 255, 255, .16); }
+html[data-art="duo"] :not(.art-preview) > .art.mark .hi-line, .art-preview[data-art-preview="duo"] .art.mark.art .hi-line { display: inline; stroke: rgba(255, 255, 255, .25); stroke-width: 1; }
+html[data-art="duo"] :not(.art-preview) > .art.mark .line, .art-preview[data-art-preview="duo"] .art.mark.art .line { stroke: var(--d3); stroke-width: .8; }
+html[data-art="duo"] :not(.art-preview) > .art.mark .line.knurl, .art-preview[data-art-preview="duo"] .art.mark.art .line.knurl { stroke: var(--d3); }
+html[data-art="duo"] :not(.art-preview) > .art.mark .led, .art-preview[data-art-preview="duo"] .art.mark.art .led { fill: #fff; filter: none; }
+html[data-art="duo"] :not(.art-preview) > .art.mark .logo-text, .art-preview[data-art-preview="duo"] .art.mark.art .logo-text { fill: rgba(255, 255, 255, .8); }
+html[data-art="duo"] :not(.art-preview) > .art.mark .led.mic, .art-preview[data-art-preview="duo"] .art.mark.art .led.mic { fill: rgba(255, 255, 255, .18); filter: none; }
+html[data-art="arctic"] :not(.art-preview) > .art.art-mouse, .art-preview[data-art-preview="arctic"] .art.art.art-mouse { --gb1: #ffffff; --gb2: #edf4fc; --gb3: #c2d8ee; --gs1: #f6faff; --gs2: #d0e2f4; }
+html[data-art="arctic"] :not(.art-preview) > .art.art-headset, .art-preview[data-art-preview="arctic"] .art.art.art-headset { --gb1: #ffffff; --gb2: #edf4fc; --gb3: #c2d8ee; --gs1: #f6faff; --gs2: #d0e2f4; }
+html[data-art="arctic"] :not(.art-preview) > .art.art-keyboard, .art-preview[data-art-preview="arctic"] .art.art.art-keyboard { --gb1: #ffffff; --gb2: #edf4fc; --gb3: #c2d8ee; --gs1: #ffffff; --gs2: #dbe8f5; }
+html[data-art="arctic"] :not(.art-preview) > .art.mark, .art-preview[data-art-preview="arctic"] .art.mark.art { filter: drop-shadow(0 8px 16px rgba(80, 170, 255, .22)); }
+html[data-art="arctic"] :not(.art-preview) > .art.mark .floor, .art-preview[data-art-preview="arctic"] .art.mark.art .floor { display: inline; fill: rgba(90, 184, 255, .45); filter: blur(8px); }
+html[data-art="arctic"] :not(.art-preview) > .art.mark .solid, .art-preview[data-art-preview="arctic"] .art.mark.art .solid { stroke: #9fd6ff; stroke-width: .7; }
+html[data-art="arctic"] :not(.art-preview) > .art.mark .soft, .art-preview[data-art-preview="arctic"] .art.mark.art .soft { stroke: rgba(143, 208, 255, .5); stroke-width: .4; }
+html[data-art="arctic"] :not(.art-preview) > .art.mark .accent, .art-preview[data-art-preview="arctic"] .art.mark.art .accent { fill: #5ab8ff; stroke: none; }
+html[data-art="arctic"] :not(.art-preview) > .art.mark .cut, .art-preview[data-art-preview="arctic"] .art.mark.art .cut { fill: rgba(40, 80, 130, .32); stroke: none; }
+html[data-art="arctic"] :not(.art-preview) > .art.mark .cut-line, .art-preview[data-art-preview="arctic"] .art.mark.art .cut-line { stroke: rgba(40, 90, 150, .28); stroke-width: 1.5; }
+html[data-art="arctic"] :not(.art-preview) > .art.mark .shade, .art-preview[data-art-preview="arctic"] .art.mark.art .shade { display: inline; fill: rgba(60, 120, 190, .15); }
+html[data-art="arctic"] :not(.art-preview) > .art.mark .hi, .art-preview[data-art-preview="arctic"] .art.mark.art .hi { display: inline; fill: rgba(255, 255, 255, .75); }
+html[data-art="arctic"] :not(.art-preview) > .art.mark .hi-line, .art-preview[data-art-preview="arctic"] .art.mark.art .hi-line { display: inline; stroke: rgba(255, 255, 255, .85); stroke-width: 1; }
+html[data-art="arctic"] :not(.art-preview) > .art.mark .line, .art-preview[data-art-preview="arctic"] .art.mark.art .line { stroke: rgba(40, 90, 150, .35); stroke-width: .7; }
+html[data-art="arctic"] :not(.art-preview) > .art.mark .line.knurl, .art-preview[data-art-preview="arctic"] .art.mark.art .line.knurl { stroke: rgba(40, 90, 150, .45); }
+html[data-art="arctic"] :not(.art-preview) > .art.mark .led, .art-preview[data-art-preview="arctic"] .art.mark.art .led { fill: #5ab8ff; filter: drop-shadow(0 0 3px #5ab8ff); }
+html[data-art="arctic"] :not(.art-preview) > .art.mark .logo-text, .art-preview[data-art-preview="arctic"] .art.mark.art .logo-text { fill: rgba(40, 90, 150, .6); }
+html[data-art="arctic"] :not(.art-preview) > .art-mouse .solid, .art-preview[data-art-preview="arctic"] .art.mark.art.art-mouse .solid { fill: url(#dhb-mouse-arctic); }
+html[data-art="arctic"] :not(.art-preview) > .art-mouse .soft, .art-preview[data-art-preview="arctic"] .art.mark.art.art-mouse .soft { fill: url(#dhs-mouse-arctic); }
+html[data-art="arctic"] :not(.art-preview) > .art-headset .solid, .art-preview[data-art-preview="arctic"] .art.mark.art.art-headset .solid { fill: url(#dhb-headset-arctic); }
+html[data-art="arctic"] :not(.art-preview) > .art-headset .soft, .art-preview[data-art-preview="arctic"] .art.mark.art.art-headset .soft { fill: url(#dhs-headset-arctic); }
+html[data-art="arctic"] :not(.art-preview) > .art-keyboard .solid, .art-preview[data-art-preview="arctic"] .art.mark.art.art-keyboard .solid { fill: url(#dhb-keyboard-arctic); }
+html[data-art="arctic"] :not(.art-preview) > .art-keyboard .soft, .art-preview[data-art-preview="arctic"] .art.mark.art.art-keyboard .soft { fill: url(#dhs-keyboard-arctic); }
+html[data-art="arctic"] :not(.art-preview) > .art.mark .led.mic, .art-preview[data-art-preview="arctic"] .art.mark.art .led.mic { fill: rgba(255, 255, 255, .18); filter: none; }
 .art-style[data-look="blueprint"] { background: linear-gradient(rgba(124, 200, 255, .07) 1px, transparent 1px) 0 0 / 12px 12px, linear-gradient(90deg, rgba(124, 200, 255, .07) 1px, transparent 1px) 0 0 / 12px 12px, rgba(20, 60, 110, .28); }
 .art-style[data-look="neon"] { background: radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--theme-art) 16%, transparent), transparent 65%), rgba(255, 255, 255, .03); }
 .art-style[data-look="duo"] { background: linear-gradient(135deg, color-mix(in srgb, var(--theme-art) 22%, transparent), rgba(255, 255, 255, .03)); }
@@ -1001,96 +1003,96 @@ html[data-art="arctic"] .art.mark .led.mic, .art-preview[data-art-preview="arcti
    level's color), --glowc and --logo (headset), --kb and --kbon (keyboard) on every drawing from the live readings.
    The liquid and the numbers are hidden in every other look. */
 .art.mark .liquid, .art.mark .lq-text, .art.mark .bubble { display: none; }
-html[data-art="live"] .art.mark, .art-preview[data-art-preview="live"] .art.mark.art { filter: drop-shadow(0 12px 22px rgba(0, 0, 0, .5)); }
-html[data-art="live"] .art.mark .solid, .art-preview[data-art-preview="live"] .art.mark.art .solid { fill: rgba(255, 255, 255, .06); stroke: rgba(255, 255, 255, .55); stroke-width: .9; }
-html[data-art="live"] .art.mark .soft, .art-preview[data-art-preview="live"] .art.mark.art .soft { fill: rgba(255, 255, 255, .1); stroke: none; }
-html[data-art="live"] .art.mark .accent, .art-preview[data-art-preview="live"] .art.mark.art .accent { fill: rgba(255, 255, 255, .22); stroke: none; }
-html[data-art="live"] .art.mark .cut, .art-preview[data-art-preview="live"] .art.mark.art .cut { fill: rgba(0, 0, 0, .45); stroke: none; }
-html[data-art="live"] .art.mark .cut-line, .art-preview[data-art-preview="live"] .art.mark.art .cut-line { stroke: rgba(255, 255, 255, .22); stroke-width: 1; }
-html[data-art="live"] .art.mark .shade, .art-preview[data-art-preview="live"] .art.mark.art .shade { display: none; }
-html[data-art="live"] .art.mark .hi, .art-preview[data-art-preview="live"] .art.mark.art .hi { display: inline; fill: rgba(255, 255, 255, .14); }
-html[data-art="live"] .art.mark .hi-line, .art-preview[data-art-preview="live"] .art.mark.art .hi-line { display: inline; stroke: rgba(255, 255, 255, .3); stroke-width: .8; }
-html[data-art="live"] .art.mark .line, .art-preview[data-art-preview="live"] .art.mark.art .line { stroke: rgba(255, 255, 255, .3); stroke-width: .6; }
-html[data-art="live"] .art.mark .logo-text, .art-preview[data-art-preview="live"] .art.mark.art .logo-text { fill: rgba(255, 255, 255, .55); }
-html[data-art="live"] .art.mark .floor, .art-preview[data-art-preview="live"] .art.mark.art .floor { fill: color-mix(in srgb, var(--lq, #3ddc97) 40%, transparent); filter: blur(9px); opacity: calc(.25 + var(--lvl, 0) * .5); }
+html[data-art="live"] :not(.art-preview) > .art.mark, .art-preview[data-art-preview="live"] .art.mark.art { filter: drop-shadow(0 12px 22px rgba(0, 0, 0, .5)); }
+html[data-art="live"] :not(.art-preview) > .art.mark .solid, .art-preview[data-art-preview="live"] .art.mark.art .solid { fill: rgba(255, 255, 255, .06); stroke: rgba(255, 255, 255, .55); stroke-width: .9; }
+html[data-art="live"] :not(.art-preview) > .art.mark .soft, .art-preview[data-art-preview="live"] .art.mark.art .soft { fill: rgba(255, 255, 255, .1); stroke: none; }
+html[data-art="live"] :not(.art-preview) > .art.mark .accent, .art-preview[data-art-preview="live"] .art.mark.art .accent { fill: rgba(255, 255, 255, .22); stroke: none; }
+html[data-art="live"] :not(.art-preview) > .art.mark .cut, .art-preview[data-art-preview="live"] .art.mark.art .cut { fill: rgba(0, 0, 0, .45); stroke: none; }
+html[data-art="live"] :not(.art-preview) > .art.mark .cut-line, .art-preview[data-art-preview="live"] .art.mark.art .cut-line { stroke: rgba(255, 255, 255, .22); stroke-width: 1; }
+html[data-art="live"] :not(.art-preview) > .art.mark .shade, .art-preview[data-art-preview="live"] .art.mark.art .shade { display: none; }
+html[data-art="live"] :not(.art-preview) > .art.mark .hi, .art-preview[data-art-preview="live"] .art.mark.art .hi { display: inline; fill: rgba(255, 255, 255, .14); }
+html[data-art="live"] :not(.art-preview) > .art.mark .hi-line, .art-preview[data-art-preview="live"] .art.mark.art .hi-line { display: inline; stroke: rgba(255, 255, 255, .3); stroke-width: .8; }
+html[data-art="live"] :not(.art-preview) > .art.mark .line, .art-preview[data-art-preview="live"] .art.mark.art .line { stroke: rgba(255, 255, 255, .3); stroke-width: .6; }
+html[data-art="live"] :not(.art-preview) > .art.mark .logo-text, .art-preview[data-art-preview="live"] .art.mark.art .logo-text { fill: rgba(255, 255, 255, .55); }
+html[data-art="live"] :not(.art-preview) > .art.mark .floor, .art-preview[data-art-preview="live"] .art.mark.art .floor { fill: color-mix(in srgb, var(--lq, #3ddc97) 40%, transparent); filter: blur(9px); opacity: calc(.25 + var(--lvl, 0) * .5); }
 /* the liquid (21 Oct 2026, "make the live view better"): the group sits lower by the empty share; a front wave slides
    one way, a paler one behind it the other way; a lit edge on the surface; bubbles rise while charging. Transforms
    only, slow, and only in this look. */
-html[data-art="live"] .art.mark .liquid, .art-preview[data-art-preview="live"] .art.mark.art .liquid { display: inline; transform: translateY(calc((1 - var(--lvl, 0)) * var(--lh))); transition: transform 1s var(--ease); }
-html[data-art="live"] .art.mark .wave, .art-preview[data-art-preview="live"] .art.mark.art .wave { fill: var(--lq, #3ddc97); transition: fill .4s; }
-html[data-art="live"] .art.mark .wave.front, .art-preview[data-art-preview="live"] .art.mark.art .wave.front { opacity: 1; animation: wave-x 5.5s linear infinite; }
-html[data-art="live"] .art.mark .wave.back, .art-preview[data-art-preview="live"] .art.mark.art .wave.back { fill: color-mix(in srgb, var(--lq, #3ddc97) 55%, #fff); opacity: .35; animation: wave-x 8.5s linear infinite reverse; }
-html[data-art="live"] .art.mark .wave-edge, .art-preview[data-art-preview="live"] .art.mark.art .wave-edge { fill: none; stroke: color-mix(in srgb, var(--lq, #3ddc97) 40%, #fff); stroke-width: .9; opacity: .9; animation: wave-x 5.5s linear infinite; }
-html[data-art="live"] .art.mark .bubble, .art-preview[data-art-preview="live"] .art.mark.art .bubble { fill: rgba(255, 255, 255, .7); }
-html[data-art="live"] .art.mark.charging .bubble, .art-preview[data-art-preview="live"] .art.mark.art.charging .bubble { display: inline; animation: bubble 2.6s ease-in infinite; }
-html[data-art="live"] .art.mark .bubble.b1 { animation-delay: .9s; } html[data-art="live"] .art.mark .bubble.b2 { animation-delay: 1.7s; }
+html[data-art="live"] :not(.art-preview) > .art.mark .liquid, .art-preview[data-art-preview="live"] .art.mark.art .liquid { display: inline; transform: translateY(calc((1 - var(--lvl, 0)) * var(--lh))); transition: transform 1s var(--ease); }
+html[data-art="live"] :not(.art-preview) > .art.mark .wave, .art-preview[data-art-preview="live"] .art.mark.art .wave { fill: var(--lq, #3ddc97); transition: fill .4s; }
+html[data-art="live"] :not(.art-preview) > .art.mark .wave.front, .art-preview[data-art-preview="live"] .art.mark.art .wave.front { opacity: 1; animation: wave-x 5.5s linear infinite; }
+html[data-art="live"] :not(.art-preview) > .art.mark .wave.back, .art-preview[data-art-preview="live"] .art.mark.art .wave.back { fill: color-mix(in srgb, var(--lq, #3ddc97) 55%, #fff); opacity: .35; animation: wave-x 8.5s linear infinite reverse; }
+html[data-art="live"] :not(.art-preview) > .art.mark .wave-edge, .art-preview[data-art-preview="live"] .art.mark.art .wave-edge { fill: none; stroke: color-mix(in srgb, var(--lq, #3ddc97) 40%, #fff); stroke-width: .9; opacity: .9; animation: wave-x 5.5s linear infinite; }
+html[data-art="live"] :not(.art-preview) > .art.mark .bubble, .art-preview[data-art-preview="live"] .art.mark.art .bubble { fill: rgba(255, 255, 255, .7); }
+html[data-art="live"] :not(.art-preview) > .art.mark.charging .bubble, .art-preview[data-art-preview="live"] .art.mark.art.charging .bubble { display: inline; animation: bubble 2.6s ease-in infinite; }
+html[data-art="live"] :not(.art-preview) > .art.mark .bubble.b1 { animation-delay: .9s; } html[data-art="live"] :not(.art-preview) > .art.mark .bubble.b2 { animation-delay: 1.7s; }
 @keyframes wave-x { to { transform: translateX(36px); } }
 @keyframes bubble { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: .8; } 100% { transform: translateY(calc(var(--lvl, .5) * -1 * var(--bh, 60px))); opacity: 0; } }
-html[data-art="live"] .art-mouse, .art-preview[data-art-preview="live"] .art.art-mouse { --bh: 140px; }
-@media (prefers-reduced-motion: reduce) { html[data-art="live"] .art.mark .wave, html[data-art="live"] .art.mark .wave-edge, html[data-art="live"] .art.mark .bubble { animation: none; } }
-html[data-art="live"] .art.mark .lq-text, .art-preview[data-art-preview="live"] .art.mark.art .lq-text { display: inline; fill: #fff; paint-order: stroke; stroke: rgba(0, 0, 0, .4); stroke-width: 2.4px; }
-html[data-art="live"] .art.mark .lq-n, .art-preview[data-art-preview="live"] .art.mark.art .lq-n { font: 700 15px var(--ui); letter-spacing: -.02em; }
-html[data-art="live"] .art.mark .lq-u, .art-preview[data-art-preview="live"] .art.mark.art .lq-u { font: 600 8px var(--ui); fill: rgba(255, 255, 255, .8); }
-html[data-art="live"] .art.mark .led, .art-preview[data-art-preview="live"] .art.mark.art .led { fill: var(--glowc, #fff); opacity: var(--logo, 1); filter: drop-shadow(0 0 3px var(--glowc, #fff)); }
-html[data-art="live"] .art.mark .led.mic, .art-preview[data-art-preview="live"] .art.mark.art .led.mic { fill: rgba(255, 255, 255, .18); opacity: 1; filter: none; }
-html[data-art="live"] .art-keyboard .soft, .art-preview[data-art-preview="live"] .art.mark.art.art-keyboard .soft { fill: color-mix(in srgb, var(--kb, #fff) calc(var(--kbon, 0) * 75%), #23252c); }
-html[data-art="live"] .art-keyboard .accent, .art-preview[data-art-preview="live"] .art.mark.art.art-keyboard .accent { fill: color-mix(in srgb, var(--kb, #fff) calc(var(--kbon, 0) * 90%), #33363e); }
-html[data-art="live"] .art.mark.art-keyboard, .art-preview[data-art-preview="live"] .art.mark.art.art-keyboard { filter: drop-shadow(0 0 calc(var(--kbon, 0) * 12px) color-mix(in srgb, var(--kb, #fff) 70%, transparent)) drop-shadow(0 12px 22px rgba(0, 0, 0, .5)); }
+html[data-art="live"] :not(.art-preview) > .art-mouse, .art-preview[data-art-preview="live"] .art.art-mouse { --bh: 140px; }
+@media (prefers-reduced-motion: reduce) { html[data-art="live"] :not(.art-preview) > .art.mark .wave, html[data-art="live"] :not(.art-preview) > .art.mark .wave-edge, html[data-art="live"] :not(.art-preview) > .art.mark .bubble { animation: none; } }
+html[data-art="live"] :not(.art-preview) > .art.mark .lq-text, .art-preview[data-art-preview="live"] .art.mark.art .lq-text { display: inline; fill: #fff; paint-order: stroke; stroke: rgba(0, 0, 0, .4); stroke-width: 2.4px; }
+html[data-art="live"] :not(.art-preview) > .art.mark .lq-n, .art-preview[data-art-preview="live"] .art.mark.art .lq-n { font: 700 15px var(--ui); letter-spacing: -.02em; }
+html[data-art="live"] :not(.art-preview) > .art.mark .lq-u, .art-preview[data-art-preview="live"] .art.mark.art .lq-u { font: 600 8px var(--ui); fill: rgba(255, 255, 255, .8); }
+html[data-art="live"] :not(.art-preview) > .art.mark .led, .art-preview[data-art-preview="live"] .art.mark.art .led { fill: var(--glowc, #fff); opacity: var(--logo, 1); filter: drop-shadow(0 0 3px var(--glowc, #fff)); }
+html[data-art="live"] :not(.art-preview) > .art.mark .led.mic, .art-preview[data-art-preview="live"] .art.mark.art .led.mic { fill: rgba(255, 255, 255, .18); opacity: 1; filter: none; }
+html[data-art="live"] :not(.art-preview) > .art-keyboard .soft, .art-preview[data-art-preview="live"] .art.mark.art.art-keyboard .soft { fill: color-mix(in srgb, var(--kb, #fff) calc(var(--kbon, 0) * 75%), #23252c); }
+html[data-art="live"] :not(.art-preview) > .art-keyboard .accent, .art-preview[data-art-preview="live"] .art.mark.art.art-keyboard .accent { fill: color-mix(in srgb, var(--kb, #fff) calc(var(--kbon, 0) * 90%), #33363e); }
+html[data-art="live"] :not(.art-preview) > .art.mark.art-keyboard, .art-preview[data-art-preview="live"] .art.mark.art.art-keyboard { filter: drop-shadow(0 0 calc(var(--kbon, 0) * 12px) color-mix(in srgb, var(--kb, #fff) 70%, transparent)) drop-shadow(0 12px 22px rgba(0, 0, 0, .5)); }
 .art-style[data-look="live"] { background: linear-gradient(180deg, transparent 45%, rgba(61, 220, 151, .12)); }
 /* Live look, more of the real state (21 Oct 2026, "make it even better"): one battery only (the drawing's; the icon by
    the name is hidden in this look); the headset's mic tip green
    while live, red when muted; a battery at 20% or less pulses slowly */
 html[data-art="live"] .bcell { display: none; }  /* no battery percent anywhere in this look (Shawn, 21 Oct 2026) */
-html[data-art="live"] .art.mark.mic-live .led.mic, .art-preview[data-art-preview="live"] .art.mark.art.mic-live .led.mic { fill: #3ddc97; filter: drop-shadow(0 0 2.5px #3ddc97); }
-html[data-art="live"] .art.mark.mic-off .led.mic, .art-preview[data-art-preview="live"] .art.mark.art.mic-off .led.mic { fill: #ff4d4d; filter: drop-shadow(0 0 2.5px #ff4d4d); }
-html[data-art="live"] .art.mark.low .wave.front, .art-preview[data-art-preview="live"] .art.mark.art.low .wave.front { animation: wave-x 5.5s linear infinite, low-pulse 2.4s ease-in-out infinite; }
+html[data-art="live"] :not(.art-preview) > .art.mark.mic-live .led.mic, .art-preview[data-art-preview="live"] .art.mark.art.mic-live .led.mic { fill: #3ddc97; filter: drop-shadow(0 0 2.5px #3ddc97); }
+html[data-art="live"] :not(.art-preview) > .art.mark.mic-off .led.mic, .art-preview[data-art-preview="live"] .art.mark.art.mic-off .led.mic { fill: #ff4d4d; filter: drop-shadow(0 0 2.5px #ff4d4d); }
+html[data-art="live"] :not(.art-preview) > .art.mark.low .wave.front, .art-preview[data-art-preview="live"] .art.mark.art.low .wave.front { animation: wave-x 5.5s linear infinite, low-pulse 2.4s ease-in-out infinite; }
 @keyframes low-pulse { 50% { opacity: .45; } }
 /* no number on the drawing: the liquid alone shows the battery (Shawn, 21 Oct 2026: "doesnt need any percent") */
-html[data-art="live"] .art.mark .lq-text, .art-preview[data-art-preview="live"] .art.mark.art .lq-text { display: none; }
+html[data-art="live"] :not(.art-preview) > .art.mark .lq-text, .art-preview[data-art-preview="live"] .art.mark.art .lq-text { display: none; }
 /* Live look, a finer finish (21 Oct 2026, "make it even better"): the liquid lit from above (bright at its surface,
    deep at the bottom), a glowing surface line, a diagonal glass sheen over each shell, a soft inner glow on the shell's
    edge, and glass keys on the keyboard (lit in its backlight color when it is on) */
 .art.mark .sheen { display: none; }
-html[data-art="live"] .art.mark .lq-top, .art-preview[data-art-preview="live"] .art.mark.art .lq-top { stop-color: color-mix(in srgb, var(--lq, #3ddc97) 82%, #fff); }
-html[data-art="live"] .art.mark .lq-mid, .art-preview[data-art-preview="live"] .art.mark.art .lq-mid { stop-color: var(--lq, #3ddc97); }
-html[data-art="live"] .art.mark .lq-deep, .art-preview[data-art-preview="live"] .art.mark.art .lq-deep { stop-color: color-mix(in srgb, var(--lq, #3ddc97) 45%, #02120b); }
-html[data-art="live"] .art.mark .wave-edge, .art-preview[data-art-preview="live"] .art.mark.art .wave-edge { stroke: color-mix(in srgb, var(--lq, #3ddc97) 25%, #fff); stroke-width: 1.1; filter: drop-shadow(0 0 2px var(--lq, #3ddc97)); }
-html[data-art="live"] .art.mark .sheen, .art-preview[data-art-preview="live"] .art.mark.art .sheen { display: inline; pointer-events: none; }
-html[data-art="live"] .art.mark .solid, .art-preview[data-art-preview="live"] .art.mark.art .solid { fill: rgba(255, 255, 255, .045); stroke: rgba(255, 255, 255, .6); stroke-width: .9; filter: drop-shadow(0 0 1.5px rgba(255, 255, 255, .35)); }
-html[data-art="live"] .art.mark.art-keyboard .soft, .art-preview[data-art-preview="live"] .art.mark.art.art-keyboard .soft { stroke: rgba(255, 255, 255, calc(.22 - var(--kbon, 0) * .12)); stroke-width: .4; }
-html[data-art="live"] .art.mark.art-keyboard .hi, .art-preview[data-art-preview="live"] .art.mark.art.art-keyboard .hi { fill: rgba(255, 255, 255, calc(.1 + var(--kbon, 0) * .18)); }
+html[data-art="live"] :not(.art-preview) > .art.mark .lq-top, .art-preview[data-art-preview="live"] .art.mark.art .lq-top { stop-color: color-mix(in srgb, var(--lq, #3ddc97) 82%, #fff); }
+html[data-art="live"] :not(.art-preview) > .art.mark .lq-mid, .art-preview[data-art-preview="live"] .art.mark.art .lq-mid { stop-color: var(--lq, #3ddc97); }
+html[data-art="live"] :not(.art-preview) > .art.mark .lq-deep, .art-preview[data-art-preview="live"] .art.mark.art .lq-deep { stop-color: color-mix(in srgb, var(--lq, #3ddc97) 45%, #02120b); }
+html[data-art="live"] :not(.art-preview) > .art.mark .wave-edge, .art-preview[data-art-preview="live"] .art.mark.art .wave-edge { stroke: color-mix(in srgb, var(--lq, #3ddc97) 25%, #fff); stroke-width: 1.1; filter: drop-shadow(0 0 2px var(--lq, #3ddc97)); }
+html[data-art="live"] :not(.art-preview) > .art.mark .sheen, .art-preview[data-art-preview="live"] .art.mark.art .sheen { display: inline; pointer-events: none; }
+html[data-art="live"] :not(.art-preview) > .art.mark .solid, .art-preview[data-art-preview="live"] .art.mark.art .solid { fill: rgba(255, 255, 255, .045); stroke: rgba(255, 255, 255, .6); stroke-width: .9; filter: drop-shadow(0 0 1.5px rgba(255, 255, 255, .35)); }
+html[data-art="live"] :not(.art-preview) > .art.mark.art-keyboard .soft, .art-preview[data-art-preview="live"] .art.mark.art.art-keyboard .soft { stroke: rgba(255, 255, 255, calc(.22 - var(--kbon, 0) * .12)); stroke-width: .4; }
+html[data-art="live"] :not(.art-preview) > .art.mark.art-keyboard .hi, .art-preview[data-art-preview="live"] .art.mark.art.art-keyboard .hi { fill: rgba(255, 255, 255, calc(.1 + var(--kbon, 0) * .18)); }
 /* Live look, the light show (21 Oct 2026, "make it better, its not unique and cool enough"): a beam of light keeps
    tracing each device's outline in its battery color (the headset's two cups in turn; the keyboard in its backlight
    color, or white with the lights off); particles rise through the glowing liquid (the desk ripple ring was removed: Shawn did not want lines under the devices).
    Hidden in every other look, still for anyone who turns off motion in Windows. */
 .art.mark .scan, .art.mark .mote { display: none; }
-html[data-art="live"] .art.mark .scan, .art-preview[data-art-preview="live"] .art.mark.art .scan { display: inline; fill: none; stroke: color-mix(in srgb, var(--lq, #3ddc97) 60%, #fff); stroke-width: 1.6; stroke-linecap: round; stroke-dasharray: 9 91; animation: scan 4.8s linear infinite; filter: drop-shadow(0 0 2.5px var(--lq, #3ddc97)) drop-shadow(0 0 6px var(--lq, #3ddc97)); }
-html[data-art="live"] .art.mark .scan.s2, .art-preview[data-art-preview="live"] .art.mark.art .scan.s2 { animation-delay: -2.4s; }
-html[data-art="live"] .art.mark.art-keyboard .scan, .art-preview[data-art-preview="live"] .art.mark.art.art-keyboard .scan { stroke: color-mix(in srgb, var(--kb, #fff) calc(var(--kbon, 0) * 70%), #fff); filter: drop-shadow(0 0 3px color-mix(in srgb, var(--kb, #fff) calc(var(--kbon, 0) * 100%), #9fd6ff)); animation-duration: 7s; }
+html[data-art="live"] :not(.art-preview) > .art.mark .scan, .art-preview[data-art-preview="live"] .art.mark.art .scan { display: inline; fill: none; stroke: color-mix(in srgb, var(--lq, #3ddc97) 60%, #fff); stroke-width: 1.6; stroke-linecap: round; stroke-dasharray: 9 91; animation: scan 4.8s linear infinite; filter: drop-shadow(0 0 2.5px var(--lq, #3ddc97)) drop-shadow(0 0 6px var(--lq, #3ddc97)); }
+html[data-art="live"] :not(.art-preview) > .art.mark .scan.s2, .art-preview[data-art-preview="live"] .art.mark.art .scan.s2 { animation-delay: -2.4s; }
+html[data-art="live"] :not(.art-preview) > .art.mark.art-keyboard .scan, .art-preview[data-art-preview="live"] .art.mark.art.art-keyboard .scan { stroke: color-mix(in srgb, var(--kb, #fff) calc(var(--kbon, 0) * 70%), #fff); filter: drop-shadow(0 0 3px color-mix(in srgb, var(--kb, #fff) calc(var(--kbon, 0) * 100%), #9fd6ff)); animation-duration: 7s; }
 @keyframes scan { to { stroke-dashoffset: -100; } }
-html[data-art="live"] .art.mark .liquid, .art-preview[data-art-preview="live"] .art.mark.art .liquid { filter: drop-shadow(0 0 5px color-mix(in srgb, var(--lq, #3ddc97) 55%, transparent)); }
-html[data-art="live"] .art.mark .mote, .art-preview[data-art-preview="live"] .art.mark.art .mote { display: inline; fill: #fff; opacity: 0; animation: mote 4.2s linear infinite; }
-html[data-art="live"] .art.mark .mote.m1, .art-preview[data-art-preview="live"] .art.mark.art .mote.m1 { animation-delay: -.8s; animation-duration: 5s; }
-html[data-art="live"] .art.mark .mote.m2, .art-preview[data-art-preview="live"] .art.mark.art .mote.m2 { animation-delay: -1.9s; }
-html[data-art="live"] .art.mark .mote.m3, .art-preview[data-art-preview="live"] .art.mark.art .mote.m3 { animation-delay: -2.7s; animation-duration: 5.6s; }
-html[data-art="live"] .art.mark .mote.m4, .art-preview[data-art-preview="live"] .art.mark.art .mote.m4 { animation-delay: -3.4s; }
+html[data-art="live"] :not(.art-preview) > .art.mark .liquid, .art-preview[data-art-preview="live"] .art.mark.art .liquid { filter: drop-shadow(0 0 5px color-mix(in srgb, var(--lq, #3ddc97) 55%, transparent)); }
+html[data-art="live"] :not(.art-preview) > .art.mark .mote, .art-preview[data-art-preview="live"] .art.mark.art .mote { display: inline; fill: #fff; opacity: 0; animation: mote 4.2s linear infinite; }
+html[data-art="live"] :not(.art-preview) > .art.mark .mote.m1, .art-preview[data-art-preview="live"] .art.mark.art .mote.m1 { animation-delay: -.8s; animation-duration: 5s; }
+html[data-art="live"] :not(.art-preview) > .art.mark .mote.m2, .art-preview[data-art-preview="live"] .art.mark.art .mote.m2 { animation-delay: -1.9s; }
+html[data-art="live"] :not(.art-preview) > .art.mark .mote.m3, .art-preview[data-art-preview="live"] .art.mark.art .mote.m3 { animation-delay: -2.7s; animation-duration: 5.6s; }
+html[data-art="live"] :not(.art-preview) > .art.mark .mote.m4, .art-preview[data-art-preview="live"] .art.mark.art .mote.m4 { animation-delay: -3.4s; }
 @keyframes mote { 0% { transform: translateY(calc(var(--lvl, 0) * var(--lh) - 4px)); opacity: 0; } 20% { opacity: .85; } 85% { opacity: .6; } 100% { transform: translateY(0); opacity: 0; } }
 /* only the battery has color (Shawn, 21 Oct 2026: "the only thing green should be the battery"): the beam, the desk glow
    and the live mic tip are white; a muted mic stays red */
-html[data-art="live"] .art.mark .scan, .art-preview[data-art-preview="live"] .art.mark.art .scan { stroke: rgba(255, 255, 255, .9); filter: drop-shadow(0 0 2.5px rgba(255, 255, 255, .8)) drop-shadow(0 0 6px rgba(200, 220, 255, .5)); }
-html[data-art="live"] .art.mark.art-keyboard .scan, .art-preview[data-art-preview="live"] .art.mark.art.art-keyboard .scan { stroke: color-mix(in srgb, var(--kb, #fff) calc(var(--kbon, 0) * 70%), #fff); filter: drop-shadow(0 0 2.5px rgba(255, 255, 255, .8)) drop-shadow(0 0 6px rgba(200, 220, 255, .5)); }
-html[data-art="live"] .art.mark .floor, .art-preview[data-art-preview="live"] .art.mark.art .floor { fill: rgba(0, 0, 0, .55); opacity: 1; filter: blur(7px); }
-html[data-art="live"] .art.mark.mic-live .led.mic, .art-preview[data-art-preview="live"] .art.mark.art.mic-live .led.mic { fill: #fff; filter: drop-shadow(0 0 2.5px #fff); }
+html[data-art="live"] :not(.art-preview) > .art.mark .scan, .art-preview[data-art-preview="live"] .art.mark.art .scan { stroke: rgba(255, 255, 255, .9); filter: drop-shadow(0 0 2.5px rgba(255, 255, 255, .8)) drop-shadow(0 0 6px rgba(200, 220, 255, .5)); }
+html[data-art="live"] :not(.art-preview) > .art.mark.art-keyboard .scan, .art-preview[data-art-preview="live"] .art.mark.art.art-keyboard .scan { stroke: color-mix(in srgb, var(--kb, #fff) calc(var(--kbon, 0) * 70%), #fff); filter: drop-shadow(0 0 2.5px rgba(255, 255, 255, .8)) drop-shadow(0 0 6px rgba(200, 220, 255, .5)); }
+html[data-art="live"] :not(.art-preview) > .art.mark .floor, .art-preview[data-art-preview="live"] .art.mark.art .floor { fill: rgba(0, 0, 0, .55); opacity: 1; filter: blur(7px); }
+html[data-art="live"] :not(.art-preview) > .art.mark.mic-live .led.mic, .art-preview[data-art-preview="live"] .art.mark.art.mic-live .led.mic { fill: #fff; filter: drop-shadow(0 0 2.5px #fff); }
 /* smooth devices (Shawn, 21 Oct 2026: "why are these extra lines there I want the devices to be smooth"): in the Live look
    no seams, shine streaks, detail lines, glass sheen or moving beam; only each device's clean outline and its battery */
-html[data-art="live"] .art.mark :is(.cut-line, .hi, .hi-line, .line, .sheen, .scan), .art-preview[data-art-preview="live"] .art.mark.art :is(.cut-line, .hi, .hi-line, .line, .sheen, .scan) { display: none; }
+html[data-art="live"] :not(.art-preview) > .art.mark :is(.cut-line, .hi, .hi-line, .line, .sheen, .scan), .art-preview[data-art-preview="live"] .art.mark.art :is(.cut-line, .hi, .hi-line, .line, .sheen, .scan) { display: none; }
 /* the keyboard in the Live look, matching the mouse and headset (Shawn, 21 Oct 2026: "keyboard looks odd"): a smooth
    dark glass case, the plate darker, the keys dark glass with no outlines, Esc and Enter a little lighter; with the
    backlight on, the keys glow in its color */
-html[data-art="live"] .art.mark.art-keyboard .cut, .art-preview[data-art-preview="live"] .art.mark.art.art.art-keyboard .cut { fill: rgba(0, 0, 0, .55); stroke: none; }
-html[data-art="live"] .art.mark.art-keyboard .soft, .art-preview[data-art-preview="live"] .art.mark.art.art.art-keyboard .soft { stroke: none;
+html[data-art="live"] :not(.art-preview) > .art.mark.art-keyboard .cut, .art-preview[data-art-preview="live"] .art.mark.art.art.art-keyboard .cut { fill: rgba(0, 0, 0, .55); stroke: none; }
+html[data-art="live"] :not(.art-preview) > .art.mark.art-keyboard .soft, .art-preview[data-art-preview="live"] .art.mark.art.art.art-keyboard .soft { stroke: none;
   fill: color-mix(in srgb, var(--kb, #fff) calc(var(--kbon, 0) * 70%), rgba(255, 255, 255, .075)); filter: drop-shadow(0 0 calc(var(--kbon, 0) * 2px) var(--kb, transparent)); }
-html[data-art="live"] .art.mark.art-keyboard .accent, .art-preview[data-art-preview="live"] .art.mark.art.art.art-keyboard .accent { stroke: none;
+html[data-art="live"] :not(.art-preview) > .art.mark.art-keyboard .accent, .art-preview[data-art-preview="live"] .art.mark.art.art.art-keyboard .accent { stroke: none;
   fill: color-mix(in srgb, var(--kb, #fff) calc(var(--kbon, 0) * 85%), rgba(255, 255, 255, .16)); }
-html[data-art="live"] .art.mark.art-keyboard .solid, .art-preview[data-art-preview="live"] .art.mark.art.art.art-keyboard .solid { fill: rgba(255, 255, 255, .04); }
-html[data-art="live"] .art.mark.art-keyboard .shade, .art-preview[data-art-preview="live"] .art.mark.art.art.art-keyboard .shade { display: none; }
+html[data-art="live"] :not(.art-preview) > .art.mark.art-keyboard .solid, .art-preview[data-art-preview="live"] .art.mark.art.art.art-keyboard .solid { fill: rgba(255, 255, 255, .04); }
+html[data-art="live"] :not(.art-preview) > .art.mark.art-keyboard .shade, .art-preview[data-art-preview="live"] .art.mark.art.art.art-keyboard .shade { display: none; }
