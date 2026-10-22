@@ -187,7 +187,7 @@ export function keyboardArt() {
     keys += `<rect class="${cls}" x="${f(kx)}" y="${f(ky)}" width="${f(kw)}" height="${f(kh)}" rx="2.2"/>`
       + `<rect class="hi" x="${f(kx + 1.6)}" y="${f(ky + 1.2)}" width="${f(kw - 3.2)}" height="${f(kh - 3.6)}" rx="1.6"/>`;
   }));
-  const cx = pad + 15 * u + (u - gap) / 2, cy = pad + (u - gap) / 2, r = (u - gap) / 2 + 1;
+  const cx = pad + 15 * u + (u - gap) / 2, cy = pad + (u - gap) / 2, r = (u - gap) / 2;  // the size of a key, so its ring keeps the same margin to the case as the keys (Shawn, 21 Oct 2026: "knob is too close")
   return svgEl(`<svg class="art mark art-keyboard" viewBox="0 0 ${f(W)} ${f(H)}" aria-hidden="true">
     <g class="drawn">
     <ellipse class="floor" cx="${f(W / 2)}" cy="${f(H - 2)}" rx="${f(W / 2 - 4)}" ry="10"/>
@@ -196,7 +196,7 @@ export function keyboardArt() {
     <rect class="hi" x="8" y="2.2" width="${f(W - 16)}" height="1.6" rx="0.8"/>
     <rect class="cut" x="${f(pad - 3)}" y="${f(pad - 3)}" width="${f(W - 2 * pad + 6)}" height="${f(H - 2 * pad + 6)}" rx="5"/>
     ${keys}
-    <circle class="cut" cx="${f(cx)}" cy="${f(cy)}" r="${f(r + 1.2)}"/>
+    <circle class="cut" cx="${f(cx)}" cy="${f(cy)}" r="${f(r + 0.9)}"/>
     <circle class="solid" cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}"/>
     <circle class="line knurl" cx="${f(cx)}" cy="${f(cy)}" r="${f(r - 1.1)}"/>
     <circle class="hi" cx="${f(cx - 1.4)}" cy="${f(cy - 1.4)}" r="1.6"/>
