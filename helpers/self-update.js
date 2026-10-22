@@ -13,7 +13,7 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const git = (args, timeout = 30000) => new Promise((resolve, reject) => {
-  execFile('git', args, { cwd: ROOT, windowsHide: true, timeout }, (e, out, err) => (e ? reject(new Error((err || e.message).trim().split('\n').pop())) : resolve(out.trim())));
+  execFile('git', args, { cwd: ROOT, windowsHide: true, timeout, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' } }, (e, out, err) => (e ? reject(new Error((err || e.message).trim().split('\n').pop())) : resolve(out.trim())));
 });
 
 // ---- copies installed from the zip (21 Oct 2026): no git, so they update from the published release ----

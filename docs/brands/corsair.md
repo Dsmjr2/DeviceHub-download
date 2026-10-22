@@ -279,7 +279,7 @@ prefix) the helper sends. Details: docs/handoff/drivers-round3b.md.
 
 ## Sources
 
-- DeviceHub: `C:\Users\shawn\DeviceHub\helpers\hs80-direct.js`, `helpers\corsair.js`, `helpers\native\hs80io.cs`, `helpers\native\helper.cs` (HandleHs80), `public\devices\headset-adapter.js`
+- DeviceHub: `helpers\hs80-direct.js`, `helpers\corsair.js`, `helpers\native\hs80io.cs`, `helpers\native\helper.cs` (HandleHs80), `public\devices\headset-adapter.js`
 - [OpenLinkHub devices.go (product id table)](https://github.com/jurkovic-nikola/OpenLinkHub/blob/main/src/devices/devices.go)
 - [OpenLinkHub headsetdongle.go (receiver, paired-device discovery, heartbeat, notices)](https://github.com/jurkovic-nikola/OpenLinkHub/blob/main/src/devices/headsetdongle/headsetdongle.go)
 - [OpenLinkHub hs80rgbW.go](https://github.com/jurkovic-nikola/OpenLinkHub/blob/main/src/devices/hs80rgbW/hs80rgbW.go)

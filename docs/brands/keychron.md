@@ -242,7 +242,7 @@ DH's VIA support already covers keys, layers, knobs, macros and basic lighting f
 
 ## Sources
 
-- DeviceHub: `C:\Users\shawn\DeviceHub\public\devices\via.js`, `CLAUDE.md` ("Adding your own devices")
+- DeviceHub: `public\devices\via.js`, `CLAUDE.md` ("Adding your own devices")
 - [Keychron QMK fork, keychron_raw_hid.h (command ids, feature bits)](https://github.com/Keychron/qmk_firmware/blob/2025q3/keyboards/keychron/common/keychron_raw_hid.h)
 - [keychron_raw_hid.c (reply layouts, wireless relay, A0-AB handling)](https://github.com/Keychron/qmk_firmware/blob/2025q3/keyboards/keychron/common/keychron_raw_hid.c)
 - [keychron_common.mk (VIA_INSECURE, APDAPTIVE_NKRO_ENABLE, state notify)](https://github.com/Keychron/qmk_firmware/blob/2025q3/keyboards/keychron/common/keychron_common.mk)

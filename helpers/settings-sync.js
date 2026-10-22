@@ -23,7 +23,8 @@ const SETTINGS = path.join(ROOT, 'settings.json'), PROFILES = path.join(ROOT, 'p
 const OPTIONS = ['autoSwitch', 'defaultProfile', 'hotkeys', 'artStyle', 'ankerGuard', 'batterySaver'];
 
 const git = (args, cwd = DIR, timeout = 45000) => new Promise((resolve, reject) => {
-  execFile('git', args, { cwd, windowsHide: true, timeout }, (e, out, err) => (e ? reject(new Error((err || e.message).trim().split('\n').pop())) : resolve(out.trim())));
+  // never a sign-in window or prompt: cached credentials still work, anything else fails quietly (no pop-ups)
+  execFile('git', args, { cwd, windowsHide: true, timeout, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', GIT_ASKPASS: '', SSH_ASKPASS: '' } }, (e, out, err) => (e ? reject(new Error((err || e.message).trim().split('\n').pop())) : resolve(out.trim())));
 });
 const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
 const hash = (o) => crypto.createHash('sha1').update(JSON.stringify(o)).digest('hex');
@@ -71,7 +72,8 @@ async function sync() {
     // a copy from the installer zip (no git, or no GitHub remote) has nowhere to sync to: not set up, not an error
     let origin = null;
     try { origin = await git(['remote', 'get-url', 'origin'], ROOT, 10000); } catch {}
-    if (!origin) { status = { ...status, enabled: false, notSetUp: true, error: null }; return status; }
+    // a copy installed from the public download repository has no settings repository of its own: not set up
+    if (!origin || /\/DeviceHub-download(\.git)?\/?$/i.test(origin.trim())) { status = { ...status, enabled: false, notSetUp: true, error: null }; return status; }
     status.enabled = true; status.notSetUp = false;
     const main = st.role === 'main';
     status.role = main ? 'main' : 'follow';
