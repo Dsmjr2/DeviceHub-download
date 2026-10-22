@@ -6,9 +6,9 @@ with Claude Code (further down). Either way it never flashes firmware.
 ## Without Claude
 
 1. **Install DeviceHub and plug your devices in.** That is often all it takes. When DeviceHub starts, auto setup
-   compares your USB devices with its shared library (16 drivers so far: Logitech, Razer, ASUS ROG, Glorious,
-   SteelSeries and Corsair mice; Logitech, SteelSeries Arctis, Corsair, HyperX and Turtle Beach headsets; Logitech,
-   Razer, Corsair, Keychron and Wooting keyboards; HyperX mice and keyboards). It installs a matching driver by itself
+   compares your USB devices with its shared library (18 drivers so far: Logitech, Razer, ASUS ROG, Glorious,
+   SteelSeries, Corsair and ROCCAT mice; Logitech, SteelSeries Arctis, Corsair, HyperX and Turtle Beach headsets; Logitech,
+   Razer, Corsair, Keychron, Wooting, ROCCAT and SteelSeries Apex keyboards; HyperX mice and keyboards). It installs a matching driver by itself
    when it is "tested" or "read-only"; the Overview's Set up card lists the others, with an Install button, and says
    what works now and what is left. What a driver does once installed: no driver in the library has run on a real
    device yet, and neither has one Learn a device makes, so every one of them only reads at first. Its settings stay

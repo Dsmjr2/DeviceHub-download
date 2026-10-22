@@ -2,7 +2,7 @@
 
 One Windows app for a mouse, a headset and a keyboard, instead of three vendor apps.
 
-**Different devices?** Plug them in: DeviceHub's shared library (16 drivers so far) sets up known ones by itself, and
+**Different devices?** Plug them in: DeviceHub's shared library (18 drivers so far) sets up known ones by itself, and
 **Learn a device** (in the sidebar) teaches it the rest while you change settings in the maker's app. No Claude needed;
 [ADD-YOUR-DEVICES.md](ADD-YOUR-DEVICES.md) has the steps, and how to do it with Claude Code instead.
 
@@ -19,8 +19,8 @@ One Windows app for a mouse, a headset and a keyboard, instead of three vendor a
 | **Windows sound** (Equalizer APO) | headset and monitor EQ, Natural sound, mic filters |
 
 Plug in any of them and DeviceHub shows just the ones you have. Other devices come from the shared device library
-(`device-library/`, 16 drivers so far: Logitech, Razer, ASUS ROG, Glorious, SteelSeries and Corsair mice; Logitech,
-SteelSeries Arctis, Corsair, HyperX and Turtle Beach headsets; Logitech, Razer, Corsair, Keychron and Wooting keyboards;
+(`device-library/`, 18 drivers so far: Logitech, Razer, ASUS ROG, Glorious, SteelSeries, Corsair and ROCCAT mice; Logitech,
+SteelSeries Arctis, Corsair, HyperX and Turtle Beach headsets; Logitech, Razer, Corsair, Keychron, Wooting, ROCCAT and SteelSeries Apex keyboards;
 HyperX mice and keyboards), installed by auto setup when it
 matches your USB devices ("tested" and "read-only" ones by themselves, the rest from the Overview's Set up
 card), or from **Learn a device**, a step-by-step wizard that makes a driver from what the maker's
