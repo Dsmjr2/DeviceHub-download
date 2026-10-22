@@ -19,6 +19,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { problem } from './my-devices.mjs';
+import { cacheRoot, entryVersion } from './library-updates.mjs';   // no cycle: library-updates imports nothing from here
 
 export const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const STATUSES = ['tested', 'read-only', 'untested'];
@@ -61,20 +62,29 @@ export function devicehubVersion(root = ROOT) {
 }
 
 // every entry: [{ name, dir, meta?, error? }]; examples only in demo/test (or when asked with examples: true)
+// every entry: the shipped device-library/ plus library-cache/ (signed entries fetched between releases,
+// helpers/library-updates.mjs); a cached entry wins only when it is strictly newer, or the shipped one is broken
 export function list({ root = ROOT, examples = showsExamples() } = {}) {
-  const dir = path.join(root, 'device-library');
+  const byName = new Map(scan(path.join(root, 'device-library'), examples, 'device-library').map((e) => [e.name, e]));
+  for (const c of scan(cacheRoot(root), false, 'library-cache')) {
+    const s = byName.get(c.name);
+    if (!s || (s.error && !c.error) || (!c.error && (entryVersion(c.meta) || '') > (entryVersion(s.meta) || ''))) byName.set(c.name, c);
+  }
+  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+function scan(dir, examples, origin) {
   let names = [];
   try { names = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name); } catch { return []; }
   const out = [];
   for (const name of names.sort()) {
     if (name.startsWith('.') || (isExample(name) && !examples)) continue;
     const d = path.join(dir, name);
-    if (!NAME.test(name)) { out.push({ name, dir: d, error: 'its folder name must be a-z, 0-9 and - (vendor-product)' }); continue; }
-    if (!driverFileOf(d)) { out.push({ name, dir: d, error: 'no device.mjs or driver.json in it' }); continue; }
+    if (!NAME.test(name)) { out.push({ name, dir: d, origin, error: 'its folder name must be a-z, 0-9 and - (vendor-product)' }); continue; }
+    if (!driverFileOf(d)) { out.push({ name, dir: d, origin, error: 'no device.mjs or driver.json in it' }); continue; }
     let meta;
-    try { meta = JSON.parse(fs.readFileSync(path.join(d, 'device.json'), 'utf8')); } catch (e) { out.push({ name, dir: d, error: `device.json: ${e.code === 'ENOENT' ? 'missing' : e.message}` }); continue; }
+    try { meta = JSON.parse(fs.readFileSync(path.join(d, 'device.json'), 'utf8')); } catch (e) { out.push({ name, dir: d, origin, error: `device.json: ${e.code === 'ENOENT' ? 'missing' : e.message}` }); continue; }
     const why = validateMeta(meta);
-    out.push(why ? { name, dir: d, meta, error: why } : { name, dir: d, meta });
+    out.push(why ? { name, dir: d, origin, meta, error: why } : { name, dir: d, origin, meta });
   }
   return out;
 }
@@ -122,7 +132,7 @@ export async function installFromLibrary(name, { root = ROOT, examples = showsEx
   for (const f of [...DRIVER_FILES.filter((x) => fs.existsSync(path.join(entry.dir, x))), 'device.json']) fs.copyFileSync(path.join(entry.dir, f), path.join(to, f), fs.constants.COPYFILE_EXCL);
   // the marker my-devices.mjs loads it guarded by (its source and status; nothing about the PC or the person)
   const last = entry.meta.tested.at(-1) || {};
-  const mark = { source: `device-library/${name}`, name, id: entry.meta.id, status: entry.meta.status, installedAt: now().toISOString(), devicehub: devicehubVersion(root), libraryTested: last.date || null, libraryDevicehub: last.devicehub || null };
+  const mark = { source: `${entry.origin || 'device-library'}/${name}`, name, id: entry.meta.id, status: entry.meta.status, installedAt: now().toISOString(), devicehub: devicehubVersion(root), libraryTested: last.date || null, libraryDevicehub: last.devicehub || null };
   fs.writeFileSync(path.join(to, 'library.json'), JSON.stringify(mark, null, 2) + '\n', { flag: 'wx' });
   return { ok: true, name, to, id: entry.meta.id, status: entry.meta.status, note: entry.meta.status === 'tested' ? 'DeviceHub loads it on its next start' : 'DeviceHub loads it read-only on its next start; each setting opens once it passes its self-check' };
 }

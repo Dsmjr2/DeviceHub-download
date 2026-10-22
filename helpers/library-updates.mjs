@@ -52,6 +52,8 @@ export function entryVersion(meta) {
 
 // the signed text. It starts with its own label, not "[", so it can never be an app release's payload
 // (helpers/sign-release.mjs signs JSON.stringify([commit, builtAt, appCommit, size, sha256])) and vice versa.
+// which file a bundled driver is: its signed text is a JSON object for a driver.json, code for a device.mjs
+export function driverFile(text) { try { const o = JSON.parse(text); return o && typeof o === 'object' && !Array.isArray(o) ? 'driver.json' : 'device.mjs'; } catch { return 'device.mjs'; } }
 export const payload = (b) => `${KIND}/${FORMAT}\n${JSON.stringify([b.builtAt, (b.list || []).map((x) => [x.name, x.version, x.sha256, x.metaSha256])])}`;
 
 // an entry's name and device.json look sane enough to be written to the cache (the full check is device-library.mjs's
@@ -157,11 +159,12 @@ async function writeCache(root, v) {
       if (old && markOld?.sha256 === e.sha256 && markOld?.metaSha256 === e.metaSha256) continue;  // unchanged
       const d = path.join(stage, e.name);
       await fsp.mkdir(d);
-      await fsp.writeFile(path.join(d, 'device.mjs'), e.mjs, { flag: 'wx' });
+      const file = driverFile(e.mjs);
+      await fsp.writeFile(path.join(d, file), e.mjs, { flag: 'wx' });
       await fsp.writeFile(path.join(d, 'device.json'), JSON.stringify(e.meta, null, 2) + '\n', { flag: 'wx' });
       await fsp.writeFile(path.join(d, MARKER), JSON.stringify({ source: 'library update', name: e.name, version: e.version, sha256: e.sha256, metaSha256: e.metaSha256, bundleBuiltAt: v.bundle.builtAt }, null, 2) + '\n', { flag: 'wx' });
       // read back what was written before it replaces anything
-      if (sha256(await fsp.readFile(path.join(d, 'device.mjs'), 'utf8')) !== e.sha256) throw new Error(`${e.name}: the written driver does not read back the same`);
+      if (sha256(await fsp.readFile(path.join(d, file), 'utf8')) !== e.sha256) throw new Error(`${e.name}: the written driver does not read back the same`);
       const target = path.join(cache, e.name), aside = path.join(cache, `.old-${e.name}-${stamp}`);
       if (fs.existsSync(target)) await fsp.rename(target, aside);
       await fsp.rename(d, target);

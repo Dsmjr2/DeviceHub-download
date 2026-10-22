@@ -26,7 +26,10 @@ export function makeBundle({ root = ROOT, privateKey, now = () => new Date() } =
     if (name.startsWith('.') || name.startsWith('_')) continue;
     const d = path.join(dir, name);
     let mjs, meta;
-    try { mjs = fs.readFileSync(path.join(d, 'device.mjs'), 'utf8'); } catch { skipped.push({ name, why: 'no device.mjs' }); continue; }
+    // the driver: device.mjs, or a driver.json (docs/DRIVER-FORMAT.md) carried as its text; the reader tells them apart
+    try { mjs = fs.readFileSync(path.join(d, 'device.mjs'), 'utf8'); } catch {
+      try { mjs = fs.readFileSync(path.join(d, 'driver.json'), 'utf8'); } catch { skipped.push({ name, why: 'no device.mjs or driver.json' }); continue; }
+    }
     try { meta = JSON.parse(fs.readFileSync(path.join(d, 'device.json'), 'utf8').replace(/^﻿/, '')); } catch (e) { skipped.push({ name, why: `device.json: ${e.message}` }); continue; }
     const why = entryProblem(name, meta);
     if (why) { skipped.push({ name, why }); continue; }
