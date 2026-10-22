@@ -1296,6 +1296,7 @@ select.text.kind-select { width: auto; min-width: 150px; font-size: 13px; paddin
 .gh-fine { color: var(--faint); font-size: 12px; line-height: 1.45; }
 .gh-note { font-size: 12.5px; color: var(--muted); }
 .gh-note.bad { color: var(--bad); }
+.gh-note.good { color: var(--good); display: flex; gap: 6px; align-items: center; }
 .gh-report summary { cursor: pointer; font: 600 12.5px var(--ui); color: var(--muted); }
 .gh-report summary:hover { color: var(--text); }
 .gh-report pre.json { white-space: pre-wrap; word-break: break-word; max-height: 300px; margin: 8px 0 0; font-size: 11.5px; }
@@ -1396,7 +1397,7 @@ select.text.gh-pick { width: auto; min-width: 170px; font-size: 13px; padding: 5
 /* Request support inside a Your devices line: the button beside the others, the panel on its own line below */
 .su-item { flex-wrap: wrap; }
 .su-item .get-help { margin-top: 0 !important; }
-.su-item .get-help:has(.gh-card) { flex-basis: 100%; }
+.su-item .get-help:has(.gh-card), .su-item .get-help:has(.gh-note) { flex-basis: 100%; }
 
 /* Overview: batteries Windows knows (any Bluetooth headset, earbuds, controller), 22 Oct 2026 */
 .ov-batteries { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
@@ -1628,3 +1629,209 @@ html[data-skin="old-school"] .wp-quick-btn:hover { background: var(--stone-hi); 
 html[data-skin="old-school"] .wp-low { border-radius: 2px; color: #000; background: var(--osrs-yellow); text-shadow: none; }
 .bk-with { display: flex; align-items: center; gap: 6px; margin-top: 8px; cursor: pointer; }
 .bk-with input { accent-color: var(--accent); margin: 0; }
+
+/* ---------- Verde (22 Oct 2026, Shawn: a verde sauce theme with everything green, built around the sauce bottle
+   and its colors, a whole look like the Old School theme and not only a color; then "make it even more verde sauce
+   like") ----------
+   html[data-skin="verde"], set by core/theme.js for that backdrop: a whole look built on a bottle of green verde sauce,
+   with the same coverage as Old School. Every pane is thick salsa verde behind glass: an olive-to-lime gradient with
+   tiny suspended bits (pale seeds, dark herb, a few red chili flecks) and a glossy highlight down the left side. The
+   page is a darker sauce with the label's fine diamond check faint on top. Card heads and the open page sit on the
+   lime neck band (white bold words, bright lime stripes at its edges). Buttons are lime bottle caps with a ridged edge,
+   switches fill with sauce when on, bars and gauges fill with sauce and its bits. One small purple touch: the open
+   page's marker. Colors and patterns only, drawn in CSS: no names, logos, label words or images from any brand.
+   Static gradients only (no animation, no blur behind the panes). Body text stays at 6:1 or better on every pane. */
+html[data-skin="verde"] {
+  --verde: #8cc63f; --verde-lime: #b8e670; --verde-deep: #2f6b1a; --verde-dark: #10240a; --verde-rim: #121604;
+  --verde-purple: #9a3fb4; --verde-ink: #0f2208;
+  --sauce-top: #3c4512; --sauce-mid: #3a5014; --sauce-low: #426117;
+  --chili: 214, 72, 44;
+  --panel: rgba(10, 14, 2, .24); --panel-2: rgba(10, 14, 2, .32); --panel-solid: var(--sauce-mid);
+  --raise: rgba(184, 230, 112, .09); --sunk: rgba(8, 12, 2, .42);
+  --line: rgba(170, 220, 100, .22); --line2: rgba(170, 220, 100, .38);
+  --text: #f5f9e8; --muted: rgba(240, 247, 222, .84); --faint: rgba(234, 243, 210, .72);
+  --good: #b8e670; --warn: #f0dc5a; --bad: #ff8466;
+  --r: 18px; --r-sm: 12px;
+  --glass: linear-gradient(180deg, rgba(240, 255, 200, .05), rgba(10, 14, 2, .08));
+  --rim: inset 0 0 0 1px rgba(170, 225, 90, .26), inset 0 1px 0 rgba(250, 255, 220, .24);
+  --lift: 0 3px 0 rgba(0, 0, 0, .5), 0 14px 30px -18px rgba(0, 0, 0, .9);
+  --card: var(--sauce-mid); --card-solid-a: var(--sauce-low); --card-solid-b: var(--sauce-top);
+  --dialog-a: var(--sauce-low); --dialog-b: var(--sauce-top);
+  /* the glass: a glossy highlight down the left side and a thin one on the right, as light on a round bottle */
+  --sheen: linear-gradient(90deg, transparent 0 2.5%, rgba(250, 255, 225, .08) 4.5%, rgba(250, 255, 225, .16) 7%, rgba(250, 255, 225, .05) 11%,
+    transparent 18% 86%, rgba(250, 255, 225, .07) 92%, transparent 96%);
+  /* the bits in the sauce: pale seeds, dark herb, a few chili flecks; tile sizes that never line up */
+  --specks:
+    radial-gradient(1.6px 1.1px at 30% 40%, rgba(240, 236, 190, .3), transparent) 0 0 / 19px 23px,
+    radial-gradient(1.3px 1.3px at 70% 20%, rgba(240, 236, 190, .22), transparent) 0 0 / 29px 17px,
+    radial-gradient(2.4px 1.2px at 50% 60%, rgba(14, 32, 6, .55), transparent) 0 0 / 13px 21px,
+    radial-gradient(1.8px 1.4px at 20% 80%, rgba(20, 50, 8, .5), transparent) 0 0 / 23px 31px,
+    radial-gradient(1.3px 1.1px at 60% 30%, rgba(var(--chili), .45), transparent) 0 0 / 53px 47px;
+  /* the label's fine diamond check, as thin crossing lines */
+  --check: repeating-linear-gradient(45deg, rgba(16, 40, 8, .2) 0 1px, transparent 1px 8px),
+    repeating-linear-gradient(-45deg, rgba(16, 40, 8, .2) 0 1px, transparent 1px 8px);
+  --check-faint: repeating-linear-gradient(45deg, rgba(150, 205, 70, .05) 0 1px, transparent 1px 14px),
+    repeating-linear-gradient(-45deg, rgba(150, 205, 70, .05) 0 1px, transparent 1px 14px);
+  /* the neck band: bright lime stripes at the edges, a deeper lime middle so white words read (5:1) */
+  --band: linear-gradient(180deg, #a2d65a 0 2px, #4d8a1e 2px, #3f7817 calc(100% - 2px), #8cc63f calc(100% - 2px));
+  /* thick sauce: olive at the top settling into lime-olive at the bottom */
+  --sauce: linear-gradient(180deg, var(--sauce-top), var(--sauce-mid) 50%, var(--sauce-low));
+  /* a lime cap seen from the side: fine vertical ridges over a rounded lime */
+  --ridges: repeating-linear-gradient(90deg, rgba(15, 34, 8, .14) 0 1px, transparent 1px 4px);
+  --cap: var(--ridges), linear-gradient(180deg, #a6d85c, #84bd3e 55%, #6aa12d);
+  --cap-hover: var(--ridges), linear-gradient(180deg, #b6e470, #93cb4a 55%, #78af35);
+  --cap-main: var(--ridges), linear-gradient(180deg, #d0f38e, #b2e266 50%, #8cc63f);
+  /* poured sauce for bars: a glossy top, lime into olive */
+  --pour: linear-gradient(180deg, rgba(255, 255, 230, .35) 0 18%, transparent 30%), linear-gradient(180deg, #a6d85c, #7fae32 55%, #5f7a1e);
+  --heading-outline: 1px 1px 0 var(--verde-dark), -1px -1px 0 var(--verde-dark), 1px -1px 0 var(--verde-dark), -1px 1px 0 var(--verde-dark);
+  --chunky: "Arial Rounded MT Bold", "Nunito", "Segoe UI Variable Display", "Segoe UI", var(--ui);
+}
+/* the page behind: a darker sauce with its bits, the label's diamond check faint on top */
+html[data-skin="verde"] body::before {
+  background:
+    var(--check-faint),
+    var(--specks),
+    radial-gradient(70% 60% at 25% 15%, rgba(140, 198, 63, .12), transparent 70%),
+    linear-gradient(180deg, #121804, #1a2407 60%, #1e2c08); }
+html[data-skin="verde"][data-picture] body::before {
+  background: radial-gradient(120% 100% at 50% 40%, rgba(11, 14, 4, .4), rgba(11, 14, 4, .74)), var(--picture) center / cover no-repeat; }
+/* every pane: thick sauce behind glass, its bits suspended, a gloss down the side, a dark rim with a lime line inside */
+html[data-skin="verde"] :is(.rail, .panel, .bay, .hero, .profile, .modal, .palette),
+html[data-skin="verde"] #main :is(.panel, .bay, .hero, .profile) {
+  background: var(--sheen), var(--specks), var(--sauce);
+  border: 2px solid var(--verde-rim); border-radius: var(--r); box-shadow: var(--rim), var(--lift);
+  -webkit-backdrop-filter: none; backdrop-filter: none; }
+html[data-skin="verde"] :is(.bay:hover, .profile:hover) { border-color: #2a3a0c; transform: none; }
+/* headings: chunky white with a dark green outline; the page title sits on a lime shadow */
+html[data-skin="verde"] :is(h1, h2, h3, .su-head h3) { font-family: var(--chunky); color: #ffffff; text-shadow: var(--heading-outline); }
+html[data-skin="verde"] h1 { font-weight: 800; letter-spacing: 0; text-shadow: var(--heading-outline), 0 3px 0 #4d8a1e; }
+html[data-skin="verde"] :is(.theme-label, .prof-label, .nav-label, .bay-kind) { color: var(--verde-lime); font-weight: 700; }
+/* the neck band: card heads on lime, white bold words */
+html[data-skin="verde"] .panel-head { padding: 3px 4px 3px 10px; margin-bottom: 10px; min-height: 30px; border-radius: 10px; background: var(--check), var(--band); color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(16, 40, 8, .35), 0 2px 0 rgba(0, 0, 0, .4); }
+html[data-skin="verde"] .panel-head h2 { color: #fff; font-weight: 800; }
+html[data-skin="verde"] .panel-head :is(.sub, .faint, .muted, small) { color: #eef7dc; }
+html[data-skin="verde"] .panel-head > .ic { color: #fff; }
+/* each card's kind on a small lime band tag */
+html[data-skin="verde"] .bay-top .bay-kind { padding: 2px 11px; border-radius: 999px; background: var(--check), var(--band); color: #fff; font-weight: 700;
+  box-shadow: inset 0 0 0 1px rgba(16, 40, 8, .35), 0 1px 0 rgba(0, 0, 0, .4); }
+/* names in white, values in lime */
+html[data-skin="verde"] :is(.bay-head h3, .bay-name, .prof-head h3, .su-text b, .wp-name) { color: #ffffff; }
+html[data-skin="verde"] :is(.gauge-text b, .slider output, .bcell-text b, .ov-bat b, .prof-line b, .kv b) { color: var(--verde-lime); }
+html[data-skin="verde"] :is(b, strong) { color: #ecf8d2; }
+/* the side list: hover a faint lime glass; the open page on the lime band, with a small purple marker */
+html[data-skin="verde"] .nav { border-radius: 999px; }
+html[data-skin="verde"] .nav:hover { background: rgba(184, 230, 112, .12); color: var(--text); }
+html[data-skin="verde"] .nav.active { color: #fff; font-weight: 600; background: var(--check), var(--band);
+  box-shadow: inset 4px 0 0 var(--verde-purple), inset 0 0 0 1px rgba(16, 40, 8, .35), 0 2px 0 var(--verde-rim); }
+html[data-skin="verde"] .nav.active .ic { color: #fff; opacity: 1; }
+/* buttons: lime bottle caps with a ridged edge and dark green words; pressed sinks in; the main one is the bright cap */
+html[data-skin="verde"] :is(.btn, .icon-btn, .bk-more, .prof-link) { border-radius: 999px; }
+html[data-skin="verde"] .btn { background: var(--cap); border: 1.5px solid var(--verde-rim); color: var(--verde-ink); font-weight: 700; text-shadow: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 235, .5), inset 0 -2px 0 rgba(30, 60, 10, .35), 0 2px 0 var(--verde-rim); }
+html[data-skin="verde"] .btn .ic { color: var(--verde-ink); }
+html[data-skin="verde"] .btn:hover { background: var(--cap-hover); color: var(--verde-ink); }
+html[data-skin="verde"] .btn:active { box-shadow: inset 0 2px 3px rgba(0, 0, 0, .4); transform: translateY(1px); }
+html[data-skin="verde"] :is(.btn.primary, button.primary) { background: var(--cap-main); border-color: var(--verde-rim); color: var(--verde-ink);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 240, .6), inset 0 -2px 0 rgba(30, 60, 10, .3), 0 2px 0 var(--verde-rim), 0 0 0 2px rgba(184, 230, 112, .25); }
+html[data-skin="verde"] :is(.btn.primary, button.primary):hover { background: var(--ridges), linear-gradient(180deg, #dcf7a2, #bfe878 50%, #98cf4a); color: var(--verde-ink); }
+html[data-skin="verde"] .btn.ghost { background: none; border-color: transparent; box-shadow: none; color: var(--text); }
+html[data-skin="verde"] .btn.ghost .ic { color: inherit; }
+html[data-skin="verde"] .btn.ghost:hover { background: rgba(184, 230, 112, .14); border-color: rgba(184, 230, 112, .34); color: #fff; }
+/* boxes and choices: a dark well of sauce with a lime edge */
+html[data-skin="verde"] :is(.text, select.text, .seg, .cmd-hint) { background: rgba(14, 20, 3, .6); border: 1px solid rgba(170, 220, 100, .36); box-shadow: inset 0 2px 3px rgba(0, 0, 0, .35); }
+html[data-skin="verde"] :is(.text, select.text):focus { border-color: var(--verde-lime); }
+html[data-skin="verde"] .cmd-hint:hover { border-color: var(--verde-lime); }
+html[data-skin="verde"] .seg-thumb { background: var(--cap); border: 1px solid var(--verde-rim); box-shadow: inset 0 1px 0 rgba(255, 255, 235, .45); }
+html[data-skin="verde"] .seg button.sel { color: var(--verde-ink); font-weight: 700; text-shadow: none; }
+html[data-skin="verde"] .pill { background: rgba(14, 20, 3, .5); border-color: rgba(170, 220, 100, .32); box-shadow: none; }
+html[data-skin="verde"] .pill.good { color: var(--verde-lime); }
+/* switches: a dark well that fills with sauce when on; the knob is a ridged cap seen from above */
+html[data-skin="verde"] .switch { background: rgba(14, 20, 3, .72); border: 1px solid rgba(170, 220, 100, .32); box-shadow: inset 0 2px 3px rgba(0, 0, 0, .5); }
+html[data-skin="verde"] .switch .knob { background: radial-gradient(circle, #6f8a2a 0 50%, transparent 53%), repeating-conic-gradient(#56701f 0 12deg, #3d5014 12deg 24deg);
+  box-shadow: 0 0 0 1px var(--verde-rim), 0 2px 3px rgba(0, 0, 0, .5); }
+html[data-skin="verde"] .switch.on { background: var(--specks), var(--pour); border-color: var(--verde-rim); }
+html[data-skin="verde"] .switch.on .knob { background: radial-gradient(circle, #f2f7dc 0 50%, transparent 53%), repeating-conic-gradient(#dfeec0 0 12deg, #b8cf8a 12deg 24deg); }
+/* sliders: the track fills with sauce; the handle is a cap */
+html[data-skin="verde"] .slider input { height: 7px; border-radius: 99px; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .5);
+  background: linear-gradient(90deg, #6f9a2a, #a6d85c var(--p), rgba(14, 20, 3, .72) var(--p)); }
+html[data-skin="verde"] .slider input::-webkit-slider-thumb { background: radial-gradient(circle, #d6f39a 0 45%, transparent 48%), repeating-conic-gradient(#a6d85c 0 12deg, #6aa12d 12deg 24deg);
+  box-shadow: 0 0 0 1.5px var(--verde-rim), 0 2px 4px rgba(0, 0, 0, .5); }
+/* gauges and loading bars: a glass tube filling with the sauce and its bits */
+html[data-skin="verde"] :is(.gauge-bar, .loadbar, .mt-bar) { background: rgba(14, 20, 3, .7); border: 1px solid rgba(170, 220, 100, .32); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .5); }
+html[data-skin="verde"] :is(.gauge-bar i, .gauge-dots i.on, .gauge-signal i.on, .loadbar span, .loadbar-fill, .mt-fill) { background: var(--specks), var(--pour); }
+/* the status dot and the connected pill: lime, with a little glow */
+html[data-skin="verde"] :is(.pill.good::before, .dot.connected) { background: var(--verde-lime); box-shadow: 0 0 0 3px rgba(184, 230, 112, .22); }
+/* the banner: a strip of the sauce behind glass, with the rim */
+html[data-skin="verde"] .banner { border-radius: var(--r-sm); border: 2px solid var(--verde-rim); box-shadow: var(--rim), 0 2px 0 rgba(0, 0, 0, .4); }
+html[data-skin="verde"] .banner.info { background: var(--sheen), var(--specks), var(--sauce); }
+/* messages: a strip of the sauce with the lime band along the top, white words */
+html[data-skin="verde"] .toast { background: linear-gradient(180deg, #a2d65a 0 3px, transparent 3px), var(--sheen), var(--specks), var(--sauce); border: 2px solid var(--verde-rim); border-radius: 14px; color: var(--text);
+  box-shadow: var(--rim), 0 3px 0 rgba(0, 0, 0, .5), 0 14px 30px -16px rgba(0, 0, 0, .9); -webkit-backdrop-filter: none; backdrop-filter: none; }
+html[data-skin="verde"] .toast :is(b, strong, .toast-msg) { color: #fff; }
+html[data-skin="verde"] .toast .ic { color: var(--verde-lime); }
+/* the Ctrl+K list */
+html[data-skin="verde"] .palette-item.sel { background: rgba(184, 230, 112, .16); color: var(--text); box-shadow: inset 0 0 0 1px rgba(184, 230, 112, .34); }
+html[data-skin="verde"] .palette-item.sel .ic { color: var(--verde-lime); }
+/* wallpapers: glass-rimmed tiles, cap buttons */
+html[data-skin="verde"] .wp-thumb { border: 2px solid var(--verde-rim); box-shadow: inset 0 0 0 1px rgba(184, 230, 112, .22); }
+html[data-skin="verde"] .wp-thumb:hover { border-color: var(--verde-deep); }
+html[data-skin="verde"] .wp-del { background: var(--cap); border: 1.5px solid var(--verde-rim); color: var(--verde-ink); }
+html[data-skin="verde"] .wp-del:hover { background: rgba(170, 50, 30, .92); color: #fff; }
+html[data-skin="verde"] .wp-tile-ask { background: rgba(14, 20, 3, .9); color: var(--text); }
+html[data-skin="verde"] .wp-quick-btn { background: var(--cap); border: 1.5px solid var(--verde-rim); color: var(--verde-ink); font-weight: 700; }
+html[data-skin="verde"] .wp-quick-btn .ic { color: var(--verde-ink); }
+html[data-skin="verde"] .wp-quick-btn:hover { background: var(--cap-hover); }
+html[data-skin="verde"] .wp-low { background: var(--verde-lime); color: var(--verde-ink); }
+/* scrollbars and selection in the sauce's greens */
+html[data-skin="verde"] * { scrollbar-color: #5f7a1e #141a05; }
+html[data-skin="verde"] ::selection { background: rgba(140, 198, 63, .4); }
+/* the tiles as sauce bottles (22 Oct 2026, Shawn: "make each of the tiles the shape of a verde sauce bottle", "make
+   the bottles more realistic", "more accurate to the real thing"): the Overview's device tiles and the profile cards
+   drop their own pane and are drawn as the bottle, to its proportions: a short rounded ribbed lime cap (42% of the
+   width), a straight neck (38%) mostly wrapped in the lime band, one long S-curve of shoulder out to a straight-sided
+   body with a rounded base and a soft shadow under it. Clear glass with a bright highlight down the left and a softer
+   one on the right; green sauce shows between the band and the label; the label (a deeper lime than the real one, so
+   white words read at 7:1) carries a fine lighter diamond pattern, a darker strip near its foot and a plain lighter
+   circle near its top. The cap, neck and shoulders are three small pictures above the tile's content; the content sits
+   on the body, so nothing is clipped, and the tile's own box keeps its focus outline. No words or marks from any label. */
+html[data-skin="verde"] {
+  --b-cap: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none' viewBox='0 0 44 22'%3E%3Cdefs%3E%3ClinearGradient id='c' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23c2ec7e'/%3E%3Cstop offset='.55' stop-color='%238cc63f'/%3E%3Cstop offset='1' stop-color='%235f9426'/%3E%3C/linearGradient%3E%3ClinearGradient id='s' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0' stop-color='%23000' stop-opacity='.25'/%3E%3Cstop offset='.2' stop-color='%23fff' stop-opacity='.25'/%3E%3Cstop offset='.4' stop-color='%23fff' stop-opacity='0'/%3E%3Cstop offset='.85' stop-color='%23000' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='%23000' stop-opacity='.3'/%3E%3C/linearGradient%3E%3Cpattern id='r' width='2' height='22' patternUnits='userSpaceOnUse'%3E%3Crect width='.6' height='22' fill='%23163008' fill-opacity='.3'/%3E%3C/pattern%3E%3C/defs%3E%3Cpath d='M1 21 V6 Q1 1 6 1 H38 Q43 1 43 6 V21 Z' fill='url(%23c)'/%3E%3Cpath d='M1 21 V6 Q1 1 6 1 H38 Q43 1 43 6 V21 Z' fill='url(%23r)'/%3E%3Cpath d='M1 21 V6 Q1 1 6 1 H38 Q43 1 43 6 V21 Z' fill='url(%23s)'/%3E%3Cpath d='M1 21 V6 Q1 1 6 1 H38 Q43 1 43 6 V21 Z' fill='none' stroke='%23121604' stroke-width='2' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");
+  --b-neck: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none' viewBox='0 0 40 70'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0' stop-color='%234f8a22'/%3E%3Cstop offset='.3' stop-color='%236fa82f'/%3E%3Cstop offset='1' stop-color='%233f7219'/%3E%3C/linearGradient%3E%3ClinearGradient id='b' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0' stop-color='%236aa12d'/%3E%3Cstop offset='.28' stop-color='%23a6d85c'/%3E%3Cstop offset='.5' stop-color='%238cc63f'/%3E%3Cstop offset='1' stop-color='%235f9426'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='40' height='70' fill='url(%23g)'/%3E%3Crect y='5' width='40' height='52' fill='url(%23b)'/%3E%3Crect y='5' width='40' height='1.5' fill='%232f5f14' fill-opacity='.6'/%3E%3Crect y='55.5' width='40' height='1.5' fill='%232f5f14' fill-opacity='.6'/%3E%3Crect x='5' width='3' height='70' fill='%23fff' fill-opacity='.3'/%3E%3Crect x='34' width='1.5' height='70' fill='%23fff' fill-opacity='.14'/%3E%3Cpath d='M0 0 V70 M40 0 V70' stroke='%23c4ec8a' stroke-opacity='.75' stroke-width='4' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");
+  --b-sh: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none' viewBox='0 0 100 50'%3E%3Cdefs%3E%3ClinearGradient id='f' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%236fa82f'/%3E%3Cstop offset='1' stop-color='%234a8420'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M31 0 H69 C69 26 100 22 100 46 V50 H0 V46 C0 22 31 26 31 0 Z' fill='url(%23f)'/%3E%3Cpath d='M33.5 0 C33.5 26 6 24 5 50' fill='none' stroke='%23fff' stroke-opacity='.3' stroke-width='4' vector-effect='non-scaling-stroke'/%3E%3Cpath d='M66 0 C66 26 94 24 95 50' fill='none' stroke='%23fff' stroke-opacity='.12' stroke-width='2' vector-effect='non-scaling-stroke'/%3E%3Cpath d='M31 0 C31 26 0 22 0 46 V50 M69 0 C69 26 100 22 100 46 V50' fill='none' stroke='%23c4ec8a' stroke-opacity='.75' stroke-width='4' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");
+  --b-cap-h: 22px; --b-neck-h: 70px; --b-sh-h: 54px;
+}
+@media (max-width: 700px) { html[data-skin="verde"] { --b-cap-h: 14px; --b-neck-h: 44px; --b-sh-h: 34px; } }
+html[data-skin="verde"] #main :is(.bay, .profile) {
+  --b-top: calc(var(--b-cap-h) + var(--b-neck-h) + var(--b-sh-h) - 4px);
+  --text: #ffffff; --muted: #f3f8e6; --faint: #ecf4d8; --verde-lime: #ffffff; --good: #dff4b0;
+  position: relative; isolation: isolate; text-shadow: 0 1px 0 rgba(10, 30, 4, .55); }
+html[data-skin="verde"] #main :is(.bay, .profile), html[data-skin="verde"] #main :is(.bay, .profile):hover {
+  background: none; border: 0; box-shadow: none; transform: none; overflow: visible; }
+html[data-skin="verde"] .page.ov .bay { padding-top: calc(var(--b-top) + 14px); }
+html[data-skin="verde"] #main .profile { padding-top: calc(var(--b-top) + 12px); }
+/* the cap, the neck and the shoulders */
+html[data-skin="verde"] #main :is(.bay, .profile)::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: var(--b-top); z-index: -1; pointer-events: none;
+  background:
+    var(--b-cap) 50% 0 / 42% var(--b-cap-h) no-repeat,
+    var(--b-neck) 50% calc(var(--b-cap-h) - 2px) / 38% var(--b-neck-h) no-repeat,
+    var(--b-sh) 0 100% / 100% var(--b-sh-h) no-repeat; }
+/* the body: glass highlights, the label (its circle, its dark foot strip, its diamond pattern), the sauce with its bits */
+html[data-skin="verde"] #main :is(.bay, .profile)::before { content: ""; position: absolute; inset: calc(var(--b-top) - 1px) 0 0 0; height: auto; z-index: -1; pointer-events: none;
+  background:
+    linear-gradient(90deg, transparent 0 3%, rgba(255, 255, 240, .3) 5%, rgba(255, 255, 240, .12) 8.5%, transparent 13% 88%, rgba(255, 255, 240, .13) 92%, transparent 95.5%),
+    radial-gradient(ellipse 20% 9% at 50% 16%, rgba(225, 250, 180, .13) 96%, transparent 100%) 0 87.5% / 100% 52% no-repeat,
+    repeating-linear-gradient(65deg, rgba(190, 236, 120, .13) 0 1px, transparent 1px 10px) 0 87.5% / 100% 52% no-repeat,
+    repeating-linear-gradient(-65deg, rgba(190, 236, 120, .13) 0 1px, transparent 1px 10px) 0 87.5% / 100% 52% no-repeat,
+    linear-gradient(180deg, #8cc63f 0 2px, #3a6e19 2px, #336316 80%, #1f420c 80% 87%, #336316 87% calc(100% - 2px), #8cc63f calc(100% - 2px)) 0 87.5% / 100% 52% no-repeat,
+    var(--specks),
+    linear-gradient(180deg, #4a8420, #34661a 30%, #2c5713);
+  border: 2px solid rgba(196, 236, 138, .75); border-top: 0; border-radius: 0 0 30px 30px / 0 0 24px 24px;
+  box-shadow: inset 0 -3px 0 rgba(20, 40, 6, .35), 0 12px 16px -8px rgba(0, 0, 0, .65); }
+html[data-skin="verde"] #main :is(.bay, .profile):hover::before { border-color: #d8f5a8; }
+/* words over the glass: white, the lime tags keep their own band */
+html[data-skin="verde"] #main .bay .link-label { color: #fff; }
+html[data-skin="verde"] #main :is(.bay, .profile) .btn:not(.ghost) { text-shadow: none; }
+/* the device drawings take the theme's color too (Shawn: "everything green"), except in Live battery, whose colors
+   show the battery level */
+html[data-skin="verde"]:not([data-art="live"]) .art.mark { filter: hue-rotate(-115deg) saturate(1.1); }

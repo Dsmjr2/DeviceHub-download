@@ -13,6 +13,7 @@ import { toast } from '../ui/overlay.js';
 import { brandForUsb, brandNamed, ROUTE } from '../core/brands.js';
 import { learnThis } from './learn.js';
 import { getHelp } from '../ui/get-help.js';
+import { genericDongle } from '../core/generic-dongle.js';
 import { viaFileNote, isViaKeyboard } from './keyboard.js';
 
 const DEMO_PC = {
@@ -84,13 +85,14 @@ function thisPc() {
       pc.lampArrays ? h('div', {}, line('Dynamic Lighting', `${pc.lampArrays} device${pc.lampArrays === 1 ? '' : 's'}`, 'yes', 'Works in Windows, no driver needed: colors and effects in Windows Settings.', null),
         h('div', { class: 'actions', style: { margin: '6px 0 0' } }, button('Open Dynamic Lighting', openDynamicLighting, { kind: 'ghost small', ic: 'external' }))) : null),
     others.length ? h('div', { class: 'pc-others' }, h('h3', {}, 'Other devices plugged in'),
-      ...others.map((u) => h('div', { class: 'pc-other' }, line(u.brand.shared ? 'USB device' : u.brand.name, u.name || `${u.brand.name} device`, null, null, u.brand),
+      ...others.map((u) => { const gd = genericDongle(u); return h('div', { class: 'pc-other' }, line(u.brand.shared ? 'USB device' : u.brand.name, u.name || (gd ? 'USB receiver' : `${u.brand.name} device`), null, gd ? gd.line : null, gd ? null : u.brand),
         // a VIA keyboard needs no learning, only its layout file when VIA's library lacks it (keyboard.js viaFileNote)
         isViaKeyboard(u) ? viaFileNote(u.vid, u.pid, u.brand.name) : null,
-        h('div', { class: 'actions' }, button('Learn it', () => { learnThis(u.vid, u.pid); location.hash = '#/learn'; }, { kind: 'ghost small', ic: 'plug' }),
+        // a generic 2.4G receiver (core/generic-dongle.js): no Learn it, Learn a device refuses its chip's id
+        h('div', { class: 'actions' }, gd ? null : button('Learn it', () => { learnThis(u.vid, u.pid); location.hash = '#/learn'; }, { kind: 'ghost small', ic: 'plug' }),
           button('Copy a prompt for Claude', () => copyPrompt(u), { kind: 'ghost small' })),
-        // or ask for it: a short request for GitHub with its USB id, shown in full first (ui/get-help.js)
-        getHelp(`request:${u.vid}:${u.pid}`, null, { label: 'Request support', request: { vid: u.vid, pid: u.pid, name: u.name || '' } })))) : null,
+        // or ask for it: sent to Shawn in one click where reports go, otherwise a short request for GitHub (ui/get-help.js)
+        getHelp(`request:${u.vid}:${u.pid}`, null, { label: 'Request support', request: { vid: u.vid, pid: u.pid, name: u.name || '' } })); })) : null,
     // paired Bluetooth devices: connected or off, and the battery Windows last read
     st.bt?.length ? h('div', { class: 'pc-others' }, h('h3', {}, 'Bluetooth'),
       ...st.bt.map((d) => line(d.connected ? 'connected' : 'off', d.name, null, d.battery != null ? `Battery ${d.battery}%${d.connected ? '' : ' when last connected'}` : null, null))) : null);

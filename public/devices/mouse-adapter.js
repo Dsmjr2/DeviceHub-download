@@ -69,10 +69,15 @@ const adapter = {
 
   // In DeviceHub's background agent the reading goes through helpers/mouse-level.js (levelFilter): the mouse's own
   // number is voltage-based and reads high on the charger and just after, so DeviceHub's tracked level is shown.
+  // One read that fails (the dongle busy, the mouse waking) keeps the last good level for up to 10 minutes, so the card
+  // does not go blank between reads (22 Oct 2026, Shawn: "why isnt my mouse battery showing")
   async battery() {
     let b;
-    try { b = await mouse.battery(); } catch { return null; }
-    return b && this.levelFilter ? this.levelFilter(b) : b;
+    try { b = await mouse.battery(); } catch { b = null; }
+    if (!b) return this.lastBattery && Date.now() - this.lastBattery.at < 600000 ? this.lastBattery.value : null;
+    const v = this.levelFilter ? this.levelFilter(b) : b;
+    if (v) this.lastBattery = { value: v, at: Date.now() };
+    return v;
   },
 
   async read() { return this.decodeFlash(await mouse.snapshot()); },

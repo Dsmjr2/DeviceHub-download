@@ -41,6 +41,7 @@ import { readPcapBuffer } from './pcap-read.mjs';
 import { validate, fromJson, forPid } from './declarative-driver.mjs';
 import { ROOT, devicehubVersion, match as libraryMatch, list as libraryList, installFromLibrary, loadDriver, driverFileOf } from './device-library.mjs';
 import { writable, libraryMark, LIBRARY_FILE } from './my-devices.mjs';
+import { plan as makePlan, runAppUi, parseInfo, valueOf, uiText, valuesIn, FORBIDDEN } from './learn-apps.mjs';
 
 const require = createRequire(import.meta.url);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -938,7 +939,13 @@ export const deps = {
   },
   sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
   async loadNew(root) { try { return await (await import('./my-devices.mjs')).loadNew(root); } catch { return null; } },
+  // the maker's app and the tick-list for a listed device (helpers/learn-apps.mjs; read-only)
+  plan: (dev, root) => makePlan(dev, { root }),
+  // helpers/app-ui.ps1 with these arguments: { code, out } (only get and set are ever asked for, on the ticked setting)
+  appUi: (args) => runAppUi(args),
 };
+// driving the maker's app: how long the listener records before the change, and after it (the app sends a moment later)
+export const DRIVE = { leadMs: 800, settleMs: 1500 };
 export const options = { root: ROOT, deps };
 
 // ---------------------------------------------------------------- the session (one at a time)
@@ -1001,6 +1008,7 @@ function summary() {
     second: sec ? { of: sec.name, pid: sec.def.pids[0], link: sec.link, total: sec.orig.length, done: session.learned.length,
       next: nextOf(sec) ? { label: nextOf(sec).label, kind: nextOf(sec).kind, role: nextOf(sec).role || null, values: nextOf(sec).values, fixed: fixedValues(nextOf(sec)) } : null } : null,
     saved: session.saved || null,
+    maker: session.plan?.maker || null,
   };
 }
 
@@ -1094,26 +1102,19 @@ export async function act(name, b = {}) {
     let value = set.values[session.takes.length];
     if (b.value !== undefined) value = parseValue(set.kind, b.value, { role: set.role, numbers: set.numbers });
     if (value === undefined) return { ok: false, error: set.role === 'battery' ? 'Which percent does the maker\'s app show now?' : 'Which value?' };
-    if (session.takes.some((t) => same(t.value, value))) return { ok: false, error: set.role === 'battery' ? 'That percent is recorded already. Wait until the maker\'s app shows another one.' : 'That value is recorded already: pick another.' };
-    const take = `take-${session.takes.length + 1}-${Date.now().toString(36)}`;
-    const s = await command(session.dir, 'start', take, 'recording');
-    if (s.status !== 'recording') return { ok: false, error: s.error || (s.status === 'timeout' ? 'The listener did not answer. Press Start listening again.' : 'The listener stopped. Press Start listening again.') };
-    session.recording = { take, value };
-    return { ok: true, ...summary() };
+    const s = await startTake(value);
+    return s.ok ? { ok: true, ...summary() } : s;
   }
   if (name === 'stop') {
-    const rec = session.recording;
-    if (!rec) return { ok: false, error: 'Nothing is being recorded.' };
-    const s = await command(session.dir, 'stop', null, 'stopped');
-    session.recording = null;
-    if (s.status !== 'stopped') return { ok: false, error: s.error || 'The listener did not stop cleanly. Record that value again.' };
-    const dev = session.device;
-    const { found, messages } = takeMessages(d.readTake(session.dir, rec.take), { vid: dev.vid, pid: dev.pid, idsOut: usesIds(dev, 'outIds'), idsIn: usesIds(dev, 'inIds') });
-    if (!found) return { ok: false, error: `DeviceHub did not find the ${dev.name} in the recording. Unplug it, plug it back in, and record that value again.` };
-    if (!messages.length) return { ok: false, error: `Nothing went to or from the ${dev.name} while recording. Was ${session.setting.label} changed in the maker's app? Record that value again.` };
-    session.takes.push({ value: rec.value, messages });
-    return { ok: true, heard: messages.length, ...summary() };
+    const s = await stopTake();
+    return s.ok ? { ok: true, heard: s.heard, ...summary() } : s;
   }
+  if (name === 'plan') {
+    // the maker's app (installed, running) and the tick-list of settings to learn, once per session
+    if (!session.plan || b.again) session.plan = await d.plan(session.device, root);
+    return { ok: true, ...session.plan, ...summary() };
+  }
+  if (name === 'drive') return drive();
   if (name === 'analyze') {
     const reading = session.setting?.kind === 'reading';
     const r = reading ? analyzeReading(session.takes, session.setting) : analyze(session.takes, session.setting);
@@ -1209,6 +1210,94 @@ export async function act(name, b = {}) {
   return { ok: false, error: 'no such step' };
 }
 
+// one recording of one value: start it ({ ok } or { ok: false, error }), then stop it and keep its messages
+async function startTake(value) {
+  if (session.takes.some((t) => same(t.value, value))) return { ok: false, error: session.setting.role === 'battery' ? 'That percent is recorded already. Wait until the maker\'s app shows another one.' : 'That value is recorded already: pick another.' };
+  const take = `take-${session.takes.length + 1}-${Date.now().toString(36)}`;
+  const s = await command(session.dir, 'start', take, 'recording');
+  if (s.status !== 'recording') return { ok: false, error: s.error || (s.status === 'timeout' ? 'The listener did not answer. Press Start listening again.' : 'The listener stopped. Press Start listening again.') };
+  session.recording = { take, value };
+  return { ok: true };
+}
+async function stopTake() {
+  const { deps: d } = options;
+  const rec = session.recording;
+  if (!rec) return { ok: false, error: 'Nothing is being recorded.' };
+  const s = await command(session.dir, 'stop', null, 'stopped');
+  session.recording = null;
+  if (s.status !== 'stopped') return { ok: false, error: s.error || 'The listener did not stop cleanly. Record that value again.' };
+  const dev = session.device;
+  const { found, messages } = takeMessages(d.readTake(session.dir, rec.take), { vid: dev.vid, pid: dev.pid, idsOut: usesIds(dev, 'outIds'), idsIn: usesIds(dev, 'inIds') });
+  if (!found) return { ok: false, error: `DeviceHub did not find the ${dev.name} in the recording. Unplug it, plug it back in, and record that value again.` };
+  if (!messages.length) return { ok: false, error: `Nothing went to or from the ${dev.name} while recording. Was ${session.setting.label} changed in the maker's app? Record that value again.` };
+  session.takes.push({ value: rec.value, messages });
+  return { ok: true, heard: messages.length };
+}
+
+// ---------------------------------------------------------------- driving the maker's app (docs/handoff/learn-no-typing.md)
+// For the setting just named (act 'setting'), with the listener running: app-ui reads the control of that name in the
+// maker's app (its value first), sets it to one value, then the other, while DeviceHub records each, then puts back the
+// value it read. app-ui is only ever asked to get and set THIS control, never to press anything; a setting or control
+// whose name looks like firmware, update, reset, factory, flash, bootloader, delete, format, pairing or DFU is refused
+// (app-ui.ps1 refuses the same itself). Answers:
+//   { ok, driven: true, restore, range }   both values recorded; restore = { ok, value, shown, why? } (ok false: say so)
+//   { ok, manual: true, why, restore? }    DeviceHub could not change it: the person changes it (nothing kept)
+//   { ok: false, error }                   refused
+async function drive() {
+  const { deps: d } = options;
+  const set = session.setting;
+  if (!set) return { ok: false, error: 'Say which setting first.' };
+  if (FORBIDDEN.test(set.label)) return { ok: false, error: 'DeviceHub never changes firmware, update, reset, pairing or delete controls.' };
+  const st = session.listening ? d.readState(session.dir) : null;
+  if (!st || !['ready', 'stopped'].includes(st.status)) return { ok: false, error: 'DeviceHub is not listening yet. Press Start listening first.' };
+  const m = session.plan?.maker;
+  const manual = (why, extra = {}) => { session.takes = []; return { ok: true, manual: true, why, ...extra, ...summary() }; };
+  if (set.kind === 'reading') return manual('DeviceHub only listens for a reading.');
+  if (!m?.window) return manual(m?.known ? `DeviceHub cannot change settings in ${m.name}.` : 'DeviceHub does not know this maker\'s app.');
+  if (!m.running) return manual(`${m.name} is not open.`);
+  const app = m.name, win = m.window, label = set.label;
+  const get = async () => { const r = await d.appUi(['get', '-Window', win, '-Name', label, '-Json']); return r.code === 0 ? parseInfo(r.out) : null; };
+  const put = async (v) => { try { return await d.appUi(['set', '-Window', win, '-Name', label, '-Value', uiText(set.kind, v)]); } catch (e) { return { code: 1, out: e.message }; } };
+  const info = await get();
+  if (!info) return manual(`DeviceHub could not find ${label} in ${app}.`);
+  if (FORBIDDEN.test(String(info.name || '')) || FORBIDDEN.test(String(info.id || ''))) return manual(`The control DeviceHub found for ${label} in ${app} is one it never touches.`);
+  if (info.enabled === false || info.readOnly) return manual(`${label} cannot be changed in ${app} right now.`);
+  const orig = valueOf(set.kind, info);
+  if (orig === undefined) return manual(`${label} in ${app} is not a control DeviceHub can change.`);
+  let range = null;
+  if (set.kind === 'number') {
+    // the slider's own range: values outside it are moved inside, and the range goes into the driver
+    range = { min: Number(info.min), max: Number(info.max), step: Number(info.step) > 0 ? Number(info.step) : 1 };
+    if (!set.values.every((v) => v >= range.min && v <= range.max)) set.values = valuesIn(range, null);
+  }
+  // when the app already shows the first value, the second goes first (so each recording holds a change)
+  const order = same(orig, set.values[0]) ? [set.values[1], set.values[0]] : set.values.slice(0, 2);
+  session.takes = [];
+  let changed = false, failed = null;
+  for (const v of order) {
+    const s = await startTake(v);
+    if (!s.ok) { failed = s.error; break; }
+    await d.sleep(DRIVE.leadMs);
+    changed = true;
+    const r = await put(v);
+    await d.sleep(DRIVE.settleMs);
+    const e = await stopTake();
+    if (r.code !== 0) { failed = r.code === 4 ? `${app} offered a control DeviceHub never touches.` : `${app} did not take ${show(v)} for ${label}.`; break; }
+    if (!e.ok) { failed = e.error; break; }
+  }
+  if (session.recording) { try { await stopTake(); } catch {} }
+  let restore = null;
+  if (changed) {
+    // put back the value read first, then read it again
+    const r = await put(orig);
+    const now = r.code === 0 ? valueOf(set.kind, await get()) : undefined;
+    const ok = r.code === 0 && same(now, orig);
+    restore = { ok, value: orig, shown: show(orig), ...(ok ? {} : { why: `DeviceHub could not put ${label} back. It was ${show(orig)} before: set it to ${show(orig)} in ${app}.` }) };
+  }
+  if (failed) return manual(failed, { restore });
+  return { ok: true, driven: true, restore, range, ...summary() };
+}
+
 // the collection a driver opens: the one its asked reports go through (settings first), else the one its notices
 // arrive on. Every notice must arrive on that same collection (one driver opens one). { col } or { why }
 function collectionOf(dev, learned) {
@@ -1272,9 +1361,11 @@ function secondCheck() {
 // ---------------------------------------------------------------- the route
 //   GET  /api/learn/devices   the devices DeviceHub does not run, and whether USBPcap is installed
 //   GET  /api/learn/state     where the wizard is
+//   GET  /api/learn/plan      the picked device's maker app (installed, running) and its tick-list of settings (?again: look again)
 //   POST /api/learn/<step>    begin {vid,pid}, listen, setting {label,kind,role?,unit,values}, record {value?}, stop, analyze,
 //                             add {min,max,step}, remove {key}, preview {title,kind}, save {title,kind}, quit,
-//                             second {vid,pid,link: 'cable'|'receiver'} (after a save: the same device on its other USB id)
+//                             second {vid,pid,link: 'cable'|'receiver'} (after a save: the same device on its other USB id),
+//                             drive (after setting + listen: the maker's app changes it through app-ui while DeviceHub records)
 //   kind 'reading' (role battery | charging | display): a value the device reports, never written (analyzeReading)
 export async function handle(url, req, res, send, readBody) {
   if (!url.pathname.startsWith('/api/learn/')) return false;
@@ -1285,6 +1376,7 @@ export async function handle(url, req, res, send, readBody) {
       send(res, 200, { devices: devices.map(({ collections, driver, ...x }) => ({ ...x, collections: collections.length, ...(driver ? { driver: { name: driver.name, where: driver.where, code: driver.code, writes: driver.writes } } : {}) })), usbpcap: options.deps.usbpcapInstalled(), ...summary() });
       return true;
     }
+    if (req.method === 'GET' && step === 'plan') { send(res, 200, await act('plan', { again: url.searchParams.has('again') })); return true; }
     if (req.method === 'GET' && step === 'state') { send(res, 200, { usbpcap: options.deps.usbpcapInstalled(), ...summary() }); return true; }
     if (req.method !== 'POST') { send(res, 405, { error: 'POST only' }); return true; }
     const b = (await readBody(req)) || {};

@@ -174,7 +174,9 @@ export function fromJsonValue(root, source, out, { key = null, name = null } = {
     for (const n of MAX_KEYS) if (mx == null && n in by) mx = num(by[n]);
     if (mn != null && mx != null && mx > mn) {
       const step = num(by.step ?? by.increment ?? by.resolution), def = num(by.default ?? by.defaultvalue ?? by.def);
-      out.settings.push({ name: pick(SETTING_NAME_KEYS) || key || null, min: mn, max: mx, ...(step != null ? { step } : {}), ...(def != null ? { default: def } : {}), device: here.name || null, source });
+      // a range object's own name is the setting's ({ name: 'DPI', min, max }), so its device is the one around it
+      const own = pick(SETTING_NAME_KEYS);
+      out.settings.push({ name: own || key || null, min: mn, max: mx, ...(step != null ? { step } : {}), ...(def != null ? { default: def } : {}), device: (own ? ctx.name : here.name) || null, source });
     }
     for (const k of keys) {
       if (CMD_KEYS.has(norm(k))) {

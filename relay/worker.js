@@ -51,7 +51,7 @@ export default {
     const gh = await fetch(`https://api.github.com/repos/${env.REPO}/issues`, {
       method: 'POST',
       headers: { authorization: `Bearer ${env.GITHUB_TOKEN}`, accept: 'application/vnd.github+json', 'user-agent': 'devicehub-relay', 'content-type': 'application/json' },
-      body: JSON.stringify({ title: r.title, body, labels: ['problem'] }),
+      body: JSON.stringify({ title: r.title, body, labels: [r.fingerprint.startsWith('support:') ? 'support' : 'problem'] }),
     });
     if (!gh.ok) { await kv.delete(seen); return json(502, { error: `github ${gh.status}` }); }
     return json(202, { ok: true });

@@ -229,6 +229,38 @@ export async function report(ev) {
     return { sent: r === 'ok', why: r, payload };
   } finally { inFlight.delete(fp); }
 }
+// One report a person asked for with a click (Request support: helpers/support-request.mjs). The same checks and send
+// path as the automatic ones: started, relay set up, switched on, not the owner's PC, once per fingerprint per day, the
+// day cap, the relay's shape. The first try is awaited (the click gets its answer); when the relay cannot be reached,
+// the later tries run on their own and a give-up frees the fingerprint for another click.
+//   { sent: true } | { sent: true, already: true } | { sent: false, queued: true } | { sent: false, fallback: true, why }
+// fallback: this copy does not send (or the relay refused it): the page does what it did before (the GitHub request).
+// already sent (or being sent) today: a second click needs no new request built
+export const sentToday = (fp) => loadState().sent[fp] === day() || inFlight.has(fp);
+export async function sendNow({ fingerprint: fp, title, body, version }) {
+  if (!started) return { sent: false, fallback: true, why: 'not started' };
+  const url = relayUrl();
+  if (!url) return { sent: false, fallback: true, why: 'no relay set up (helpers/report-config.json)' };
+  if (!enabled()) return { sent: false, fallback: true, why: 'switched off in Settings' };
+  if (await isOwnerPc()) return { sent: false, fallback: true, why: "the owner's own PC" };
+  const st = loadState();
+  if (st.sent[fp] === day() || inFlight.has(fp)) return { sent: true, already: true };
+  if (Object.values(st.sent).filter((v) => v === day()).length >= DAY_CAP) return { sent: false, fallback: true, why: 'ten sent today already' };
+  const payload = { v: 1, install: installId(), fingerprint: fp, version: String(version || 'unknown').slice(0, 40), title, body };
+  if (!validPayload(payload)) return { sent: false, fallback: true, why: 'bad shape' };
+  st.sent[fp] = day(); saveState(st);
+  const free = () => { const s = loadState(); delete s.sent[fp]; saveState(s); };
+  inFlight.add(fp);
+  const first = await post(url, payload);
+  if (first === 'ok') { inFlight.delete(fp); options.log(`support request sent (${fp})`); return { sent: true, payload }; }
+  if (first === 'drop') { inFlight.delete(fp); free(); options.log(`support request not sent (${fp}): the relay turned it down`); return { sent: false, fallback: true, why: 'the relay refused it', payload }; }
+  quiet((async () => {
+    for (const ms of options.retryMs) { await wait(ms); const r = await post(url, payload); if (r === 'ok') { options.log(`support request sent (${fp})`); return; } if (r === 'drop') break; }
+    free(); options.log(`support request not sent (${fp}): given up`);
+  })().finally(() => inFlight.delete(fp)));
+  return { sent: false, queued: true, payload };
+}
+
 // reports started by the hooks, so tests can wait for them (settle())
 const pending = new Set();
 const quiet = (p) => { pending.add(p); p.catch(() => {}).finally(() => pending.delete(p)); return p; };

@@ -70,8 +70,12 @@ export const THEME_BGS = [['graphite', 'Graphite', '#050507', '110, 120, 145'], 
   ['espresso', 'Espresso', '#0a0806', '150, 122, 96'],
   // a whole look, not only a color (22 Oct 2026, Shawn: "make an old school runescape theme"): stone panels, orange
   // headings, square buttons, black text shadows (html[data-skin="old-school"], style.css end). Drawn in CSS only.
-  ['old-school', 'Old School', '#16120d', '140, 105, 60', 'old-school']];
-const OLD_BGS = { plum: 'midnight', forest: 'graphite', cream: 'espresso', paper: 'graphite', slate: 'graphite' };
+  ['old-school', 'Old School', '#16120d', '140, 105, 60', 'old-school'],
+  // a whole look on a bottle of green verde sauce (22 Oct 2026, Shawn: everything green, built around the bottle, like
+  // Old School and not only a color): olive glass panels, lime neck-band heads, white headings, round cap buttons
+  // (html[data-skin="verde"], style.css end). Colors only, drawn in CSS. The purple backdrop added the same day was removed (Shawn); a saved one shows as Verde.
+  ['verde', 'Verde', '#0b0e04', '125, 139, 42', 'verde']];
+const OLD_BGS = { plum: 'midnight', forest: 'graphite', cream: 'espresso', paper: 'graphite', slate: 'graphite', 'taco-night': 'verde' };
 const theme = { accent: SILVER, bg: 'graphite' };
 export const currentTheme = () => ({ ...theme });
 export function applyTheme(s = {}) {
@@ -80,8 +84,8 @@ export function applyTheme(s = {}) {
   if (THEME_BGS.some(([k]) => k === bgKey)) theme.bg = bgKey;
   const bg = THEME_BGS.find(([k]) => k === theme.bg);
   if (bg[4]) document.documentElement.dataset.skin = bg[4]; else delete document.documentElement.dataset.skin;
-  // on Old School the silver accent is the game's gold
-  const r = document.documentElement.style, a = bg[4] === 'old-school' && theme.accent === SILVER ? '#ffb83f' : theme.accent, silver = a === SILVER;
+  // on Old School the silver accent is the game's gold; on Verde it is the verde green
+  const r = document.documentElement.style, a = theme.accent === SILVER && bg[4] === 'old-school' ? '#ffb83f' : theme.accent === SILVER && bg[4] === 'verde' ? '#8cc63f' : theme.accent, silver = a === SILVER;
   // text on the accent: dark on a light color, white on a dark one
   const [R, G, B] = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16) / 255);
   const lum = 0.2126 * R + 0.7152 * G + 0.0722 * B;

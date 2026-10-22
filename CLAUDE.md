@@ -62,6 +62,10 @@ not covered (a new device, a download nobody named), or when a step fails and th
    `{ status: "tested", real: true, ... }` record to its device.json (never commits, pushes or closes anything). Only
    that exact record, for that exact driver text, counts as real. The Set up card's **Turn on settings for all** does
    Turn on settings for every waiting, connected device, one after another.
+   **Request support** (docs/handoff/support-request.md): on a friend's PC it sends Shawn a short request through the
+   problem-report relay in one click (labeled `support`; once per device per day, never from the owner's PC); elsewhere
+   it opens the GitHub request as before. A receiver on a shared chip id (Sinowealth 258A; Laview, Holtek, Sonix when
+   named a receiver) is shown as a generic 2.4G receiver with no settings to learn.
    No library driver installs, self-checks or writes when ANY id it declares is in `helpers/pc-map.js` RUNS, and a
    my-devices driver on such an id is not loaded. Every write of a library or learned driver asks for the maker's app
    first (kept 15 s when none is open); an open app or "could not check" refuses it. Only a record shared with status
@@ -189,6 +193,7 @@ helpers/setup-extras.js    the setup file's extras (headset names, background pi
 helpers/onedrive-setup.mjs the opt-in OneDrive copy of this PC's setup, and the other PCs' copies (Overview offer)
 helpers/get-help.mjs      Get help: a short report, personal data taken out, a pre-filled GitHub issue opened on click
 helpers/auto-report.mjs   problem reports that send themselves from other PCs to the relay (never from the owner's PC)
+helpers/learn-apps.mjs     Learn without typing: the maker's app (installed, running), the tick-list (app files > brand sheet > usual list)
 helpers/learn-wizard.mjs   Learn a device: USB recordings -> driver.json (settings, readings, a second USB id), read-only toward the device (public/pages/learn.js)
 helpers/declarative-driver.mjs   driver.json drivers (docs/DRIVER-FORMAT.md): checked, then run with the device.mjs contract
 helpers/supported-devices.mjs   Supported devices: the plain-words list (public/pages/supported.js; Settings > DeviceHub > Show, Search)
@@ -278,7 +283,10 @@ the person (a download or install, a learning session, or a check in the maker's
    ChatMix, a sensor), from a read and its reply or from a report the device sends by itself, and, after a save, the same
    device on its other USB id (cable and receiver), added to the same driver (docs/handoff/learn-readings.md). A
    driver.json may hear reports the device sends by itself (`notice` reads: display and battery only, never a written
-   setting) and hold one product id's own bytes (`byPid`): docs/DRIVER-FORMAT.md. Claude follows the steps below for what the
+   setting) and hold one product id's own bytes (`byPid`): docs/DRIVER-FORMAT.md. It names the maker's app (installed or
+   not, open or not) and offers the settings as a tick-list from the app's own files, the brand sheet or the usual list;
+   with the app open it changes each ticked setting there itself through app-ui (that one control only, then puts the
+   value back), else it says in one line what to change (docs/handoff/learn-no-typing.md). Claude follows the steps below for what the
    wizard refuses.
    Windows' own USB tracing (ETW, logman, pktmon, netsh trace) records no payload bytes on Windows 11 xHCI PCs, so
    USBPcap stays the only way to listen (docs/handoff/learn-builtin-capture.md, checked 22 Oct 2026).

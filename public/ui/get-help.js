@@ -6,7 +6,7 @@ import { h, icon } from './dom.js';
 import { button } from './controls.js';
 import { isDemo } from '../core/devices.js';
 
-const state = {};   // key -> { stage: 'closed'|'loading'|'shown'|'opened'|'error', r, msg }
+const state = {};   // key -> { stage: 'closed'|'loading'|'shown'|'opened'|'sent'|'error', r, msg }
 
 async function getJson(url, opts) {
   const r = await fetch(url, opts);
@@ -25,6 +25,14 @@ export function getHelp(key, deviceId = () => key, { label = 'Get help', request
   const start = async () => {
     if (isDemo()) return set({ stage: 'error', msg: `${request ? 'Request support' : 'Get help'} works in the installed app, not in demo mode.` });
     set({ stage: 'loading', r: null, msg: '' });
+    // Request support: sent to Shawn in one click through the relay where this copy sends reports
+    // (helpers/support-request.mjs); anywhere else (reports off, no relay, the owner's PC) the GitHub request below
+    if (request) {
+      try {
+        const j = await getJson('/api/help/request/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vid: request.vid, pid: request.pid, name: request.name || '' }) });
+        if (j.line && (j.sent || j.queued)) return set({ stage: 'sent', msg: j.line, good: !!j.sent });
+      } catch {}
+    }
     const url = request ? `/api/help/request?${new URLSearchParams({ vid: request.vid, pid: request.pid, name: request.name || '' })}` : `/api/help/report?id=${encodeURIComponent(deviceId() || '')}`;
     try { set({ stage: 'shown', r: await getJson(url) }); }
     catch (e) { set({ stage: 'error', msg: `Could not build the report: ${e.message}` }); }
@@ -45,6 +53,8 @@ export function getHelp(key, deviceId = () => key, { label = 'Get help', request
     h('summary', {}, 'See exactly what it says'),
     h('pre', { class: 'json' }, `${r.title}\n\n${r.body}`));
   function draw() {
+    // sent through the relay: one plain line where the button was
+    if (s.stage === 'sent') return box.replaceChildren(h('div', { class: `gh-note ${s.good ? 'good' : ''}` }, s.good ? icon('check') : null, s.msg));
     if (s.stage === 'closed') return box.replaceChildren(button(label, start, { kind, ic: 'external' }));
     if (s.stage === 'loading') return box.replaceChildren(h('div', { class: 'gh-card' }, h('div', { class: 'gh-busy' }, h('span', { class: 'gh-spin' }), 'Building your report… this can take up to a minute.')));
     if (s.stage === 'error') return box.replaceChildren(h('div', { class: 'gh-card' }, h('div', { class: 'gh-note bad' }, s.msg), acts(button('Try again', start, { kind: 'small' }), button('Close', close, { kind: 'ghost small' }))));

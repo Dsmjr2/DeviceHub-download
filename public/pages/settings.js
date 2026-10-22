@@ -340,8 +340,8 @@ const inkOn = (hex) => { const [R, G, B] = [1, 3, 5].map((i) => parseInt(hex.sli
 function themeControls() {
   const t = currentTheme();
   const pickAccent = async (hex, name) => { await saveTheme({ themeAccent: hex }); toast(`Accent: ${name}`, 'good', { ms: 1400 }); rerender(); };
-  // Old School shows the silver accent as the game's gold, and says so
-  const accentName = t.bg === 'old-school' && t.accent === THEME_ACCENTS[0][0] ? 'Gold' : THEME_ACCENTS.find(([x]) => x === t.accent)?.[1] || 'Custom';
+  // Old School shows the silver accent as the game's gold, Verde as verde green, and each says so
+  const accentName = t.bg === 'old-school' && t.accent === THEME_ACCENTS[0][0] ? 'Gold' : t.bg === 'verde' && t.accent === THEME_ACCENTS[0][0] ? 'Verde' : THEME_ACCENTS.find(([x]) => x === t.accent)?.[1] || 'Custom';
   // backdrops as small previews of the app: the page color, a card, and the accent (22 Oct 2026, Shawn: "make this
   // area better looking and more options")
   const tile = ([key, name, bg, pool]) => h('button', { class: `theme-tile${t.bg === key ? ' sel' : ''}`, 'aria-label': `${name} backdrop`, 'aria-pressed': String(t.bg === key),

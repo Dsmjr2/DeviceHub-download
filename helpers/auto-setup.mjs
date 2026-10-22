@@ -25,6 +25,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { match, installFromLibrary, ROOT, hex4, devicehubVersion } from './device-library.mjs';
+import { genericDongle } from '../public/core/generic-dongle.js';
 import { libraryMark, readVerified, loadNew, ownClash, hasRealRecord, provenCopy, needsTurnOn, writable, TURN_ON_LINE } from './my-devices.mjs';
 
 export const SETUP_FILE = 'setup.json';
@@ -256,6 +257,14 @@ export function summary({ root = ROOT, sources = {} } = {}) {
     const id = idOf(u), b = brands[hex4(u.vid)];
     if (u.runs || runsIds().includes(id) || via.has(id) || covered.has(id) || learned.has(id) || NOT_A_DEVICE.test(u.name || '')) continue;
     learned.add(id);
+    // a generic 2.4G receiver on a chip maker's shared id (public/core/generic-dongle.js): it works as a plain mouse or
+    // keyboard; one plain line, and Request support on its line (Learn a device refuses these chips' ids)
+    const gd = genericDongle(u);
+    if (gd) {
+      const line = `${u.name || 'USB receiver'} (USB ${id}): ${gd.line} Learn a device does not learn this chip's id; Request support asks Shawn to look at it`;
+      works.push({ what: 'generic-dongle', usb: id, chip: gd.chip, title: u.name || 'USB receiver', state: 'ready', short: gd.line, line }); attention.push(line);
+      continue;
+    }
     // a vendor DeviceHub knows no brand for: one line for all of them, under Optional (safety round 2, rule 7)
     if (!b) { unknown.push(u); continue; }
     const sheet = sheetFor(root, b.name);

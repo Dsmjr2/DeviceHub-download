@@ -491,6 +491,202 @@ await route('POST', 'quit');
   check(/came out different/.test(e1 || ''), `a setting with another range is refused (${e1})`);
 }
 
+// ---------------------------------------------------------------- Learn without typing (22 Oct 2026, docs/handoff/learn-no-typing.md)
+// The maker's app is named (installed, running), the settings come as a tick-list (the app's own files, else the brand
+// sheet, else the usual list), and a stand-in app-ui (no real window) changes each one while DeviceHub records, then
+// puts it back. A pretend Kite mouse (1B1C:7F01, Corsair's vendor id): output reports with report id 3, 16 bytes.
+// DPI: read 21 -> 21 00 <raw u16be>, set 22 <raw u16be> (raw = dpi / 50). Lift-off: read 24 -> 24 00 <code>, set 23 <code>
+// (Low 1, High 2).
+{
+  const la = await import('../helpers/learn-apps.mjs');
+  const { scan: vendorScan } = await import('../helpers/vendor-files.mjs');
+  const kite = (what, v) => {
+    const r = new Rec(), D = 11;
+    r.descriptor(D, 0x1B1C, 0x7F01);
+    if (what === 'dpi') {
+      const raw = v;
+      r.out(D, [3, ...pad([0x21], 16)]); r.inp(D, [3, ...pad([0x21, 0, 0, 24], 16)]);
+      r.out(D, [3, ...pad([0x22, raw >> 8, raw & 255], 16)]); r.inp(D, [3, ...pad([0x22, 0], 16)]);
+      r.out(D, [3, ...pad([0x21], 16)]); r.inp(D, [3, ...pad([0x21, 0, raw >> 8, raw & 255], 16)]);
+    } else {
+      const code = { Low: 1, High: 2 }[v];
+      r.out(D, [3, ...pad([0x24], 16)]); r.inp(D, [3, ...pad([0x24, 0, 1], 16)]);
+      r.out(D, [3, ...pad([0x23, code], 16)]); r.inp(D, [3, ...pad([0x23, 0], 16)]);
+      r.out(D, [3, ...pad([0x24], 16)]); r.inp(D, [3, ...pad([0x24, 0, code], 16)]);
+    }
+    return r.pcap();
+  };
+  const kiteCol = { vid: '1B1C', pid: '7F01', iface: 1, col: 1, page: 'FF00', usage: '0001', inLen: 17, outLen: 17, featLen: 0, inIds: [3], outIds: [3], featIds: [], product: 'Kite mouse' };
+  const mouseCol = { ...kiteCol, iface: 0, page: '0001', usage: '0002', inLen: 8, outLen: 0, inIds: [], outIds: [] };
+
+  // stand-in maker's files: iCUE installed, its device list with the Kite's DPI range, its saved settings
+  const pc = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-learn-pc-'));
+  const env = { ProgramFiles: path.join(pc, 'pf'), 'ProgramFiles(x86)': path.join(pc, 'pf86'), ProgramData: path.join(pc, 'pd'), LOCALAPPDATA: path.join(pc, 'la'), APPDATA: path.join(pc, 'ra') };
+  const put = (rel, text) => { const f = path.join(pc, rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text); };
+  put('pf/Corsair/Corsair iCUE5 Software/iCUE.exe', '');
+  put('la/Corsair/CUE5/cache/devices.json', JSON.stringify({ devices: [{ vid: 6940, pid: 32513, name: 'Kite mouse', type: 'mouse', settings: [{ name: 'DPI', min: 100, max: 26000, step: 50 }, { name: 'Firmware update', min: 0, max: 1 }] }, { vid: 6940, pid: 2600, name: 'Other mouse', settings: [{ name: 'Debounce', min: 1, max: 30 }] }] }));
+  put('ra/Corsair/CUE5/config.cuecfg', '<?xml version="1.0"?><root><map name="Devices"><map name="Kite mouse"><map name="{0a1b2c3d-1111-2222-3333-444455556666}"><value name="AngleSnapping">true</value><value name="PairingMode">false</value><value name="DeviceSerial">X</value></map></map></map></root>');
+  let running = '"iCUE.exe","4242","Console","1","200,000 K"';
+  const maker = (vid) => la.findMaker(vid, { env, list: async () => running, names: async () => [] });
+
+  // the maker's app
+  const m1 = await maker('1B1C');
+  check(m1.known && m1.name === 'Corsair iCUE' && m1.installed && m1.running && m1.window === 'iCUE', `iCUE is found installed and open (${JSON.stringify(m1)})`);
+  const m2 = await la.findMaker('1038', { env, list: async () => '', names: async () => [] });
+  check(m2.known && !m2.installed && !m2.running && m2.name === 'SteelSeries GG' && /^https:\/\/steelseries\.com\//.test(m2.page), `an app that is not installed: its official name and page (${JSON.stringify(m2)})`);
+  const m3 = await la.findMaker('1038', { env, list: async () => '', names: async () => ['SteelSeries GG 82.0.0'] });
+  check(m3.installed && !m3.running, 'an app found only in Windows\' installed programs counts as installed');
+  check(!(await la.findMaker('7777', { env, list: async () => '', names: async () => [] })).known, 'an unknown maker is said to be unknown');
+  check(la.makerOf('3434')?.web && la.MAKERS.every((x) => /^https:\/\//.test(x.page)), 'every maker has an https page; Keychron\'s is a web app');
+  check(la.FORBIDDEN.test('Firmware update') && la.FORBIDDEN.test('Pairing') && la.FORBIDDEN.test('Delete profile') && la.FORBIDDEN.test('Factory reset') && !la.FORBIDDEN.test('DPI'), 'app-ui\'s refusal list, plus pairing, is reused');
+
+  // the kind of device
+  check(la.deviceKind({ name: 'Kite mouse' }) === 'mouse' && la.deviceKind({ name: 'HS80 RGB Wireless Gaming Headset' }) === 'headset' && la.deviceKind({ name: 'X', collections: [{ page: '0001', usage: '0006' }] }) === 'keyboard' && la.deviceKind({ name: 'X', collections: [] }) === 'device', 'the device kind comes from its name, then its collections');
+
+  // the tick-list from the app's own files
+  const p1 = await la.plan({ vid: '1B1C', pid: '7F01', name: 'Kite mouse', collections: [mouseCol] }, { root: REAL, maker, scan: (vid) => vendorScan({ vid, env }) });
+  const by1 = Object.fromEntries(p1.items.map((i) => [i.label, i]));
+  check(p1.from === 'files' && by1.DPI?.kind === 'number' && by1.DPI.range?.min === 100 && by1.DPI.range.max === 26000 && by1.DPI.range.step === 50 && same(by1.DPI.values, [800, 3200]) && /iCUE/.test(by1.DPI.source) && by1.DPI.ticked,
+    `the app's own DPI range for this model, two values far apart, ticked (${JSON.stringify(by1.DPI)})`);
+  check(by1['Angle snapping']?.kind === 'toggle' && same(by1['Angle snapping'].values, [true, false]), `a saved on/off setting becomes a toggle (${JSON.stringify(p1.items.map((i) => i.label))})`);
+  check(!p1.items.some((i) => /firmware|pair|serial/i.test(i.label)) && !by1.Debounce?.range, 'never a firmware, pairing or id item; another model\'s range is not used');
+  check(p1.items.filter((i) => i.label === 'DPI').length === 1, 'one item per setting (the brand sheet\'s DPI is not listed twice)');
+  check(p1.items.every((i) => i.kind !== 'reading' || !i.ticked), 'readings are never ticked by themselves');
+  // the brand sheet when the app left nothing: a SteelSeries headset
+  const p2 = await la.plan({ vid: '1038', pid: '12AA', name: 'Arctis Nova 7', collections: [] }, { root: REAL, maker: async () => m2, scan: async () => ({ apps: [] }) });
+  const l2 = p2.items.map((i) => i.label);
+  check(p2.from === 'brand' && l2.includes('Sidetone') && l2.includes('Auto-off') && !l2.some((x) => /eq|light|dpi|firmware/i.test(x)), `a SteelSeries headset's settings come from its brand sheet (${l2.join(', ')})`);
+  check(p2.items.every((i) => ['number', 'toggle', 'choice', 'reading'].includes(i.kind) && (i.kind === 'reading' || (i.values.length === 2 && !same(i.values[0], i.values[1])))), 'each item has a kind and two different values');
+  // the usual list for a kind
+  const p3 = await la.plan({ vid: '7777', pid: '0001', name: 'Plain mouse', collections: [] }, { root: REAL, maker: async () => ({ known: false }), scan: async () => ({ apps: [] }) });
+  check(p3.from === 'usual' && p3.items.map((i) => i.label).join() === 'DPI,Polling rate,Lift-off,Debounce' && p3.items.every((i) => i.ticked), `an unknown mouse gets DPI, Polling rate, Lift-off, Debounce (${p3.items.map((i) => i.label)})`);
+  check(la.genericItems('keyboard').map((i) => i.label).join() === 'Brightness,Report rate' && la.genericItems('headset').map((i) => i.label).join() === 'Sidetone,Auto-off', 'a keyboard gets Brightness and Report rate; a headset Sidetone and Auto-off');
+  check(same(la.valuesIn({ min: 100, max: 1000, step: 100 }, null), [300, 800]) && same(la.valuesIn({ min: 100, max: 26000, step: 50 }, la.PRESETS[0]), [800, 3200]), 'values inside a range: the usual ones when they fit, else a quarter and three quarters of the way');
+
+  // ---- through the route, with a stand-in app-ui: a pretend iCUE window (no real window is opened)
+  const cap = { state: null, cmds: [] };
+  const app = { controls: {}, calls: [], failRestore: false, sending: null, changes: 0 };
+  const resetApp = () => {
+    app.controls = {
+      DPI: { type: 'Slider', name: 'DPI', id: 'trackDpi', class: 'x', enabled: true, value: 1200, min: 100, max: 26000, step: 50, readOnly: false },
+      'Polling rate': { type: 'ComboBox', name: 'Polling rate', id: 'fwUpdatePolling', class: 'x', enabled: true, selected: '1000 Hz' },
+    };
+    app.calls = []; app.failRestore = false; app.sending = null; app.changes = 0; app.first = 1200;
+  };
+  resetApp();
+  const arg = (a, k) => a[a.indexOf(k) + 1];
+  const appUi = async (a) => {
+    app.calls.push(a);
+    const c = app.controls[arg(a, '-Name')];
+    if (!c) return { code: 2, out: `no control named "${arg(a, '-Name')}" in "iCUE"` };
+    if (a[0] === 'get') return { code: 0, out: JSON.stringify(c) };
+    if (a[0] !== 'set') return { code: 2, out: 'not a stand-in command' };
+    if (/firmware|update|reset|factory|flash|bootloader|delete|format/i.test(`${c.name} ${c.id}`)) return { code: 4, out: 'REFUSED' };
+    const v = Number(arg(a, '-Value'));
+    if (app.failRestore && app.changes >= 2) return { code: 1, out: 'the slider refused the value' };
+    const old = c.value; c.value = v; app.changes++;
+    app.sending = { what: 'dpi', v };   // the app sends the new value to the device while DeviceHub records
+    return { code: 0, out: `Slider "DPI" set: ${old} -> ${v} (read back ${v})` };
+  };
+  lw.reset();
+  lw.options.root = root;
+  lw.options.deps = {
+    ...lw.deps,
+    usbpcapInstalled: () => true,
+    listHid: async () => ({ collections: [kiteCol, mouseCol] }),
+    owned: () => ({ runs: [], mine: [], copies: [] }),
+    startCapture: async () => { cap.state = { seq: 0, status: 'ready' }; return { started: true }; },
+    writeCommand: (dir, text) => { cap.cmds.push(text); const [seq, verb] = text.split(' '); cap.state = { seq: Number(seq), status: verb === 'start' ? 'recording' : verb === 'stop' ? 'stopped' : 'ended' }; if (verb === 'start') app.sending = null; },
+    readState: () => cap.state,
+    readTake: () => (app.sending ? [kite(app.sending.what, app.sending.v)] : []),
+    sleep: async () => {},
+    loadNew: async () => null,
+    plan: (dev) => la.plan(dev, { root: REAL, maker, scan: (vid) => vendorScan({ vid, env }) }),
+    appUi,
+  };
+  const r0 = await route('GET', 'devices');
+  check(r0.devices?.length === 1 && r0.devices[0].pid === '7F01', `one device to learn: the Kite (${JSON.stringify(r0.devices?.map((x) => x.name))})`);
+  check((await route('POST', 'begin', { vid: '1B1C', pid: '7F01' })).ok, 'the Kite is picked');
+  const pl = await route('GET', 'plan');
+  check(pl.ok && pl.maker?.name === 'Corsair iCUE' && pl.maker.running && pl.kind === 'mouse' && pl.items.some((i) => i.label === 'DPI'), `the plan names iCUE (open) and the Kite's settings (${JSON.stringify(pl.maker || pl.error)})`);
+  check((await route('GET', 'state')).maker?.name === 'Corsair iCUE', 'the state carries the maker\'s app');
+  check(/not listening/.test((await route('POST', 'setting', { label: 'DPI', kind: 'number', unit: 'DPI', values: [800, 3200] })).ok && (await route('POST', 'drive')).error), 'driving waits for the listener');
+  check((await route('POST', 'listen')).ok, 'listening starts');
+
+  // drive DPI: 800, then 3200, each recorded, then back to 1200 (the value read first)
+  const dv = await route('POST', 'drive');
+  const sets = app.calls.filter((a) => a[0] === 'set').map((a) => arg(a, '-Value'));
+  check(dv.ok && dv.driven && dv.takes?.length === 2 && same(dv.takes.map((t) => t.value), [800, 3200]), `DPI is driven and both values recorded (${JSON.stringify(dv.why || dv.error || dv.takes)})`);
+  check(same(sets, ['800', '3200', '1200']) && app.controls.DPI.value === 1200, `app-ui sets 800, 3200, then puts back 1200 (${sets.join(', ')})`);
+  check(dv.restore?.ok && dv.restore.value === 1200, `the restore is read back (${JSON.stringify(dv.restore)})`);
+  check(app.calls.every((a) => ['get', 'set'].includes(a[0]) && arg(a, '-Name') === 'DPI' && arg(a, '-Window') === 'iCUE'), 'app-ui only ever gets and sets the ticked setting\'s control, never presses anything');
+  check(dv.range?.min === 100 && dv.range.max === 26000 && dv.range.step === 50, `the slider's own range comes back (${JSON.stringify(dv.range)})`);
+  check(cap.cmds.filter((c) => / start /.test(c)).length === 2 && cap.cmds.filter((c) => / stop$/.test(c) || /\d stop$/.test(c)).length === 2, `two recordings, each started and stopped (${cap.cmds.join(', ')})`);
+  const an2 = await route('POST', 'analyze');
+  check(an2.ok && an2.valueAt.offset === 1 && an2.valueAt.size === 2, `the driven recordings are learned (${JSON.stringify(an2.why || an2.valueAt)})`);
+  const ad2 = await route('POST', 'add', { ...dv.range, title: 'Kite mouse', kind: 'Mouse' });
+  check(ad2.ok && ad2.learned?.[0]?.min === 100 && ad2.learned[0].max === 26000, `added with the app's range (${JSON.stringify(ad2.why || ad2.learned)})`);
+
+  // a control whose id says firmware update: never touched, the person is asked instead
+  app.calls = [];
+  check((await route('POST', 'setting', { label: 'Polling rate', kind: 'choice', values: ['125 Hz', '1000 Hz'] })).ok, 'Polling rate is named');
+  const dr = await route('POST', 'drive');
+  check(dr.ok && dr.manual && /never touches/.test(dr.why) && !app.calls.some((a) => a[0] === 'set') && !dr.restore, `a control named like a firmware update is never set (${JSON.stringify(dr.why)})`);
+  // a setting the app does not show: the person changes it, DeviceHub listens (the manual fallback)
+  app.calls = [];
+  check((await route('POST', 'setting', { label: 'Lift-off', kind: 'choice', values: ['Low', 'High'] })).ok, 'Lift-off is named');
+  const dn = await route('POST', 'drive');
+  check(dn.ok && dn.manual && /could not find Lift-off in Corsair iCUE/.test(dn.why) && !app.calls.some((a) => a[0] === 'set') && !dn.takes.length, `a control not found: nothing changed, the person is asked (${JSON.stringify(dn.why)})`);
+  for (const v of ['High', 'Low']) {
+    const s = await route('POST', 'record', { value: v });
+    app.sending = { what: 'lift', v };   // the person changes it in the app
+    const e = await route('POST', 'stop');
+    check(s.ok && e.ok && e.heard === 6, `the person's change to ${v} is recorded (${s.error || e.error})`);
+  }
+  const an3 = await route('POST', 'analyze');
+  check(an3.ok && an3.kind === 'choice', `Lift-off is learned from the person's changes (${JSON.stringify(an3.why)})`);
+  check((await route('POST', 'add', { title: 'Kite mouse', kind: 'Mouse' })).ok, 'Lift-off is added');
+  const sv = await route('POST', 'save', { title: 'Kite mouse', kind: 'Mouse' });
+  const kdef = sv.ok ? JSON.parse(fs.readFileSync(path.join(root, 'my-devices', sv.saved.name, 'driver.json'), 'utf8')) : null;
+  const kmark = sv.ok ? JSON.parse(fs.readFileSync(path.join(root, 'my-devices', sv.saved.name, 'library.json'), 'utf8')) : null;
+  check(kdef && kdef.settings.map((s) => s.key).join() === 'dpi,liftOff' && kmark.status === 'read-only', `one driver.json with both settings, saved read-only (${JSON.stringify(sv.why || sv.error || kdef?.settings?.map((s) => s.key))})`);
+  await route('POST', 'quit');
+
+  // the app already shows the first value: the second goes first, and it ends where it began
+  resetApp(); app.controls.DPI.value = 800;
+  await route('POST', 'begin', { vid: '1B1C', pid: '7F01' }); await route('GET', 'plan'); await route('POST', 'listen');
+  await route('POST', 'setting', { label: 'DPI', kind: 'number', values: [800, 3200] });
+  const dw = await route('POST', 'drive');
+  const sets2 = app.calls.filter((a) => a[0] === 'set').map((a) => arg(a, '-Value'));
+  check(dw.driven && same(dw.takes.map((t) => t.value), [3200, 800]) && same(sets2, ['3200', '800', '800']) && dw.restore?.ok, `when the app shows 800 already, 3200 is recorded first (${sets2.join(', ')})`);
+  // values outside the slider's range are moved inside it
+  resetApp(); app.controls.DPI.max = 2000;
+  await route('POST', 'setting', { label: 'DPI', kind: 'number', values: [800, 3200] });
+  const dx = await route('POST', 'drive');
+  check(dx.driven && dx.takes.every((t) => t.value >= 100 && t.value <= 2000) && dx.restore?.ok, `values outside the slider's range are moved inside it (${JSON.stringify(dx.takes)})`);
+  // a restore that fails is said plainly, with the value it had
+  resetApp(); app.failRestore = true;
+  await route('POST', 'setting', { label: 'DPI', kind: 'number', values: [800, 3200] });
+  const df = await route('POST', 'drive');
+  check(df.driven && df.restore && !df.restore.ok && df.restore.value === 1200 && /could not put DPI back\. It was 1200 before: set it to 1200 in Corsair iCUE/.test(df.restore.why), `a failed restore says so, with the original value (${JSON.stringify(df.restore)})`);
+  // the app not open: the person is asked, nothing is driven
+  resetApp(); running = '';
+  await route('POST', 'begin', { vid: '1B1C', pid: '7F01' });
+  const pl2 = await route('GET', 'plan');
+  await route('POST', 'listen');
+  await route('POST', 'setting', { label: 'DPI', kind: 'number', values: [800, 3200] });
+  const dc = await route('POST', 'drive');
+  check(pl2.maker?.installed && !pl2.maker.running && dc.manual && /Corsair iCUE is not open/.test(dc.why) && !app.calls.length, `iCUE closed: nothing is driven, the person is asked (${JSON.stringify(dc.why)})`);
+  // a reading is only listened for
+  await route('POST', 'setting', { label: 'Battery', kind: 'reading', role: 'battery', values: ['80'] });
+  check((await route('POST', 'drive')).manual, 'a reading is never driven');
+  // a setting named like firmware is refused before anything
+  check((await route('POST', 'setting', { label: 'Pairing mode', kind: 'toggle', values: ['on', 'off'] })).ok === false, 'a pairing setting is never learned');
+  await route('POST', 'quit');
+  lw.reset();
+  fs.rmSync(pc, { recursive: true, force: true });
+}
+
 // ---------------------------------------------------------------- what it refuses
 const why = (r) => (r.why || []).join(' ');
 let r = lw.analyze(takesOf([acme(800, { twin: true }), acme(1600, { twin: true })], '1234', '5678'), { label: 'DPI', kind: 'number' });
@@ -517,5 +713,5 @@ check(lw.withRange({ ...L1, write: { ...L1.write, enc: { ...L1.write.enc, size: 
 lw.reset();
 fs.rmSync(root, { recursive: true, force: true });
 function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
-console.log(fails.length ? `learn-wizard: FAILED:\n- ${fails.join('\n- ')}` : 'learn-wizard (made-up recordings: diff, driver.json, refusals, save read-only, share): all good');
+console.log(fails.length ? `learn-wizard: FAILED:\n- ${fails.join('\n- ')}` : 'learn-wizard (made-up recordings: diff, driver.json, refusals, save read-only, share; maker app, tick-list, stand-in app-ui drive and restore): all good');
 process.exit(fails.length ? 1 : 0);

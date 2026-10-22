@@ -13,6 +13,7 @@ import { toast } from '../ui/overlay.js';
 import { loadPc, otherDevices, pcLoaded, copyPrompt } from './pc-lights.js';
 import { learnThis } from './learn.js';
 import { getHelp } from '../ui/get-help.js';
+import { genericDongle } from '../core/generic-dongle.js';
 import { installerButton } from '../ui/installer-button.js';
 import { LIFT_OFF } from '../devices/pulsar.js';
 import { reviewSetup } from './backups.js';
@@ -81,9 +82,15 @@ function firstRun(go, redraw) {
       if (!pcLoaded()) { loadPc(false, redraw); return null; }
       const found = otherDevices();
       return found.length ? h('div', { class: 'first-found' }, h('h3', {}, 'Found on this PC'),
-        ...found.map((u) => h('div', { class: 'pc-other' }, h('div', { class: 'grow' }, h('b', {}, u.name || `${u.brand.name} device`), h('small', { class: 'faint' }, ` ${u.brand.shared ? u.brand.name : u.brand.name + ' · ' + u.brand.category} · USB ${u.id}`)),
-          button('Learn it', () => { learnThis(u.vid, u.pid); go('learn'); }, { kind: 'ghost small', ic: 'plug' }),
-          button('Copy a prompt for Claude', () => copyPrompt(u), { kind: 'ghost small' })))) : null;
+        ...found.map((u) => {
+          // a generic 2.4G receiver: one plain line and Request support instead of Learn it (Learn refuses its chip's id)
+          const gd = genericDongle(u);
+          return h('div', { class: 'pc-other' }, h('div', { class: 'grow' }, h('b', {}, u.name || (gd ? 'USB receiver' : `${u.brand.name} device`)), h('small', { class: 'faint' }, ` ${u.brand.shared ? u.brand.name : u.brand.name + ' · ' + u.brand.category} · USB ${u.id}`),
+            gd ? h('small', { style: { display: 'block' } }, gd.line) : null),
+          gd ? getHelp(`request:${u.vid}:${u.pid}`, null, { label: 'Request support', request: { vid: u.vid, pid: u.pid, name: u.name || '' }, kind: 'ghost small' })
+            : button('Learn it', () => { learnThis(u.vid, u.pid); go('learn'); }, { kind: 'ghost small', ic: 'plug' }),
+          button('Copy a prompt for Claude', () => copyPrompt(u), { kind: 'ghost small' }));
+        })) : null;
     })(),
     h('div', { class: 'actions' },
       button('Learn a device', () => go('learn'), { kind: 'primary small', ic: 'plug' }),
@@ -166,9 +173,10 @@ function setupCard(redraw) {
     if (i.page) return button('Open', () => openPage(i.page), { kind: 'ghost small' });
     return null;
   };
-  // a device with no driver also offers Request support: a short request for GitHub, shown in full first (get-help.js)
+  // a device with no driver (or a generic 2.4G receiver) also offers Request support: sent to Shawn in one click where
+  // reports go, otherwise a short request for GitHub, shown in full first (get-help.js)
   const requestOf = (i) => {
-    if (!['learn', 'packet-size'].includes(i.what) || !i.usb) return null;
+    if (!['learn', 'packet-size', 'generic-dongle'].includes(i.what) || !i.usb) return null;
     const [vid, pid] = i.usb.split(':');
     return getHelp(`request:${i.usb}`, null, { label: 'Request support', request: { vid, pid, name: i.title }, kind: 'ghost small' });
   };

@@ -374,6 +374,8 @@ export async function handle(url, req, res, send, readBody) {
     // "Works on my device" (helpers/works-report.mjs): the record to show; it opens through /api/help/open like a report
     if (url.pathname === '/api/help/works' && req.method === 'GET') { const r = await (await import('./works-report.mjs')).report(url.searchParams.get('id'), { port }); send(res, 200, r); return true; }
     if (url.pathname === '/api/help/request' && req.method === 'GET') { send(res, 200, await requestSupport({ vid: url.searchParams.get('vid'), pid: url.searchParams.get('pid'), name: url.searchParams.get('name') })); return true; }
+    // Request support in one click through the relay (helpers/support-request.mjs); fallback: true = use the request above
+    if (url.pathname === '/api/help/request/send' && req.method === 'POST') { const b = (await readBody(req)) || {}; const r = await (await import('./support-request.mjs')).send({ vid: b.vid, pid: b.pid, name: b.name }); send(res, r.bad ? 400 : 200, r); return true; }
     if (url.pathname === '/api/help/open' && req.method === 'POST') { const r = await open((await readBody(req))?.token); send(res, r.ok ? 200 : 400, r); return true; }
     send(res, 404, { error: 'no such help route' });
   } catch (e) { send(res, e.code === 404 ? 404 : e.code === 503 ? 503 : 400, { error: e.message }); }
