@@ -4,8 +4,9 @@
 // .cut-line seams; and for depth .shade (the far side in shadow), .hi (a sheen where light catches), .led (the parts
 // that light up: the HS80's logos and mic light), .line (fine detail: wheel ridges, stitching, knurling).
 // The body and the soft parts are lit with gradients (light from the top left), their colors per look in style.css.
-// In the Realistic look all three devices show the makers' own product photos (public/img: Pulsar, Corsair, Epomaker, 19 Oct
-// 2026) in place of the drawing (.drawn); the other looks and the Lighting previews keep the drawing.
+// Every look shows the makers' own product photos (public/img: Pulsar, Corsair, Epomaker, 19 Oct 2026) in place of the
+// drawing (.drawn), each turned into its look by an SVG filter (PHOTO_FX, 21 Oct 2026); the drawing stays for the
+// Lighting previews, another keyboard's layout and devices added on a PC.
 // Hover lifts a drawing; a settings change gives one small bounce (style.css).
 import { svgEl } from './dom.js';
 import { ART_STYLES } from '../core/theme.js';
@@ -18,7 +19,7 @@ export function artDefs() {
     + `<linearGradient id="dhs-${dev}-${look}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color: var(--gs1)"/><stop offset="1" style="stop-color: var(--gs2)"/></linearGradient>`;
   // each look's set sits in a group that takes that look's colors (style.css), so a preview box shows its own look
   const set = (look) => `<g class="art-preview" data-art-preview="${look}">${['mouse', 'headset', 'keyboard'].map((d) => `<g class="art art-${d}">${g(d, look)}</g>`).join('')}</g>`;
-  return svgEl(`<svg class="art-defs" width="0" height="0" aria-hidden="true" style="position: absolute"><defs>${ART_LOOKS.map(set).join('')}</defs></svg>`);
+  return svgEl(`<svg class="art-defs" width="0" height="0" aria-hidden="true" style="position: absolute"><defs>${ART_LOOKS.map(set).join('')}${PHOTO_FX}</defs></svg>`);
 }
 
 
@@ -32,14 +33,14 @@ let clipN = 0;
 const clipId = () => `dh-lq-${++clipN}`;
 // the liquid: two waves (one behind, slower) on a body of liquid, inside the device's shape; the group is moved down by
 // the empty share (style.css: --lvl), the waves slide sideways, and bubbles rise while charging
-function liquid(clip, x, y, w, h) {
+function liquid(clip, x, y, w, h, ref = `clip-path="url(#${clip})"`) {
   const p = 36, a = 2.4, x0 = x - p * 2, x1 = x + w + p * 2;
   const wave = (dy) => { let d = `M${x0} ${y + dy}`; for (let wx = x0; wx < x1; wx += p) d += `q${p / 4} ${-a} ${p / 2} 0t${p / 2} 0`; return `${d}V${y + h + 4}H${x0}Z`; };
   const bubbles = [0.22, 0.5, 0.76].map((f, i) => `<circle class="bubble b${i}" cx="${(x + w * f).toFixed(1)}" cy="${y + h - 3}" r="${1.1 + (i % 2) * 0.5}"/>`).join('');
   const g = `${clip}-g`, sh = `${clip}-s`;
   return `<defs><linearGradient id="${g}" gradientUnits="userSpaceOnUse" x1="0" y1="${y}" x2="0" y2="${y + Math.min(h, 45)}"><stop offset="0" class="lq-top"/><stop offset=".55" class="lq-mid"/><stop offset="1" class="lq-deep"/></linearGradient>
       <linearGradient id="${sh}" x1="0" y1="0" x2="1" y2=".6"><stop offset=".18" stop-color="#fff" stop-opacity="0"/><stop offset=".3" stop-color="#fff" stop-opacity=".22"/><stop offset=".38" stop-color="#fff" stop-opacity="0"/><stop offset=".52" stop-color="#fff" stop-opacity=".08"/><stop offset=".58" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
-    <g clip-path="url(#${clip})"><g class="liquid" style="--lh: ${h}px">
+    <g ${ref}><g class="liquid" style="--lh: ${h}px">
       <path class="wave back" d="${wave(1.6)}"/><path class="wave front" d="${wave(0)}" style="fill: url(#${g})"/>
       <path class="wave-edge" d="${wave(0).split('V')[0]}"/>
       ${[0.15, 0.35, 0.55, 0.72, 0.88].map((f, i) => `<circle class="mote m${i}" cx="${(x + w * f).toFixed(1)}" cy="${y + 3}" r="${(0.7 + (i % 3) * 0.25).toFixed(2)}"/>`).join('')}
@@ -47,9 +48,54 @@ function liquid(clip, x, y, w, h) {
 }
 // no words (Shawn, 21 Oct 2026: "remove all the words ... but make it still look cool"): a part is marked with a small
 // crosshair target, and a measurement is a line with end ticks and a centre tick
+// the Live battery's liquid over a product photo: drawn through a mask made from the photo itself (its shape in white,
+// filter dh-fx-shape), so it fills the real outline
+const photoLiquid = (id, href, vw, vh, x, y, w, h) => `<mask id="${id}-pm" maskUnits="userSpaceOnUse" x="0" y="0" width="${vw}" height="${vh}"><image href="${href}" x="0" y="0" width="${vw}" height="${vh}" preserveAspectRatio="xMidYMid meet" filter="url(#dh-fx-shape)"/></mask>
+    <g class="pliquid">${liquid(`${id}p`, x, y, w, h, `mask="url(#${id}-pm)"`)}</g>`;
 const callout = (x, y) => `<g class="bp-mark"><circle class="bp-lead" cx="${x}" cy="${y}" r="3.2"/><path class="bp-lead" d="M${x - 5.5} ${y}H${x - 2}M${x + 2} ${y}H${x + 5.5}M${x} ${y - 5.5}V${y - 2}M${x} ${y + 2}V${y + 5.5}"/><circle class="bp-dot" cx="${x}" cy="${y}" r=".9"/></g>`;
 const dimV = (x, y1, y2) => `<path class="bp-lead" d="M${x} ${y1}V${y2}M${x - 2} ${y1}H${x + 2}M${x - 2} ${y2}H${x + 2}M${x - 1.2} ${(y1 + y2) / 2}H${x + 1.2}"/>`;
 const dimH = (y, x1, x2) => `<path class="bp-lead" d="M${x1} ${y}H${x2}M${x1} ${y - 2}V${y + 2}M${x2} ${y - 2}V${y + 2}M${(x1 + x2) / 2} ${y - 1.2}V${y + 1.2}"/>`;
+
+// Every look is made from the makers' product photos (21 Oct 2026, Shawn: "base it off the current realistic version for
+// each of these themes ... accurate yet still keep the same themes"): an SVG filter per look turns the photo into it.
+// Edges are found with a 3 x 3 edge kernel on the grey image, the outline from the photo's own transparency; colors
+// that follow the theme come from CSS (flood-color on .fx-accent, .fx-duo-dark, .fx-duo-light).
+const GREY = '<feColorMatrix in="SourceGraphic" type="matrix" values=".3 .59 .11 0 0  .3 .59 .11 0 0  .3 .59 .11 0 0  0 0 0 1 0" result="grey"/>';
+const EDGES = (k) => `${GREY}<feConvolveMatrix in="grey" order="3" kernelMatrix="-1 -1 -1 -1 8 -1 -1 -1 -1" preserveAlpha="true" result="e"/>
+  <feColorMatrix in="e" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  ${k} ${k} ${k} 0 0" result="lines"/>
+  <feComposite in="lines" in2="SourceAlpha" operator="in" result="lines"/>`;
+const RING = (r) => `<feMorphology in="SourceAlpha" operator="dilate" radius="${r}" result="d"/><feComposite in="d" in2="SourceAlpha" operator="out" result="ring"/>`;
+const fx = (id, body) => `<filter id="dh-fx-${id}" x="-8%" y="-8%" width="116%" height="116%" color-interpolation-filters="sRGB">${body}</filter>`;
+const PHOTO_FX = [
+  // Classic: the photo in cool silver monochrome
+  fx('frosted', `${GREY}<feComponentTransfer in="grey"><feFuncR type="linear" slope="1.35" intercept=".08"/><feFuncG type="linear" slope="1.38" intercept=".09"/><feFuncB type="linear" slope="1.45" intercept=".12"/></feComponentTransfer>`),
+  // Blueprint: the edges as cyan lines, the outline brighter, a faint blue fill
+  fx('blueprint', `${EDGES(2.4)}${RING(1.1)}
+    <feMerge result="all"><feMergeNode in="lines"/><feMergeNode in="ring"/></feMerge>
+    <feFlood flood-color="#8fd2ff"/><feComposite in2="all" operator="in" result="cy"/>
+    <feFlood flood-color="#3c8cff" flood-opacity=".1"/><feComposite in2="SourceAlpha" operator="in" result="fill"/>
+    <feMerge><feMergeNode in="fill"/><feMergeNode in="cy"/></feMerge>`),
+  // Neon: a near-black body, its edges and outline glowing in the theme accent
+  fx('neon', `${EDGES(1.6)}${RING(1.4)}
+    <feMerge result="all"><feMergeNode in="lines"/><feMergeNode in="ring"/></feMerge>
+    <feFlood class="fx-accent"/><feComposite in2="all" operator="in" result="c"/><feGaussianBlur in="c" stdDeviation="3" result="glow"/>
+    <feFlood flood-color="#07080c"/><feComposite in2="SourceAlpha" operator="in" result="body"/>
+    <feMerge><feMergeNode in="body"/><feMergeNode in="glow"/><feMergeNode in="c"/></feMerge>`),
+  // Duotone: the photo's light and shade mapped to a deep and a light shade of the theme accent
+  fx('duo', `<feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  .3 .59 .11 0 0" result="lum"/>
+    <feComponentTransfer in="lum" result="lum"><feFuncA type="linear" slope="2.6" intercept="0"/></feComponentTransfer>
+    <feFlood class="fx-duo-dark"/><feComposite in2="SourceAlpha" operator="in" result="dark"/>
+    <feFlood class="fx-duo-light"/><feComposite in2="lum" operator="in" result="light"/>
+    <feMerge result="m"><feMergeNode in="dark"/><feMergeNode in="light"/></feMerge><feComposite in="m" in2="SourceAlpha" operator="in"/>`),
+  // Arctic: light and shade turned round, so the black devices are white, with an ice-blue cast
+  fx('arctic', `${GREY}<feComponentTransfer in="grey"><feFuncR type="table" tableValues=".95 .5"/><feFuncG type="table" tableValues=".97 .58"/><feFuncB type="table" tableValues="1 .72"/></feComponentTransfer>`),
+  // Live battery: the device as dark glass with a soft white outline (the liquid is drawn over it, inside the photo's shape)
+  fx('live', `${GREY}<feComponentTransfer in="grey" result="dim"><feFuncR type="linear" slope=".45"/><feFuncG type="linear" slope=".45"/><feFuncB type="linear" slope=".5"/><feFuncA type="linear" slope=".9"/></feComponentTransfer>${RING(.9)}
+    <feFlood flood-color="#fff" flood-opacity=".55"/><feComposite in2="ring" operator="in" result="edge"/>
+    <feMerge><feMergeNode in="dim"/><feMergeNode in="edge"/></feMerge>`),
+  // the photo's shape in white, the mask the Live battery's liquid is drawn through
+  fx('shape', '<feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1 0"/>'),
+].join('');
 
 // ---- Pulsar X-Lite CrazyLight, from above: the right-hand ergonomic shell (the left side carries the thumb groove and
 // the two side buttons, the right side slopes in for the ring and little finger), the long split buttons, the ridged
@@ -83,6 +129,7 @@ export function mouseArt() {
     <g class="bp">${dimV(4, 5, 156)}${dimH(160, 10, 90)}${callout(50, 30)}${callout(21, 63)}</g>
   </g>
     <image class="photo" href="/img/xlite.png" x="0" y="0" width="100" height="160" preserveAspectRatio="xMidYMid meet"/>
+    ${photoLiquid(lq, '/img/xlite.png', 100, 160, 0, 2, 100, 157)}
   </svg>`);
 }
 
@@ -138,6 +185,7 @@ export function headsetArt() {
     <g class="bp">${callout(76.4, 149.9)}${callout(8.5, 119.5)}${callout(157.5, 111)}${callout(22.5, 111)}</g>
   </g>
     <image class="photo" href="/img/hs80.png" x="0" y="0" width="180" height="160" preserveAspectRatio="xMidYMid meet"/>
+    ${photoLiquid(lq, '/img/hs80.png', 180, 160, 0, 2, 180, 157)}
   </svg>`);
 }
 
