@@ -128,8 +128,10 @@ for (const m of MODELS) {
   for (const [key, to, id, raw] of cases) {
     const before = (await d.read())[key], orig = dev.props[id], mark = hp.out.length;
     check(await d.write(key, to) === to && dev.props[id] === raw, `${m.key}: ${key} ${before} -> ${to} reads back (${dev.props[id]})`);
-    check(sent(hp, mark)[0] === `02 ${ep} 01 ${id.toString(16).padStart(2, '0')} 00 ${hx(le4(raw))}`, `${m.key}: ${key} SET bytes (${sent(hp, mark)[0]})`);
-    check(sent(hp, mark)[1] === `02 ${ep} 02 ${id.toString(16).padStart(2, '0')} 00 00 00 00 00`, `${m.key}: ${key} is read back with a GET`);
+    const idh = id.toString(16).padStart(2, '0');
+    check(sent(hp, mark)[0] === `02 ${ep} 02 ${idh} 00 00 00 00 00`, `${m.key}: ${key} raw value read before the write (${sent(hp, mark)[0]})`);
+    check(sent(hp, mark)[1] === `02 ${ep} 01 ${idh} 00 ${hx(le4(raw))}`, `${m.key}: ${key} SET bytes (${sent(hp, mark)[1]})`);
+    check(sent(hp, mark)[2] === `02 ${ep} 02 ${idh} 00 00 00 00 00`, `${m.key}: ${key} is read back with a GET`);
     check((await d.read())[key] === to, `${m.key}: a fresh read shows ${key} = ${to}`);
     check(await d.write(key, before) === before && dev.props[id] === orig, `${m.key}: ${key} put back to ${before}`);
   }
@@ -166,6 +168,36 @@ for (const m of MODELS) {
   await k.connect();
   const rk = await selfCheck(k, k.write, { backup: async () => true, makerApp: async () => null });
   check(rk.keys?.brightness?.ok && kd.props[P.brightness] === 700, `self-check passes the keyboard brightness (${JSON.stringify(rk)})`);
+}
+
+// ---- driver safety (22 Oct 2026): raw values the page's units cannot show exactly go back exactly as read ----
+{
+  const m = MODELS.find((x) => x.key === 'dark-core-pro'), dev = device(m, { props: { [P.sleep]: 90000 } }), hp = helper({ '1B81': dev });
+  const d = mk(hp);
+  await d.connect();
+  check((await d.read()).sleepTimer === 2, 'a 90 s sleep timer shows as 2 min');
+  let mark = hp.out.length;
+  const r = await selfCheck(d, d.write, { backup: async () => true, makerApp: async () => null });
+  const sets = sent(hp, mark).filter((x) => /^02 09 01 /.test(x));
+  check(r.keys?.sleepTimer?.ok && dev.props[P.sleep] === 90000, `self-check of a 90 s timer leaves it at 90000 ms (${dev.props[P.sleep]})`);
+  check(sets.includes(`02 09 01 0e 00 ${hx(le4(90000))}`) && !sets.includes(`02 09 01 0e 00 ${hx(le4(120000))}`), `the self-check sent raw 90000, never 120000 (${sets})`);
+  check(sets.includes('02 09 01 0d 00 01 00 00 00'), 'the self-check really sent sleep on/off (raw 1, as read)');
+  check(await d.write('sleepTimer', 5) === 5 && dev.props[P.sleep] === 300000, 'a different value is still written in whole minutes');
+  // a raw value the helper cannot send back exactly (30 s, under its 60000 floor) is refused, not rounded up
+  dev.props[P.sleep] = 30000;
+  const shown = (await d.read()).sleepTimer;
+  mark = hp.out.length;
+  const e = await throws(() => d.write('sleepTimer', shown));
+  check(e && /cannot send back exactly/.test(e.message) && dev.props[P.sleep] === 30000 && !sent(hp, mark).some((x) => /^02 09 01 /.test(x)), `a raw 30000 ms written back as ${shown} min is refused, nothing sent (${e?.message})`);
+
+  const kb = MODELS.find((x) => x.key === 'k70-core'), kd = device(kb, { props: { [P.brightness]: 455 } }), khp = helper({ '2B0A': kd }), k = mk(khp);
+  await k.connect();
+  check((await k.read()).brightness === 46, 'raw brightness 455 shows as 46%');
+  mark = khp.out.length;
+  const rk = await selfCheck(k, k.write, { backup: async () => true, makerApp: async () => null });
+  const ksets = sent(khp, mark).filter((x) => /^02 08 01 /.test(x));
+  check(rk.keys?.brightness?.ok && kd.props[P.brightness] === 455 && ksets.length >= 1 && ksets.every((x) => x === `02 08 01 02 00 ${hx(le4(455))}`), `self-check sends raw 455 back, never 460 (${ksets})`);
+  check(await k.write('brightness', 30) === 30 && kd.props[P.brightness] === 300 && await k.write('brightness', 46) === 46 && kd.props[P.brightness] === 460, 'a changed brightness is written as percent x 10');
 }
 
 // ---- a generic Slipstream receiver: property 12 on endpoint 09 names the model ----
@@ -224,21 +256,24 @@ for (const m of MODELS) {
   check(d2.settings.every((s) => s.type === 'display') && !sent(hp2).some((s) => /^02 08 02 (0d|0e) /.test(s)), 'with no SET list: readings only, 0d / 0e never asked');
 }
 
-// ---- iCUE running: no connect, no write, nothing sent ----
+// ---- iCUE running: connects and reads (GETs only), every write refused with nothing sent ----
 {
   const m = MODELS.find((x) => x.key === 'k100-air'), dev = device(m), hp = helper({ '1BAB': dev });
   let icue = true;
   const d = mk(hp, { icueRunning: async () => icue });
-  const e1 = await throws(() => d.connect());
-  check(e1 && /iCUE/.test(e1.message) && hp.log.length === 0, 'connect refuses while iCUE runs and sends nothing');
+  check(await d.connect() === true && (await d.read()).brightness === 70, 'connects and reads while iCUE runs');
+  check(hp.out.every((x) => x.bytes[2] === 2), 'only GETs were sent while iCUE runs');
   check(await d.vendorApp() === 'iCUE.exe', 'vendorApp names iCUE while it runs');
-  icue = false; await d.connect(); await d.read();
-  icue = true;
   const n = hp.out.length;
   const e2 = await throws(() => d.write('brightness', 20));
-  check(e2 && /iCUE/.test(e2.message) && hp.out.length === n && dev.props[P.brightness] === 700, `a write refuses while iCUE runs (${e2?.message})`);
-  const e3 = await throws(() => d.read());
-  check(e3 && e3.gone && /iCUE/.test(e3.message), 'a read steps back while iCUE runs');
+  check(e2 && /iCUE/.test(e2.message) && e2.waiting === true && hp.out.length === n && dev.props[P.brightness] === 700, `a write refuses while iCUE runs, nothing sent (${e2?.message})`);
+  const e2b = await throws(() => d.write('brightness', 70));
+  check(e2b && /iCUE/.test(e2b.message) && hp.out.length === n, 'a write of the same value is refused too while iCUE runs');
+  const mouse = MODELS.find((x) => x.key === 'dark-core-pro'), md = device(mouse), mh = helper({ '1B81': md }), dm = mk(mh, { icueRunning: async () => true });
+  check(await dm.connect() === true && (await dm.read()).sleepTimer === 10, 'a mouse reads while iCUE runs');
+  const n2 = mh.out.length;
+  const e3 = await throws(() => dm.write('sleepTimer', 25));
+  check(e3 && /iCUE/.test(e3.message) && mh.out.length === n2 && md.props[P.sleep] === 600000, 'a mouse write refuses while iCUE runs, nothing sent');
   check(await d.vendorApp() === 'iCUE.exe' && (await selfCheck(d, d.write, { backup: async () => true })).ran === false, 'the self-check does not run while iCUE runs');
 }
 

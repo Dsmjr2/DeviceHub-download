@@ -6,6 +6,7 @@
   "vid": "046d",
   "pids": [
     "c541",
+    "c547",
     "c545",
     "c33e",
     "c343",
@@ -30,11 +31,12 @@
     "battery: 0x1004 / 0x1000 / 0x1001",
     "report rate: 0x8061 or 0x8060, from the keyboard's own list (Solaar ExtendedReportRate / ReportRate), host mode only",
     "settings source onboard / host: 0x8100 fn 0x20 / 0x10 (Solaar OnboardProfiles)",
-    "onboard profile select only: profile count from 0x8100 fn 0x00 byte 3 (libratbag), read fn 0x40, select fn 0x30 [sector] (Solaar OnboardProfiles); profiles are never edited",
+    "onboard profile: shown only (count from 0x8100 fn 0x00 byte 3, libratbag; active sector from fn 0x40, Solaar). Selecting one (fn 0x30) is switched off until the numbering is confirmed on a real keyboard; profiles are never edited",
     "key locks, the Windows-key lock first: 0x4521 caps fn 0x00, read 0x10, write 0x20, the other bits sent back as read (Solaar DisableKeyboardKeys)",
     "F-key swap: 0x40A2 or 0x40A0, read 0x00 / write 0x10 (Solaar NewFnSwap / FnSwap)",
     "backlight brightness: 0x8040 info 0x00, read 0x10 / write 0x20, on/off 0x30 / 0x40, the keyboard's own steps when it has them (Solaar BrightnessControl)",
-    "every write read back; every write refused while G HUB (lghub*.exe) runs"
+    "every write read back; every write refused while G HUB (lghub*.exe) runs",
+    "receivers C541 and C547 (G915, OpenRGB LogitechControllerDetect.cpp) and C545 (G915 TKL)"
   ],
   "doesNotWork": [
     "firmware updates, DFU, resets and pairing (never: Logitech's own app only)",
@@ -43,7 +45,7 @@
     "G-key and M-key remaps, and a game mode beyond the key locks (no documented read-back)",
     "PRO X TKL and G915 X (no product ids in any source read)",
     "the K375s-style F-key swap 0x40A3 (needs the host-info feature; office keyboards)",
-    "the second G915 receiver C547: not claimed yet (tests/device-library.mjs uses it as an unclaimed receiver)"
+    "selecting an onboard profile: read-only until Solaar's or libratbag's profile numbering is confirmed on a real keyboard"
   ],
   "status": "untested",
   "tested": [],

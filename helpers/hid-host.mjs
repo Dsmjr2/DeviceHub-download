@@ -2,6 +2,7 @@
 // the real browser drivers (public/devices/via.js, pulsar.js) run unchanged inside the server with no prompts.
 import { createRequire } from 'node:module';
 import { ECHO } from '../public/devices/via.js';
+import { neverHit, refusal } from './never-guard.mjs';
 
 const native = createRequire(import.meta.url)('./native.js');
 const power = createRequire(import.meta.url)('./power.js');
@@ -140,10 +141,21 @@ class HostDevice {
     }).catch(() => false);
   }
 
+  // The never list (22 Oct 2026, safety round 2; helpers/never-guard.mjs): on a channel a library or my-devices driver
+  // asked for (spec.never, set by addSpec), every report is checked before any byte goes out. DeviceHub's own channels
+  // (SPECS above, useKeyboardSpec) have no spec.never and are never checked, so their bytes are exactly as before.
+  checkNever(id, bytes) {
+    const s = this.spec;
+    if (!s.never) return;
+    const hit = neverHit({ vid: s.vid, pid: this.pid || s.pid, page: s.page, reportId: id, bytes });
+    if (hit) throw refusal(hit, this.productName);
+  }
+
   async sendReport(id, data) { return this.serial(() => this.sendNow(id, data)); }
   async sendNow(id, data) {
-    if (!this.opened) throw Object.assign(new Error(`${this.productName} was unplugged`), { gone: true });
     const bytes = Array.from(data);
+    this.checkNever(id, bytes);
+    if (!this.opened) throw Object.assign(new Error(`${this.productName} was unplugged`), { gone: true });
     const s = this.spec;
     // library options (22 Oct 2026), each off unless the spec asks: a report id owned by another collection
     // (spec.routes), a raw channel (spec.reply 'raw'), another report id on this collection (spec.reportIds)
@@ -171,6 +183,7 @@ class HostDevice {
   // id when id is not 0; length = data bytes wanted (spec.featureLen, else spec.len, when left out).
   async sendFeatureReport(id, data) {
     return this.serial(async () => {
+      this.checkNever(id, Array.from(data));
       if (!this.opened) throw this.gone();
       const hex = [id, ...Array.from(data)].map((b) => (b & 0xff).toString(16).padStart(2, '0')).join(' ');
       const r = await this.line(`FSET ${hex}`, 5000);
@@ -350,6 +363,7 @@ const hosts = SPECS.map((s) => new HostDevice(s));
 // Options for library drivers: channelOpts above, and on the HostDevice reply 'raw', routes, reportIds.
 export function addSpec(spec) {
   const s = normalize(spec);
+  s.never = true;   // a library or my-devices driver's channel: the never list is checked before every send (checkNever)
   SPECS.push(s); hosts.push(new HostDevice(s));
 }
 // another VIA keyboard instead of the P75 (helpers/via-defs.js): same channel settings, its own ids

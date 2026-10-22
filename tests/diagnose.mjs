@@ -132,6 +132,11 @@ r = analyze({ snap: dev('thing', 'connected'), profile: { usb: [], vids: [] }, l
 check(r.findings[0].code === 'read-only' && /read back 2/.test(r.findings[0].why) && r.findings[0].action?.kind === 'check-again', 'a failed self-check -> why, and a Check again button');
 r = analyze({ snap: dev('thing', 'connected'), profile: { usb: [], vids: [] }, library: { status: 'read-only', readOnly: [{ label: 'DPI', why: 'the mouse is using its onboard profiles', waiting: true }] } });
 check(r.findings[0].code === 'read-only' && /could not be checked yet: the mouse is using its onboard/.test(r.findings[0].why) && r.findings[0].action?.kind === 'check-again', 'a waiting setting -> why, and a Check again button');
+// safety round 2: a driver waiting for Turn on settings says so and offers the button; unchecked + connected = Check again
+r = analyze({ snap: dev('thing', 'connected'), profile: { usb: [], vids: [] }, library: { status: 'untested', turnOn: true, readOnly: [{ label: 'Brightness', why: 'not checked yet' }] } });
+check(r.findings[0].code === 'read-only' && r.findings[0].action?.kind === 'turn-on' && /current value back once/.test(r.findings[0].fix || JSON.stringify(r.findings[0])), `waiting for its click -> Turn on settings (${JSON.stringify(r.findings[0])})`);
+r = analyze({ snap: dev('thing', 'connected'), profile: { usb: [], vids: [] }, library: { status: 'read-only', readOnly: [{ label: 'Brightness', why: 'not checked yet' }] } });
+check(r.findings[0].action?.kind === 'check-again', 'connected with an unchecked setting -> Check again');
 r = analyze({ snap: dev('thing', 'missing'), profile: { usb: [], vids: [] }, library: { status: 'tested', readOnly: [{ label: 'Effect', why: 'x', failed: true }] } });
 check(r.findings.find((x) => x.code === 'read-only')?.action?.kind === 'retry', 'not connected: Connect, not Check again');
 

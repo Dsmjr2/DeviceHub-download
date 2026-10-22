@@ -311,7 +311,7 @@ function savedStep() {
   }
   return card([h('h2', {}, 'Saved'), h('span', { class: 'spacer' }), pill('reads only, for now')],
     p(`The driver is in my-devices\\${sv.name || ''}\\driver.json.`),
-    p('For now it only reads the device. The first time the device connects, DeviceHub tests each setting once by writing back its current value. Each setting that passes can then be changed on its page.'),
+    p('For now it only reads the device. Press Turn on settings on its page when you are ready: DeviceHub then writes the current value of each setting back once to make sure it works. Each setting that passes can then be changed on its page.'),
     sv.note ? p(sv.note) : p(sv.loaded ? 'DeviceHub has loaded it: its page is in the sidebar.' : 'Restart DeviceHub (tray icon > Quit, then open it again) to load it.'),
     p('When it works, its page has a Share this driver button, so the next person with this device needs no learning.', 'faint'),
     p('Sharing needs a free GitHub account: it opens a GitHub page that offers the driver to the shared library.', 'faint'),

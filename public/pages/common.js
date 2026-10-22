@@ -79,14 +79,21 @@ const diagPost = async (body) => {
   if (!r.ok || j.error) throw new Error(j.error || r.statusText);
   return j;
 };
+// the answer to Check again or Turn on settings, in one line: how many settings passed (safety round 2)
+export function checkAnswer(r, kind = 'check-again') {
+  const c = r?.counts;
+  const passed = c ? `${c.passed} of ${c.checked} setting${c.checked === 1 ? '' : 's'} passed${c.waiting ? `, ${c.waiting} waiting` : ''}${c.failed ? `, ${c.failed} ${c.failed === 1 ? 'stays' : 'stay'} read-only` : ''}` : '';
+  if (kind === 'turn-on') return r?.ran ? `Settings turned on: ${passed}.` : r?.on ? `Settings turned on. ${r.why ? `Not checked yet: ${r.why}` : ''}`.trim() : `Not turned on: ${r?.why || 'unknown problem'}`;
+  return r?.ran ? `Checked again: ${passed}.` : `Not checked: ${r?.why || 'unknown problem'}`;
+}
 function diagAction(d, a, done) {
   if (!a) return null;
   if (a.kind === 'retry') return button(a.label || 'Connect again', () => { delete diagCache[d.id]; return connect(d.id, false); }, { kind: 'ghost small', ic: 'plug' });
   if (a.kind === 'settings' || a.kind === 'open-folder') return button(a.label, async () => { try { await diagPost({ kind: a.kind, page: a.page }); } catch (e) { done(`Could not open it: ${e.message}`); } }, { kind: 'ghost small', ic: 'external' });
-  if (a.kind === 'check-again') return button(a.label || 'Check again', async () => {
-    try { const r = await diagPost({ kind: 'check-again', id: d.id }); delete diagCache[d.id]; done(r.ran ? 'Checked again: the settings that passed can be changed now.' : `Not checked: ${r.why}`); }
+  if (a.kind === 'check-again' || a.kind === 'turn-on') return button(a.label || (a.kind === 'turn-on' ? 'Turn on settings' : 'Check again'), async () => {
+    try { const r = await diagPost({ kind: a.kind, id: d.id }); delete diagCache[d.id]; done(checkAnswer(r, a.kind)); }
     catch (e) { done(`Not checked: ${e.message}`); }
-  }, { kind: 'ghost small', ic: 'search' });
+  }, { kind: 'ghost small', ic: a.kind === 'turn-on' ? 'plug' : 'search' });
   if (a.kind === 'close-app') {
     const box = h('span', { class: 'actions', style: { alignItems: 'center', margin: 0 } });
     const ask = () => box.replaceChildren(button(a.label, () => box.replaceChildren(h('small', {}, a.confirm || `${a.label}?`),

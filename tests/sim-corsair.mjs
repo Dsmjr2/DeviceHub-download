@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { createDriver, MODELS, ALL_PIDS, HS80_OWN_PIDS, HELPER_SETS, P } from '../device-library/corsair-bragi-headset/device.mjs';
 import real from '../device-library/corsair-bragi-headset/device.mjs';
 import { validateMeta } from '../helpers/device-library.mjs';
-import { problem } from '../helpers/my-devices.mjs';
+import { problem, selfCheck } from '../helpers/my-devices.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const fails = [];
@@ -134,8 +134,9 @@ for (const m of MODELS) {
   // the write rule: value read just before, a different one, read back, the original put back, read back
   const before = (await d.read()).sleepTimer, mark = hp.out.length;
   check(await d.write('sleepTimer', 25) === 25, `${m.key}: sleep timer ${before} -> 25 reads back`);
-  check(sent(hp, mark)[0] === `02 09 01 0e 00 ${hx(le4(1500000))}`, `${m.key}: SET bytes 02 09 01 0e 00 <1500000 LE> (${sent(hp, mark)[0]})`);
-  check(sent(hp, mark)[1] === '02 09 02 0e 00 00 00 00 00', `${m.key}: the write is read back with a GET 0e`);
+  check(sent(hp, mark)[0] === '02 09 02 0e 00 00 00 00 00', `${m.key}: the raw value is read before the write (${sent(hp, mark)[0]})`);
+  check(sent(hp, mark)[1] === `02 09 01 0e 00 ${hx(le4(1500000))}`, `${m.key}: SET bytes 02 09 01 0e 00 <1500000 LE> (${sent(hp, mark)[1]})`);
+  check(sent(hp, mark)[2] === '02 09 02 0e 00 00 00 00 00', `${m.key}: the write is read back with a GET 0e`);
   check((await d.read()).sleepTimer === 25 && dev.props[P.sleep] === 1500000, `${m.key}: a fresh read shows 25`);
   check(await d.write('sleepTimer', before) === before && dev.props[P.sleep] === 600000, `${m.key}: the original ${before} put back and read back`);
   const n = hp.out.length;
@@ -159,10 +160,10 @@ for (const m of MODELS) {
   check(JSON.stringify(d.settings.map((s) => s.key)) === '["sleepTimer","sleepOn","sidetoneOn","sidetone"]', `XT with today's helper: all four settings (${d.settings.map((s) => s.key)})`);
   check(v.sidetone === 30 && v.sidetoneOn === true && v.sleepOn === true, `XT reads sidetone 30%, on (46 = 0), sleep on (${JSON.stringify(v)})`);
   let mark = hp.out.length;
-  check(await d.write('sidetone', 40) === 40 && sent(hp, mark)[0] === `02 09 01 47 00 ${hx(le4(400))}`, `XT sidetone 30 -> 40%: SET 47 = 400 (${sent(hp, mark)[0]})`);
+  check(await d.write('sidetone', 40) === 40 && sent(hp, mark)[1] === `02 09 01 47 00 ${hx(le4(400))}`, `XT sidetone 30 -> 40%: SET 47 = 400 (${sent(hp, mark)[1]})`);
   check(await d.write('sidetone', 30) === 30 && dev.props[P.sidetoneLevel] === 300, 'XT sidetone put back to 30%');
   mark = hp.out.length;
-  check(await d.write('sidetoneOn', false) === false && sent(hp, mark)[0] === `02 09 01 46 00 ${hx(le4(1))}`, 'XT sidetone off: SET 46 = 1 (0 = on)');
+  check(await d.write('sidetoneOn', false) === false && sent(hp, mark)[1] === `02 09 01 46 00 ${hx(le4(1))}`, 'XT sidetone off: SET 46 = 1 (0 = on)');
   check(await d.write('sidetoneOn', true) === true && dev.props[P.sidetoneOff] === 0, 'XT sidetone back on');
   // a headset that does not answer 46 / 47 (status 05): those settings stay hidden, 0d shown
   const v2 = model('void-v2'), hp2 = helper({ '2A08': headset(v2, { props: { [P.sleepOn]: 1 } }) }, { sets: FUTURE_SET }), d2 = mk(hp2, { helperSets: FUTURE });
@@ -197,8 +198,8 @@ for (const m of MODELS) {
     check(v[key] === was, `${m.key}: ${key} reads ${was} (${v[key]})`);
     const mark = hp.out.length;
     check(await d.write(key, to) === to, `${m.key}: ${key} ${was} -> ${to} reads back`);
-    check(sent(hp, mark)[0] === `02 09 01 ${hx([id])} 00 ${hx(le4(raw))}` && sent(hp, mark)[1] === `02 09 02 ${hx([id])} 00 00 00 00 00`,
-      `${m.key}: ${key} sent as SET ${hx([id])} = ${raw}, then a GET (${sent(hp, mark).slice(0, 2)})`);
+    check(sent(hp, mark)[0] === `02 09 02 ${hx([id])} 00 00 00 00 00` && sent(hp, mark)[1] === `02 09 01 ${hx([id])} 00 ${hx(le4(raw))}` && sent(hp, mark)[2] === `02 09 02 ${hx([id])} 00 00 00 00 00`,
+      `${m.key}: ${key} read, sent as SET ${hx([id])} = ${raw}, then a GET (${sent(hp, mark).slice(0, 3)})`);
     check((await d.read())[key] === to, `${m.key}: a fresh read shows ${key} = ${to}`);
     check(await d.write(key, was) === was && (await d.read())[key] === was, `${m.key}: ${key} put back to ${was} and read back`);
     const n = hp.out.length;
@@ -248,10 +249,34 @@ for (const m of MODELS) {
   const e3 = await throwsMsg(() => d3.write('sleepTimer', 45));
   check(e3 && /reads 1800000 after setting 2700000/.test(e3.message), `a read-back that differs is reported as failed (${e3?.message})`);
 
-  const hp4 = helper({ '2A08': headset(model('void-v2')) });
-  const d4 = createDriver({ transport: hp4, icueRunning: async () => true });
-  const e4 = await throwsMsg(() => d4.connect());
-  check(e4 && /iCUE/.test(e4.message) && hp4.log.length === 0, 'iCUE running: connect steps back, nothing sent');
+  // iCUE running (driver safety, 22 Oct 2026): it connects and reads with GETs only; every write is refused, nothing sent
+  const h4dev = headset(model('void-v2')), hp4 = helper({ '2A08': h4dev });
+  const d4 = createDriver({ transport: hp4, icueRunning: async () => true, helperSets: OLD });
+  check(await d4.connect() === true && (await d4.read()).sleepTimer === 10, 'iCUE running: connects and reads');
+  check(hp4.out.every((x) => x.bytes[2] === 2), 'iCUE running: only GETs sent');
+  const n4 = hp4.out.length;
+  for (const val of [25, 10]) {
+    const e4 = await throwsMsg(() => d4.write('sleepTimer', val));
+    check(e4 && /iCUE/.test(e4.message) && e4.waiting === true && hp4.out.length === n4 && h4dev.props[P.sleep] === 600000, `iCUE running: sleep timer ${val} refused, nothing sent (${e4?.message})`);
+  }
+
+  // raw values the page's units cannot show exactly go back exactly as read (driver safety, 22 Oct 2026)
+  const odd = headset(model('virtuoso-xt'), { props: { [P.sleep]: 90000, [P.sleepOn]: 1, [P.sidetoneOff]: 0, [P.sidetoneLevel]: 455 } });
+  const hp6 = helper({ '0A64': odd }, { sets: FUTURE_SET }), d6 = mk(hp6, { helperSets: FUTURE });
+  await d6.connect();
+  const v6 = await d6.read();
+  check(v6.sleepTimer === 2 && v6.sidetone === 46, `90 s shows as 2 min, raw 455 as 46% (${JSON.stringify(v6)})`);
+  const before6 = JSON.stringify(odd.props), m6 = hp6.out.length;
+  const r6 = await selfCheck(d6, d6.write, { backup: async () => true, makerApp: async () => null });
+  const sets6 = sent(hp6, m6).filter((x) => x.startsWith('02 09 01 '));
+  check(['sleepTimer', 'sleepOn', 'sidetoneOn', 'sidetone'].every((k) => r6.keys?.[k]?.ok) && JSON.stringify(odd.props) === before6, `self-check passes and leaves the raw values as they were (${JSON.stringify(r6.keys)})`);
+  check(sets6.includes(`02 09 01 0e 00 ${hx(le4(90000))}`) && sets6.includes(`02 09 01 47 00 ${hx(le4(455))}`) && !sets6.includes(`02 09 01 0e 00 ${hx(le4(120000))}`) && !sets6.includes(`02 09 01 47 00 ${hx(le4(460))}`),
+    `the self-check sent raw 90000 and 455, never 120000 or 460 (${sets6})`);
+  check(sets6.includes(`02 09 01 0d 00 ${hx(le4(1))}`) && sets6.includes(`02 09 01 46 00 ${hx(le4(0))}`), 'the self-check really sent the toggles too (their raw values as read)');
+  odd.props[P.sleep] = 30000;
+  const m6b = hp6.out.length;
+  const e6 = await throwsMsg(async () => d6.write('sleepTimer', (await d6.read()).sleepTimer));
+  check(e6 && /cannot send back exactly/.test(e6.message) && odd.props[P.sleep] === 30000 && !sent(hp6, m6b).some((x) => x.startsWith('02 09 01 ')), `raw 30000 ms (below the helper floor) written back is refused, not rounded up (${e6?.message})`);
 
   const hp5 = helper({ '2A08': headset(model('void-v2')) }), d5 = mk(hp5);
   await d5.connect(); await d5.read();

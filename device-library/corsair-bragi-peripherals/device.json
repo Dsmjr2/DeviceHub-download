@@ -94,7 +94,7 @@
     "mice: sleep timer 1-60 minutes (0e) and sleep timer on/off (0d), written and read back, each offered only when the mouse answers a read of it",
     "keyboards: brightness 0-100% (02, 0-1000), written and read back, offered only when the keyboard answers a read of it; polling rate (01) shown as a reading",
     "the model behind a generic Slipstream receiver (1BA6, 1BDC, 2B00, 2B1B) from its product id (property 12 on endpoint 09)",
-    "steps back while iCUE runs (no connect, no write)",
+    "reads while iCUE runs; refuses every write while it runs",
     "all from docs/brands/corsair.md and simulated devices only (tests/sim-corsair-bragi-peripherals.mjs); never run on a real mouse or keyboard"
   ],
   "doesNotWork": [

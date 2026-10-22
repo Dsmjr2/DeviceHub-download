@@ -6,6 +6,9 @@
 // (and, with readOnly: true, a "read-only" one) into my-devices/<name>/ (never over an existing folder) with a
 // library.json marker, and my-devices.mjs loads it GUARDED on the next start (or at once through its loadNew()):
 // a read-only entry's writes stay refused until each setting passes the self-check (docs/handoff/auto-setup.md).
+// Since 22 Oct 2026 (safety round 2): an entry with no real-device record in `tested` installs and reads by itself, but
+// writes nothing (not even its self-check) until the person presses Turn on settings for it; and no entry installs
+// when ANY of its product ids is one DeviceHub's own drivers run (pc-map.js RUNS; my-devices.mjs ownClash).
 // Entries whose name starts with "_" are examples: only offered and installed when DEVICEHUB_EXAMPLE_DEVICE=1 (demo/test).
 //
 //   list({ root })                    every entry, with its device.json and any problem
@@ -21,7 +24,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { problem } from './my-devices.mjs';
+import { problem, ownClash, hasRealRecord, TURN_ON_LINE } from './my-devices.mjs';
 import { cacheRoot, entryVersion } from './library-updates.mjs';   // no cycle: library-updates imports nothing from here
 
 export const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -107,10 +110,17 @@ export function match(usb, { root = ROOT, examples = showsExamples(), readOnly =
     const installed = fs.existsSync(path.join(root, 'my-devices', e.name));
     const ok = allowed(e.meta.status, readOnly, untested);
     const why = installed ? 'already in my-devices' : !ok ? `its status is "${e.meta.status}": ${allowedText(readOnly, untested)} install by themselves` : null;
-    const note = !why && e.meta.status !== 'tested' ? 'installs read-only: each setting can be changed once it passes its self-check' : undefined;
+    const note = !why ? installNote(e.meta) : undefined;
     out.push({ name: e.name, meta: e.meta, matched, installed, installable: !why, why, ...(note ? { note } : {}) });
   }
   return out;
+}
+
+// what installing it does, in plain words (the Set up card, POST /api/library/install)
+export function installNote(meta) {
+  if (!hasRealRecord(meta)) return `it reads the device by itself; its settings stay read-only until you press Turn on settings on its page. ${TURN_ON_LINE}`;
+  if (meta.status === 'tested') return 'its settings change normally; DeviceHub checks each one once when the device connects';
+  return "its settings stay read-only until each passes DeviceHub's check, which writes its current value back once and reads it the same, when the device connects";
 }
 
 // copies a "tested" entry into my-devices/<name>/. Never over an existing folder, never anywhere but my-devices.
@@ -122,6 +132,9 @@ export async function installFromLibrary(name, { root = ROOT, examples = showsEx
   if (!entry) return fail('no such library entry');
   if (entry.error) return fail(entry.error);
   if (!allowed(entry.meta.status, readOnly, untested)) return fail(`its status is "${entry.meta.status}": ${allowedText(readOnly, untested)} install`);
+  // any product id DeviceHub's own drivers run (the HS80, the Pulsar, the P75): never installed (safety round 2)
+  const clash = ownClash(entry.meta.vid, entry.meta.pids);
+  if (clash.length) return fail(`DeviceHub's own driver already runs ${clash.join(', ')}, so this library driver is not installed`);
   const to = path.join(root, 'my-devices', name);
   if (fs.existsSync(to)) return fail(`my-devices/${name} already exists: it is left as it is`);
   // the driver must load the way my-devices.mjs will load it
@@ -139,5 +152,5 @@ export async function installFromLibrary(name, { root = ROOT, examples = showsEx
   const last = entry.meta.tested.at(-1) || {};
   const mark = { source: `${entry.origin || 'device-library'}/${name}`, name, id: entry.meta.id, status: entry.meta.status, installedAt: now().toISOString(), devicehub: devicehubVersion(root), libraryTested: last.date || null, libraryDevicehub: last.devicehub || null };
   fs.writeFileSync(path.join(to, 'library.json'), JSON.stringify(mark, null, 2) + '\n', { flag: 'wx' });
-  return { ok: true, name, to, id: entry.meta.id, status: entry.meta.status, note: entry.meta.status === 'tested' ? 'DeviceHub loads it on its next start' : 'DeviceHub loads it read-only on its next start; each setting opens once it passes its self-check' };
+  return { ok: true, name, to, id: entry.meta.id, status: entry.meta.status, proven: hasRealRecord(entry.meta), note: `Installed: ${installNote(entry.meta)}.` };
 }

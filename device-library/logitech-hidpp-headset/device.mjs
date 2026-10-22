@@ -356,16 +356,20 @@ export function createLogitechHeadset({ open = defaultOpen, vendorApp = defaultV
       const c = this.caps;
       if (key === 'sidetone') {
         if (!this.centurion) await this.hidpp(F.SIDETONE, 0x10, [value], { retry: false });   // Solaar Sidetone write fn 0x10 [level]; HC `07 1A level`
-        else if (value !== (await this.readSidetone())) {
-          // Solaar HeadsetSidetone prepare_write: [01, FF, level] (v2+) or [01, level]; nothing is sent when the level is unchanged
+        else {
+          // Solaar HeadsetSidetone prepare_write: [01, FF, level] (v2+) or [01, level]. Solaar skips an unchanged level;
+          // DeviceHub always sends it (driver safety, 22 Oct 2026): the self-check writes the value it just read, and a
+          // skipped write would pass without the headset ever taking the command
           await this.cSub(F.C_SIDETONE, 0x10, c.sidetone.v2 ? [0x01, 0xff, value] : [0x01, value]);
         }
       } else if (key === 'autoOff') {
         if (!this.centurion) await this.hidpp(F.ADC, 0x20, [value], { retry: false });     // Solaar ADCPower write 0x20 [minutes]; HC G535 `05 2D min`
         else {
-          // Solaar _AutoSleepRangeValidator.prepare_write: the bytes just read, only the timer slot changed; unchanged = not sent
+          // Solaar _AutoSleepRangeValidator.prepare_write: the bytes just read, only the timer slot changed. Sent even when
+          // unchanged (driver safety, 22 Oct 2026: the self-check's write of the same value must reach the headset)
           const cur = await this.readAutoOffBytes();
-          if (cur[c.autoOff.slot] !== value) { cur[c.autoOff.slot] = value; await this.cSub(F.C_AUTO_SLEEP, 0x10, cur); }
+          cur[c.autoOff.slot] = value;
+          await this.cSub(F.C_AUTO_SLEEP, 0x10, cur);
         }
       } else if (/^eq\d+$/.test(key)) {
         // Solaar Equalizer write 0x30: [02, gain per band] (PackedRangeValidator write_prefix_bytes b"\x02", signed bytes);

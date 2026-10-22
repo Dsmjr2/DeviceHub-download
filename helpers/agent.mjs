@@ -267,7 +267,9 @@ export async function op(name, b) {
     case 'read': return { values: await core.readNow(has(b.id)) };
     case 'backup': return { file: await core.backupNow(has(b.id), String(b.why || 'manual')) };
     // a library driver's self-check again, on the person's click (diagnose.mjs action "check-again")
-    case 'recheck': { const r = await core.recheck(has(b.id)); return { ran: !!r?.ran, why: r?.why || null, waiting: !!r?.waiting, device: snapshot(b.id) }; }
+    case 'recheck': { const r = await core.recheck(has(b.id)); return { ran: !!r?.ran, why: r?.why || null, waiting: !!r?.waiting, counts: r?.counts || null, device: snapshot(b.id) }; }
+    // "Turn on settings" for a library driver with no real-device record (safety round 2): kept, then its self-check now
+    case 'turn-on': { const r = await core.turnOn(has(b.id)); return { ran: !!r?.ran, on: !!r?.on, why: r?.why || null, waiting: !!r?.waiting, counts: r?.counts || null, device: snapshot(b.id) }; }
     // the daily self-check (Settings > Health): its last result, or run it now
     case 'check-result': return daily.result();
     case 'check-run': return daily.run({ all: true });

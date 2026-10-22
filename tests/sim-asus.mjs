@@ -156,12 +156,33 @@ const roundTrip = async (key, to, d, m) => {
   ok(m.saves === saves && sets(d).length === 2 && sets(d)[1].hex === pad([0x51, 0x31, 0x06, 0x00, 0x00]), 'its old value was sent back and nothing was saved');
   m.sticky.clear();
 
-  // Armoury Crate running: no write at all
+  // Armoury Crate running: reads go on (driver safety, 22 Oct 2026), no write at all, not even of the same value
   mouse.vendorApp = async () => 'ArmouryCrate.UserSessionHelper.exe'; mouse.appAt = 0;
+  mouse.snap = null;
+  ok((await mouse.read()).pollingRate === 1000 && (await mouse.info()).Model === 'ROG Harpe Ace Aim Lab Edition', 'reads go on while Armoury Crate runs');
+  await refused('pollingRate', 1000, 'a same-value write while Armoury Crate runs', d);
   await refused('pollingRate', 500, 'a write while Armoury Crate runs', d);
   await refused('stageCount', 4, 'a stage count while Armoury Crate runs', d);
   await refused('onboardProfile', 2, 'a profile select while Armoury Crate runs', d);
   mouse.vendorApp = async () => null; mouse.appAt = 0;
+
+  // driver safety (22 Oct 2026): the library self-check really sends each value it read (nothing skipped as unchanged)
+  // and every raw byte ends as it was
+  {
+    const { selfCheck } = await import('../helpers/my-devices.mjs');
+    const before = JSON.stringify(m); d.sent.length = 0;
+    const r = await selfCheck(mouse, mouse.write, { backup: async () => true, makerApp: async () => null });
+    const want = ['dpi1', 'dpi2', 'dpi3', 'pollingRate', 'angleSnap', 'liftOff', 'sleep', 'stageCount', 'onboardProfile'];
+    ok(want.every((k) => r.keys?.[k]?.ok), `self-check passes ${want.join(', ')} (${JSON.stringify(r.keys)})`);
+    ok(JSON.stringify({ ...m, saves: 0 }) === JSON.stringify({ ...JSON.parse(before), saves: 0 }), 'the self-check left every raw value as it was');
+    for (const hexStart of ['51 31 00 00', '51 31 04 00 03', '51 31 06 00 00', '51 35 ff 00 ff 00', '51 37 00 00 03', '51 31 0a 00 03', '50 02 00']) ok(d.sent.some((x) => x.hex.startsWith(hexStart)), `the self-check really sent ${hexStart}`);
+    // an angle-snapping byte that is neither 0 nor 1 is not reported, so it is never written back as one
+    m.snap = 2; mouse.snap = null; d.sent.length = 0;
+    ok(!('angleSnap' in (await mouse.read())), 'raw angle snapping 2 is not reported as on or off');
+    const r2 = await selfCheck(mouse, mouse.write, { only: ['angleSnap'], previous: r, backup: async () => true, makerApp: async () => null });
+    ok(!r2.keys?.angleSnap?.ok && m.snap === 2 && !d.sent.some((x) => x.hex.startsWith('51 31 06')), `raw 2 is never written back (${JSON.stringify(r2.keys?.angleSnap)})`);
+    m.snap = 0; mouse.snap = null;
+  }
   ok(!d.bad.length, `cable: only sheet commands, 64 bytes, report 00 (${d.bad.join('; ')})`);
 }
 

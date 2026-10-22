@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRazerMouse, buildReport, crc, MODELS, PIDS } from '../device-library/razer-mouse/device.mjs';
-import { problem } from '../helpers/my-devices.mjs';
+import { problem, selfCheck } from '../helpers/my-devices.mjs';
 import { validateMeta } from '../helpers/device-library.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -22,7 +22,7 @@ const rejects = async (fn, re) => { try { await fn(); return false; } catch (e) 
 // tids: the transaction ids it answers (a wrong one gets 0x05, §2 "Rule of thumb"); perCmd: { 'cc/ii': [tids] } overrides
 function simMouse({ tids = [0x1f], perCmd = {}, power = 'rechargeable', poll = 'rate2', lowBattery = true, idle = true, stages = true, wheel = false, lights = [], dongleLed = false } = {}) {
   const s = {
-    fw: [3, 7], batteryRaw: 204, charging: 0, dpiX: 800, dpiY: 800, stages: [400, 800, 1600, 3200, 6400], active: 2,
+    fw: [3, 7], batteryRaw: 204, charging: 0, dpiX: 800, dpiY: 800, stages: [400, 800, 1600, 3200, 6400], stagesY: null, active: 2,
     pollClassic: 0x01, pollRate2: 0x08, idle: 300, lowBat: 0x12,
     scrollMode: 0, scrollAccel: 0, smartReel: 1, dongleLed: 1, bright: Object.fromEntries(lights.map((id) => [id, 0xb4])),
   };
@@ -50,17 +50,17 @@ function simMouse({ tids = [0x1f], perCmd = {}, power = 'rechargeable', poll = '
         case '04/86': {                                                                  // DPI stages get
           if (!stages) { r[0] = 0x05; break; }
           const b = [0x01, s.active, s.stages.length];
-          s.stages.forEach((d, i) => b.push(i + 1, ...be(d), ...be(d), 0, 0));
+          s.stages.forEach((d, i) => b.push(i + 1, ...be(d), ...be(s.stagesY ? s.stagesY[i] : d), 0, 0));
           ok(b); break;
         }
         case '04/06': {                                                                  // DPI stages set, size 0x26, VARSTORE
           if (!stages) { r[0] = 0x05; break; }
           const count = a[2], act = a[1];
           if (q[5] !== 0x26 || a[0] !== 0x01 || count !== s.stages.length || act < 1 || act > count) { r[0] = 0x03; break; }
-          const nv = [];
-          for (let i = 0; i < count; i++) { const o = 3 + 7 * i, x = (a[o + 1] << 8) | a[o + 2], y = (a[o + 3] << 8) | a[o + 4]; if (a[o] !== i + 1 || x !== y || x < 100 || x > 45000) { r[0] = 0x03; break; } nv.push(x); }
+          const nv = [], ny = [];
+          for (let i = 0; i < count; i++) { const o = 3 + 7 * i, x = (a[o + 1] << 8) | a[o + 2], y = (a[o + 3] << 8) | a[o + 4]; if (a[o] !== i + 1 || (x !== y && !s.stagesY) || x < 100 || x > 45000) { r[0] = 0x03; break; } nv.push(x); ny.push(y); }
           if (r[0] === 0x03) break;
-          s.stages = nv; s.active = act; ok(a.slice(0, 0x26)); break;
+          s.stages = nv; if (s.stagesY) s.stagesY = ny; s.active = act; ok(a.slice(0, 0x26)); break;
         }
         case '02/94': if (wheel) ok([0x01, s.scrollMode]); else r[0] = 0x05; break;       // scroll mode get (read only)
         case '02/96': if (wheel) ok([0x01, s.scrollAccel]); else r[0] = 0x05; break;      // scroll acceleration get
@@ -416,6 +416,45 @@ const refusedOn = async (d, sim, key, value, why) => { const b = sim.sent.length
   await roundTrip(d, sim, 'brightnessAll', 0xff, 'whole-mouse brightness');
 }
 check(allSims.every((s) => s.appChecks >= 0), 'vendor-app check injected (no tasklist in the test)');
+
+// ---- 8c. driver safety (22 Oct 2026): a write-back of the value just read leaves every raw value as it was; reads go on
+// while Synapse runs, writes do not ----
+{
+  const { d, sim } = driverOn('00AB', { tids: [0x1f], perCmd: { '07/81': [0xff], '07/01': [0xff] }, wheel: true, lights: [0x04] }); allSims.push(sim);
+  sim.s.dpiX = 1600; sim.s.dpiY = 800;                                     // separate X / Y, as Synapse can set them
+  sim.s.stagesY = [400, 800, 1200, 3200, 6400];                             // stage 3: X 1600, Y 1200
+  await d.connect();
+  let v = await d.read();
+  check(v.dpi === 1600 && v.dpiY === 800 && v.dpiStage3 === 1600 && v.dpiStage3Y === 1200, `separate X / Y read (${JSON.stringify(v)})`);
+  // the library self-check: each setting written with the value just read
+  const before = JSON.stringify(sim.s), n = sim.sent.length;
+  const r = await selfCheck(d, d.write, { backup: async () => true, makerApp: async () => null });
+  check(r.keys?.dpi?.ok && r.keys?.dpiStage3?.ok && r.keys?.scrollAccel?.ok && r.keys?.smartReel?.ok && r.keys?.brightnessLogo?.ok, `self-check passes (${JSON.stringify(r.keys)})`);
+  check(JSON.stringify(sim.s) === before, `the self-check left every raw value as it was (Y ${sim.s.dpiY}, stage 3 Y ${sim.s.stagesY[2]})`);
+  const dpiSet = sim.sent.slice(n).find((x) => cmdKey(x) === '04/05');
+  check(dpiSet && dpiSet.args.slice(1, 5).join() === [0x06, 0x40, 0x03, 0x20].join(), `the DPI write-back sent X 1600 and Y 800 as read (${dpiSet && hex(dpiSet.args)})`);
+  const writes = sim.sent.slice(n).filter((x) => !(x.id & 0x80)).map(cmdKey);
+  for (const c of ['04/05', '04/06', '02/16', '02/17', '0f/04']) check(writes.includes(c), `the self-check really sent ${c}`);
+  // a new X with Y separate: only X changes
+  check(await d.write('dpi', 2000) === 2000 && sim.s.dpiX === 2000 && sim.s.dpiY === 800, 'a new DPI X with a separate Y: Y stays as read');
+  check(await d.write('dpi', 1600) === 1600 && sim.s.dpiY === 800, 'DPI put back');
+  check(await d.write('dpiStage3', 2400) === 2400 && sim.s.stages[2] === 2400 && sim.s.stagesY[2] === 1200, 'a new stage X with a separate Y: Y stays as read');
+  check(await d.write('dpiStage3', 1600) === 1600 && sim.s.stagesY[2] === 1200, 'stage put back');
+  // a toggle whose raw byte is neither 0 nor 1 is not shown as on or off, so the self-check never writes it back as one
+  sim.s.smartReel = 2;
+  v = await d.read();
+  check(v.smartReel === null, `raw smart reel 2 reads as not on / off (${v.smartReel})`);
+  const m2 = sim.sent.length;
+  const r2 = await selfCheck(d, d.write, { only: ['smartReel'], previous: r, backup: async () => true, makerApp: async () => null });
+  check(!r2.keys?.smartReel?.ok && sim.s.smartReel === 2 && !sim.sent.slice(m2).some((x) => cmdKey(x) === '02/17'), `raw 2 is not written back as 0 or 1 (${JSON.stringify(r2.keys?.smartReel)})`);
+  sim.s.smartReel = 1;
+  // Synapse running: reads go on, writes (even of the same value) are refused and send nothing
+  sim.app = 'Razer Synapse.exe'; sim.clock += 20000;
+  v = await d.read();
+  check(v.dpi === 1600 && v.smartReel === true, 'reads go on while Synapse runs');
+  const w = sim.sent.filter((x) => !(x.id & 0x80)).length;
+  check(await rejects(() => d.write('dpi', 1600), /Synapse/) && sim.sent.filter((x) => !(x.id & 0x80)).length === w, 'a same-value write is refused while Synapse runs, nothing written');
+}
 
 // ---- 9. nothing outside the sheet, ever; every report well formed ----
 const every = allSims.flatMap((s) => s.sent);

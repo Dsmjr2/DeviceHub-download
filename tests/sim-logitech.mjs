@@ -267,7 +267,10 @@ driver.vendorApp = async () => null;
   guard(driver, folder, { status: 'read-only', source: 'device-library/logitech-hidpp-mouse' }, { backup: async (b) => backups.push(b), log: (t) => logs.push(t), now: () => new Date(clock), version: 'v1' });
   check(await driver.connect(false), 'guarded Logitech connects');
   const modeSent = () => m6.sent.filter((s) => s.b[1] === 11 && (s.b[2] & 0xf0) === 0x10).length;
-  check(!fs.existsSync(path.join(folder, 'verified.json')) && backups.length === 0 && modeSent() === 0 && logs.some((t) => /not run: lghub_agent\.exe .*open/.test(t)), `G HUB open: the self-check writes nothing and says so (${logs.join(' | ')})`);
+  // safety round 2: only a simulation record, so nothing is written until the person presses Turn on settings
+  check(!fs.existsSync(path.join(folder, 'verified.json')) && backups.length === 0 && modeSent() === 0 && driver.library.turnOn && logs.some((t) => /Turn on settings/.test(t)), `before Turn on settings nothing is written, and it says so (${logs.join(' | ')})`);
+  const on = await driver.turnOn();
+  check(on.on && !fs.existsSync(path.join(folder, 'verified.json')) && backups.length === 0 && modeSent() === 0 && logs.some((t) => /not run: lghub_agent\.exe .*open/.test(t)), `G HUB open: the self-check writes nothing and says so (${logs.join(' | ')})`);
   driver.vendorApp = async () => null;
   check(await driver.connect(false), 'connects again with G HUB closed');
   let vf = readVerified(folder);

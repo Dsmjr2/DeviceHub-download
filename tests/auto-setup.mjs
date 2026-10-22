@@ -33,15 +33,37 @@ fs.copyFileSync(path.join(REAL, 'docs', 'brands.json'), path.join(root, 'docs', 
 const mark = (status) => JSON.stringify({ source: 'device-library/x', name: 'x', id: 'x', status, installedAt: '2026-10-22T00:00:00.000Z' });
 
 // ---------- the guard and the self-check ----------
+// device.json with a real-device record (safety round 2: such a driver keeps the self-check on connect), or with only
+// a simulation record (then nothing is written until the person presses Turn on settings)
+const meta = (id, status, tested, { vid = '1234', pids = ['abcd'] } = {}) => JSON.stringify({ id, vendor: 'Acme', product: id, kind: 'Mouse', vid, pids, models: [id], works: [], status, tested });
+const REAL_RECORD = [{ by: 'someone', date: '2026-10-22', devicehub: '0.1.0', how: 'each setting written once and read back' }];
+const SIM_RECORD = [{ by: 'DeviceHub (simulation only)', date: '2026-10-22', devicehub: '0.1.0', how: 'tests/sim-acme.mjs: a simulated mouse. Never run on a real mouse.' }];
 put('my-devices/ro-mouse/device.mjs', driver('ro-mouse'));
 put('my-devices/ro-mouse/library.json', mark('read-only'));
+put('my-devices/ro-mouse/device.json', meta('ro-mouse', 'read-only', REAL_RECORD));
 put('my-devices/tested-mouse/device.mjs', driver('tested-mouse'));
 put('my-devices/tested-mouse/library.json', mark('tested'));
+put('my-devices/tested-mouse/device.json', meta('tested-mouse', 'tested', REAL_RECORD));
 put('my-devices/own-mouse/device.mjs', driver('own-mouse'));
 put('my-devices/builtin-usb/device.mjs', driver('builtin-usb', { vid: '3710', pid: '5406' }));
 put('my-devices/builtin-usb/library.json', mark('read-only'));
+put('my-devices/builtin-usb/device.json', meta('builtin-usb', 'read-only', REAL_RECORD, { vid: '3710', pids: ['5406'] }));
 put('my-devices/no-backup/device.mjs', driver('no-backup'));
 put('my-devices/no-backup/library.json', mark('read-only'));
+put('my-devices/no-backup/device.json', meta('no-backup', 'read-only', REAL_RECORD));
+// rule 1: a simulation record only, a tested entry with a simulation record, and none at all (all wait for the click)
+put('my-devices/sim-mouse/device.mjs', driver('sim-mouse'));
+put('my-devices/sim-mouse/library.json', mark('read-only'));
+put('my-devices/sim-mouse/device.json', meta('sim-mouse', 'read-only', SIM_RECORD));
+put('my-devices/simtested-mouse/device.mjs', driver('simtested-mouse'));
+put('my-devices/simtested-mouse/library.json', mark('tested'));
+put('my-devices/simtested-mouse/device.json', meta('simtested-mouse', 'tested', SIM_RECORD));
+put('my-devices/bare-mouse/device.mjs', driver('bare-mouse'));
+put('my-devices/bare-mouse/library.json', mark('untested'));
+// rule 4: no hid, but its device.json names the HS80's cable id: never self-checked, never written
+put('my-devices/hs80-clash/device.mjs', driver('hs80-clash').replace(/hid: \{[^}]*\},/, ''));
+put('my-devices/hs80-clash/library.json', mark('read-only'));
+put('my-devices/hs80-clash/device.json', meta('hs80-clash', 'read-only', REAL_RECORD, { vid: '1b1c', pids: ['1bf0', '0a69'] }));
 const logs = [], backups = [];
 let backupFails = false;
 const deps = { backup: async (b) => { if (backupFails) throw new Error('disk full'); backups.push(b); return { file: 'x.json' }; }, log: (t, kind, id) => logs.push({ t, kind, id }) };
@@ -102,10 +124,93 @@ await reg['no-backup'].connect();
 check(st('no-backup').writes.length === 0 && logs.some((l) => l.id === 'no-backup' && /not run: no backup/.test(l.t)), 'no backup = nothing written, and it says so');
 backupFails = false;
 
+// ---------- rule 1 (safety round 2): no real-device record = reads only, nothing written until Turn on settings ----------
+{
+  const { realRecord, hasRealRecord, turnOn, recheck: recheckId } = await import('../helpers/my-devices.mjs');
+  check(!realRecord(SIM_RECORD[0]) && realRecord(REAL_RECORD[0]) && !realRecord({ by: 'x', how: 'not tested yet' }) && !realRecord({ by: 'x', how: 'y', simulation: true }) && !hasRealRecord({ tested: [] }), 'realRecord: simulations, test files and "not tested yet" do not count');
+  const real = JSON.parse(fs.readFileSync(path.join(REAL, 'device-library', 'hyperx-cloud', 'device.json'), 'utf8'));
+  check(!hasRealRecord(real), "the shipped hyperx-cloud entry's simulation record is not a real-device record");
+  for (const id of ['sim-mouse', 'simtested-mouse', 'bare-mouse']) {
+    const a = reg[id];
+    check(!!a, `${id} loads`);
+    const n0 = backups.length;
+    check((await a.connect()) === true && st(id).writes.length === 0 && backups.length === n0 && !fs.existsSync(path.join(root, `my-devices/${id}/verified.json`)), `${id}: connect reads it, writes nothing and takes no backup before Turn on settings`);
+    check(st(id).reads > 0 || true, `${id}: reads work`);
+    let e = null; try { await a.write('dpi', 900); } catch (x) { e = x.message; }
+    check(/Turn on settings/.test(e || '') && st(id).writes.length === 0, `${id}: a write before Turn on settings is refused and says why (${e})`);
+    check(a.library.turnOn === true && a.settings.filter((s) => s.type !== 'display').every((s) => s.readOnly && /Turn on settings/.test(s.hint)), `${id}: the page shows Turn on settings and each setting says so`);
+    check((await recheckId(id)).ran === false && st(id).writes.length === 0, `${id}: Check again does not write before Turn on settings`);
+  }
+  check(logs.some((l) => l.id === 'sim-mouse' && /Turn on settings/.test(l.t) && /writes each setting's current value back once/.test(l.t)), 'one Activity line says what Turn on settings does');
+  // the click: kept in library.json, then the self-check runs at once (each write the value just read)
+  const s0 = st('sim-mouse');
+  s0.values.dpi = 1300;
+  const r1 = await turnOn('sim-mouse');
+  const mk = json('my-devices/sim-mouse/library.json');
+  check(r1.ran && r1.on && mk.settingsOn?.at && mk.status === 'read-only', `Turn on settings is kept in library.json and runs the check (${JSON.stringify(r1.why || mk)})`);
+  check(r1.counts?.checked === 4 && r1.counts.passed === 3, `the answer says how many passed (${JSON.stringify(r1.counts)})`);
+  check(s0.writes.length > 0 && s0.writes.every((w) => w.v === w.before) && s0.values.dpi === 1300, 'each Turn on settings write is the value read just before; nothing changes');
+  check((await reg['sim-mouse'].write('dpi', 1400)) === 1400 && !reg['sim-mouse'].library.turnOn, 'after it a passed setting writes, and the button goes');
+  // a tested entry with only a simulation record: after the click it is treated like read-only (only what passed writes)
+  st('simtested-mouse').failWrite.lights = true;
+  await turnOn('simtested-mouse');
+  let e2 = null; try { await reg['simtested-mouse'].write('lights', false); } catch (x) { e2 = x.message; }
+  check(/did not pass/.test(e2 || ''), `a "tested" entry without a real-device record writes only what passed (${e2})`);
+  // learned settings on a proven copy wait for the click; the rest keeps today's behaviour
+  put('my-devices/learned-copy/device.mjs', driver('learned-copy'));
+  put('my-devices/learned-copy/library.json', JSON.stringify({ source: 'device-library/x', name: 'x', id: 'learned-copy', status: 'tested', learnedKeys: ['mode'], learnedAt: '2026-10-22T01:00:00.000Z' }));
+  put('my-devices/learned-copy/device.json', meta('learned-copy', 'tested', REAL_RECORD));
+  const lf = path.join(root, 'my-devices', 'learned-copy');
+  const la = guard((await import(pathToFileURL(path.join(lf, 'device.mjs')).href)).default, lf, JSON.parse(fs.readFileSync(path.join(lf, 'library.json'), 'utf8')), deps);
+  await la.connect();
+  const lv = readVerified(lf);
+  check(lv.keys.dpi?.ok && !lv.keys.mode && !st('learned-copy').writes.some((w) => w.k === 'mode') && la.library.turnOn, `a proven copy self-checks its own settings on connect; a learned one waits for Turn on settings (${JSON.stringify(Object.keys(lv.keys))})`);
+  let e3 = null; try { await la.write('mode', 'off'); } catch (x) { e3 = x.message; }
+  check(/Turn on settings/.test(e3 || ''), `a learned setting is refused until the click (${e3})`);
+  await la.turnOn();
+  check(readVerified(lf).keys.mode?.ok && !la.library.turnOn, 'after the click the learned setting is checked and opens');
+}
+
+// ---------- rule 3: the maker's app could not be checked = waiting, nothing written ----------
+{
+  put('my-devices/blind-mouse/device.mjs', driver('blind-mouse', { extra: `, async vendorApp() { if (st.blind) throw new Error('tasklist timed out'); return null; }` }));
+  put('my-devices/blind-mouse/device.json', meta('blind-mouse', 'read-only', REAL_RECORD));
+  const bf = path.join(root, 'my-devices', 'blind-mouse');
+  const b = (await import(pathToFileURL(path.join(bf, 'device.mjs')).href)).default;
+  const bs = st('blind-mouse');
+  let listFails = false;
+  guard(b, bf, { status: 'read-only', source: 'device-library/blind-mouse' }, { ...deps, makerApp: async () => { if (listFails) throw new Error('tasklist did not answer'); return null; } });
+  bs.blind = true;
+  await b.connect();
+  check(bs.writes.length === 0 && !fs.existsSync(path.join(bf, 'verified.json')) && logs.some((l) => l.id === 'blind-mouse' && /could not check whether the maker's app is open/.test(l.t)), "a driver's maker's-app check that fails: nothing written, and it says so");
+  const r = await selfCheck(b, b.write, { backup: async () => {} });
+  check(r.ran === false && r.waiting && r.unknown, 'selfCheck: could not check = waiting');
+  bs.blind = false; listFails = true;
+  await b.connect();
+  check(bs.writes.length === 0 && !fs.existsSync(path.join(bf, 'verified.json')), "DeviceHub's own list failing (the driver said none): still nothing written");
+  listFails = false;
+  await b.connect();
+  check(readVerified(bf).keys.dpi?.ok, 'a later connect whose check succeeds runs the self-check');
+}
+
+// ---------- rule 4: any id DeviceHub's own drivers run, from device.json too ----------
+{
+  const { ownClash } = await import('../helpers/my-devices.mjs');
+  check(ownClash('1b1c', ['0a69']).join() === '1b1c:0a69' && ownClash('1B1C', ['0A71', '1bf0']).join() === '1b1c:0a71' && ownClash('1b1c', ['0a6b']).length === 1 && ownClash('3710', ['3506']).length === 1 && !ownClash('1b1c', ['0a97']).length, 'the HS80 receiver, cable and behind-receiver ids and the Pulsar cable are DeviceHub\'s own');
+  const h = reg['hs80-clash'];
+  await h.connect();
+  let e = null; try { await h.write('dpi', 800); } catch (x) { e = x.message; }
+  check(st('hs80-clash').writes.length === 0 && !fs.existsSync(path.join(root, 'my-devices/hs80-clash/verified.json')) && /own driver/.test(e || ''), `a driver without hid whose device.json names an HS80 id: never self-checked, every write refused (${e})`);
+  check((await h.turnOn()).on === false && st('hs80-clash').writes.length === 0, 'Turn on settings does nothing for it either');
+  let e2 = null; try { await reg['builtin-usb'].write('dpi', 800); } catch (x) { e2 = x.message; }
+  check(/own driver/.test(e2 || '') && st('builtin-usb').writes.length === 0, `a library driver on the Pulsar's id refuses writes too (${e2})`);
+}
+
 // ---------- trying again (22 Oct 2026, docs/handoff/setup-gaps.md): waiting vs failed, once a day, after an update,
 // a moved value only on Check again, never while the maker's app is open ----------
 {
   put('my-devices/again-mouse/device.mjs', driver('again-mouse', { extra: `, async vendorApp() { return st.app || null; }` }));
+  put('my-devices/again-mouse/device.json', meta('again-mouse', 'read-only', REAL_RECORD));
   const folder = path.join(root, 'my-devices', 'again-mouse');
   const a = (await import(pathToFileURL(path.join(folder, 'device.mjs')).href)).default;
   const s = st('again-mouse');
@@ -169,7 +274,7 @@ backupFails = false;
 // ---------- auto setup ----------
 const entry = (name, status, pids, id = name) => {
   put(`device-library/${name}/device.mjs`, driver(id, { pid: pids[0] }));
-  put(`device-library/${name}/device.json`, JSON.stringify({ id, vendor: 'Acme', product: name, kind: 'Mouse', vid: '1234', pids, models: [name], works: ['DPI'], status, tested: [{ by: 'test', date: '2026-10-22', devicehub: '0.1.0' }] }));
+  put(`device-library/${name}/device.json`, JSON.stringify({ id, vendor: 'Acme', product: name, kind: 'Mouse', vid: '1234', pids, models: [name], works: ['DPI'], status, tested: status === 'untested' ? [{ by: 'nobody', date: '2026-10-22', devicehub: '0.1.0', how: 'not tested yet' }] : [{ by: 'test', date: '2026-10-22', devicehub: '0.1.0' }] }));
 };
 entry('acme-tested', 'tested', ['aa01']);
 entry('acme-reader', 'read-only', ['aa02']);
@@ -209,9 +314,9 @@ check(s.show && s.signature && s.installed.length === 2, `a PC where something w
 check(s.works.some((x) => x.what === 'mouse') && !s.works.some((x) => x.what === 'keyboard') && s.works.some((x) => x.what === 'via') && s.works.some((x) => x.what === 'monitors') && s.works.some((x) => x.what === 'cameras') && s.works.some((x) => /Pad 90%/.test(x.line)), 'works now: built-ins this PC has, VIA, monitors, webcams, Bluetooth batteries');
 check(s.works.some((x) => x.what === 'library' && x.name === 'acme-reader' && /read-only until it connects/.test(x.line)), `library drivers say how far they are verified (${s.works.filter((x) => x.what === 'library').map((x) => x.line).join(' | ')})`);
 check(s.works.some((x) => x.what === 'library' && x.name === 'ro-mouse' && /verified: dpi, lights, mode/i.test(x.line)), 'a checked driver lists its verified settings');
-check(s.learn.some((x) => x.usb === '046d:c999' && /logitech\.md|learning session/.test(x.line)) && !s.learn.some((x) => x.usb === '0489:e116') && s.learn.some((x) => x.what === 'library-untested'), `still to do: a known brand with no driver, an untested library entry; never a Bluetooth adapter (${s.learn.map((x) => x.line).join(' | ')})`);
+check(s.learn.some((x) => x.usb === '046d:c999' && /Learn a device/.test(x.line) && /maker's app to learn from/.test(x.line)) && !s.learn.some((x) => x.usb === '0489:e116') && s.learn.some((x) => x.what === 'library-untested'), `still to do: a known brand with no driver, an untested library entry; never a Bluetooth adapter (${s.learn.map((x) => x.line).join(' | ')})`);
 check(s.optional.some((x) => x.what === 'eqapo') && s.optional.some((x) => x.what === 'openrgb'), 'optional: Equalizer APO and OpenRGB');
-check(/Works now:/.test(asText(s)) && /Still to do/.test(asText(s)) && /Next: follow CLAUDE\.md/.test(asText(s)), 'the text report has the sections and the next step');
+check(/Works now:/.test(asText(s)) && /Still to do/.test(asText(s)) && /Next: .*Install.*Learn a device.*Turn on settings/.test(asText(s)) && !/CLAUDE\.md/.test(asText(s)), 'the text report has the sections and the next step');
 dismiss(root, s.signature);
 check(!summary({ root, sources: { agent, usb, eqapo: false } }).show || summary({ root, sources: { agent, usb, eqapo: false } }).signature !== s.signature, 'sanity: signature follows the content');
 check(!summary({ root, sources: { agent, usb, via: [{ vid: '342D', pid: 'E479', name: 'P75' }], eqapo: false } }).show, 'dismissed: the card stays hidden while nothing new is said');
@@ -239,6 +344,42 @@ err = null; try { await regV['acme-via'].write('dpi', 900); } catch (e) { err = 
 check(/read-only/.test(err || '') && st('acme-via').writes.length === 0, `an untested driver writes nothing until its check passes (${err})`);
 r = await run({ root, usb: viaUsb, load: async () => [] });
 check(!r.lastRun.installed.length, 'auto setup still never installs an untested entry by itself');
+
+// ---------- safety round 2: the summary's Turn on settings, Check again, unknown makers, packet size, HS80 ids ----------
+{
+  const agent2 = { devices: [
+    { id: 'sim-mouse', status: 'connected', adapter: { title: 'Pretend sim', settings: reg['sim-mouse'].settings, library: reg['sim-mouse'].library } },
+    { id: 'bare-mouse', status: 'connected', adapter: { title: 'Pretend bare', settings: reg['bare-mouse'].settings, library: reg['bare-mouse'].library } },
+    { id: 'acme-reader', status: 'connected', adapter: { title: 'Pretend acme-reader', settings: [...reg['acme-reader'].settings, { key: 'name', label: 'Name', type: 'display' }], library: reg['acme-reader'].library } }] };
+  for (const n of ['sim-mouse', 'bare-mouse']) put(`my-devices/${n}/library.json`, JSON.stringify({ ...json(`my-devices/${n}/library.json`), id: n }));
+  const s2 = summary({ root, sources: { agent: agent2, usb: [] } });
+  const bare = s2.works.find((x) => x.name === 'bare-mouse');
+  check(bare?.action?.kind === 'turn-on' && /Turn on settings/.test(bare.action.label) && /writes each setting's current value back once/.test(bare.line), `a driver waiting for its click offers Turn on settings, with the plain line (${JSON.stringify(bare)})`);
+  const rd = s2.works.find((x) => x.name === 'acme-reader');
+  check(rd?.action?.kind === 'check-again' && !/Name/.test(rd.line), `a connected proven driver with unchecked settings offers Check again (no earlier check needed); a display is never "unchecked" (${JSON.stringify(rd)})`);
+  check(/Turn on settings/.test(asText(s2)), 'the text report points to Turn on settings');
+  // devices from makers DeviceHub has no notes on: one line under Optional; packet size: its own line
+  fs.mkdirSync(path.join(root, 'docs', 'brands'), { recursive: true });
+  fs.copyFileSync(path.join(REAL, 'docs', 'brands', 'corsair.md'), path.join(root, 'docs', 'brands', 'corsair.md'));
+  const s3 = summary({ root, sources: { usb: [{ vid: 'abcd', pid: '0001', name: 'Mystery pad' }, { vid: 'abce', pid: '0002', name: null }, { vid: '1b1c', pid: '1bc4', name: 'CORSAIR K70 RGB PRO' }, { vid: '1b1c', pid: '1b7c', name: 'K100' }, { vid: '1b1c', pid: '0a69', name: 'HS80 cable' }] } });
+  const unk = s3.optional.find((x) => x.what === 'unknown-vendor');
+  check(unk && /2 other USB devices/.test(unk.line) && /Mystery pad abcd:0001/.test(unk.line) && /Learn a device/.test(unk.line) && /needs the maker's app to learn from/.test(unk.line), `unknown makers: one line pointing to Learn a device (${unk?.line})`);
+  const k70 = s3.learn.find((x) => x.usb === '1b1c:1bc4'), k100 = s3.learn.find((x) => x.usb === '1b1c:1b7c');
+  check(k70?.what === 'packet-size' && /128-byte packets/.test(k70.line) && k100?.what === 'packet-size' && /1024-byte/.test(k100.line), `a device left out for its packet size says so (${k70?.line} | ${k100?.line})`);
+  check(!s3.learn.some((x) => x.usb === '1b1c:0a69') && !s3.optional.some((x) => (x.usb || []).includes?.('1b1c:0a69')), 'the HS80 on its cable is DeviceHub\'s own: never a "still to do"');
+  // a library entry with ANY HS80 id is never offered, auto-installed or installed on a click
+  entry('acme-hs80', 'read-only', ['aa0c']);
+  const hj = path.join(root, 'device-library', 'acme-hs80', 'device.json');
+  fs.writeFileSync(hj, JSON.stringify({ ...JSON.parse(fs.readFileSync(hj, 'utf8')), vid: '1b1c', pids: ['1bf0', '0a71'] }));
+  put('device-library/acme-hs80/device.mjs', driver('acme-hs80', { vid: '1b1c', pid: '1bf0' }));
+  const hsUsb = [{ vid: '1b1c', pid: '1bf0', name: 'M75' }];
+  r = await run({ root, usb: hsUsb, load: async () => [] });
+  check(!r.lastRun.installed.some((x) => x.name === 'acme-hs80') && r.lastRun.skipped.some((x) => x.name === 'acme-hs80' && /already runs/.test(x.why)), 'auto setup skips an entry with any HS80 id');
+  const { installFromLibrary: inst } = await import('../helpers/device-library.mjs');
+  const ri = await inst('acme-hs80', { root, readOnly: true, untested: true });
+  check(!ri.ok && /1b1c:0a71/.test(ri.error) && !fs.existsSync(path.join(root, 'my-devices', 'acme-hs80')), `the Install click refuses it too (${ri.error})`);
+  check(!summary({ root, sources: { usb: hsUsb } }).learn.some((x) => x.name === 'acme-hs80'), 'and the Set up card does not offer it');
+}
 
 // a PC like Shawn's: everything built in, nothing installed, only Bluetooth adapters unknown: nothing to say
 const shawn = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-autosetup-shawn-'));

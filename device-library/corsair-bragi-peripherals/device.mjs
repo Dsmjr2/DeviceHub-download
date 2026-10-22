@@ -30,8 +30,13 @@
 // Safety (CLAUDE.md "Rules that are never broken"; sheet section 4 "Never"): only GET and, for WRITES below, SET are
 // sent, through the helper's own GET / SET. No handle is ever opened (pairing resources 05 / 06 and the key and macro
 // handles `0d 01 02` / `06 01` cannot be reached), no firmware, bootloader or radio path (14-16 are never asked), no
-// sleep-now (03 = 4), no light mode change (03 is only read, for the backup). Steps back while iCUE runs (sheet
-// section 4: both talk on the same channel).
+// sleep-now (03 = 4), no light mode change (03 is only read, for the backup). While iCUE runs it still reads (GETs
+// only, as every other library driver does) but refuses every write (sheet section 4: both talk on the same channel).
+//
+// Write-back of the same value (driver safety, 22 Oct 2026, docs/handoff/driver-safety.md): the page shows minutes and
+// percent, the device holds ms and tenths. write() reads the raw value first; when the value asked for is the one that
+// raw value shows (the self-check's write of what it just read), it sends that exact raw value back, never a rounded
+// one (90 s stays 90000, not 120000; 455 stays 455, not 460), and the read-back is compared raw against what was sent.
 import { createRequire } from 'node:module';
 import { execFile } from 'node:child_process';
 
@@ -223,7 +228,6 @@ export function createDriver({ transport = nativeTransport(), icueRunning = icue
   }
 
   async function readAll() {
-    if (await icueRunning()) throw gone('iCUE started; DeviceHub leaves Corsair devices to iCUE while it runs');
     await probe();
     const v = { at: Date.now() };
     const num = async (id) => (readable[id] ? ok(await get(id))?.value ?? null : null);
@@ -282,8 +286,8 @@ export function createDriver({ transport = nativeTransport(), icueRunning = icue
     // Finds a plugged-in model: the helper's read-only list of Bragi collections (usage page FF42, usage 01; opened
     // with access 0, nothing sent), then one OPEN on its channel. A cable before a receiver (as hs80-direct.js). On a
     // generic Slipstream receiver, one GET 12 on endpoint 09 names the paired model (sheet section 2).
+    // Reads (GETs only) go ahead while iCUE runs; write() refuses then.
     async connect() {
-      if (await icueRunning()) throw new Error('iCUE is running: DeviceHub leaves Corsair devices to iCUE while it runs (close iCUE to use DeviceHub)');
       close();
       const list = String(await transport.request('hidlist', 'FF42 01', 5000));
       const rank = (f) => (f.conn === 'cable' ? 0 : f.generic ? 2 : 1);
@@ -340,9 +344,15 @@ export function createDriver({ transport = nativeTransport(), icueRunning = icue
       if (s.type === 'display') throw new Error(`${s.label} is a reading here: DeviceHub's helper cannot send it`);
       const [id, toRaw, fromRaw, check, why] = MAP[key];
       if (!check(value)) throw new Error(why());
-      const raw = toRaw(value);
-      if (!canSet(helperSets, id, raw)) throw new Error(`DeviceHub's helper cannot send ${key} = ${value}`);
-      if (await icueRunning()) throw new Error('iCUE is open: change this in iCUE, or close iCUE to change it here');
+      if (await icueRunning()) throw Object.assign(new Error('iCUE is open: change this in iCUE, or close iCUE to change it here'), { waiting: true });
+      // the raw value now: the same value goes back as exactly this raw value, never re-derived from rounded units
+      const now = ok(await get(id));
+      if (!now) throw new Error(`the ${m.kind} did not answer a read of ${s.label} before the write (is it awake?)`);
+      const same = fromRaw(now.value) === value;
+      const raw = same ? now.value : toRaw(value);
+      if (!canSet(helperSets, id, raw)) {
+        throw new Error(same ? `the ${m.kind} holds raw ${now.value} for ${s.label}, which DeviceHub's helper cannot send back exactly, so nothing was written` : `DeviceHub's helper cannot send ${key} = ${value}`);
+      }
       const r = await req(`SET ${h2(id)} ${raw}`, 3000);
       if (r === 'GONE') throw gone(`the ${m.name} was unplugged`);
       if (r !== '00') throw new Error(r === 'NONE' || r === 'TIMEOUT' ? `the ${m.kind} did not answer (is it awake?)` : `the ${m.kind} refused it (${r})`);

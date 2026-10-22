@@ -27,6 +27,32 @@ Sony also sells many headsets, but mostly for PlayStation; on a PC, SteelSeries 
 | **Turtle Beach** (incl. ROCCAT) | headset | vendor USB reports | HeadsetControl (some models) | battery, sidetone, mic monitoring | medium: fewer open references |
 | **SteelSeries** | headset, mouse | vendor USB reports; the Arctis line is well known | HeadsetControl, rivalcfg (mice) | headset battery, sidetone, auto-off; mouse DPI and lights | low to medium |
 
+## The device library today (22 Oct 2026)
+
+Sixteen drivers in `device-library/` (status from each `device.json`). None has been run on a real device yet: each
+was written from its sheet below and checked against simulated devices only, so each installs and reads by itself,
+and its settings stay read-only until the person presses Turn on settings (DeviceHub then writes each setting's
+current value back once to make sure it works).
+
+| Driver | Brand | Covers | Status |
+|---|---|---|---|
+| `asus-rog-mouse` | ASUS ROG | ROG mice (Harpe Ace, Keris Wireless AimPoint, Gladius III, Chakram X) | read-only |
+| `corsair-bragi-headset` | Corsair | wireless Bragi headsets other than the HS80 RGB Wireless | read-only |
+| `corsair-bragi-peripherals` | Corsair | Bragi mice and keyboards (64-byte packets only) | untested |
+| `glorious` | Glorious | Model O / O- / D / D- mice, wired and wireless (read only) | untested |
+| `hyperx-cloud` | HyperX | Cloud wireless headsets (HP-era dongles) | untested |
+| `hyperx-peripherals` | HyperX | Pulsefire mice and Alloy / Origins keyboards (info only) | untested |
+| `keychron-via` | Keychron | Keychron's own settings on top of VIA (a driver.json) | untested |
+| `logitech-hidpp-headset` | Logitech | G headsets (HID++ 2.0; PRO X 2 over Centurion) | untested |
+| `logitech-hidpp-keyboard` | Logitech | G keyboards (HID++ 2.0, cable or Lightspeed) | untested |
+| `logitech-hidpp-mouse` | Logitech | G mice (HID++ 2.0, Lightspeed / Bolt or cable) | read-only |
+| `razer-keyboard` | Razer | keyboards (90-byte report) | untested |
+| `razer-mouse` | Razer | mice (90-byte report) | read-only |
+| `steelseries-arctis` | SteelSeries | Arctis headsets | read-only |
+| `steelseries-mouse` | SteelSeries | Aerox, Prime and Rival mice (battery and info, read only) | untested |
+| `turtle-beach-battery` | Turtle Beach | Stealth 700 Gen 3 battery (Airoha RACE, read only) | untested |
+| `wooting` | Wooting | analog keyboards (model, size, layout, key depth; read only) | untested |
+
 ## The mapping sheets
 
 One sheet per brand, with models and USB ids, how the devices talk, the settings map (feature or command ids and

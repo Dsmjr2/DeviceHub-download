@@ -6,12 +6,17 @@ with Claude Code (further down). Either way it never flashes firmware.
 ## Without Claude
 
 1. **Install DeviceHub and plug your devices in.** That is often all it takes. When DeviceHub starts, auto setup
-   compares your USB devices with its shared library (11 drivers so far: Logitech, Razer, ASUS ROG and Glorious mice;
-   SteelSeries Arctis, Corsair, HyperX and Turtle Beach headsets; Keychron and Wooting keyboards; HyperX mice and
-   keyboards). It installs a matching driver by itself when it is "tested" or "read-only";
-   the Overview's Set up card lists the others, with an Install button, and says what works now and what is
-   left. A read-only driver only reads at first: DeviceHub tests each setting once by writing back its current value,
-   and each one that passes can then be changed.
+   compares your USB devices with its shared library (16 drivers so far: Logitech, Razer, ASUS ROG, Glorious,
+   SteelSeries and Corsair mice; Logitech, SteelSeries Arctis, Corsair, HyperX and Turtle Beach headsets; Logitech,
+   Razer, Corsair, Keychron and Wooting keyboards; HyperX mice and keyboards). It installs a matching driver by itself
+   when it is "tested" or "read-only"; the Overview's Set up card lists the others, with an Install button, and says
+   what works now and what is left. What a driver does once installed:
+   - one that has run on a real device: it reads, then tests each setting once by writing back its current value and
+     reading it the same, when the device connects; each one that passes can then be changed;
+   - one that has not run on a real device yet (most of the library today, and every driver Learn a device makes): it
+     only reads. Its settings stay read-only until you press **Turn on settings** on its page or on the Set up card.
+     DeviceHub writes each setting's current value back once to make sure it works.
+   Nothing is installed for a device DeviceHub already runs itself.
 2. **What needs no setup at all:** sound for any USB headset (volume, mic, EQ), monitors over DDC/CI, webcams,
    batteries Windows knows (Bluetooth), Windows Dynamic Lighting devices, and most VIA keyboards.
 3. **Learn a device** (in the sidebar under App, on the Set up card, or "Learn it" on Lighting > This PC) for a device

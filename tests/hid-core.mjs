@@ -60,8 +60,9 @@ const since = (n) => lines.slice(n);
     { id: 'plain', vid: '1234', pid: 'abcd' }]) {
     host.addSpec(spec);
     const now = host.SPECS.at(-1), was = oldAdd(spec);
-    const strip = (s) => JSON.stringify({ ...s, echo: undefined, opts: undefined });
-    check(strip(now) === strip(was) && !now.opts, `${spec.id}: the spec is what it was (${strip(now)} vs ${strip(was)})`);
+    // never: the never-list mark addSpec adds (safety round 2); the channel name and options are as before
+    const strip = (s) => JSON.stringify({ ...s, echo: undefined, opts: undefined, never: undefined });
+    check(strip(now) === strip(was) && !now.opts && now.never === true, `${spec.id}: the spec is what it was, marked for the never list (${strip(now)} vs ${strip(was)})`);
   }
   check(hidSpecs({ id: 'one', hid: { vid: '1234', pid: 'ABCD', len: 8 } }).length === 1 && JSON.stringify(hidSpecs({ id: 'one', hid: { vid: '1234', pid: 'ABCD', len: 8 } })[0]) === JSON.stringify({ id: 'one', vid: '1234', pid: 'ABCD', len: 8 }),
     'a driver without pids gets the one channel it always got ({ id, ...hid })');
@@ -276,5 +277,55 @@ const since = (n) => lines.slice(n);
   check((await v2.open()) === false && since(n).length === 0, 'an extra does not open while the board is closed');
 }
 
-console.log(fails.length ? `hid-core: FAILED: ${fails.join('; ')}` : 'hid-core (several pids, interface/length matching, report ids, raw replies, refused vs gone, input reports on request, extra collections, defaults unchanged): all good');
+// ---- 8. the never list in the send path (22 Oct 2026, safety round 2; helpers/never-guard.mjs): a library or my-devices
+// channel refuses a listed command before any byte goes out; the built-in mouse and keyboard are never checked ----
+{
+  const { neverHit } = await import('../helpers/never-guard.mjs');
+  answer = (chan, cmd) => (cmd === 'OPEN' ? 'OK' : cmd.startsWith('WATCH') ? 'OK' : cmd.startsWith('FSET') ? 'OK' : cmd.startsWith('SEND') ? 'OK' : cmd.startsWith('REQ') ? '00 00' : 'NONE');
+  check(!host.SPECS.slice(0, 2).some((s) => s.never), 'the Pulsar mouse and P75 keyboard channels carry no never mark');
+  // Glorious DFU (report 5, 75), on a featureOnly library channel: refused, nothing sent
+  host.addSpec({ id: 'never-glorious', vid: '258A', pid: '0036', page: 'FF00', usage: '*', featureOnly: true, len: 64, reportId: 0 });
+  const gl = await host.provider([{ vendorId: 0x258a, productId: 0x0036 }]);
+  let n = lines.length;
+  const e1 = await throws(() => gl.sendFeatureReport(5, [0x75, 0, 0]));
+  check(e1?.never && /never list/.test(e1.message) && /firmware update/i.test(e1.message) && !since(n).some((l) => /FSET/.test(l)), `a Glorious DFU feature report is refused before any byte goes out (${e1?.message})`);
+  n = lines.length;
+  await gl.sendFeatureReport(5, [0x04, 0, 0]);
+  check(since(n).some((l) => / FSET 05 04 00 00$/.test(l)), 'another feature report on the same channel goes out unchanged');
+  // Wooting ResetToBootloader on a raw channel, Razer factory mode on an output report: refused
+  host.addSpec({ id: 'never-wooting', vid: '31E3', pid: '1310', page: '1337', usage: '*', len: 256, reportId: 0, reply: 'raw', replyMs: 0 });
+  const wt = await host.provider([{ vendorId: 0x31e3, productId: 0x1310, usagePage: 0x1337 }]);
+  n = lines.length;
+  const e2 = await throws(() => wt.sendReport(0, [0xd0, 0xda, 0x02, 0x00]));
+  check(e2?.never && !since(n).some((l) => /SEND|REQ/.test(l)), `a Wooting bootloader command on a raw channel is refused (${e2?.message})`);
+  host.addSpec({ id: 'never-razer', vid: '1532', pid: '00B7', page: 'FF00', len: 90, reportId: 0 });
+  const rz = await host.provider([{ vendorId: 0x1532, productId: 0x00b7 }]);
+  n = lines.length;
+  const e3 = await throws(() => rz.sendReport(0, [0x00, 0x1f, 0, 0, 0, 0x02, 0x00, 0x04, 0x02]));
+  check(e3?.never && !since(n).some((l) => /REQ/.test(l)), `a Razer factory-mode request is refused (${e3?.message})`);
+  n = lines.length;
+  await rz.sendReport(0, [0x00, 0x1f, 0, 0, 0, 0x02, 0x00, 0x04, 0x03]);
+  check(since(n).some((l) => / REQ .* 00 1f 00 00 00 02 00 04 03$/.test(l)), 'Razer device mode 03 (the normal one) goes out unchanged');
+  // the same bytes on DeviceHub's own channels: never checked, sent exactly as before
+  n = lines.length;
+  const kb2 = await host.provider([{ vendorId: 0x342d, productId: 0xe479, usagePage: 0xff60, usage: 0x61 }]);
+  n = lines.length;
+  await kb2.sendReport(0, [0x0b, 0x00]);   // would match the VIA bootloader entry on a library FF60 channel
+  check(/^hid:342D:E479:FF60:0061:32:0 REQ \d+ 750 0b 00$/.test(since(n).at(-1) || ''), `the P75's own channel is never checked: its bytes go out unchanged (${since(n).at(-1)})`);
+  kb2.close();
+  const mouse2 = await host.provider([{ vendorId: 0x3710, usagePage: 0xff02 }]);
+  n = lines.length;
+  await mouse2.sendReport(8, [0x04, 0, 0, 0x49]);
+  check(/REQ 1 900 04 00 00 49$/.test(since(n).at(-1) || ''), `the Pulsar mouse's request is unchanged (${since(n).at(-1)})`);
+  mouse2.close(); clearTimeout(mouse2.watch); mouse2.watch = null;
+  // the HS80 never goes through hid-host (helpers/hs80-direct.js, its own hs80: channel), so nothing here can block it
+  check(!host.SPECS.some((s) => s.vid === '1B1C' && ['0A6B', '0A69', '0A71'].includes(s.pid)), 'no hid-host channel is the HS80 (it has its own path)');
+  // the matcher itself
+  check(neverHit({ vid: '03F0', pid: '0696', page: 'FF90', reportId: 102, bytes: [0x1e] })?.brand === 'HyperX' && !neverHit({ vid: '03F0', pid: '0696', page: 'FF90', reportId: 6, bytes: [0x1e] }), 'a report-id entry matches only on its report id');
+  check(neverHit({ vid: '1234', pid: '0001', page: 'FF60', bytes: [0x0b] })?.brand.startsWith('VIA') && !neverHit({ vid: '1234', pid: '0001', page: 'FF00', bytes: [0x0b] }) && !neverHit({ vid: '1234', pid: '0001', page: '*', bytes: [0x0b] }), 'a page entry (VIA FF60) applies only on that page');
+  check(neverHit({ vid: '1038', pid: '183A', bytes: [0x11] }) && !neverHit({ vid: '1038', pid: '1234', bytes: [0x11] }), 'a pids entry applies only to its product ids; missing bytes count as the zeros the helper pads with');
+  check(neverHit({ vid: '2516', pid: '0173', bytes: [0x00, 0x00, 0xb0] }) && !neverHit({ vid: '2516', pid: '0173', bytes: [0x00, 0x00, 0x00, 0x00, 0xb0] }), '"within" lets a pattern start a few bytes later, no further');
+}
+
+console.log(fails.length ? `hid-core: FAILED: ${fails.join('; ')}` : 'hid-core (never list in the send path, several pids, interface/length matching, report ids, raw replies, refused vs gone, input reports on request, extra collections, defaults unchanged): all good');
 process.exit(fails.length ? 1 : 0);

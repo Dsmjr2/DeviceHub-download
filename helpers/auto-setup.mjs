@@ -5,23 +5,27 @@
 //                                   devices and runs run() with them
 //   run({ root, usb, busy, log })   matches the USB devices with the device library and installs every matching "tested"
 //                                   or "read-only" entry not installed yet (never over an existing my-devices folder,
-//                                   never one the person removed, never for a device DeviceHub's own drivers run), then
+//                                   never one the person removed, never when ANY of its ids is one DeviceHub's own
+//                                   drivers run), then
 //                                   loads it at once (my-devices.mjs loadNew) or says to restart. Records what it did
 //                                   in setup.json (library names, statuses, USB ids, dates: nothing personal).
 //   summary({ root, sources })      what was found and installed, what works now, what is optional and what still needs
 //                                   a learning session, one plain line each (GET /api/setup, helpers/setup-report.mjs).
 //                                   An item may carry action: { kind: 'library-install', name, label } (the Set up card's
 //                                   Install button: POST /api/library/install) or { kind: 'check-again', id, label }
-//                                   (a library driver's self-check again: POST /api/diagnose/action)
+//                                   (a library driver's self-check again: POST /api/diagnose/action) or
+//                                   { kind: 'turn-on', id, label } (Turn on settings: POST /api/diagnose/action)
 //
-// It installs drivers only (copies into my-devices\); it never writes to a device. A read-only driver writes nothing
-// until each setting passes its self-check (helpers/my-devices.mjs). Off: settings.json "autoSetup": false, or
+// It installs drivers only (copies into my-devices\); it never writes to a device. What an installed driver does next
+// (helpers/my-devices.mjs, safety round 2): one with a real-device record self-checks each setting when the device
+// connects (writes its current value back once and reads it the same) and opens the ones that pass; one with no
+// real-device record (a simulation, or not run yet) only READS until the person presses Turn on settings. Off: settings.json "autoSetup": false, or
 // DEVICEHUB_AUTO_SETUP=0.
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { match, installFromLibrary, ROOT, hex4, devicehubVersion } from './device-library.mjs';
-import { libraryMark, readVerified, loadNew } from './my-devices.mjs';
+import { libraryMark, readVerified, loadNew, ownClash, hasRealRecord, provenCopy, needsTurnOn, writable, TURN_ON_LINE } from './my-devices.mjs';
 
 export const SETUP_FILE = 'setup.json';
 export const cache = { at: 0, value: null };  // server.js keeps /api/setup's last answer here for a minute
@@ -53,12 +57,13 @@ export async function run({ root = ROOT, usb = [], busy = [], log = () => {}, ex
     const ids = m.matched.map(idOf);
     const line = { name: m.name, product: product(m.meta), status: m.meta.status, usb: ids };
     if (m.installed) continue;  // already there: summary() reports it
-    if (ids.every((id) => own.has(id))) { rec.lastRun.skipped.push({ ...line, why: 'DeviceHub\'s own driver already runs it' }); continue; }
+    // ANY id DeviceHub's own drivers run (plugged in, or declared by the entry): never installed (safety round 2)
+    if (ids.some((id) => own.has(id)) || ownClash(m.meta.vid, m.meta.pids).length) { rec.lastRun.skipped.push({ ...line, why: 'DeviceHub\'s own driver already runs it' }); continue; }
     if (ever.has(m.name)) { rec.lastRun.skipped.push({ ...line, why: 'installed before and removed since: not installed again' }); continue; }
     if (!m.installable) { rec.lastRun.offered.push({ ...line, why: m.why }); continue; }
     const r = await installFromLibrary(m.name, { root, readOnly: true, ...(examples != null ? { examples } : {}), now });
     if (!r.ok) { rec.lastRun.skipped.push({ ...line, why: r.error }); continue; }
-    const got = { ...line, id: r.id, at };
+    const got = { ...line, id: r.id, at, proven: !!r.proven };
     rec.installed.push(got); rec.lastRun.installed.push(got); ever.add(m.name);
   }
   if (rec.lastRun.installed.length) {
@@ -67,7 +72,8 @@ export async function run({ root = ROOT, usb = [], busy = [], log = () => {}, ex
     rec.lastRun.loaded = loaded ? loaded.filter((x) => x.id).map((x) => x.name) : null;
     for (const x of rec.lastRun.installed) {
       const live = loaded?.some((l) => l.name === x.name && l.id);
-      const how = x.status === 'tested' ? '' : ' read-only until each setting passes its self-check';
+      const how = !x.proven ? `: it reads the device; its settings change only after you press Turn on settings on its page (${TURN_ON_LINE})`
+        : x.status === 'tested' ? '' : ': each setting opens once DeviceHub has written its current value back and read it the same, when the device connects';
       try { log({ kind: 'good', text: `Set up: ${x.product} driver installed from the device library${how}${live ? "" : " (restart DeviceHub to load it)"}` }); } catch {}
     }
   }
@@ -107,6 +113,26 @@ const sheetFor = (root, brand) => {
   const k = Object.keys(SHEETS).find((n) => brand.toLowerCase().includes(n));
   return k && fs.existsSync(path.join(root, 'docs', 'brands', `${SHEETS[k]}.md`)) ? `docs/brands/${SHEETS[k]}.md` : null;
 };
+const runsIds = () => { try { return Object.keys(require('./pc-map.js').RUNS || {}).map((k) => k.toLowerCase()); } catch { return []; } };
+// product ids a brand sheet lists with packets bigger than the helper's 64-byte channels: { pid: bytes }. Read from the
+// sheet's tables: a row whose "Packet" column (or text) says 128 or 1024 bytes; each 4-hex id in backticks on it.
+const packetCache = {};
+function bigPacketIds(root, sheet) {
+  if (packetCache[sheet]) return packetCache[sheet];
+  const out = {};
+  let text = '';
+  try { text = fs.readFileSync(path.join(root, sheet), 'utf8'); } catch {}
+  for (const row of text.split(/\r?\n/).filter((l) => l.startsWith('|'))) {
+    const m = /\b(128|1024)(?:[- ]byte|\s*bytes|\s*\|)/.exec(row);
+    if (!m) continue;
+    // only the ids the row says use that size, when it names one ("1BE3 uses 128-byte packets"), else every id on it
+    const one = /`([0-9A-F]{4})` uses (128|1024)/i.exec(row) || /\(([0-9A-F]{4}) uses (128|1024)/i.exec(row);
+    if (one && !/\|\s*(128|1024)\b/.test(row)) { out[one[1].toLowerCase()] = one[2]; continue; }
+    for (const id of row.match(/`([0-9A-F]{4})`/gi) || []) out[id.slice(1, 5).toLowerCase()] = m[1];
+    if (one) out[one[1].toLowerCase()] = one[2];
+  }
+  return (packetCache[sheet] = out);
+}
 // not a device a driver is written for
 const NOT_A_DEVICE = /bluetooth|\bhub\b|storage|card reader|mass|camera|webcam|wireless adapter|network|ethernet|wi-?fi|serial|printer|audio interface/i;
 
@@ -123,12 +149,15 @@ export function libraryDrivers(root = ROOT, adapters = {}) {
     const v = readVerified(folder);
     const meta = readJson(path.join(folder, 'device.json'), {}) || {};
     const a = adapters[mark.id];
-    const keys = a?.settings?.map((s) => [s.key, s.label]) || Object.keys(v.keys || {}).map((k) => [k, k]);
+    // a display is a reading, never checked (it was counted as "unchecked" before 22 Oct 2026)
+    const keys = a?.settings?.filter(writable).map((s) => [s.key, s.label]) || Object.keys(v.keys || {}).map((k) => [k, k]);
+    const proven = provenCopy(folder, mark);
+    const turnOn = a?.library?.turnOn ?? (keys.length ? keys.some(([k]) => needsTurnOn(mark, proven, k)) : !proven && !mark.settingsOn?.at);
     const ok = keys.filter(([k]) => v.keys?.[k]?.ok === true).map(([, l]) => l);
     const failed = keys.filter(([k]) => v.keys?.[k]?.ok === false).map(([k, l]) => ({ key: k, label: l, why: v.keys[k].why }));
     const waiting = keys.filter(([k]) => v.keys?.[k]?.waiting).map(([k, l]) => ({ key: k, label: l, why: v.keys[k].why }));
     const unchecked = keys.filter(([k]) => !v.keys?.[k]).map(([, l]) => l);
-    out.push({ name, id: mark.id, status: mark.status, source: mark.source, title: a?.title || (meta.vendor ? `${meta.vendor} ${meta.product}` : name), checkedAt: v.checkedAt || null, firmware: v.firmware || null, verified: ok, failed, waiting, unchecked, deviceStatus: a?.status || null });
+    out.push({ name, id: mark.id, status: mark.status, source: mark.source, title: a?.title || (meta.vendor ? `${meta.vendor} ${meta.product}` : name), checkedAt: v.checkedAt || null, firmware: v.firmware || null, verified: ok, failed, waiting, unchecked, deviceStatus: a?.status || null, proven, turnOn });
   }
   return out;
 }
@@ -164,32 +193,42 @@ export function summary({ root = ROOT, sources = {} } = {}) {
   for (const l of libraryDrivers(root, adapters)) {
     const ro = [...l.failed.map((f) => `${f.label} (${f.why})`), ...(l.status === 'tested' ? [] : l.unchecked)];
     const wait = l.waiting.map((w) => `${w.label} (${w.why})`);
-    const state = !l.checkedAt ? (l.status === 'tested' ? 'its settings change normally; its self-check runs when it connects' : 'read-only until it connects and its self-check runs')
+    const connected = l.deviceStatus === 'connected';
+    const state = l.turnOn
+      ? `it reads the device; its settings are read-only until you press Turn on settings${connected ? '' : ' (connect it first)'}. ${TURN_ON_LINE}`
+      : !l.checkedAt ? (l.status === 'tested' && l.proven ? 'its settings change normally; its self-check runs when it connects' : 'read-only until it connects and its self-check runs')
       : `verified: ${l.verified.length ? l.verified.join(', ') : 'none'}${ro.length ? `; read-only: ${ro.join('; ')}` : ''}${wait.length ? `; waiting, tried again later: ${wait.join('; ')}` : ''}`;
     const item = { what: 'library', name: l.name, line: `${l.title}: library driver (${l.status}), ${state}` };
-    if (l.checkedAt && (l.failed.length || l.waiting.length) && l.deviceStatus === 'connected') item.action = { kind: 'check-again', id: l.id, label: `Check ${l.title} again` };
+    // Turn on settings first; then Check again whenever it is connected and a setting has not passed (failed, waiting,
+    // or never checked: safety round 2, it no longer needs an earlier check)
+    if (l.turnOn && connected) item.action = { kind: 'turn-on', id: l.id, label: `Turn on settings for ${l.title}` };
+    else if (!l.turnOn && connected && (l.failed.length || l.waiting.length || l.unchecked.length)) item.action = { kind: 'check-again', id: l.id, label: `Check ${l.title} again` };
     works.push(item);
-    if (!l.checkedAt || l.failed.length || l.waiting.length || (l.status !== 'tested' && l.unchecked.length)) attention.push(item.line);
+    if (l.turnOn || !l.checkedAt || l.failed.length || l.waiting.length || (l.status !== 'tested' && l.unchecked.length)) attention.push(item.line);
   }
   // what auto setup installed (until dismissed)
   for (const x of setup.installed || []) installed.push({ what: 'installed', name: x.name, line: `${x.product}: installed from the device library on ${String(x.at).slice(0, 10)} (${x.status})` });
   if (installed.length) attention.push(...installed.map((x) => x.line));
   // library entries for this PC's devices that did not install by themselves ("untested", or one removed by the
-  // person): each with an Install button (the person's click installs it, read-only until each setting passes its check)
+  // person): each with an Install button (the person's click installs it; what happens next: installNote)
   let matches = [];
   try { matches = match(sources.usb || [], { root, readOnly: true, untested: true }); } catch {}
   const runs = new Set((sources.usb || []).filter((u) => u.runs).map(idOf));
   for (const m of matches) {
-    if (m.installed || m.matched.every((u) => runs.has(idOf(u)))) continue;
+    // installed already, or ANY of its ids one DeviceHub's own drivers run: nothing to offer (safety round 2)
+    if (m.installed || m.matched.some((u) => runs.has(idOf(u))) || ownClash(m.meta.vid, m.meta.pids).length) continue;
+    const after = hasRealRecord(m.meta)
+      ? (m.meta.status === 'tested' ? 'its settings change normally' : "each setting opens once DeviceHub has written its current value back and read it the same, when the device connects")
+      : `it reads the device; its settings change only after you press Turn on settings on its page (${TURN_ON_LINE})`;
     // a VIA keyboard already runs (keys and lights): a library driver for it only adds the maker's extra settings,
     // so it is offered under Optional, never as still to do
     if (m.matched.every((u) => runs.has(idOf(u)) || via.has(idOf(u)))) {
-      optional.push({ what: 'library-extra', name: m.name, line: `${product(m.meta)}: it already works as a VIA keyboard; a library driver adds the maker's own settings (${m.meta.status}, read-only until each passes DeviceHub's check)`, ...(m.installable ? { action: { kind: 'library-install', name: m.name, label: `Install the ${m.meta.vendor} driver` } } : {}) });
+      optional.push({ what: 'library-extra', name: m.name, line: `${product(m.meta)}: it already works as a VIA keyboard; a library driver adds the maker's own settings (${m.meta.status}; after Install ${after})`, ...(m.installable ? { action: { kind: 'library-install', name: m.name, label: `Install the ${m.meta.vendor} driver` } } : {}) });
       continue;
     }
     const line = m.meta.status === 'untested'
-      ? `${product(m.meta)}: a library driver is there for it, written from the maker's protocol but not yet run on a real device. Install adds it read-only; each setting opens only once it passes DeviceHub's check`
-      : `${product(m.meta)}: a library driver (${m.meta.status}) is there for it but not installed (removed earlier, or auto setup is off). Install adds it${m.meta.status === 'tested' ? '' : ' read-only until each setting passes its check'}`;
+      ? `${product(m.meta)}: a library driver is there for it, written from the maker's protocol but not yet run on a real device. After Install ${after}`
+      : `${product(m.meta)}: a library driver (${m.meta.status}) is there for it but not installed (removed earlier, or auto setup is off). After Install ${after}`;
     const action = m.installable ? { kind: 'library-install', name: m.name, label: `Install the ${m.meta.vendor} driver` } : null;
     learn.push({ what: m.meta.status === 'untested' ? 'library-untested' : 'library-install', name: m.name, line, ...(action ? { action } : {}) }); attention.push(line);
   }
@@ -197,14 +236,24 @@ export function summary({ root = ROOT, sources = {} } = {}) {
   const brands = brandsByVid(root);
   const covered = new Set([...(sources.via || []).map((k) => `${k.vid}:${k.pid}`.toLowerCase()), ...(setup.installed || []).flatMap((x) => x.usb || [])]);
   for (const m of matches) for (const u of m.matched) covered.add(idOf(u));
-  const learned = new Set();
+  const learned = new Set(), unknown = [];
   for (const u of sources.usb || []) {
     const id = idOf(u), b = brands[hex4(u.vid)];
-    if (u.runs || via.has(id) || covered.has(id) || !b || learned.has(id) || NOT_A_DEVICE.test(u.name || '')) continue;
+    if (u.runs || runsIds().includes(id) || via.has(id) || covered.has(id) || learned.has(id) || NOT_A_DEVICE.test(u.name || '')) continue;
     learned.add(id);
+    // a vendor DeviceHub knows no brand for: one line for all of them, under Optional (safety round 2, rule 7)
+    if (!b) { unknown.push(u); continue; }
     const sheet = sheetFor(root, b.name);
-    const line = `${u.name || `${b.name} device`} (USB ${id}${b.shared ? ', the vendor id is a chip maker\'s: unconfirmed' : ''}): no driver yet; ${sheet ? `start from ${sheet}, then ` : ''}a learning session in the maker's app`;
-    learn.push({ what: 'learn', usb: id, line }); attention.push(line);
+    // left out of a library driver because of its packet size (the brand sheet's "Packet" column, e.g. Corsair 1bc4)
+    const big = sheet ? bigPacketIds(root, sheet)[hex4(u.pid)] : null;
+    const line = big
+      ? `${u.name || `${b.name} device`} (USB ${id}): no library driver: it talks in ${big}-byte packets and DeviceHub's helper opens 64-byte ones only (${sheet})`
+      : `${u.name || `${b.name} device`} (USB ${id}${b.shared ? ', the vendor id is a chip maker\'s: unconfirmed' : ''}): no driver yet; Learn a device (in DeviceHub) can make one${sheet ? ` (${sheet} has what is known)` : ''}; it needs the maker's app to learn from`;
+    learn.push({ what: big ? 'packet-size' : 'learn', usb: id, line }); attention.push(line);
+  }
+  if (unknown.length) {
+    const named = unknown.slice(0, 6).map((u) => `${u.name ? `${u.name} ` : ''}${idOf(u)}`);
+    optional.push({ what: 'unknown-vendor', usb: unknown.map(idOf), line: `${plural(unknown.length, 'other USB device')} from makers DeviceHub has no notes on (${named.join(', ')}${unknown.length > 6 ? `, and ${unknown.length - 6} more` : ''}): Learn a device can make a driver for one; it needs the maker's app to learn from` });
   }
   // optional extras
   if (sources.eqapo === false) optional.push({ what: 'eqapo', line: 'Equalizer APO: needed for the headset EQ, mic boost and mic filters (the Headset page has the button; ask before installing)' });
@@ -238,6 +287,9 @@ export function asText(s) {
   sec('Still to do (learning, or a library driver to install):', s.learn);
   sec('Optional:', s.optional);
   if (!out.length) out.push('Nothing found to report.');
-  out.push(s.learn.length ? `Next: follow CLAUDE.md "Adding your own devices" for the ${plural(s.learn.length, 'item')} under "Still to do", in that order.` : 'Next: nothing to set up. Run the checks (npm test) if anything was installed.');
+  const turnOn = s.works.some((w) => w.action?.kind === 'turn-on');
+  out.push(s.learn.length || turnOn
+    ? `Next: for each item under "Still to do", press its Install button, or use Learn a device (in DeviceHub) for one with no driver; then press Turn on settings on the device's page.${turnOn ? ' A driver under "Works now" is waiting for its Turn on settings.' : ''}`
+    : 'Next: nothing to set up.');
   return out.join('\n');
 }

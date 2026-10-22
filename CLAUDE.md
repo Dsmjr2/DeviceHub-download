@@ -45,7 +45,15 @@ not covered (a new device, a download nobody named), or when a step fails and th
    Check again), and the self-check never runs while the maker's app is open. An untested library entry installs on
    the person's click (Set up card > Install) and loads read-only the same way. The learning wizard never learns
    258A (Sinowealth), 22D4 (Laview) or Logitech (046D) ids; for a device with a driver.json driver it adds the learned
-   settings to the my-devices copy (backed up first), never to the library. The report lists what works now, what is optional and
+   settings to the my-devices copy (backed up first), never to the library.
+   **Turn on settings** (22 Oct 2026, docs/handoff/safety-round2.md): a library driver with no real-device record in
+   `device.json` `tested` (simulations and test files do not count; every entry shipped today) and every driver the
+   wizard made installs and reads by itself, but writes nothing, its self-check included, until the person presses Turn
+   on settings on its page or the Set up card; DeviceHub then writes each setting's current value back once. "Could
+   not check whether the maker's app is open" counts as waiting. The never list is checked in the HID send path for
+   every library and my-devices driver (`helpers/never-guard.mjs`); DeviceHub's own Pulsar, P75 and HS80 paths are not.
+   No library driver installs, self-checks or writes when ANY id it declares is in `helpers/pc-map.js` RUNS.
+   The report lists what works now, what is optional and
    what still needs a learning session: do only what it lists. For more detail, these are GET requests to
    `http://127.0.0.1:5577`:
    - `/api/agent/state`: the mouse, headset and keyboard DeviceHub already runs, with each one's model (`info.Model`)

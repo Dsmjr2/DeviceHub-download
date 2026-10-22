@@ -349,8 +349,10 @@ export function createRazerMouse({ sleep = sleepReal, open = defaultOpen, vendor
         if (this.has.has('dpiStage')) v.dpiStage = t.active;
         t.stages.forEach((s, i) => { v[stageKey(i + 1)] = s.x; if (s.y !== s.x) v[`${stageKey(i + 1)}Y`] = s.y; });
       }
-      if (this.has.has('scrollAccel')) v.scrollAccel = (await this.get('scrollAccel', [VARSTORE]))[1] === 1;
-      if (this.has.has('smartReel')) v.smartReel = (await this.get('smartReel', [VARSTORE]))[1] === 1;
+      // raw 0 / 1 only: another byte is not shown as on or off, so it is never written back as 0 or 1 (driver safety)
+      const bit = (b) => (b === 1 ? true : b === 0 ? false : null);
+      if (this.has.has('scrollAccel')) v.scrollAccel = bit((await this.get('scrollAccel', [VARSTORE]))[1]);
+      if (this.has.has('smartReel')) v.smartReel = bit((await this.get('smartReel', [VARSTORE]))[1]);
       if (this.has.has('dongleLed')) v.dongleLed = (await this.get('dongleLed', [0x00]))[0];
       for (const l of this.leds) v[l.key] = (await this.get('brightness', [VARSTORE, l.id], this.tid, `brightness_${hex2(l.id)}`))[2];
       return v;
@@ -397,9 +399,17 @@ export function createRazerMouse({ sleep = sleepReal, open = defaultOpen, vendor
       }
       await this.appCheck();
 
+      // driver safety (22 Oct 2026, docs/handoff/driver-safety.md): DPI is written as an X / Y pair. When the mouse holds
+      // X = Y, both take the new value (as before); when they differ, Y goes back exactly as just read and only X changes,
+      // so writing back the X just read (the self-check) leaves both raw values as they were.
+      let keepY = null;
       if (key === 'dpi') {
         // §3 DPI set: [0] = VARSTORE, [1-2] X BE, [3-4] Y BE, [5-6] 0
-        await this.set('dpi', [VARSTORE, n >> 8, n & 0xff, n >> 8, n & 0xff, 0, 0]);
+        const a = await this.get('dpi', [NOSTORE]);
+        const x0 = (a[1] << 8) | a[2], y0 = (a[3] << 8) | a[4];
+        const y = y0 === x0 ? n : y0;
+        if (y !== n) keepY = y;
+        await this.set('dpi', [VARSTORE, n >> 8, n & 0xff, y >> 8, y & 0xff, 0, 0]);
       } else if (key === 'pollingRate') {
         const map = this.pollKind === 'rate2' ? POLL_RATE2 : POLL_CLASSIC;
         if (this.pollKind === 'rate2') {
@@ -419,7 +429,13 @@ export function createRazerMouse({ sleep = sleepReal, open = defaultOpen, vendor
         const b = t.bytes.slice();
         b[0] = VARSTORE;
         if (key === 'dpiStage') b[1] = n;
-        else { const o = 3 + STAGE_BYTES * (Number(stage[1]) - 1); b[o + 1] = n >> 8; b[o + 2] = n & 0xff; b[o + 3] = n >> 8; b[o + 4] = n & 0xff; }
+        else {
+          // the stage's Y follows X only when the two were equal; otherwise it is sent back as read (see keepY above)
+          const o = 3 + STAGE_BYTES * (Number(stage[1]) - 1), x0 = (b[o + 1] << 8) | b[o + 2], y0 = (b[o + 3] << 8) | b[o + 4];
+          const y = y0 === x0 ? n : y0;
+          if (y !== n) keepY = y;
+          b[o + 1] = n >> 8; b[o + 2] = n & 0xff; b[o + 3] = y >> 8; b[o + 4] = y & 0xff;
+        }
         await this.set('dpiStages', b);
       } else if (key === 'scrollAccel' || key === 'smartReel') {
         await this.set(key, [VARSTORE, n ? 1 : 0]);   // §3 [0] = VARSTORE, [1] = 0/1
@@ -429,7 +445,8 @@ export function createRazerMouse({ sleep = sleepReal, open = defaultOpen, vendor
         await this.set('brightness', [VARSTORE, led.id, n]);   // §3 [0] = VARSTORE, [1] = LED id, [2] = 0-255
       }
       const after = await this.read(), back = after[key];
-      if (back !== n || (key === 'dpi' && after.dpiY !== undefined) || (stage && after[`${key}Y`] !== undefined)) throw new Error(`${key}: wrote ${n}, read back ${back}`);
+      const yKey = key === 'dpi' ? 'dpiY' : stage ? `${key}Y` : null;
+      if (back !== n || (yKey && after[yKey] !== (keepY ?? undefined))) throw new Error(`${key}: wrote ${n}, read back ${back}${yKey && after[yKey] !== (keepY ?? undefined) ? ` (Y ${after[yKey] ?? n}, expected ${keepY ?? n})` : ''}`);
       return back;
     },
 

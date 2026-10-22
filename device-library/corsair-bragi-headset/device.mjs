@@ -26,7 +26,12 @@
 // Safety (CLAUDE.md "Rules that are never broken"; sheet section 4 "Never"): only GET (02) and, for the ids in
 // WRITES, SET (01) are sent, through the helper's own GET / SET. No handle is ever opened (so pairing resources 05 / 06
 // and key or macro handles cannot be reached), no firmware, bootloader or radio path, no sleep-now (03 = 4), no
-// light mode change. The driver steps back while iCUE runs (sheet section 4: both would talk on the same channel).
+// light mode change. While iCUE runs it still reads (GETs only, as every other library driver does) and refuses every
+// write (sheet section 4: both would talk on the same channel).
+// Write-back of the same value (driver safety, 22 Oct 2026, docs/handoff/driver-safety.md): the page shows minutes and
+// percent, the headset holds ms and tenths. write() reads the raw value first; when the value asked for is the one that
+// raw value shows (the self-check's write of what it just read), that exact raw value is sent back, never a rounded one,
+// and the read-back is compared raw against what was sent.
 import { createRequire } from 'node:module';
 import { execFile } from 'node:child_process';
 import { chargerLifted } from '../../public/devices/headset-adapter.js';
@@ -187,7 +192,6 @@ export function createDriver({ transport = nativeTransport(), icueRunning = icue
   }
 
   async function readAll() {
-    if (await icueRunning()) throw gone('iCUE started; DeviceHub leaves Corsair headsets to iCUE while it runs');
     const b = ok(await get(P.battery));
     if (!b) throw new Error('the headset is asleep or off (no reply)');
     const m = cur.model;
@@ -243,8 +247,8 @@ export function createDriver({ transport = nativeTransport(), icueRunning = icue
 
     // Finds a plugged-in model: the helper's read-only list of Bragi collections (usage page FF42, usage 01; opened
     // with access 0, nothing sent), then one OPEN on its channel. The cable before the receiver (as hs80-direct.js).
+    // Reads (GETs only) go ahead while iCUE runs; write() refuses then.
     async connect() {
-      if (await icueRunning()) throw new Error('iCUE is running: DeviceHub leaves Corsair headsets to iCUE while it runs (close iCUE to use DeviceHub)');
       close();
       const list = String(await transport.request('hidlist', 'FF42 01', 5000));
       const found = list.split('|').map((l) => l.trim().split(' ')).filter((w) => w.length >= 2 && w[0].toUpperCase() === '1B1C')
@@ -291,9 +295,15 @@ export function createDriver({ transport = nativeTransport(), icueRunning = icue
       if (!settingsFor(m, { helperSets, readable }).some((s) => s.key === key)) throw new Error(`${key} is not a setting DeviceHub has for the ${m.name}`);
       const [id, toRaw, fromRaw, check, why] = MAP[key];
       if (!check(value, m)) throw new Error(why(m));
-      const raw = toRaw(value);
-      if (!canSet(helperSets, id, raw)) throw new Error(`DeviceHub's helper cannot send ${key} = ${value}`);
-      if (await icueRunning()) throw new Error('iCUE is open: change this in iCUE, or close iCUE to change it here');
+      if (await icueRunning()) throw Object.assign(new Error('iCUE is open: change this in iCUE, or close iCUE to change it here'), { waiting: true });
+      // the raw value now: the same value goes back as exactly this raw value, never re-derived from rounded units
+      const now = ok(await get(id));
+      if (!now) throw new Error('the headset did not answer a read of it before the write (is it on?)');
+      const same = fromRaw(now.value) === value;
+      const raw = same ? now.value : toRaw(value);
+      if (!canSet(helperSets, id, raw)) {
+        throw new Error(same ? `the headset holds raw ${now.value} for ${key}, which DeviceHub's helper cannot send back exactly, so nothing was written` : `DeviceHub's helper cannot send ${key} = ${value}`);
+      }
       const r = await req(`SET ${h2(id)} ${raw}`, 3000);
       if (r === 'GONE') throw gone(`the ${m.name} receiver was unplugged`);
       if (r !== '00') throw new Error(r === 'NONE' || r === 'TIMEOUT' ? 'the headset did not answer (is it on?)' : `the headset refused it (${r})`);

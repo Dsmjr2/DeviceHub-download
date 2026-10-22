@@ -41,7 +41,7 @@
     "sleep timer on/off (0d) on HS80 MAX, Virtuoso RGB Wireless XT and Void Wireless V2, offered only when the headset answers a read of it",
     "sidetone on/off (46, 0 = on) and sidetone level 0-100% (47, 0-1000) on HS80 MAX, Virtuoso RGB Wireless XT and Void Wireless V2, each offered only when the headset answers a read of it",
     "mic muted, read and live notices: a6 on HS80 MAX and Void Wireless V2, 8e on Virtuoso RGB Wireless XT",
-    "steps back while iCUE runs"
+    "reads while iCUE runs; refuses every write while it runs"
   ],
   "doesNotWork": [
     "firmware updates and receiver pairing (never: they stay in iCUE)",

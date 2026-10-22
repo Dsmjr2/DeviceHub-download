@@ -57,6 +57,7 @@ export const CMD = {
   activeStore: { cls: 0x05, id: 0x84, size: 0x01 },   // razerkbd_driver.c razer_get_active_varstore (Huntsman V3 Pro 8KHz); reply [0]
 };
 // razerchromacommon.c razer_chroma_misc_set_polling_rate2 codes
+const bit = (b) => (b === 1 ? true : b === 0 ? false : null);
 export const POLL = { 8000: 0x01, 4000: 0x02, 2000: 0x04, 1000: 0x08, 500: 0x10, 250: 0x20, 125: 0x40 };
 // offered on every polling keyboard; a higher rate is offered once the keyboard itself reads at it
 export const POLL_BASE = [125, 250, 500, 1000];
@@ -190,8 +191,9 @@ export function createRazerKeyboard({ sleep = sleepReal, open = defaultOpen, ven
     // ---- the reads, each with the transaction id OpenRazer uses for this keyboard ----
     async readBrightness() { const b = BRIGHT[this.model.bright]; return (await this.get(b.get[0], b.get[1], [VARSTORE, LED.BACKLIGHT]))[2]; },
     gameArgs() { return this.model.game === 'v2' ? { store: NOSTORE, tid: 0x1f } : { store: VARSTORE, tid: 0xff }; },
-    async readGame() { const g = this.gameArgs(); return (await this.get('ledStateGet', g.tid, [g.store, LED.GAME]))[2] === 1; },
-    async readMacro() { return (await this.get('ledStateGet', 0xff, [VARSTORE, LED.MACRO]))[2] === 1; },
+    // raw 0 / 1 only (driver safety, 22 Oct 2026): another byte reads as null, so it is never written back as 0 or 1
+    async readGame() { const g = this.gameArgs(); return bit((await this.get('ledStateGet', g.tid, [g.store, LED.GAME]))[2]); },
+    async readMacro() { return bit((await this.get('ledStateGet', 0xff, [VARSTORE, LED.MACRO]))[2]); },
     async readPoll() { const code = (await this.get('pollGet', this.model.poll))[1]; const hz = Object.keys(POLL).find((x) => POLL[x] === code); return hz ? Number(hz) : null; },
     async readLowBat() { return (await this.get('lowBatGet', 0xff))[0]; },
 

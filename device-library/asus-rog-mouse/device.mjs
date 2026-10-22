@@ -84,7 +84,9 @@ const debounceText = (c) => `code ${c}: G-Helper reads ${c === 0 ? 'off' : c <= 
 
 const isError = (r) => r[0] === 0xff && r[1] === 0xaa;   // sheet: error reply `FF AA` at bytes 1-2
 const B = (r, n) => r[n - 1];                            // the sheet counts the report id as byte 0; replies come without it
-const VENDOR_APPS = /^(armourycrate.*|ghelper)\.exe$/i;  // sheet section 4: step back while they run
+// sheet section 4: "nothing stops two writers. Step back when ArmouryCrate*.exe or GHelper.exe runs": every write is
+// refused while they run; reads (12 xx) go on (driver safety, 22 Oct 2026: as the other library drivers do)
+const VENDOR_APPS = /^(armourycrate.*|ghelper)\.exe$/i;
 
 class Refused extends Error {}
 
@@ -119,7 +121,6 @@ const adapter = {
     Object.assign(this, { dev: null, ch: null, model: null, link: null, booster: null, dpiLocked: false, snap: null, snapAt: 0, appAt: 0, app: null });
     const dev = await getDevice(PIDS.map((productId) => (productId === OMNI ? { vendorId: VID, productId } : { vendorId: VID, productId, usagePage: 0xff01 })), { prompt });
     if (!dev) return false;
-    await this.stepBackCheck();
     if (!dev.opened) await dev.open();
     this.dev = dev;
     this.ch = new HidChannel(dev, { reportId: 0, length: 64, match: (s, r) => isError(r) || (r[0] === s[0] && r[1] === s[1]) });
@@ -163,7 +164,6 @@ const adapter = {
   // every read in one place: status (12 07), profile (12 04 00), lift-off (12 06)
   async snapshot(fresh) {
     if (!fresh && this.snap && Date.now() - this.snapAt < 1000) return this.snap;
-    await this.stepBackCheck();
     const wireless = LINKS[this.link].wireless;
     let status = null;
     if (this.model.battery) {
@@ -189,7 +189,8 @@ const adapter = {
     v.pollingCode = poll & 0x07; v.pollingHigh = poll >> 4;
     if (!this.booster && !v.pollingHigh && HZ[v.pollingCode]) v.pollingRate = HZ[v.pollingCode];
     v.debounce = B(profile, 15);                                           // sheet: Button response byte 15 (read only)
-    v.angleSnap = B(profile, 17) === 1;                                    // sheet: Angle snapping byte 17
+    const snapRaw = B(profile, 17);                                        // sheet: Angle snapping byte 17
+    if (snapRaw === 0 || snapRaw === 1) v.angleSnap = snapRaw === 1;       // another byte is not reported, so never written back as 0 / 1 (driver safety)
     if (status) { v.sleep = SLEEP[B(status, 6)]; v.lowBattery = B(status, 7); }
     if (lift && LIFT[B(lift, 8)]) v.liftOff = LIFT[B(lift, 8)];            // sheet: Lift-off byte 8
     if (prof) {

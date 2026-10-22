@@ -82,8 +82,10 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
   const backups = [];
   const r = await selfCheck(d, d.write, { folder, mark: { status: 'untested', source: 'device-library' }, backup: async (b) => backups.push(b), version: 'test' });
   fs.rmSync(folder, { recursive: true, force: true });
-  const writable = d.settings.filter((s) => s.type !== 'display');
+  const writable = d.settings.filter((s) => s.type !== 'display' && s.selfCheck !== false);
   check(backups.length === 1, 'the self-check took a backup first');
+  // driver safety (22 Oct 2026): the onboard profile is never self-checked (numbering unconfirmed)
+  if (d.settings.some((s) => s.key === 'profile')) check(r.keys?.profile?.skip === true && r.keys.profile.ok === false, `the self-check skips the onboard profile (${JSON.stringify(r.keys?.profile)})`);
   check(writable.length > 0 && writable.every((s) => (waiting.includes(s.key) ? r.keys?.[s.key]?.waiting === true : r.keys?.[s.key]?.ok === true)), `the self-check passes every setting (waiting: ${waiting.join(', ') || 'none'}) (${JSON.stringify(r.keys || r)})`);
   check(!d.settings.filter((s) => s.type === 'display').some((s) => r.keys?.[s.key]), 'readings are not self-checked');
   check(JSON.stringify(state) === before, 'the self-check left the device as it was');
@@ -110,12 +112,19 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
   check(br.type === 'choice' && br.options.map((o) => o.value).join() === halvingMarks(100, 5).join() && halvingMarks(100, 5).join() === '0,13,25,50,100', `brightness steps = Solaar halving_marks(100, 5) = 0,13,25,50,100 (${JSON.stringify(br.options)})`);
   let v = await d.read();
   check(v.reportRate === 1000 && v.mode === 'onboard' && v.profile === 1 && v.lockWinKey === false && v.fnSwap === true && v.brightness === 100, `read: ${JSON.stringify(v)}`);
-  // profile select (onboard mode): fn 0x30 [00 03]
+  // driver safety (22 Oct 2026): the onboard profile is read only, never self-checked, and its select fn 0x30 is never
+  // sent, not even for the profile already active, until the numbering is confirmed on a real keyboard
+  const prof = d.settings.find((s) => s.key === 'profile');
+  check(prof.readOnly === true && prof.selfCheck === false && /confirmed on a real keyboard/.test(prof.hint), `profile is read-only and selfCheck:false, and its hint says why (${JSON.stringify(prof)})`);
   let n = kb.sent.length;
-  check((await d.write('profile', 3)) === 3 && kb.state.sector === 3 && kb.sent.slice(n).some((b) => h(b.slice(0, 5)) === '01 06 3b 00 03'), 'profile 3 = 01 06 3B 00 03, read back');
-  let e = await refusal(() => d.write('profile', 4));
-  check(/one of/.test(e?.message || '') && kb.state.sector === 3, `profile 4 of 3 refused (${e?.message})`);
-  check((await d.write('profile', 1)) === 1 && kb.state.sector === 1, 'profile put back');
+  let e;
+  for (const val of [3, 1]) {
+    e = await refusal(() => d.write('profile', val));
+    check(/read-only/.test(e?.message || '') && kb.state.sector === 1, `profile ${val} refused as read-only (${e?.message})`);
+  }
+  check(kb.sent.length === n, 'a profile write sends nothing (no fn 0x30, not even a read)');
+  e = await refusal(() => d.write('profile', 4));
+  check(/one of/.test(e?.message || '') && kb.state.sector === 1, `profile 4 of 3 refused (${e?.message})`);
   // a built-in (read-only) profile in use is not reported, and named in info
   kb.state.sector = 0x0101;
   v = await d.read();
@@ -127,7 +136,7 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
   check(e?.waiting === true && /Host/.test(e.message) && !kb.sent.slice(n).some((b) => b[1] === 5 && (b[2] & 0xf0) === 0x30), `report rate in onboard mode waits, unsent (${e?.message})`);
   check((await d.write('mode', 'host')) === 'host' && kb.state.mode === 2 && kb.sent.some((b) => h(b.slice(0, 4)) === '01 06 1b 02'), 'host mode = 01 06 1B 02, read back');
   e = await refusal(() => d.write('profile', 2));
-  check(e?.waiting === true && kb.state.sector === 1, 'profile select waits in host mode');
+  check(/read-only/.test(e?.message || '') && kb.state.sector === 1, 'profile select is refused in host mode too');
   n = kb.sent.length;
   check((await d.write('reportRate', 250)) === 250 && kb.state.rateIndex === 1 && kb.sent.slice(n).some((b) => h(b.slice(0, 4)) === '01 05 3b 01'), '250 Hz = 01 05 3B 01 (0x8061 index 1), read back');
   e = await refusal(() => d.write('reportRate', 8000));
@@ -160,7 +169,7 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
   // G HUB running
   app.name = 'lghub.exe';
   n = kb.sent.length;
-  for (const [k, val] of [['profile', 2], ['mode', 'host'], ['lockWinKey', true], ['fnSwap', false], ['brightness', 50]]) {
+  for (const [k, val] of [['mode', 'host'],['lockWinKey', true], ['fnSwap', false], ['brightness', 50]]) {
     e = await refusal(() => d.write(k, val));
     check(/G HUB/.test(e?.message || '') && e.waiting === true, `${k} refused while G HUB runs (${e?.message})`);
   }
@@ -170,6 +179,7 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
   for (const fn of [0x50, 0x60, 0x70, 0x80]) { e = await refusal(() => d.call(F.ONBOARD_PROFILES, fn, [0, 0])); check(/refused/.test(e?.message || ''), `call() refuses 0x8100 fn 0x${fn.toString(16)}`); }
   for (const id of NEVER) { e = await refusal(() => d.call(id, 0x00)); check(/refused/.test(e?.message || ''), `call() refuses 0x${id.toString(16)}`); }
   check(kb.sent.filter((b) => b[1] === 6).every((b) => [0x00, 0x10, 0x20, 0x30, 0x40].includes(b[2] & 0xf0)), '0x8100: only info, mode and profile functions were sent');
+  check(!kb.sent.some((b) => b[1] === 6 && (b[2] & 0xf0) === 0x30), '0x8100 fn 0x30 (profile select) was never sent');
   const bat = await d.battery();
   check(bat.percent === 81 && bat.charging === false, `battery ${JSON.stringify(bat)}`);
   v = await d.read();
@@ -178,6 +188,30 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
   const raw = await d.rawBackup();
   check(raw.features['0x4521']?.index === 8 && raw.values.brightness === 100, 'rawBackup holds features and values');
   await selfChecked(d, kb.state, { waiting: ['reportRate'] });
+
+  // driver safety (22 Oct 2026): the self-check really sends each value it read (nothing skipped as unchanged); reads go
+  // on while G HUB runs and every write is refused; an F-key byte that is neither 0 nor 1 is never written back as one
+  {
+    const { selfCheck } = await import('../helpers/my-devices.mjs');
+    const writesOf = (from) => kb.sent.slice(from).filter((b) => (b[1] === 6 && (b[2] & 0xf0) === 0x10) || (b[1] === 8 && (b[2] & 0xf0) === 0x20) || (b[1] === 9 && (b[2] & 0xf0) === 0x10) || (b[1] === 11 && [0x20, 0x40].includes(b[2] & 0xf0)));
+    let n0 = kb.sent.length;
+    const r = await selfCheck(d, d.write, { backup: async () => true, makerApp: async () => null });
+    const w = writesOf(n0).map((b) => h(b.slice(1, 3)));
+    check(r.keys?.mode?.ok && r.keys?.fnSwap?.ok && r.keys?.brightness?.ok && ['06 1b', '08 2b', '09 1b', '0b 2b'].every((x) => w.includes(x)), `the self-check really sent mode, key locks, F-key swap and brightness (${w})`);
+    app.name = 'lghub.exe';
+    const v2 = await d.read();
+    check(v2.fnSwap === true && v2.mode === 'onboard', 'reads go on while G HUB runs');
+    n0 = kb.sent.length;
+    e = await refusal(() => d.write('fnSwap', true));
+    check(/G HUB/.test(e?.message || '') && kb.sent.length === n0, 'a same-value write is refused while G HUB runs, nothing sent');
+    app.name = null;
+    kb.state.fnSwap = 2;
+    check((await d.read()).fnSwap === null, 'raw F-key byte 2 reads as not on / off');
+    n0 = kb.sent.length;
+    const r2 = await selfCheck(d, d.write, { only: ['fnSwap'], previous: r, backup: async () => true, makerApp: async () => null });
+    check(!r2.keys?.fnSwap?.ok && kb.state.fnSwap === 2 && !writesOf(n0).length, `raw 2 is never written back (${JSON.stringify(r2.keys?.fnSwap)})`);
+    kb.state.fnSwap = 1;
+  }
 }
 
 // ---- 2. a wired G815: 0x8060, old F-key swap, a brightness slider without steps or on/off, no locks ----
@@ -208,11 +242,24 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
   kb.state.mode = 2;
 }
 
+// ---- 2b. a G915 on its second receiver C547 (OpenRGB LogitechControllerDetect.cpp; docs/brands/logitech.md section 1) ----
+{
+  check(PIDS.includes(0xc547), 'C547 is one of the product ids of the driver');
+  const kb = simKeyboard({ pid: 0xc547, slot: 1, features: { [F.UNIFIED_BATTERY]: 2, [F.DISABLE_KEYS]: 8, [F.NEW_FN_INVERSION]: 9 },
+    state: { percent: 55, charge: 1, disabled: 0x00, fnSwap: 1 }, rateMask: 0, profiles: 0, disableMask: 0x1f, bright: {} });
+  const d = make(kb);
+  check(await d.connect() && d.index === 1 && /G915 receiver C547/.test((await d.info()).Model), 'a G915 on receiver C547 connects on slot 1');
+  check((await d.write('lockWinKey', true)) === true && (await d.write('lockWinKey', false)) === false && kb.state.disabled === 0, 'and writes and puts back on C547');
+}
+
 // ---- 3. a mouse on a keyboard receiver (slot 1 silent, slot 2 answers) is refused ----
 {
   const mouse = simKeyboard({ pid: 0xc545, slot: 2, features: { [F.ADJUSTABLE_DPI]: 3 }, state: {}, rateMask: 0, profiles: 0, disableMask: 0, bright: {} });
   const e = await refusal(() => make(mouse).connect());
   check(/mouse/.test(e?.message || ''), `a mouse is left to the mouse driver (${e?.message})`);
+  const m547 = simKeyboard({ pid: 0xc547, slot: 1, features: { [F.ADJUSTABLE_DPI]: 3 }, state: {}, rateMask: 0, profiles: 0, disableMask: 0, bright: {} });
+  const e2 = await refusal(() => make(m547).connect());
+  check(/mouse/.test(e2?.message || ''), `a mouse on C547 is refused too (${e2?.message})`);
 }
 
 // ---- 4. the library entry ----

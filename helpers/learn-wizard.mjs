@@ -1166,7 +1166,7 @@ export async function act(name, b = {}) {
       const dev = session.device;
       lastSaved = { ...sec, def: c.driver };
       session.saved = { name: r.name, id: r.id, second: true, same: c.same, pid: dev.pid, canSecond: true,
-        note: `${c.same ? `The device takes the same bytes on USB ${dev.vid}:${dev.pid}, so that id was added to the driver.` : `The device takes other bytes on USB ${dev.vid}:${dev.pid}, so the driver keeps its own copy of them for that id.`} Restart DeviceHub to use it there. Each setting stays read-only until it passes its check.` };
+        note: `${c.same ? `The device takes the same bytes on USB ${dev.vid}:${dev.pid}, so that id was added to the driver.` : `The device takes other bytes on USB ${dev.vid}:${dev.pid}, so the driver keeps its own copy of them for that id.`} Restart DeviceHub to use it there. Each setting stays read-only until you press Turn on settings on its page and it passes its check.` };
       if (session.listening) { await command(session.dir, 'quit', null, 'ended', 3000).catch(() => {}); session.listening = false; }
       return { ok: true, ...summary() };
     }
@@ -1187,7 +1187,7 @@ export async function act(name, b = {}) {
       if (session.base.where !== 'my-devices') { try { loaded = await d.loadNew(root); } catch {} }
       lastSaved = null;
       session.saved = { name: r.name, id: r.id, added: keys, into: session.base.name, loaded: !!loaded?.some((x) => x.name === r.name && x.id),
-        note: session.base.where === 'my-devices' ? 'Added to the driver it already had. Restart DeviceHub to load the new settings; each stays read-only until it passes its check.' : 'Added to a copy of its library driver. Each new setting stays read-only until it passes its check.' };
+        note: session.base.where === 'my-devices' ? 'Added to the driver it already had. Restart DeviceHub to load the new settings; each stays read-only until you press Turn on settings and it passes its check.' : 'Added to a copy of its library driver. Each new setting stays read-only until you press Turn on settings and it passes its check.' };
       if (session.listening) { await command(session.dir, 'quit', null, 'ended', 3000).catch(() => {}); session.listening = false; }
       return { ok: true, ...summary() };
     }

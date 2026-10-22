@@ -31,8 +31,14 @@ const RAM = [
   [/^AX[45]/i, 'ADATA XPG', () => 'unknown'],
   [/^PV/i, 'Patriot Viper', () => 'unknown'],
 ];
-// what DeviceHub already runs (its own drivers), by USB vendor:product
-const RUNS = { '3710:5406': 'Mouse page', '1b1c:0a6b': 'Headset page', '342d:e479': 'Keyboard page', '291a:3369': 'camera mic (Sound)' };
+// what DeviceHub already runs (its own drivers), by USB vendor:product. Every id its own drivers open belongs here
+// (22 Oct 2026, safety round 2): the Pulsar's dongle 5406 and its cable 3506 (hid-host.mjs SPECS cablePid), the HS80's
+// receiver 0a6b, its USB cable 0a69 (hs80-direct.js CONNS) and 0a71, the id the HS80 has behind its receiver
+// (docs/brands/corsair.md, OpenLinkHub). Only labels and guards read this list (This PC's "runs" column, OpenRGB's
+// own-device filter, the learning wizard, the library guards in my-devices.mjs, device-library.mjs, auto-setup.mjs);
+// which page runs a device is decided by its own driver, so the Headset page is unchanged. The HS80 RGB USB (0a88) is
+// another model DeviceHub's HS80 code does not open, so it is not listed.
+const RUNS = { '3710:5406': 'Mouse page', '3710:3506': 'Mouse page (its USB cable)', '1b1c:0a6b': 'Headset page', '1b1c:0a69': 'Headset page (its USB cable)', '1b1c:0a71': 'Headset page (behind its receiver)', '342d:e479': 'Keyboard page', '291a:3369': 'camera mic (Sound)' };
 
 let cache = { at: 0, value: null }, pending = null;
 function read() {

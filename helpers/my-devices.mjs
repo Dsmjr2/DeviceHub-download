@@ -38,6 +38,13 @@
 // device's current mode is "waiting" (isWaiting), not failed; failed and waiting settings are tried again on a connect
 // at most once a day each, and at once after a DeviceHub update (checkPlan); a setting whose value moved is tried again
 // only on the person's Check again (recheck(id), from the device's "Why isn't it working" panel).
+// Since 22 Oct 2026, safety round 2 (docs/handoff/safety-round2.md): a driver with no real-device record in its
+// device.json `tested` (simulation and test-file records do not count), and every driver the learning wizard made,
+// installs and READS by itself, but the self-check (its only write by itself) and every write wait until the person
+// presses "Turn on settings" for it (turnOn(id): the device page and the Set up card; kept in library.json settingsOn).
+// Drivers with a real-device record keep the behaviour above; settings the wizard added to one wait for the click too.
+// "Could not check for the maker's app" is waiting, never "not open". No write on any USB id DeviceHub's own drivers
+// run, from any id the driver declares (hid, driver.json, device.json).
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -115,15 +122,62 @@ export function fits(s, v) {
   return (s.options || []).some((o) => same(o.value, v));
 }
 
-// is this driver one DeviceHub's own drivers run (a built-in slot or its USB id)? then no self-check, ever
+// is this driver one DeviceHub's own drivers run (a built-in slot or its USB id)? then no self-check and no write, ever.
+// Since 22 Oct 2026 (safety round 2) every id the driver declares counts, not only its `hid`: its hid ids, a top-level
+// vid / pids (a driver.json), and the vid / pids of the device.json beside it (declared below, from guard()), so a
+// driver that talks over another path (corsair-bragi-peripherals, the HS80's own channel) is caught too. ANY overlap
+// with pc-map.js RUNS (the HS80's receiver 0a6b, cable 0a69 and 0a71 behind the receiver, the Pulsar 5406 and its
+// cable 3506, the P75) counts.
 let runsCache = null;
+const hex4 = (v) => String(v ?? '').trim().toLowerCase().replace(/^0x/, '').padStart(4, '0');
+export function runsIds() {
+  if (!runsCache) { try { runsCache = Object.keys(createRequire(import.meta.url)('./pc-map.js').RUNS || {}).map((k) => k.toLowerCase()); } catch { runsCache = []; } }
+  return runsCache;
+}
+// the 'vid:pid' ids in this list that DeviceHub's own drivers run ([] = none)
+export function ownClash(vid, pids = []) {
+  if (vid == null || vid === '') return [];
+  const runs = runsIds();
+  return [...new Set((pids || []).filter((p) => p != null && p !== '').map((p) => `${hex4(vid)}:${hex4(p)}`))].filter((id) => runs.includes(id));
+}
+const declared = new WeakMap();   // adapter -> [{ vid, pids }] from its device.json (guard)
+export function declaredIds(a) {
+  const out = [];
+  if (a?.hid?.vid) out.push({ vid: a.hid.vid, pids: [a.hid.pid, a.hid.cablePid, ...(a.hid.pids || []), ...Object.keys(a.hid.byPid || {})] });
+  if (a && typeof a.vid === 'string' && Array.isArray(a.pids)) out.push({ vid: a.vid, pids: a.pids });
+  for (const d of declared.get(a) || []) out.push(d);
+  return out;
+}
 function ownDevice(a) {
   if (BUILT_IN.includes(a.id)) return true;
-  if (!a.hid) return false;
-  if (!runsCache) { try { runsCache = Object.keys(createRequire(import.meta.url)('./pc-map.js').RUNS || {}); } catch { runsCache = []; } }
-  const ids = [a.hid.pid, a.hid.cablePid, ...(a.hid.pids || [])].filter(Boolean).map((p) => `${String(a.hid.vid).toLowerCase()}:${String(p).toLowerCase()}`);
-  return ids.some((id) => runsCache.includes(id));
+  return declaredIds(a).some((d) => ownClash(d.vid, d.pids).length > 0);
 }
+// the vendor id the driver declares (for DeviceHub's own maker's-app list), or null
+const vidOf = (a) => { const d = declaredIds(a)[0]; return d ? hex4(d.vid) : null; };
+
+// Rule 1 (22 Oct 2026, safety round 2): a library driver that never ran on a real device may install and READ by
+// itself, but its self-check (the only write DeviceHub makes on its own) runs only after the person presses "Turn on
+// settings" for that device. A real-device record is an entry in device.json `tested` that is not a simulation: not
+// marked `simulation: true`, and its by / how do not say it was simulated, a test file's, or not tested yet.
+const SIMULATED = /simulat|never run on a real|not run on a real|nobody yet|not tested yet|\btests[\\/]/i;
+export const realRecord = (t) => !!t && typeof t === 'object' && t.simulation !== true && !SIMULATED.test(`${t.by || ''} ${t.how || ''}`);
+export const hasRealRecord = (meta) => Array.isArray(meta?.tested) && meta.tested.some(realRecord);
+// a my-devices copy: does it keep today's behaviour (a real-device record, not learned on this PC)?
+export function provenCopy(folder, mark) {
+  if (!mark || mark.learned) return false;
+  return hasRealRecord(readJson(path.join(folder, 'device.json')));
+}
+// is this setting still waiting for the person's Turn on settings? Every setting of a driver without a real-device
+// record (or a learned driver) until the click; on a proven driver, only the settings the learning wizard added
+// (learnedKeys). Settings learned after the click wait for another one.
+export function needsTurnOn(mark, proven, key) {
+  const learned = (mark?.learnedKeys || []).includes(key);
+  if (proven && !learned) return false;
+  const on = mark?.settingsOn?.at;
+  if (!on) return true;
+  return learned && !!mark.learnedAt && mark.learnedAt > on;
+}
+export const TURN_ON_LINE = "DeviceHub writes each setting's current value back once to make sure it works.";
 
 // A setting that refuses only because of how the device is set right now (a mouse on its onboard profiles, the maker's
 // app open) is WAITING, not failed (22 Oct 2026): the driver throws an error with `waiting: true` (or one that says the
@@ -133,13 +187,19 @@ export const isWaiting = (e) => !!e && (e.waiting === true || /\bis running\b.*\
 // how long a failed or waiting setting rests before a connect tries it again by itself (the person's Check again does not wait)
 export const RETRY_MS = 24 * 60 * 60 * 1000;
 
-// the maker's app the driver (or, for a driver without its own check, DeviceHub's list) says is open, or null
+// The maker's app: { app } when one is open, { unknown: why } when it could not be checked, or {} when none is open.
+// Since 22 Oct 2026 (safety round 2) "could not check" is never "not open": a driver's vendorApp() that throws or
+// times out, or DeviceHub's own list (makerApp, by vendor id) failing, means wait. DeviceHub's list is asked even when
+// the driver has its own check, because a driver's check may answer null when its tasklist timed out.
 async function makerAppOf(a, makerApp) {
   if (typeof a.vendorApp === 'function') {
-    try { const app = await inTime(a.vendorApp(), "checking for the maker's app"); return app ? String(app) : null; } catch { return null; }
+    try { const app = await inTime(a.vendorApp(), "checking for the maker's app"); if (app) return { app: String(app) }; } catch (e) { return { unknown: e.message }; }
   }
-  if (typeof makerApp === 'function' && a.hid?.vid) { try { return (await makerApp(String(a.hid.vid).toLowerCase())) || null; } catch {} }
-  return null;
+  const vid = vidOf(a);
+  if (typeof makerApp === 'function' && vid) {
+    try { const app = await inTime(makerApp(vid), "checking for the maker's app"); if (app) return { app: String(app) }; } catch (e) { return { unknown: e.message }; }
+  }
+  return {};
 }
 
 // The self-check of one library driver (see the top of this file). `write` is the driver's own write (not the guarded
@@ -152,8 +212,9 @@ export async function selfCheck(a, write, { folder, mark = {}, backup, log = () 
   if (ownDevice(a)) return { ran: false, why: 'DeviceHub\'s own devices are never self-checked' };
   if (typeof backup !== 'function') return { ran: false, why: 'no backup could be taken, so nothing was written' };
   // the maker's app open: its writes would fight ours, so nothing is written now; a later connect tries again
-  const app = await makerAppOf(a, makerApp);
-  if (app) return { ran: false, waiting: true, why: `${app} (the maker's app) is open, so nothing was written; it runs on a later connect once that app is closed` };
+  const maker = await makerAppOf(a, makerApp);
+  if (maker.app) return { ran: false, waiting: true, why: `${maker.app} (the maker's app) is open, so nothing was written; it runs on a later connect once that app is closed` };
+  if (maker.unknown) return { ran: false, waiting: true, unknown: true, why: `DeviceHub could not check whether the maker's app is open (${maker.unknown}), so nothing was written; it tries again on a later connect` };
   let info = {};
   try { info = (await inTime(a.info(), 'reading its info')) || {}; } catch {}
   const firmware = firmwareOf(info);
@@ -202,7 +263,7 @@ export async function selfCheck(a, write, { folder, mark = {}, backup, log = () 
     + (no.length ? `; ${no.length} ${gated ? 'stay read-only' : 'now read-only'}: ${no.map((s) => `${s.label} (${keys[s.key].why})`).join('; ')}` : '')
     + (waits.length ? `; ${waits.length} waiting, tried again later: ${waits.map((s) => `${s.label} (${keys[s.key].why})`).join('; ')}` : '');
   try { log(text.slice(0, 300), stopped ? 'bad' : no.length ? 'info' : 'good'); } catch {}
-  return { ran: true, ...result };
+  return { ran: true, ...result, counts: { passed: ok.length, checked: checked.length, waiting: waits.length, failed: no.length } };
 }
 
 // may this setting be written? { ok, why }. A setting the learning wizard added to a library copy (mark.learnedKeys)
@@ -216,7 +277,7 @@ export function writeAllowed(mark, verified, key) {
     return { ok: false, why: `its self-check is waiting: ${v.why}` };
   }
   if (mark.status === 'tested' && !(mark.learnedKeys || []).includes(key)) return { ok: true };
-  return { ok: false, why: `this library driver is "${mark.status || 'unknown'}" and the setting has not passed its self-check yet (it runs when the device connects)` };
+  return { ok: false, why: `this library driver is "${mark.status || 'unknown'}" and the setting has not passed its self-check yet` };
 }
 
 // a failed or waiting setting that a connect may try again by itself: not one the driver says never to check, and not
@@ -264,12 +325,15 @@ async function agentDeps() {
 async function makerAppByVid(vid) {
   const dg = await import('./diagnose.mjs');
   const { execFile } = await import('node:child_process');
-  const out = await new Promise((res) => execFile('tasklist', ['/fo', 'csv', '/nh'], { windowsHide: true, timeout: 8000 }, (e, so) => res(e ? '' : String(so || ''))));
+  // a tasklist that fails or times out is "could not check" (an error), never "no app open" (safety round 2)
+  const out = await new Promise((res, no) => execFile('tasklist', ['/fo', 'csv', '/nh'], { windowsHide: true, timeout: 8000 }, (e, so) => (e ? no(new Error(`tasklist did not answer: ${e.message}`)) : res(String(so || '')))));
+  if (!out.trim()) throw new Error('tasklist listed nothing');
   const hit = dg.runningMakers(dg.parseTasklist(out)).find((m) => dg.MAKER_APPS[m.key].vids.includes(vid));
   return hit ? hit.name : null;
 }
 
-// every guarded library driver loaded in this process, by id: the page's "Check again" (recheck) finds it here
+// every guarded library driver loaded in this process, by id: the page's "Check again" (recheck) and "Turn on
+// settings" (turnOn) find it here
 const guarded = new Map();
 // "Check again" (the person's click): the self-check now, for the settings that failed or wait (every setting when none
 // has a result), with no daily wait. { ran, why?, ... } as selfCheck answers. The caller holds the device's lock.
@@ -278,13 +342,39 @@ export async function recheck(id) {
   if (!a?.recheck) return { ran: false, why: 'this device has no driver from the device library to check' };
   return a.recheck();
 }
+// "Turn on settings" (the person's click, rule 1 of safety round 2): kept in its library.json (settingsOn), then the
+// self-check runs now for the settings that need it. { ran, on, why?, counts? }. The caller holds the device's lock.
+export async function turnOn(id) {
+  const a = guarded.get(id);
+  if (!a?.turnOn) return { ran: false, on: false, why: 'this device has no driver from the device library' };
+  return a.turnOn();
+}
 
-// wraps a library driver: writes refused unless allowed, the self-check inside connect(), and each setting's hint says
-// whether it is read-only and why. Returns the adapter (the same object).
+// library.json changed in place (temp file, then rename), keeping whatever else is in it (the wizard's learnedKeys)
+function saveMark(folder, change) {
+  const file = path.join(folder, LIBRARY_FILE), tmp = `${file}.tmp`;
+  const cur = readJson(file) || {};
+  fs.writeFileSync(tmp, JSON.stringify({ ...cur, ...change }, null, 2) + '\n');
+  fs.renameSync(tmp, file);
+}
+
+// wraps a library driver: writes refused unless allowed, the self-check inside connect() (only once the person turned
+// its settings on, for a driver with no real-device record), and each setting's hint says whether it is read-only and
+// why. Returns the adapter (the same object).
 export function guard(a, folder, mark, deps = null) {
   const write = a.write, connect = a.connect;
   const hints = Object.fromEntries(a.settings.map((s) => [s.key, s.hint]));
   let verified = readVerified(folder);
+  // the ids its device.json declares count for the HS80 / own-device guard (ownDevice), whatever path it talks over
+  const meta = readJson(path.join(folder, 'device.json'));
+  if (meta?.vid && Array.isArray(meta.pids)) declared.set(a, [{ vid: meta.vid, pids: meta.pids }]);
+  const proven = provenCopy(folder, mark);
+  const gated = (key) => needsTurnOn(mark, proven, key);
+  const anyGated = () => a.settings.some((s) => writable(s) && gated(s.key));
+  // a tested entry without a real-device record writes like a read-only one: only what passed its check
+  const writeMark = () => (proven || mark.status !== 'tested' ? mark : { ...mark, status: 'read-only' });
+  // the maker's app could not be checked: no writes until a check succeeds (safety round 2, rule 3)
+  let makerUnknown = null;
   // a driver.json driver (helpers/declarative-driver.mjs) builds its settings list fresh on every read (a getter), so
   // the read-only marks are kept here and laid over each list it builds (22 Oct 2026, the learning wizard)
   const marks = {};
@@ -293,55 +383,114 @@ export function guard(a, folder, mark, deps = null) {
     Object.defineProperty(a, 'settings', { configurable: true, enumerable: true,
       get() { return own.get.call(this).map((s) => (marks[s.key] ? { ...s, hint: marks[s.key].hint, readOnly: !!(s.readOnly || marks[s.key].readOnly) } : s)); } });
   }
+  const allowed = (key) => {
+    if (ownDevice(a)) return { ok: false, why: "DeviceHub's own driver runs this device, so this library driver never writes to it" };
+    if (gated(key)) return { ok: false, why: `its settings are not turned on yet: press Turn on settings (${TURN_ON_LINE})`, gated: true };
+    return writeAllowed(writeMark(), verified, key);
+  };
   const relabel = () => {
     for (const s of a.settings) {
       // a display is a reading: always read-only, its hint as the driver wrote it
       if (!writable(s)) { s.readOnly = true; marks[s.key] = { hint: hints[s.key], readOnly: true }; continue; }
-      const w = writeAllowed(mark, verified, s.key);
+      const w = allowed(s.key);
       const k = verified.keys?.[s.key];
-      s.hint = w.ok ? hints[s.key] : [hints[s.key], `Read-only: ${k?.ok === false ? `its self-check did not pass (${k.why})` : k?.waiting ? `its check is waiting (${k.why}); it is tried again on a later connect` : 'checked when the device connects'}.`].filter(Boolean).join(' ');
+      const why = ownDevice(a) ? "DeviceHub's own driver runs this device"
+        : w.gated ? 'press Turn on settings to change it'
+        : k?.ok === false ? `its self-check did not pass (${k.why})`
+        : k?.waiting ? `its check is waiting (${k.why}); it is tried again on a later connect`
+        : 'checked when the device connects';
+      s.hint = w.ok ? hints[s.key] : [hints[s.key], `Read-only: ${why}.`].filter(Boolean).join(' ');
       s.readOnly = !w.ok;
       marks[s.key] = { hint: s.hint, readOnly: s.readOnly };
     }
+    a.library.turnOn = !ownDevice(a) && anyGated();
+    a.library.proven = proven;
   };
+  a.library = { source: mark.source || null, status: mark.status || null, folder: path.basename(folder), proven, turnOn: false, turnOnLine: TURN_ON_LINE };
   relabel();
-  a.library = { source: mark.source || null, status: mark.status || null, folder: path.basename(folder) };
+  const depsNow = async () => ({ ...(await agentDeps()), ...(deps || {}) });
   a.write = async function (key, value) {
     const st = a.settings.find((x) => x.key === key);
     if (st && !writable(st)) throw new Error(`${st.label} is a reading: DeviceHub never writes it`);
-    const w = writeAllowed(mark, verified, key);
+    const w = allowed(key);
     if (!w.ok) throw new Error(`${key} is read-only: ${w.why}`);
+    if (makerUnknown) {
+      const m = await makerAppOf(a, (await depsNow()).makerApp);
+      if (m.unknown) throw Object.assign(new Error(`${key} was not written: DeviceHub could not check whether the maker's app is open (${m.unknown}); it checks again on the next change`), { waiting: true });
+      makerUnknown = null;
+      if (m.app) throw Object.assign(new Error(`${key} was not written: ${m.app} (the maker's app) is running: close it first`), { waiting: true });
+    }
     return write.call(this, key, value);
   };
-  // one self-check run: only = the keys to check (null = all); the result laid over what was known
+  // one self-check run: only = the keys to check (null = all); the result laid over what was known. Settings still
+  // waiting for Turn on settings are never in it.
+  const openKeys = () => a.settings.filter((s) => writable(s) && !gated(s.key)).map((s) => s.key);
   const runCheck = async (only) => {
-    const d = { ...(await agentDeps()), ...(deps || {}) };
+    const d = await depsNow();
     const version = d.version !== undefined ? d.version : versionAt(folder);
     const { log: say, ...rest } = d;
-    const r = await selfCheck(a, write, { folder, mark, ...rest, version, only, previous: verified, log: (t, kind) => say?.(t, kind, a.id) });
+    const open = openKeys();
+    const keys = (only || open).filter((k) => open.includes(k));
+    if (!keys.length) return { ran: false, why: 'its settings are not turned on yet: press Turn on settings first' };
+    const all = keys.length === a.settings.filter(writable).length;
+    const r = await selfCheck(a, write, { folder, mark, ...rest, version, only: only || !all ? keys : null, previous: verified, log: (t, kind) => say?.(t, kind, a.id) });
+    makerUnknown = r.unknown ? r.why : r.ran || (r.waiting && !r.unknown) ? null : makerUnknown;
     if (r.ran) verified = r; else say?.(`${a.title}: library self-check not run: ${r.why}`, 'info', a.id);
     relabel();
     return r;
   };
+  // what a self-check now would do, for the settings that are turned on (checkPlan over just those)
+  const planNow = (info) => {
+    const d = deps || {};
+    const open = openKeys();
+    if (!open.length) return null;
+    return checkPlan({ settings: a.settings.filter((s) => open.includes(s.key)) }, verified, info, { now: d.now, version: d.version !== undefined ? d.version : versionAt(folder) });
+  };
+  let saidGated = false;
   a.connect = async function (...args) {
     const ok = await connect.apply(this, args);
     if (!ok || ownDevice(a)) return ok;
     try {
+      relabel();   // a driver whose settings depend on the model connected (Corsair) lists them only now
       let info = {};
       try { info = (await inTime(a.info(), 'reading its info')) || {}; } catch {}
-      const d = deps || {};
-      const plan = checkPlan(a, verified, info, { now: d.now, version: d.version !== undefined ? d.version : versionAt(folder) });
+      const plan = planNow(info);
       if (plan) await runCheck(plan.only);
+      if (a.library.turnOn && !saidGated) {
+        saidGated = true;
+        const d = await depsNow();
+        d.log?.(`${a.title}: reads work; its settings stay read-only until you press Turn on settings on its page. ${TURN_ON_LINE}`, 'info', a.id);
+      }
     } catch (e) { console.log(`[my-devices] ${a.id}: self-check stopped: ${e.message}`); }
     return ok;
   };
   // the person's "Check again": the failed and waiting settings now (all of them if nothing passed or nothing was
-  // checked yet), no daily wait; a setting whose value moved is tried again only here
+  // checked yet), no daily wait; a setting whose value moved is tried again only here. Never a setting still waiting
+  // for Turn on settings.
   a.recheck = async function () {
     if (ownDevice(a)) return { ran: false, why: 'DeviceHub\'s own devices are never self-checked' };
-    const open = a.settings.filter((s) => writable(s) && !verified.keys?.[s.key]?.ok && !verified.keys?.[s.key]?.skip).map((s) => s.key);
+    const turned = openKeys();
+    if (!turned.length) return { ran: false, why: 'its settings are not turned on yet: press Turn on settings first' };
+    const open = turned.filter((k) => !verified.keys?.[k]?.ok && !verified.keys?.[k]?.skip);
     if (verified.checkedAt && !open.length) return { ran: false, why: 'every setting already passed its check' };
-    return runCheck(verified.checkedAt ? open : null);
+    return runCheck(verified.checkedAt ? open : turned);
+  };
+  // the person's "Turn on settings": recorded in library.json, then the self-check now for what needs it
+  a.turnOn = async function () {
+    if (ownDevice(a)) return { ran: false, on: false, why: 'DeviceHub\'s own driver runs this device, so this library driver never writes to it' };
+    const at = (deps?.now ? deps.now() : new Date()).toISOString();
+    if (anyGated() || !mark.settingsOn?.at) {
+      mark.settingsOn = { at };
+      try { saveMark(folder, { settingsOn: mark.settingsOn }); } catch (e) { delete mark.settingsOn; relabel(); return { ran: false, on: false, why: `it could not be saved (${e.message}), so nothing was turned on` }; }
+      relabel();
+      const d = await depsNow();
+      d.log?.(`${a.title}: settings turned on. ${TURN_ON_LINE}`, 'info', a.id);
+    }
+    let info = {};
+    try { info = (await inTime(a.info(), 'reading its info')) || {}; } catch {}
+    const plan = planNow(info);
+    if (!plan) return { ran: false, on: true, why: 'nothing needed checking: the settings already passed their check' };
+    return { on: true, ...(await runCheck(plan.only)) };
   };
   guarded.set(a.id, a);
   return a;

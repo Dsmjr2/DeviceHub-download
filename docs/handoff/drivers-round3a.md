@@ -28,7 +28,7 @@ interface 3, page FFA0 / 01, report 0x51, 64-byte frames).
 | Setting | HID++ 2.0 headsets | PRO X 2 LIGHTSPEED (Centurion) |
 |---|---|---|
 | Battery | 0x1004 / 0x1000, else 0x1F20 fn 0x00: mV, bit0 valid, bit1 charging (Solaar `decipher_adc_measurement`, voltage curve `estimate_battery_level_percentage`) | 0x0104 fn 0x00: b0 %, b2 1 / 2 = charging (HC `parseCenturionBatteryResponse`) |
-| Sidetone (slider) | 0x8300 read 0x00 -> b0, write 0x10 [level], 0-100 (Solaar `Sidetone`; HC `07 1A level`) | 0x0604 read 0x00, write 0x10 [01 FF level] (v2+) or [01 level]; range = gain steps from fn 0x20 b2 (Solaar `HeadsetSidetone`); an unchanged level is not re-sent |
+| Sidetone (slider) | 0x8300 read 0x00 -> b0, write 0x10 [level], 0-100 (Solaar `Sidetone`; HC `07 1A level`) | 0x0604 read 0x00, write 0x10 [01 FF level] (v2+) or [01 level]; range = gain steps from fn 0x20 b2 (Solaar `HeadsetSidetone`); an unchanged level is sent too (driver-safety.md) |
 | Turn off when idle | 0x1F20 v2+ read 0x10 / write 0x20, 0-255 min (Solaar `ADCPower`); G535 a choice of 0/1/2/5/10/15/30 (HC `validateInactiveTime`) | 0x0108 read 0x00 / write 0x10, the other timer slots sent back as read (Solaar `_AutoSleepRangeValidator`: v4+ 3 bytes, v3 2 bytes slot 1) |
 | Mic muted (display) | 0x0601 read fn 0x10 (Solaar `HeadsetMicMute`); the write fn 0x20 is never sent | the same through the bridge |
 | EQ per band (sliders) | 0x8310: caps 0x00, band Hz 0x10 [g*7], read 0x20 [00], write 0x30 [02, gains], the other bands sent back as read (Solaar `Equalizer`) | not covered |
@@ -62,7 +62,8 @@ included because the report rate is only changed live in host mode. The library 
 so it never switches a keyboard. Profile memory (0x8100 fn 0x50-0x80) is refused in `call()` like the mouse driver.
 
 **Not covered**: profile editing, lights (0x8071 / 0x8081, no read-back), G-key / M-key remaps, a game mode beyond the
-key locks, the K375s-style 0x40A3 swap, PRO X TKL / G915 X (no ids in any source), and receiver **C547** (below).
+key locks, the K375s-style 0x40A3 swap, PRO X TKL / G915 X (no ids in any source). Receiver C547 was added later
+(driver-safety.md), and the onboard profile is now shown only, never selected (driver-safety.md).
 
 ## 3. `razer-keyboard`
 
@@ -129,9 +130,7 @@ As full lines, against package.json as it stood at the end of this job (it alrea
 
 ## Left for others
 
-- **Receiver C547** (OpenRGB's second G915 receiver): `tests/device-library.mjs` uses `046d:c547` as its example of
-  a receiver no library entry claims ("devices with no entry match nothing"), so the keyboard driver leaves it out.
-  Changing that test's example id to an unused one (say `046d:c5ff`) lets C547 go into `RECEIVERS` and device.json.
+- ~~Receiver C547~~: done in driver-safety.md (the test's example id is now `046d:c5ff`).
 - `docs/handoff/driver-coverage.md` could gain these three sections; this note stands in for it.
 
 ## Unconfirmed (check with `helpers/hid-caps.ps1` and one read before any write)

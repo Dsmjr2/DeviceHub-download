@@ -37,13 +37,16 @@ write('device-library/acme-reader/device.mjs', driver('acme-reader'));
 write('device-library/acme-reader/device.json', meta({ id: 'acme-reader', pids: ['abcf'], status: 'read-only' }));
 write('device-library/broken-one/device.mjs', driver('broken-one'));
 write('device-library/broken-one/device.json', '{ "vid": ');
-const usb = [{ vid: '1234', pid: 'abce', name: 'Acme Pro (cable)' }, { vid: '046d', pid: 'c547', name: 'Logitech receiver' }, { vid: '1234', pid: 'ABCF', name: '' }];
+const usb = [{ vid: '1234', pid: 'abce', name: 'Acme Pro (cable)' }, { vid: '046d', pid: 'c5ff', name: 'Logitech receiver' }, { vid: '1234', pid: 'ABCF', name: '' }];
 let m = match(usb, { root });
 const mb = Object.fromEntries(m.map((x) => [x.name, x]));
 check(mb['acme-pro-mouse']?.installable === true && mb['acme-pro-mouse'].matched[0].pid === 'abce', `a USB device finds its tested entry by vid and any of its pids (${JSON.stringify(mb['acme-pro-mouse'])})`);
 check(mb['acme-reader'] && mb['acme-reader'].installable === false && /read-only/.test(mb['acme-reader'].why), 'a read-only entry is found but not installable');
 check(!mb['broken-one'] && list({ root }).find((e) => e.name === 'broken-one')?.error, 'a broken device.json is listed with its problem, never matched');
 check(m.length === 2 && match([{ vid: '9999', pid: '0001' }], { root }).length === 0, 'devices with no entry match nothing');
+// the example's unclaimed receiver is unclaimed in the real library too; C547 belongs to the G915 keyboard driver (22 Oct 2026)
+check(match([{ vid: '046d', pid: 'c5ff' }], { root: REAL }).length === 0, '046d:c5ff (the unclaimed example) matches no real library entry');
+check(match([{ vid: '046d', pid: 'c547' }], { root: REAL }).map((x) => x.name).join() === 'logitech-hidpp-keyboard', `046d:c547 matches only logitech-hidpp-keyboard (${match([{ vid: '046d', pid: 'c547' }], { root: REAL }).map((x) => x.name)})`);
 check(/status/.test(validateMeta(JSON.parse(meta({ status: 'works' }))) || ''), 'an unknown status is refused');
 // untested entries (22 Oct 2026): installable only when asked (the person's click), guarded like read-only ones
 write('device-library/acme-new/device.mjs', driver('acme-new'));
@@ -55,8 +58,21 @@ check(mu?.installable === true && /read-only/.test(mu.note || ''), `asked for, i
 check(!(await installFromLibrary('acme-new', { root, readOnly: true })).ok, 'without untested: true it does not install');
 const ru = await installFromLibrary('acme-new', { root, readOnly: true, untested: true });
 check(ru.ok && JSON.parse(fs.readFileSync(path.join(root, 'my-devices', 'acme-new', 'library.json'), 'utf8')).status === 'untested' && /read-only/.test(ru.note), `with untested: true it installs, marked untested (${ru.error})`);
+check(/Turn on settings/.test(ru.note) && /current value back once/.test(ru.note) && ru.proven === false, `with no real-device record the note says what happens: reads, then Turn on settings (${ru.note})`);
 fs.rmSync(path.join(root, 'my-devices', 'acme-new'), { recursive: true, force: true });
 fs.rmSync(path.join(root, 'device-library', 'acme-new'), { recursive: true, force: true });
+// safety round 2: ANY product id DeviceHub's own drivers run (here the HS80's cable, 0a69) = never installed, by
+// itself or on a click; one id is enough
+write('device-library/acme-hs/device.mjs', driver('acme-hs'));
+write('device-library/acme-hs/device.json', meta({ id: 'acme-hs', vid: '1b1c', pids: ['1bf0', '0a69'], status: 'untested', tested: [] }));
+const rh = await installFromLibrary('acme-hs', { root, readOnly: true, untested: true });
+check(!rh.ok && /own driver already runs 1b1c:0a69/.test(rh.error) && !fs.existsSync(path.join(root, 'my-devices', 'acme-hs')), `an entry with one HS80 id is refused (${rh.error})`);
+fs.rmSync(path.join(root, 'device-library', 'acme-hs'), { recursive: true, force: true });
+{
+  const { installNote } = await import('../helpers/device-library.mjs');
+  const rec = [{ by: 'Sam', date: '2026-10-22', devicehub: '0.1.0', how: 'each setting written once and read back' }];
+  check(/change normally/.test(installNote({ status: 'tested', tested: rec })) && /when the device connects/.test(installNote({ status: 'read-only', tested: rec })) && /Turn on settings/.test(installNote({ status: 'tested', tested: [{ ...rec[0], how: 'simulation only' }] })), 'installNote follows the real-device record');
+}
 
 // install, then it loads as a my-devices driver
 let r = await installFromLibrary('acme-pro-mouse', { root });

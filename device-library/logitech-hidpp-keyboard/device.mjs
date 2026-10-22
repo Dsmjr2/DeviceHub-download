@@ -24,9 +24,10 @@ const hex2 = (b) => b.toString(16).padStart(2, '0');
 // sheet section 1 "Keyboards" (OpenRGB LogitechControllerDetect.cpp, Solaar descriptors.py): wired product ids, and the
 // receivers OpenRGB names G915 receivers (C541, C547) and the G915 TKL receiver (C545). Solaar descriptors.py lists the
 // G213 / G512 / G815 / PRO on USB interface 1; base_usb.py puts Lightspeed receivers on interface 2.
-// C547 (OpenRGB's second G915 receiver) is left out for now: tests/device-library.mjs uses 046d:c547 as its example of a
-// receiver no library entry claims (docs/handoff/drivers-round3a.md, left for others).
-export const RECEIVERS = { 0xc541: 'G915 receiver', 0xc545: 'G915 TKL receiver' };
+// C547: OpenRGB LogitechControllerDetect.cpp names it the G915's second receiver (docs/brands/logitech.md section 1,
+// "G915 | 0xC33E | 0xC541, 0xC547"). Added 22 Oct 2026 (docs/handoff/driver-safety.md). Recent Lightspeed mice may ship
+// on it too (the sheet's open question); a mouse on it is refused by its 0x2201 feature, as on C541 / C545.
+export const RECEIVERS = { 0xc541: 'G915 receiver', 0xc547: 'G915 receiver', 0xc545: 'G915 TKL receiver' };
 export const WIRED = { 0xc33e: 'G915', 0xc343: 'G915 TKL', 0xc33f: 'G815', 0xc355: 'G515 LIGHTSPEED TKL', 0xc33c: 'G512', 0xc336: 'G213', 0xc339: 'PRO Gaming Keyboard' };
 export const PIDS = [...Object.keys(RECEIVERS), ...Object.keys(WIRED)].map(Number);
 
@@ -111,7 +112,12 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
       if (this.features[F.ONBOARD_PROFILES]) {
         out.push({ key: 'mode', label: 'Settings source', type: 'choice', hint: 'Host mode: the keyboard takes settings live and goes back to onboard on re-plug. Solaar notes host mode once upset a G915 TKL\'s function keys.',
           options: [{ value: 'onboard', label: 'Onboard (the profiles stored in the keyboard)' }, { value: 'host', label: 'Host (DeviceHub sets them live)' }] });
-        if (c.profiles) out.push({ key: 'profile', label: 'Onboard profile', type: 'choice', hint: 'Picks one of the profiles stored in the keyboard; nothing in them is changed. Onboard mode only.',
+        // driver safety (22 Oct 2026): read-only and never self-checked until the numbering is confirmed on a real
+        // keyboard. Solaar numbers the 0x8100 fn 0x40 sector 1-15; libratbag quirks the index (the mouse driver's
+        // choice). With the wrong one the self-check would select the wrong profile and its put-back write the same
+        // wrong number (docs/handoff/drivers-round3a.md, "Unconfirmed").
+        if (c.profiles) out.push({ key: 'profile', label: 'Onboard profile', type: 'choice', readOnly: true, selfCheck: false,
+          hint: 'Shown only: which onboard profile is active. Picking one is switched off until the profile numbering is confirmed on a real keyboard (Solaar and libratbag number them differently).',
           options: Array.from({ length: c.profiles }, (_, i) => ({ value: i + 1, label: `Profile ${i + 1}` })) });
       }
       for (const d of DISABLE) if (c.disableMask & d.bit) out.push({ key: d.key, label: d.label, type: 'toggle', ...(d.hint ? { hint: d.hint } : {}) });
@@ -227,7 +233,8 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
       return s >= 1 && s <= this.caps.profiles ? s : undefined;
     },
     async readDisabled() { return (await this.call(F.DISABLE_KEYS, 0x10))[0]; },   // Solaar DisableKeyboardKeys read 0x10, byte 0 = bits
-    async readFnSwap() { return (await this.call(this.caps.fnSwap, 0x00))[0] === 1; },   // BooleanValidator: byte 0, 0x01 = on
+    // BooleanValidator: byte 0, 0x01 = on; any byte but 00 / 01 reads as null, so it is never written back as one (driver safety)
+    async readFnSwap() { const b = (await this.call(this.caps.fnSwap, 0x00))[0]; return b === 1 ? true : b === 0 ? false : null; },
     async readBrightness() {
       const b = this.caps.brightness;
       // Solaar BrightnessControl.rw_class.read: with on/off, fn 0x30 byte 0 bit 0 clear = off (0); then fn 0x10 2 bytes BE
@@ -271,12 +278,13 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
       if (s.type === 'toggle' && typeof value !== 'boolean') throw new Error(`${s.label} is on or off (true / false)`);
       if (s.type === 'choice' && !s.options.some((o) => o.value === value)) throw new Error(`${s.label} must be one of ${s.options.map((o) => o.value).join(', ')}`);
       if (s.type === 'slider' && !(Number.isInteger(value) && value >= s.min && value <= s.max)) throw new Error(`${s.label} must be a whole number ${s.min}-${s.max}`);
+      // read-only until the numbering is confirmed (see settings): refused before anything is sent
+      if (key === 'profile') throw new Error('Onboard profile is read-only: its numbering (Solaar 1-15 or the libratbag index) is not confirmed on a real keyboard yet, so DeviceHub does not select profiles');
       const app = await vendorApp();
       if (app) throw Object.assign(new Error(`${app} (G HUB) is running: close it first (two programs writing the keyboard fight)`), { waiting: true });
       const mode = await this.readMode();
       // the sheet lists the report rate as easy to undo "in host mode"; Solaar: "May need Onboard Profiles set to Disable"
       if (key === 'reportRate' && mode === 'onboard') throw Object.assign(new Error('the keyboard is using its onboard profiles: set Settings source to Host first (the report rate is only changed live in host mode)'), { waiting: true });
-      if (key === 'profile' && mode !== 'onboard') throw Object.assign(new Error('the keyboard is in host mode: a profile is picked in onboard mode (Settings source)'), { waiting: true });
       const lock = DISABLE.find((d) => d.key === key);
       if (key === 'reportRate') {
         const r = this.caps.rate;
@@ -284,8 +292,8 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
         else await this.call(F.REPORT_RATE, 0x20, [r.ms[r.hz.indexOf(value)]], { retry: false });                // Solaar ReportRate write 0x20 [ms]
       } else if (key === 'mode') {
         await this.call(F.ONBOARD_PROFILES, 0x10, [value === 'onboard' ? 0x01 : 0x02], { retry: false });       // Solaar OnboardProfiles write: fn 0x10 [01] / [02]
-      } else if (key === 'profile') {
-        await this.call(F.ONBOARD_PROFILES, 0x30, [value >> 8, value & 0xff], { retry: false });                // Solaar OnboardProfiles write: fn 0x30 [sector, 2 bytes]
+      // profile select (Solaar OnboardProfiles write: fn 0x30 [sector, 2 bytes]) is refused above until the numbering is
+      // confirmed; when it is, the write goes here: this.call(F.ONBOARD_PROFILES, 0x30, [value >> 8, value & 0xff])
       } else if (lock) {
         // Solaar DisableKeyboardKeys: BitFieldValidator writes the whole byte; the other bits go back as just read
         const bits = await this.readDisabled();

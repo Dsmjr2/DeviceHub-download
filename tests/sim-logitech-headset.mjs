@@ -273,7 +273,9 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
   let e = await refusal(() => d.write('sidetone', 21));
   check(/0-20/.test(e?.message || '') && px.state.sidetone === 15, `sidetone 21 of 0-20 refused (${e?.message})`);
   n = px.subs.length;
-  check((await d.write('sidetone', 15)) === 15 && !px.subs.slice(n).some((x) => x.id === F.C_SIDETONE && x.fn === 0x10), 'the same level is not sent again (Solaar prepare_write), only read back');
+  // driver safety (22 Oct 2026): an unchanged level IS sent (Solaar skips it), so the self-check's write of the value
+  // just read really reaches the headset
+  check((await d.write('sidetone', 15)) === 15 && px.subs.slice(n).some((x) => x.id === F.C_SIDETONE && x.fn === 0x10 && h(x.p) === '01 ff 0f'), 'the same level is sent again ([01 FF 0F]), then read back');
   check((await d.write('sidetone', 10)) === 10, 'sidetone put back');
   n = px.subs.length;
   check((await d.write('autoOff', 45)) === 45 && px.state.sleep === 45 && px.state.sleepReserved === 7, 'auto sleep 45 written, the reserved slot kept');
@@ -281,6 +283,8 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
   e = await refusal(() => d.write('autoOff', 300));
   check(/0-255/.test(e?.message || ''), 'auto sleep 300 refused');
   check((await d.write('autoOff', 20)) === 20 && px.state.sleep === 20, 'auto sleep put back');
+  n = px.subs.length;
+  check((await d.write('autoOff', 20)) === 20 && px.subs.slice(n).some((x) => x.id === F.C_AUTO_SLEEP && x.fn === 0x10 && h(x.p) === '07 14'), 'an unchanged auto sleep is sent ([07 14]), then read back');
   const bat = await d.battery();
   check(bat.percent === 64 && bat.charging === true, `Centurion battery ${JSON.stringify(bat)}`);
   px.connectEventFirst = true;
@@ -302,7 +306,11 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
   e = await refusal(() => d.read());
   check(e?.offline === true, `a switched-off headset is reported as such (${e?.message})`);
   px.off = false;
+  n = px.subs.length;
   await selfChecked(d, px.state);
+  const sent = px.subs.slice(n);
+  check(sent.some((x) => x.id === F.C_SIDETONE && x.fn === 0x10 && h(x.p) === '01 ff 0a') && sent.some((x) => x.id === F.C_AUTO_SLEEP && x.fn === 0x10 && h(x.p) === '07 14'),
+    'the self-check really sent sidetone [01 FF 0A] and auto sleep [07 14] (the values it read), not only read them');
   check(px.bad.length === 0, `every Centurion frame was well formed (${px.bad.join('; ')})`);
   check((await d.info()).Protocol.startsWith('Centurion'), 'info names the protocol');
 }

@@ -5,7 +5,7 @@
 import { h, icon } from '../ui/dom.js';
 import { card, row, slider, toggle, segmented, pill, readout, colorRow, lineList, remapSelect } from '../ui/controls.js';
 import { devices, write, prepare, connect } from '../core/devices.js';
-import { topbar, deviceActions, kv, statusPill, isAway, awayBanner, undoButton } from './common.js';
+import { topbar, deviceActions, kv, statusPill, isAway, awayBanner, undoButton, checkAnswer } from './common.js';
 import { artOf } from '../ui/art.js';
 import { button } from '../ui/controls.js';
 import { modal, toast } from '../ui/overlay.js';
@@ -67,23 +67,30 @@ function shareButton(d, shown) {
     h('span', { class: 'faint', style: { fontSize: '12.5px' } }, 'Needs a free GitHub account: it opens a GitHub page that offers this driver to the shared library, so others with this device need no setup.'));
 }
 
-// a driver from the device library with settings still read-only (failed or waiting on their self-check): Check again
-// runs that check now (helpers/diagnose.mjs action "check-again"); the answer shows on the line, nothing pops up
+// a driver from the device library with settings still read-only (failed, waiting or not checked yet): Check again
+// runs that check now (helpers/diagnose.mjs action "check-again"); the answer shows on the line, nothing pops up.
+// A driver with no real-device record (or one the learning wizard made) writes nothing, its check included, until the
+// person presses Turn on settings (safety round 2; helpers/my-devices.mjs turnOn): that button comes first.
 const checkNote = {};
 function checkAgain(d) {
+  const lib = d.adapter?.library;
   const ro = (d.adapter?.settings || []).filter((s) => s.type !== 'display' && s.readOnly);
-  if (!d.adapter?.library || d.status !== 'connected' || !ro.length) return null;
+  if (!lib || d.status !== 'connected' || (!ro.length && !lib.turnOn)) return null;
+  const kind = lib.turnOn ? 'turn-on' : 'check-again';
   const run = async () => {
-    checkNote[d.id] = 'Checking…';
+    checkNote[d.id] = kind === 'turn-on' ? 'Turning on…' : 'Checking…';
     try {
-      const r = await fetch('/api/diagnose/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'check-again', id: d.id }) });
+      const r = await fetch('/api/diagnose/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, id: d.id }) });
       const j = await r.json().catch(() => ({}));
-      checkNote[d.id] = !r.ok || j.error ? `Not checked: ${j.error || r.statusText}` : j.ran ? 'Checked again.' : `Not checked: ${j.why}`;
-    } catch (e) { checkNote[d.id] = `Not checked: ${e.message}`; }
+      checkNote[d.id] = !r.ok || j.error ? `Not done: ${j.error || r.statusText}` : checkAnswer(j, kind);
+    } catch (e) { checkNote[d.id] = `Not done: ${e.message}`; }
   };
+  const line = kind === 'turn-on'
+    ? `Its settings are read-only until you turn them on. ${lib.turnOnLine || "DeviceHub writes each setting's current value back once to make sure it works."}`
+    : `${ro.map((s) => s.label).join(', ')} ${ro.length === 1 ? 'is' : 'are'} read-only until ${ro.length === 1 ? 'it passes' : 'each passes'} DeviceHub's check (write the same value, read it back).`;
   return h('div', { class: 'actions', style: { marginTop: '12px', alignItems: 'center' } },
-    button('Check again', run, { kind: 'ghost small', ic: 'search' }),
-    h('span', { class: 'faint', style: { fontSize: '12.5px' } }, checkNote[d.id] || `${ro.map((s) => s.label).join(', ')} ${ro.length === 1 ? 'is' : 'are'} read-only until ${ro.length === 1 ? 'it passes' : 'each passes'} DeviceHub's check (write the same value, read it back).`));
+    button(kind === 'turn-on' ? 'Turn on settings' : 'Check again', run, { kind: kind === 'turn-on' ? 'primary small' : 'ghost small', ic: kind === 'turn-on' ? 'plug' : 'search' }),
+    h('span', { class: 'faint', style: { fontSize: '12.5px' } }, checkNote[d.id] || line));
 }
 
 const ICON = { mouse: 'mouse', headset: 'headset', keyboard: 'keyboard' };
@@ -92,31 +99,37 @@ const ICON = { mouse: 'mouse', headset: 'headset', keyboard: 'keyboard' };
 // per zone) and button remaps. A zone or a button changes on its own, but the write is still the whole setting, once,
 // read back like any other.
 const nameOf = (list, v) => (list || []).find((o) => o.value === v)?.label ?? String(v);
+// a read-only setting (a library driver's, until it passes its check or is turned on): its control is disabled and
+// the reason is the visible line under its name (the hint the guard writes, "Read-only: ..."), never a tooltip
+const readOnlyOf = (s) => s.type !== 'display' && !!s.readOnly;
+const descOf = (s) => (readOnlyOf(s) && !/read-only/i.test(s.hint || '') ? [s.hint, 'Read-only: its driver does not change it.'].filter(Boolean).join(' ') : s.hint || null);
 function settingRow(d, s) {
   const v = d.values?.[s.key];
-  const send = (x, label, display) => write(d.id, s.key, x, { label, display }).catch(() => {});
+  const off = readOnlyOf(s);
+  const desc = descOf(s);
+  const send = (x, label, display) => (off ? Promise.resolve() : write(d.id, s.key, x, { label, display }).catch(() => {}));
   if (s.type === 'display') return row(s.label, s.hint || null, readout({ value: v, unit: s.unit || '' }));
-  if (s.type === 'color' && !s.zones) return row(s.label, s.hint || null, colorRow({ value: v, label: s.label, onCommit: (x) => send(x, s.label, x) }));
+  if (s.type === 'color' && !s.zones) return row(s.label, desc, colorRow({ value: v, label: s.label, disabled: off, onCommit: (x) => send(x, s.label, x) }));
   if (s.type === 'color' || s.type === 'remap') {
     const obj = v && typeof v === 'object' ? v : {};
     const lines = s.type === 'color'
-      ? s.zones.map((z) => [z.label, colorRow({ value: obj[z.value], label: `${s.label}, ${z.label}`, onCommit: (x) => send({ ...obj, [z.value]: x }, `${s.label} (${z.label})`, x) })])
-      : s.buttons.filter((b) => b.value in obj).map((b) => [b.label, remapSelect({ value: obj[b.value], targets: s.targets, label: `${s.label}, ${b.label}`,
+      ? s.zones.map((z) => [z.label, colorRow({ value: obj[z.value], label: `${s.label}, ${z.label}`, disabled: off, onCommit: (x) => send({ ...obj, [z.value]: x }, `${s.label} (${z.label})`, x) })])
+      : s.buttons.filter((b) => b.value in obj).map((b) => [b.label, remapSelect({ value: obj[b.value], targets: s.targets, label: `${s.label}, ${b.label}`, disabled: off,
         onCommit: (x) => send({ ...obj, [b.value]: x }, `${s.label} (${b.label})`, nameOf(s.targets, x)) })]);
-    const r = row(s.label, s.hint || null, lineList(lines));
+    const r = row(s.label, desc, lineList(lines));
     r.classList.add('stack');
     return r;
   }
-  return row(s.label, s.hint || null, control(d, s));
+  return row(s.label, desc, control(d, s, off));
 }
 
-function control(d, s) {
+function control(d, s, off = false) {
   const v = d.values?.[s.key];
-  const set = (x) => write(d.id, s.key, x, { label: s.label, display: s.type === 'choice' ? (s.options.find((o) => o.value === x)?.label ?? String(x)) : `${x}${s.unit || ''}` }).catch(() => {});
-  if (s.type === 'toggle') return toggle({ value: !!v, label: s.label, onCommit: set });
-  if (s.type === 'choice') return segmented({ value: v, compact: s.options.length > 3, options: s.options, onCommit: set });
-  return slider({ value: v ?? null, min: s.min, max: s.max, step: s.step || 1, unit: s.unit || '', label: s.label,
-    grab: () => prepare(d.id), live: s.live ? (x) => write(d.id, s.key, x, { live: true }).catch(() => {}) : null, onCommit: set });
+  const set = (x) => off ? undefined : write(d.id, s.key, x, { label: s.label, display: s.type === 'choice' ? (s.options.find((o) => o.value === x)?.label ?? String(x)) : `${x}${s.unit || ''}` }).catch(() => {});
+  if (s.type === 'toggle') return toggle({ value: !!v, label: s.label, disabled: off, onCommit: set });
+  if (s.type === 'choice') return segmented({ value: v, compact: s.options.length > 3, options: s.options, disabled: off, onCommit: set });
+  return slider({ value: v ?? null, min: s.min, max: s.max, step: s.step || 1, unit: s.unit || '', label: s.label, disabled: off,
+    grab: () => (off ? undefined : prepare(d.id)), live: s.live && !off ? (x) => write(d.id, s.key, x, { live: true }).catch(() => {}) : null, onCommit: set });
 }
 
 export function devicePage(id) {

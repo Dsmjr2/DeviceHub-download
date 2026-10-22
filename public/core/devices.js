@@ -261,6 +261,19 @@ export function recheck(id) {
     return r;
   });
 }
+// "Turn on settings" for a library driver with no real-device record (safety round 2; helpers/my-devices.mjs turnOn):
+// the person's click, kept in its library.json, then its self-check now under the device's lock, then a full read
+export function turnOn(id) {
+  if (remote) return rcall('/api/agent/turn-on', { id });
+  const a = devices[id]?.adapter;
+  if (!a?.turnOn) return Promise.resolve({ ran: false, on: false, why: 'this device has no driver from the device library' });
+  return withDevice(id, async () => {
+    const r = await a.turnOn();
+    await refreshUnlocked(id, { full: true });
+    set(id, { readAt: new Date() });
+    return r;
+  });
+}
 
 // The full raw dump (the keyboard's whole keymap and macros: ~2 s) is reused for the next backup while nothing
 // could have changed it: written keys the adapter calls raw-unaffected (lighting) leave it valid; any other write,

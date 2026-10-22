@@ -65,6 +65,27 @@ check(/slider needs min and max/.test(problem({ id: 'x-y', title: 'X', kind: 'Mo
   check(isWaiting(Object.assign(new Error('x'), { waiting: true })) && isWaiting(new Error('G HUB is running: close it first')) && !isWaiting(new Error('refused')), 'isWaiting: the flag, or the maker app sentence');
 }
 
+// safety round 2 (docs/handoff/safety-round2.md): what counts as a real-device record, the Turn on settings gate, and the
+// ids DeviceHub's own drivers run (any overlap, from any id a driver declares)
+{
+  const md = await import('../helpers/my-devices.mjs');
+  const { list } = await import('../helpers/device-library.mjs');
+  const shipped = list({ examples: true }).filter((e) => e.meta);
+  const proven = shipped.filter((e) => md.hasRealRecord(e.meta)).map((e) => e.name);
+  check(proven.length === 0, `no shipped library entry has a real-device record yet, so every one waits for Turn on settings (${proven.join(', ')})`);
+  check(shipped.some((e) => e.name === 'logitech-hidpp-mouse') && !md.hasRealRecord(shipped.find((e) => e.name === 'logitech-hidpp-mouse').meta), 'a "simulation only" record is not a real one');
+  check(md.realRecord({ by: 'Sam', date: '2026-10-23', devicehub: '0.2.0', how: 'each setting written once and read back' }) && md.realRecord({ by: 'Sam', how: 'settings read, nothing written' }), 'a person\'s record from a real device counts (written, or read only)');
+  const at = '2026-10-22T10:00:00.000Z', later = '2026-10-22T11:00:00.000Z';
+  check(md.needsTurnOn({}, false, 'dpi') && !md.needsTurnOn({ settingsOn: { at } }, false, 'dpi'), 'no real record: every setting waits until Turn on settings');
+  check(!md.needsTurnOn({}, true, 'dpi') && md.needsTurnOn({ learnedKeys: ['x'] }, true, 'x'), 'a real record: only learned settings wait');
+  check(!md.needsTurnOn({ learnedKeys: ['x'], learnedAt: at, settingsOn: { at: later } }, true, 'x') && md.needsTurnOn({ learnedKeys: ['x'], learnedAt: later, settingsOn: { at } }, true, 'x'), 'a setting learned after the click waits for another one');
+  check(md.ownClash('1b1c', ['1bf0', '0A69']).join() === '1b1c:0a69' && md.ownClash('1b1c', ['0a71']).length && md.ownClash('1b1c', ['0a6b']).length && md.ownClash('3710', ['3506', '5406']).length === 2 && md.ownClash('342d', ['e479']).length && !md.ownClash('1b1c', ['0a88']).length, 'ownClash: any HS80 (0a6b, 0a69, 0a71), Pulsar (5406, 3506) or P75 id');
+  const noHid = { id: 'x-y', settings: [] };
+  check(md.declaredIds(noHid).length === 0 && md.declaredIds({ id: 'j', vid: '1b1c', pids: ['0a69'], settings: [] })[0].pids[0] === '0a69', 'a driver.json\'s top-level vid / pids are declared ids');
+  const pcmap = (await import('node:module')).createRequire(import.meta.url)('../helpers/pc-map.js');
+  check(pcmap.RUNS['1b1c:0a6b'] === 'Headset page' && /^Headset page/.test(pcmap.RUNS['1b1c:0a69']) && /^Mouse page/.test(pcmap.RUNS['3710:3506']), 'RUNS: the HS80 receiver still names the Headset page; its cable and the Pulsar cable are listed too');
+}
+
 fs.rmSync(root, { recursive: true, force: true });
 console.log(fails.length ? `my-devices: FAILED: ${fails.join('; ')}` : 'my-devices (added devices): all good');
 process.exit(fails.length ? 1 : 0);

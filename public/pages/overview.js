@@ -5,7 +5,7 @@ import { ring, button, card, pill, batteryCell, loadBatteryEstimates, skeleton }
 import { devices, activity, connect, isDemo, isRemote, shownDevices, noDevicesYet, stillLooking } from '../core/devices.js';
 import { artOf, genericArtFor } from '../ui/art.js';
 import { prettyExe } from '../core/autoswitch.js';
-import { statusPill } from './common.js';
+import { statusPill, checkAnswer } from './common.js';
 import { loadProfiles, apply } from '../core/profiles.js';
 import { EFFECTS } from '../devices/keycodes.js';
 import { meter, micState, dots, signal, colorDot } from '../ui/gauges.js';
@@ -103,23 +103,23 @@ function setupCard(redraw) {
   // answer shows on the item's line; nothing pops up.
   const act = async (i) => {
     const a = i.action;
-    setupNote[a.name || a.id] = a.kind === 'library-install' ? 'Installing…' : 'Checking…'; redraw();
+    setupNote[a.name || a.id] = a.kind === 'library-install' ? 'Installing…' : a.kind === 'turn-on' ? 'Turning on…' : 'Checking…'; redraw();
     try {
       const r = a.kind === 'library-install'
         ? await fetch('/api/library/install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: a.name }) })
-        : await fetch('/api/diagnose/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'check-again', id: a.id }) });
+        : await fetch('/api/diagnose/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: a.kind === 'turn-on' ? 'turn-on' : 'check-again', id: a.id }) });
       const j = await r.json().catch(() => ({}));
       setupNote[a.name || a.id] = !r.ok || j.error ? `Not done: ${j.error || r.statusText}`
-        : a.kind === 'library-install' ? (j.loaded ? 'Installed. It is read-only until each setting passes its check, which runs when it connects.' : 'Installed. Restart DeviceHub to load it.')
-        : j.ran ? 'Checked again.' : `Not checked: ${j.why}`;
+        : a.kind === 'library-install' ? (j.loaded ? (j.note || 'Installed.') : 'Installed. Restart DeviceHub to load it.')
+        : checkAnswer(j, a.kind);
     } catch (e) { setupNote[a.name || a.id] = `Not done: ${e.message}`; }
     redraw();
   };
   const itemOf = (i) => {
     const a = i.action, note = a ? setupNote[a.name || a.id] : null;
-    if (!a || !['library-install', 'check-again'].includes(a.kind)) return h('li', {}, i.line);
+    if (!a || !['library-install', 'check-again', 'turn-on'].includes(a.kind)) return h('li', {}, i.line);
     return h('li', {}, i.line, h('div', { class: 'actions', style: { margin: '4px 0 6px', justifyContent: 'flex-start', alignItems: 'center' } },
-      /^Installed/.test(note || '') ? null : button(a.label || (a.kind === 'library-install' ? 'Install' : 'Check again'), () => act(i), { kind: 'ghost small', ic: a.kind === 'library-install' ? 'plug' : 'search' }),
+      /^Installed/.test(note || '') ? null : button(a.label || (a.kind === 'library-install' ? 'Install' : a.kind === 'turn-on' ? 'Turn on settings' : 'Check again'), () => act(i), { kind: 'ghost small', ic: a.kind === 'check-again' ? 'search' : 'plug' }),
       note ? h('small', { class: 'faint' }, note) : null));
   };
   const part = (title, items) => (items?.length ? h('div', { class: 'setup-part' }, h('h3', {}, title), h('ul', { style: { margin: '4px 0 10px', paddingLeft: '18px' } }, ...items.map(itemOf))) : null);

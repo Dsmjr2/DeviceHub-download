@@ -246,7 +246,7 @@ async function api(req, res, url) {
     try { const pc = await pcMap.get(); lines.push(`PC: ${pc.cpu} · ${pc.gpus.map((g) => g.name).join(', ')} · ${pc.board?.maker || ''} ${pc.board?.model || ''}`.trim());
       const other = pc.usb.filter((u) => !u.runs).map((u) => `${u.id}${u.name ? ` ${u.name}` : ''}`);
       if (other.length) lines.push(`other USB: ${other.join('; ')}`); } catch (e) { lines.push(`PC: not read (${e.message})`); }
-    try { if (eqapo.installed()) { const d = await eqDevices(); const off = (await require('./helpers/eqapo-devices').status({ render: d.headset, capture: d.mic })).off; lines.push(`Equalizer APO: installed${off.length ? ` · not on for ${off.map((x) => x.name).join(', ')}` : ''}`); } else lines.push('Equalizer APO: not installed'); } catch {}
+    try { if (eqapo.installed()) { const d = await eqapo.devices(); const off = (await require('./helpers/eqapo-devices').status({ render: d.headset, capture: d.mic })).off; lines.push(`Equalizer APO: installed${off.length ? ` · not on for ${off.map((x) => x.name).join(', ')}` : ''}`); } else lines.push('Equalizer APO: not installed'); } catch {}
     try { const m = await monitors.list(); lines.push(`monitors: ${m.map((x) => `${x.name}${x.ddc ? '' : ' (no DDC/CI)'}`).join(', ') || 'none'}`); } catch {}
     const tail = (f, n) => { try { return fs.readFileSync(path.join(ROOT, f), 'utf8').trim().split('\n').slice(-n); } catch { return []; } };
     const bad = tail('activity.jsonl', 400).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter((a) => a && a.kind === 'bad').slice(-8);
@@ -513,16 +513,18 @@ async function api(req, res, url) {
     try { const lib = await import('./helpers/device-library.mjs'); return send(res, 200, { matches: lib.match((await pcMap.get(url.searchParams.has('fresh'))).usb, { readOnly: true }) }); } catch (e) { return send(res, 500, { error: e.message }); }
   }
   // a "read-only" entry installs too: it loads guarded, each setting writable only once it passes its self-check
-  // (helpers/my-devices.mjs); it is loaded at once when the agent runs, else on the next start
+  // (helpers/my-devices.mjs); one with no real-device record only reads until the person presses Turn on settings
+  // (safety round 2); it is loaded at once when the agent runs, else on the next start
   if (url.pathname === '/api/library/install' && req.method === 'POST') {
     try {
       const lib = await import('./helpers/device-library.mjs');
       // the person's click (the Set up card's Install button): an "untested" entry too, guarded like a read-only one,
-      // never one for a device DeviceHub's own drivers run (helpers/pc-map.js RUNS)
+      // never one with ANY product id DeviceHub's own drivers run (helpers/pc-map.js RUNS; installFromLibrary refuses
+      // it too)
       const name = (await readBody(req)).name;
       const e = lib.list().find((x) => x.name === name && x.meta);
-      const runs = Object.keys(require('./helpers/pc-map.js').RUNS || {});
-      if (e && e.meta.pids.every((p) => runs.includes(`${lib.hex4(e.meta.vid)}:${lib.hex4(p)}`))) return send(res, 400, { ok: false, name, error: 'DeviceHub\'s own driver already runs this device, so the library driver is not installed' });
+      const clash = e ? (await import('./helpers/my-devices.mjs')).ownClash(e.meta.vid, e.meta.pids) : [];
+      if (clash.length) return send(res, 400, { ok: false, name, error: `DeviceHub's own driver already runs ${clash.join(', ')}, so the library driver is not installed` });
       const r = await lib.installFromLibrary(name, { readOnly: true, untested: true });
       if (r?.ok) {
         let loaded = null;
@@ -530,7 +532,7 @@ async function api(req, res, url) {
         r.loaded = !!loaded?.some((x) => x.name === r.name && x.id);
         try { (await import('./helpers/auto-setup.mjs')).cache.value = null; } catch {}   // the Set up card asks again
         if (!r.loaded) r.note = `${r.note || ''} (restart DeviceHub to load it)`.trim();
-        serverLog({ kind: 'good', text: `Device library: ${r.name || 'a driver'} installed${r.status === 'tested' ? '' : ' read-only until its self-check'}${r.loaded ? '' : ' (restart DeviceHub to load it)'}` });
+        serverLog({ kind: 'good', text: `Device library: ${r.name || 'a driver'} installed${!r.proven ? ': it reads the device; its settings change only after Turn on settings' : r.status === 'tested' ? '' : ' read-only until its self-check'}${r.loaded ? '' : ' (restart DeviceHub to load it)'}` });
       }
       return send(res, r?.ok ? 200 : 400, r);
     } catch (e) { return send(res, 400, { error: e.message }); }

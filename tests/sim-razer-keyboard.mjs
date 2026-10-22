@@ -170,6 +170,29 @@ check(hex(buildReport(0x1f, 0x00, 0x40, 0x02, [0x00, 0x10])) === lit([0x00, 0x1f
   check(info.Firmware === '1.4' && info.Model === 'Razer BlackWidow V4', `info: ${JSON.stringify(info)}`);
   check(d.settings.every((s) => fits(s, v[s.key]) || v[s.key] === undefined), 'every value read fits its setting');
   await selfChecked(d, sim.s);
+
+  // driver safety (22 Oct 2026): the self-check really sends each value it read; reads go on while Synapse runs and every
+  // write (even of the same value) is refused; a raw LED state that is neither 0 nor 1 is never written back as one
+  {
+    const { selfCheck } = await import('../helpers/my-devices.mjs');
+    let w = writes(sim).length;
+    const r = await selfCheck(d, d.write, { backup: async () => true, makerApp: async () => null });
+    const sent = writes(sim).slice(w).map(cmdKey);
+    check(r.keys?.gameMode?.ok && ['0f/04', '03/00', '00/40'].every((c) => sent.includes(c)) && sent.filter((c) => c === '03/00').length === 2, `the self-check really sent brightness, both LED states and the polling rate (${sent})`);
+    sim.app = 'Razer Synapse.exe'; sim.clock += 20000;
+    const v2 = await d.read();
+    check(v2.brightness === 180 && v2.gameMode === false, 'reads go on while Synapse runs');
+    w = writes(sim).length;
+    e = await refusal(() => d.write('brightness', 180));
+    check(/Synapse/.test(e?.message || '') && e.waiting === true && writes(sim).length === w, 'a same-value write is refused while Synapse runs, nothing written');
+    sim.app = null; sim.clock += 20000;
+    sim.s.game = 2;
+    check((await d.read()).gameMode === null, 'raw game mode 2 reads as not on / off');
+    w = writes(sim).length;
+    const r2 = await selfCheck(d, d.write, { only: ['gameMode'], previous: r, backup: async () => true, makerApp: async () => null });
+    check(!r2.keys?.gameMode?.ok && sim.s.game === 2 && writes(sim).length === w, `raw 2 is never written back as 0 or 1 (${JSON.stringify(r2.keys?.gameMode)})`);
+    sim.s.game = 0;
+  }
 }
 
 // ---- 3. a Huntsman V2: game mode NOSTORE with tid 1F; a polling keyboard already at 8000 Hz ----
