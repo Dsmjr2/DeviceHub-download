@@ -4,6 +4,7 @@ import { DPI_SLOTS } from './pulsar.js';
 import { rgbToHsv255 } from './keyboard-adapter.js';
 import { encodeMacro, decodeMacro } from './macros.js';
 import { DEMO_KEYMAP } from './demo-keymap.js';
+import { headsetChoices } from '../core/headset-pick.js';
 
 const wait = (ms = 140) => new Promise((r) => setTimeout(r, ms + Math.random() * 120));
 
@@ -24,17 +25,35 @@ export function demoAdapters() {
 
   const hv = { 'prop:micEnabled': true, 'prop:surroundEnabled': false, 'prop:sidetoneEnabled': true, 'prop:equalizerPreset': 2, 'prop:batteryLevel': 64, 'vol:playback': 42, 'mute:playback': false, 'vol:recording': 80, 'mute:recording': false, led: '#ff6a1a', headsetOn: true };
   const propInfo = (name, prop) => ({ name, prop, canRead: true, canWrite: false, value: hv[`prop:${name}`] });
+  // a pretend second USB headset with ?demo&headsets=2 (22 Oct 2026): the Headset page's picker, and the sound-only
+  // page a second headset gets
+  const two = /[?&]headsets=2(&|$)/.test(globalThis.location?.search || '');
+  const OTHER = { usb: 'VID_1038&PID_12E0', device: 'Arctis Nova 7 Wireless Gaming Headset' };
+  const ov = { 'vol:playback': 55, 'mute:playback': false, 'vol:recording': 70, 'mute:recording': false, headsetOn: true };
+  let picked = 'hs80';
+  const other = () => picked !== 'hs80';
   const headset = {
-    id: 'headset', title: 'Corsair HS80', kind: 'Headset', vendor: { label: 'iCUE', app: 'icue' },
-    unsupported: ['firmware updates', 'receiver pairing'],
-    get props() { return { micEnabled: propInfo('micEnabled', 2), surroundEnabled: propInfo('surroundEnabled', 3), sidetoneEnabled: propInfo('sidetoneEnabled', 4), equalizerPreset: propInfo('equalizerPreset', 5), batteryLevel: propInfo('batteryLevel', 9) }; },
-    get endpoints() { return [{ flow: 'playback', name: 'Headset (CORSAIR HS80 RGB Wireless)' }, { flow: 'recording', name: 'Microphone (CORSAIR HS80 RGB Wireless)' }]; },
+    id: 'headset', kind: 'Headset',
+    get title() { return other() ? OTHER.device : 'Corsair HS80'; },
+    get vendor() { return other() ? { label: "its maker's app", app: null } : { label: 'iCUE', app: 'icue' }; },
+    get unsupported() { return other() ? ['lights', 'battery', 'its own settings (teach them in Learn a device)'] : ['firmware updates', 'receiver pairing']; },
+    get mode() { return other() ? 'generic' : undefined; },
+    get generic() { return other() ? { ...OTHER } : null; },
+    get headsets() { return two ? headsetChoices([{ usb: 'VID_1B1C&PID_0A6B', device: 'CORSAIR HS80 RGB Wireless Gaming Headset' }, OTHER]) : []; },
+    get picked() { return picked; },
+    choose(k) { if (this.headsets.some((c) => c.key === k)) picked = k; },
+    get props() { if (other()) return {}; return { micEnabled: propInfo('micEnabled', 2), surroundEnabled: propInfo('surroundEnabled', 3), sidetoneEnabled: propInfo('sidetoneEnabled', 4), equalizerPreset: propInfo('equalizerPreset', 5), batteryLevel: propInfo('batteryLevel', 9) }; },
+    get endpoints() { if (other()) return [{ flow: 'playback', name: 'Headphones (Arctis Nova 7)' }, { flow: 'recording', name: 'Microphone (Arctis Nova 7)' }]; return [{ flow: 'playback', name: 'Headset (CORSAIR HS80 RGB Wireless)' }, { flow: 'recording', name: 'Microphone (CORSAIR HS80 RGB Wireless)' }]; },
     connect: async () => (await wait(), true),
-    info: async () => ({ Model: 'HS80 RGB Wireless', Serial: 'demo', LEDs: 1, Control: 'iCUE SDK + Windows audio' }),
-    battery: async () => ({ percent: hv['prop:batteryLevel'] }),
-    read: async () => (await wait(), { ...hv }),
-    write: async (k, v) => { await wait(200); if (k.startsWith('prop:')) throw new Error(`${k.slice(5)} is read-only in iCUE`); return (hv[k] = v); },
-    hasLighting: () => true,
+    info: async () => (other() ? { Model: OTHER.device, 'USB id': '1038:12e0', Control: 'Windows sound (any USB headset)' } : { Model: 'HS80 RGB Wireless', Serial: 'demo', LEDs: 1, Control: 'iCUE SDK + Windows audio' }),
+    battery: async () => (other() ? null : { percent: hv['prop:batteryLevel'] }),
+    read: async () => (await wait(), other() ? { ...ov } : { ...hv }),
+    write: async (k, v) => {
+      await wait(200);
+      if (other()) { if (!/^(vol|mute):(playback|recording)$/.test(k)) throw new Error(`${OTHER.device}: DeviceHub does not know its own settings yet`); return (ov[k] = v); }
+      if (k.startsWith('prop:')) throw new Error(`${k.slice(5)} is read-only in iCUE`); return (hv[k] = v);
+    },
+    hasLighting: () => !other(),
   };
 
   const kv = { brightness: 200, effect: 1, speed: 128, hue: 20, saturation: 255 };

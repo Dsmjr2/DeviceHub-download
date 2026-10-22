@@ -8,7 +8,8 @@ import * as core from '../public/core/devices.js';
 import { setDeviceProvider } from '../public/devices/hid.js';
 import mouse from '../public/devices/mouse-adapter.js';
 import keyboard from '../public/devices/keyboard-adapter.js';
-import headset, { setCorsairCall } from '../public/devices/headset-adapter.js';
+import headset, { setCorsairCall, setHeadsetPick } from '../public/devices/headset-adapter.js';
+import { cleanPick } from '../public/core/headset-pick.js';
 import { auto, startAutoSwitch, loadSettings, onAuto } from '../public/core/autoswitch.js';
 import * as weekly from './weekly-setup.mjs';
 import * as daily from './daily-check.mjs';
@@ -45,6 +46,28 @@ function markSeen(id) {
 const WAIT_FILE = pathSeen.join(pathSeen.dirname(SEEN_FILE), 'waiting-changes.json');
 const LAST_FILE = pathSeen.join(pathSeen.dirname(SEEN_FILE), 'last-device-values.json');
 const readJson = (f) => { try { return JSON.parse(fsSeen.readFileSync(f, 'utf8')); } catch { return {}; } };
+// The headset the Headset page controls when two or more are plugged in (22 Oct 2026): settings.json "headsetPick"
+const SETTINGS_FILE = pathSeen.join(pathSeen.dirname(SEEN_FILE), 'settings.json');
+async function pickHeadset(key) {
+  const k = cleanPick(key);
+  const a = core.devices.headset.adapter;
+  if (!k || !(a.headsets || []).some((c) => c.key === k)) throw new Error('That headset is not plugged in.');
+  const cur = readJson(SETTINGS_FILE);
+  if (cur.headsetPick !== k) {
+    // settings.json backed up first, then only this one key changed
+    if (fsSeen.existsSync(SETTINGS_FILE)) fsSeen.copyFileSync(SETTINGS_FILE, pathSeen.join(pathSeen.dirname(SEEN_FILE), 'backups', `settings-${new Date().toISOString().replace(/[:.]/g, '-')}.json`));
+    writeAtomic(SETTINGS_FILE, JSON.stringify({ ...cur, headsetPick: k }, null, 2));
+  }
+  setHeadsetPick(k);
+  if (a.picked !== k) {
+    // the headset's next read sees the new choice and lets go; it is then connected again on the chosen one
+    await core.refresh('headset', { quiet: true, full: true });
+    if (core.devices.headset.status === 'missing') await core.connect('headset', false);
+    // Equalizer APO: its settings written again, so the EQ plays on the chosen headset (the same preset, nothing else)
+    try { const eq = await env.api('/api/eq'); if (eq.engine === 'eqapo' && eq.activeId) await env.api('/api/eq/activate', { id: eq.activeId }); } catch {}
+  }
+  return snapshot('headset');
+}
 let lastSaved = '', lastTimer = null;
 // at most once per 10 s (not "10 s after the last change": the headset reports something every few seconds)
 function saveLast() {
@@ -133,6 +156,7 @@ export async function start({ port, corsairHelper }) {
   onAuto(() => send('auto', autoState()));
 
   await core.loadHistory();
+  setHeadsetPick(readJson(SETTINGS_FILE).headsetPick);  // the headset picked on the Headset page, if any
   for (const id of Object.keys(core.devices)) core.connect(id, false);
   core.startPolling();
   daily.start(pathSeen.dirname(SEEN_FILE), core);  // the quiet daily self-check (helpers/daily-check.mjs)
@@ -215,7 +239,7 @@ function adapterMeta(d) {
   if (a.plugin) Object.assign(meta, { plugin: a.plugin, settings: a.settings, battery: typeof a.battery === 'function', ...(a.library ? { library: a.library } : {}) });
   // while the mouse is away its flash is not read: which settings read back cleanly is taken from its last visit
   if (a.id === 'mouse') meta.trusted = Object.fromEntries(Object.keys(d.values || {}).map((k) => [k, d.status !== 'connected' && d.savedTrusted ? !!d.savedTrusted[k] : !!a.trusted?.(k)]));
-  if (a.id === 'headset') { meta.props = a.props; meta.endpoints = a.endpoints; meta.mode = a.mode; }
+  if (a.id === 'headset') { meta.props = a.props; meta.endpoints = a.endpoints; meta.mode = a.mode; meta.generic = a.generic ? { usb: a.generic.usb, device: a.generic.device } : null; meta.headsets = a.headsets; meta.picked = a.picked; }
   if (a.id === 'keyboard' && a.session) {
     const s = a.session;
     meta.session = { info: s.info, keymap: s.keymap, encoders: s.encoders, original: s.original, layout: s.layout, macros: { mi: s.macros.mi, list: s.macros.list, editable: s.macros.editable, raw: s.macros.raw } };
@@ -261,6 +285,8 @@ export async function op(name, b) {
       if (!Array.isArray(b.items)) throw new Error('items must be a list');
       return core.writeBatch(has(b.id), b.items.map((i) => ({ key: String(i.key), value: i.value, label: String(i.label || i.key), display: String(i.display ?? i.value) })), String(b.why || 'batch'));
     }
+    // the picker on the Headset page (two or more USB headsets): remembered in settings.json, then that one runs
+    case 'headset-pick': return pickHeadset(b.pick);
     case 'log': core.log(String(b.text || '').slice(0, 300), b.kind === 'bad' ? 'bad' : b.kind === 'good' ? 'good' : 'info', b.device); return { ok: true };
     case 'apply-profile': {
       const p = (await loadProfiles()).find((x) => x.name === b.name);

@@ -173,13 +173,15 @@ function check(s, v) {
 
 // ---------------------------------------------------------------- validate
 const KNOWN = {
-  top: ['format', 'id', 'title', 'kind', 'vendor', 'about', 'source', 'note', 'vid', 'pids', 'hid', 'transport', 'links', 'models', 'replies', 'messages', 'reads', 'fields', 'settings', 'battery', 'info', 'stepBack', 'unsupported', 'never'],
+  top: ['format', 'id', 'title', 'kind', 'vendor', 'about', 'source', 'note', 'vid', 'pids', 'hid', 'transport', 'links', 'models', 'replies', 'messages', 'reads', 'fields', 'settings', 'battery', 'info', 'stepBack', 'unsupported', 'never', 'byPid'],
+  notice: ['reportId', 'starts', 'len', 'note'],
+  byPid: ['transport', 'replies', 'messages', 'fields', 'notices', 'encode', 'note'],
   transport: ['report', 'len', 'reportId', 'usagePage', 'timeoutMs', 'tries', 'waitMs', 'checksum', 'note'],
   link: ['label', 'reportId', 'wireless', 'usagePage', 'pids', 'identify', 'probes', 'note'],
   model: ['key', 'name', 'pids', 'paired', 'vars', 'note'],
   replies: ['echo', 'error', 'ok', 'checksum', 'note'],
   message: ['bytes', 'reportId', 'note'],
-  read: ['name', 'message', 'when', 'onError', 'onDemand', 'asleepIf', 'note'],
+  read: ['name', 'message', 'notice', 'when', 'onError', 'onDemand', 'asleepIf', 'note'],
   field: ['from', 'offset', 'size', 'endian', 'type', 'mask', 'shift', 'absentIf', 'map', 'default', 'scale', 'add', 'when', 'note'],
   setting: ['key', 'label', 'type', 'min', 'max', 'step', 'unit', 'options', 'zones', 'buttons', 'targets', 'hint', 'live', 'selfCheck', 'when', 'field', 'lockGroup', 'write', 'note'],
   part: ['value', 'label', 'field', 'code', 'note'],
@@ -266,9 +268,12 @@ export function validate(obj) {
   }
   for (const p of pids) if (!modelPids.has(p) && !receiverPids.has(p)) no(`product id ${p} is in "pids" but no model or receiver link has it`);
 
-  // replies
+  // replies (a file whose every read is a notice sends nothing, so it needs no messages and no replies)
   const rp = obj.replies;
-  if (!isObj(rp)) no('it needs "replies": how a reply is matched to its request');
+  const messages = isObj(obj.messages) ? obj.messages : {};
+  const anyMessages = Object.keys(messages).length > 0;
+  if (rp == null && !anyMessages) { /* nothing is ever asked */ }
+  else if (!isObj(rp)) no('it needs "replies": how a reply is matched to its request');
   else {
     unknown(rp, 'replies', '"replies"');
     if (!Array.isArray(rp.echo) || !rp.echo.length || !rp.echo.every((x) => Number.isInteger(x) && x >= 0 && x < len)) no('replies.echo must list the byte positions a reply repeats from its request (at least one)');
@@ -291,15 +296,31 @@ export function validate(obj) {
     const oe = r.onError;
     const okAct = (x) => ['fail', 'skip'].includes(x);
     if (oe != null && !(okAct(oe) || (isObj(oe) && okAct(oe.wireless) && okAct(oe.wired)))) no(`read "${r.name}": onError must be "fail", "skip" or { wireless, wired }`);
+    // a notice (22 Oct 2026, the learning wizard's readings): an input report the device sends by itself, heard, never asked
+    if (r.notice != null) {
+      const n = r.notice;
+      if (r.message != null) no(`read "${r.name}" has both "message" and "notice": a read is either asked (message) or heard (notice)`);
+      if (!isObj(n)) { no(`read "${r.name}": notice must be { starts, reportId?, len? }`); continue; }
+      unknown(n, 'notice', `read "${r.name}" notice`);
+      try {
+        const st = parseTemplate(n.starts);
+        if (st.some((x) => x.name)) no(`read "${r.name}": notice.starts is the bytes the report starts with, so it cannot hold placeholders`);
+        else if (st.length > 8) no(`read "${r.name}": notice.starts is at most 8 bytes`);
+      } catch (e) { no(`read "${r.name}": notice.starts: ${e.message}`); }
+      if (n.reportId != null && !(Number.isInteger(n.reportId) && n.reportId >= 0 && n.reportId <= 255)) no(`read "${r.name}": notice.reportId must be 0-255`);
+      if (n.len != null && !(Number.isInteger(n.len) && n.len >= 1 && n.len <= 1024)) no(`read "${r.name}": notice.len must be the report length in data bytes (1-1024)`);
+      for (const k of ['onDemand', 'asleepIf', 'onError']) if (r[k] != null) no(`read "${r.name}" is a notice, which is heard when the device sends it, so it cannot have "${k}"`);
+    } else if (r.message == null) no(`read "${r.name}" needs a message (what is sent to ask) or a notice (what the device sends by itself)`);
   }
+  const lenOf = (rd) => (rd?.notice && Number.isInteger(rd.notice.len) ? rd.notice.len : len);
   for (const [name, f] of Object.entries(fields)) {
     if (!isObj(f)) { no(`field "${name}" must be an object`); continue; }
     unknown(f, 'field', `field "${name}"`);
     if (RESERVED.includes(name)) no(`a field cannot be called "${name}" (reserved)`);
     if (!readByName[f.from]) no(`field "${name}" comes from the read "${f.from}", which "reads" does not have`);
-    const size = f.size ?? 1;
+    const size = f.size ?? 1, rl = lenOf(readByName[f.from]);
     if (!(Number.isInteger(f.offset) && f.offset >= 0)) no(`field "${name}" needs an offset (0 = the first data byte after the report id)`);
-    else if (f.type === 'bytes' ? !(Number.isInteger(size) && size >= 1 && f.offset + size <= len) : !([1, 2, 4].includes(size) && f.offset + size <= len)) no(`field "${name}": size must be 1, 2 or 4 (any length for type "bytes") and fit in the ${len}-byte reply`);
+    else if (f.type === 'bytes' ? !(Number.isInteger(size) && size >= 1 && f.offset + size <= rl) : !([1, 2, 4].includes(size) && f.offset + size <= rl)) no(`field "${name}": size must be 1, 2 or 4 (any length for type "bytes") and fit in the ${rl}-byte reply`);
     if (f.endian != null && !['little', 'big'].includes(f.endian)) no(`field "${name}": endian must be "little" or "big"`);
     if (f.type != null && !['number', 'bool', 'bytes'].includes(f.type)) no(`field "${name}": type must be number, bool or bytes`);
     if (f.map != null && (!isObj(f.map) || !Object.keys(f.map).every((k) => Number.isInteger(num(k))))) no(`field "${name}": map keys must be the codes (numbers) the device sends`);
@@ -308,8 +329,9 @@ export function validate(obj) {
   for (const r of reads) if (r?.name && r.asleepIf) for (const k of Object.keys(r.asleepIf)) if (!/^(model|link|probe)\./.test(k) && !fields[k]) no(`read "${r.name}": asleepIf names "${k}", which is not a field`);
 
   // messages: every byte that can ever be sent
-  const messages = isObj(obj.messages) ? obj.messages : {};
-  if (!isObj(obj.messages) || !Object.keys(messages).length) no('it needs "messages": the templates of every request it sends');
+  const asks = reads.some((r) => isObj(r) && r.notice == null);
+  if (obj.messages != null && !isObj(obj.messages)) no('"messages" must be an object: the templates of every request it sends');
+  else if (asks && !anyMessages) no('it needs "messages": the templates of every request it sends');
   const parsed = {};
   for (const [name, m] of Object.entries(messages)) {
     if (!isObj(m)) { no(`message "${name}" must be an object with "bytes"`); continue; }
@@ -345,7 +367,16 @@ export function validate(obj) {
       if (!has && give === k) no(`${where}: the message "${name}" has no {${k}}, so the ${k} would not be sent`);
     }
   };
-  for (const r of reads) if (r?.name) msgUse(r.message, `read "${r.name}"`);
+  for (const r of reads) if (r?.name && r.notice == null) msgUse(r.message, `read "${r.name}"`);
+  // a notice must not start like a request: a reply repeats its request's start, so it could be taken for the notice
+  for (const r of reads) {
+    if (!isObj(r?.notice)) continue;
+    let st; try { st = parseTemplate(r.notice.starts).map((x) => x.byte); } catch { continue; }
+    for (const [name, parts] of Object.entries(parsed)) {
+      // past its end a message is zero padding; a placeholder could be anything
+      if (st.every((b, i) => (!parts[i] ? b === 0 : parts[i].byte == null || parts[i].byte === b))) no(`read "${r.name}": its notice starts ${r.notice.starts}, as the message "${name}" does, so a reply to that message could be taken for the notice`);
+    }
+  }
   for (const [name, l] of Object.entries(links || {})) {
     if (isObj(l?.identify)) {
       msgUse(l.identify.message, `link "${name}" identify`);
@@ -400,6 +431,7 @@ export function validate(obj) {
       const ff = fields[fn];
       if (!ff) { no(`${w} has no field "${fn}" to read it from; every setting is read before it is written`); continue; }
       if (readByName[ff.from]?.onDemand) no(`${w} is read only on demand ("${ff.from}"); a setting must come from a regular read, so it can be read before and after each write`);
+      if (readByName[ff.from]?.notice && s.write != null) no(`${w} comes from a notice ("${ff.from}"), which arrives only when the device sends it; a setting that is written must come from a read DeviceHub asks for, so it can be read before and after each write`);
       if (s.type === 'color' && !(ff.type === 'bytes' && (ff.size ?? 1) === 3)) no(`${w}: a color is read from a field of type "bytes" and size 3 (red, green, blue); "${fn}" is not`);
       f ||= ff;
     }
@@ -418,7 +450,7 @@ export function validate(obj) {
     unknown(s.write, 'write', `${w} write`);
     if (!((s.type === 'color' && s.zones) || s.type === 'remap')) msgUse(s.write.message, `${w} write`, { value: true });
     if (s.write.then != null) msgUse(s.write.then, `${w} write "then"`);
-    for (const n of s.write.needs || []) if (!readByName[n]) no(`${w}: needs the read "${n}", which "reads" does not have`);
+    for (const n of s.write.needs || []) if (!readByName[n]) no(`${w}: needs the read "${n}", which "reads" does not have`); else if (readByName[n].notice) no(`${w}: needs "${n}", a notice, which cannot be asked for`);
     for (const k of s.write.keep || []) if (!fields[k]) no(`${w}: keep names "${k}", which is not a field`);
     // every value the page can send must encode to a code that fits its placeholder
     if (!f || !messages[s.write.message]) continue;
@@ -469,8 +501,11 @@ export function validate(obj) {
       if (!readByName[b.from]) no(`battery comes from the read "${b.from}", which "reads" does not have`);
       for (const k of ['percent', 'charging']) if (b[k] != null && !fields[b[k]]) no(`battery.${k} names "${b[k]}", which is not a field`);
       if (!b.percent) no('battery needs "percent": the field with the level');
+      if (b.awake && readByName[b.from]?.notice) no('battery.awake asks the device once, so its "from" must be a read DeviceHub asks for, not a notice');
     }
   }
+  const notices = reads.some((r) => isObj(r) && r.notice != null);
+  if (notices && isObj(obj.hid) && obj.hid.reply !== 'raw') no('a file with a notice needs hid.reply "raw", so the reports the device sends by itself reach it');
   if (obj.info != null && !(Array.isArray(obj.info) && obj.info.every((x) => isObj(x) && typeof x.label === 'string' && typeof x.field === 'string'))) no('"info" must be a list of { label, field }');
   if (obj.stepBack != null) {
     if (!isObj(obj.stepBack) || !Array.isArray(obj.stepBack.processes)) no('stepBack must be { processes: [patterns] }');
@@ -505,7 +540,54 @@ export function validate(obj) {
       }
     }
   }
+
+  // byPid (22 Oct 2026): another product id of the same device (cable and receiver) whose bytes differ. Each entry only
+  // changes what the file already has; the file as it is on that id is then checked in full, never lists included.
+  if (obj.byPid != null) {
+    if (!isObj(obj.byPid)) no('"byPid" must map a product id to what differs on it');
+    else {
+      for (const [p, o] of Object.entries(obj.byPid)) {
+        const w = `byPid.${p}`;
+        if (!hex4(p) || !pids.includes(up4(p))) no(`${w}: ${p} is not one of "pids"`);
+        if (!isObj(o)) { no(`${w} must be an object`); continue; }
+        unknown(o, 'byPid', w);
+        for (const [k, have] of [['messages', messages], ['fields', fields]]) {
+          if (o[k] == null) continue;
+          if (!isObj(o[k])) { no(`${w}.${k} must be an object`); continue; }
+          for (const n of Object.keys(o[k])) if (!have[n]) no(`${w}.${k} has "${n}", which the file's own ${k} does not; byPid only changes what is there`);
+        }
+        if (o.notices != null) {
+          if (!isObj(o.notices)) no(`${w}.notices must map a notice read to its notice`);
+          else for (const n of Object.keys(o.notices)) if (!readByName[n]?.notice) no(`${w}.notices has "${n}", which is not a notice read`);
+        }
+        if (o.encode != null) {
+          if (!isObj(o.encode)) no(`${w}.encode must map a setting to { map }`);
+          else for (const [k, e] of Object.entries(o.encode)) if (!settings.some((s) => isObj(s) && s.key === k && isObj(s.write)) || !isObj(e) || !isObj(e.map)) no(`${w}.encode.${k} must be { map } for a setting that is written`);
+        }
+        for (const k of ['transport', 'replies']) if (o[k] != null && !isObj(o[k])) no(`${w}.${k} must be an object`);
+      }
+      if (!problems.length) for (const p of Object.keys(obj.byPid)) for (const x of validate(forPid(obj, p)).problems) no(`on product id ${up4(p)}: ${x}`);
+    }
+  }
   return { ok: !problems.length, problems };
+}
+
+// the file as it is on one product id: its byPid entry laid over it (transport merged, replies replaced, the named
+// messages, fields, notices and encode maps replaced), without byPid. An id with no entry gets the file as it is.
+export function forPid(def, pid) {
+  const { byPid, ...rest } = def;
+  const key = byPid && Object.keys(byPid).find((k) => up4(k) === up4(pid));
+  const o = key ? byPid[key] : null;
+  if (!o) return rest;
+  return {
+    ...rest,
+    transport: { ...rest.transport, ...(o.transport || {}) },
+    replies: o.replies || rest.replies,
+    messages: { ...(rest.messages || {}), ...(o.messages || {}) },
+    fields: { ...(rest.fields || {}), ...(o.fields || {}) },
+    reads: (rest.reads || []).map((r) => (o.notices?.[r.name] ? { ...r, notice: o.notices[r.name] } : r)),
+    settings: (rest.settings || []).map((s) => (o.encode?.[s.key] && s.write ? { ...s, write: { ...s.write, encode: o.encode[s.key] } } : s)),
+  };
 }
 
 // a template's bytes as sets of what each position can be: [number[] | null = any]
@@ -540,18 +622,29 @@ export function fromJson(input) {
   return makeDriver(JSON.parse(JSON.stringify(def)));
 }
 
-function makeDriver(def) {
-  const t = def.transport;
-  const VID = parseInt(def.vid, 16);
-  const tmpl = Object.fromEntries(Object.entries(def.messages).map(([k, m]) => [k, parseTemplate(m.bytes)]));
-  const errBytes = def.replies.error ? parseTemplate(def.replies.error.bytes).map((p) => p.byte) : null;
-  const echo = def.replies.echo;
-  const okRule = def.replies.ok ? { offset: def.replies.ok.offset, equals: parseInt(def.replies.ok.equals, 16) } : null;
+function makeDriver(base) {
+  // the file as it is on the product id in use (byPid, 22 Oct 2026): use(pid) lays that id's entry over it
+  let def, t, tmpl, errBytes, echo, okRule, reads, heardBy;
+  const use = (pid) => {
+    def = forPid(base, pid || base.pids[0]);
+    t = def.transport;
+    tmpl = Object.fromEntries(Object.entries(def.messages || {}).map(([k, m]) => [k, parseTemplate(m.bytes)]));
+    errBytes = def.replies?.error ? parseTemplate(def.replies.error.bytes).map((p) => p.byte) : null;
+    echo = def.replies?.echo || [0];
+    okRule = def.replies?.ok ? { offset: def.replies.ok.offset, equals: parseInt(def.replies.ok.equals, 16) } : null;
+    reads = def.reads.filter((r) => !r.onDemand);
+    heardBy = def.reads.filter((r) => r.notice).map((r) => ({ name: r.name, reportId: r.notice.reportId, starts: parseTemplate(r.notice.starts).map((p) => p.byte) }));
+  };
+  use(null);
+  const VID = parseInt(base.vid, 16);
   const isError = (r) => !!errBytes && errBytes.every((b, i) => r[i] === b);
   const matches = (s, r) => isError(r) || echo.every((i) => r[i] === s[i]);
   const linkOfPid = (pid) => Object.entries(def.links).find(([, l]) => (l.pids || []).map(up4).includes(pid))?.[0] || null;
-  const reads = def.reads.filter((r) => !r.onDemand);
   const stepBack = (def.stepBack?.processes || []).map((p) => new RegExp(p, 'i'));
+  const hasNotices = base.reads.some((r) => r.notice) || Object.values(base.byPid || {}).some((o) => o?.notices);
+  const u8 = (e) => new Uint8Array(e.data.buffer, e.data.byteOffset, e.data.byteLength);
+  const bt = base.transport;   // the derived channel is the file's own (a notice needs the raw channel to be heard)
+  const derivedHid = { vid: up4(base.vid), pid: up4(base.pids[0]), ...(bt.usagePage ? { page: up4(bt.usagePage) } : {}), len: bt.len, reportId: bt.reportId, ...(hasNotices ? { reply: 'raw' } : {}) };
 
   const drv = {
     id: def.id,
@@ -560,7 +653,23 @@ function makeDriver(def) {
     ...(def.vendor ? { vendor: def.vendor } : {}),
     unsupported: [...(def.unsupported || [])],
     declarative: true,
-    ...(def.hid ? { hid: { ...def.hid } } : { hid: { vid: up4(def.vid), pid: up4(def.pids[0]), ...(t.usagePage ? { page: up4(t.usagePage) } : {}), len: t.len, reportId: t.reportId } }),
+    ...(base.hid ? { hid: { ...base.hid } } : { hid: derivedHid }),
+
+    // the product id in use: its byPid entry (if any) is laid over the file
+    usePid(pid) { use(pid ? up4(pid) : null); },
+
+    // a notice (an input report the device sent by itself) is kept, the last one per read, until the next arrives
+    heard(reportId, r) {
+      for (const n of heardBy) {
+        if (n.reportId != null && reportId != null && n.reportId !== reportId) continue;
+        if (n.starts.every((b, i) => r[i] === b)) (this.notices ||= {})[n.name] = Uint8Array.from(r);
+      }
+    },
+    // the reports waiting on the raw channel (helpers/hid-host.mjs receiveReports): read once per snapshot
+    async drain() {
+      if (!heardBy.length || typeof this.dev?.receiveReports !== 'function') return;
+      try { for (const e of await this.dev.receiveReports(0)) this.heard(e.reportId, u8(e)); } catch {}
+    },
 
     // the context conditions and $references are read against
     ctx(fields = {}) {
@@ -604,11 +713,11 @@ function makeDriver(def) {
     },
 
     async connect(prompt = false) {
-      Object.assign(this, { dev: null, ch: null, model: null, link: null, probes: {}, pairedId: null, locked: new Set(), snap: null, snapAt: 0, appAt: 0, app: null, q: Promise.resolve() });
+      Object.assign(this, { dev: null, ch: null, model: null, link: null, probes: {}, pairedId: null, locked: new Set(), snap: null, snapAt: 0, appAt: 0, app: null, q: Promise.resolve(), notices: {} });
       const filters = def.pids.map(up4).map((p) => {
         const ln = linkOfPid(p) || Object.keys(def.links).find((k) => def.models.some((m) => (m.pids?.[k] || []).map(up4).includes(p)));
         const l = def.links[ln] || {};
-        const page = l.usagePage === undefined ? t.usagePage : l.usagePage;
+        const page = l.usagePage === undefined ? forPid(base, p).transport.usagePage : l.usagePage;
         return page ? { vendorId: VID, productId: parseInt(p, 16), usagePage: parseInt(page, 16) } : { vendorId: VID, productId: parseInt(p, 16) };
       });
       const dev = await getDevice(filters, { prompt });
@@ -616,8 +725,12 @@ function makeDriver(def) {
       await this.stepBackCheck();
       if (!dev.opened) await dev.open();
       this.dev = dev;
-      if (t.report === 'output') this.ch = new HidChannel(dev, { reportId: t.reportId, length: t.len, match: matches });
       const pid = up4(dev.productId.toString(16));
+      use(pid);
+      // a report that answers nothing may be a notice; in a browser (no raw channel) every input report is looked at
+      const match = heardBy.length ? (s, r) => { if (matches(s, r)) return true; this.heard(null, r); return false; } : matches;
+      if (t.report === 'output') this.ch = new HidChannel(dev, { reportId: t.reportId, length: t.len, match });
+      if (heardBy.length && typeof dev.receiveReports !== 'function') dev.addEventListener('inputreport', (e) => this.heard(e.reportId, u8(e)));
       const receiver = linkOfPid(pid);
       if (receiver) {
         const l = def.links[receiver];
@@ -674,7 +787,7 @@ function makeDriver(def) {
       throw last;
     },
     judge(r) {
-      const error = isError(r) || (okRule && r[okRule.offset] !== okRule.equals) || (def.replies.checksum && !checksumOk(r, t.checksum));
+      const error = isError(r) || (okRule && r[okRule.offset] !== okRule.equals) || (def.replies?.checksum && !checksumOk(r, t.checksum));
       return { bytes: r, error: !!error };
     },
     exchange({ reportId, data }) {
@@ -699,8 +812,11 @@ function makeDriver(def) {
       if (!fresh && this.snap && Date.now() - this.snapAt < SNAP_MS) return this.snap;
       await this.stepBackCheck();
       const replies = {};
+      let drained = false;
       for (const rd of reads) {
         if (!test(rd.when, this.ctx())) continue;
+        // a notice: the last one the device sent (none yet = not known yet; nothing is ever sent for it)
+        if (rd.notice) { if (!drained) { await this.drain(); drained = true; } replies[rd.name] = this.notices?.[rd.name] || null; continue; }
         const r = await this.ask(rd.message);
         if (r.error) {
           const act = isObj(rd.onError) ? rd.onError[this.wireless() ? 'wireless' : 'wired'] : rd.onError || 'fail';

@@ -1,4 +1,4 @@
-# driver.json: a device driver as data (format 1, 22 Oct 2026)
+# driver.json: a device driver as data (format 1, 22 Oct 2026; notices and byPid added the same day)
 
 Most devices DeviceHub learns talk the same way: send a short request, get a reply that echoes it, find each value at
 a byte offset. Such a driver needs no code. It is a `driver.json` in the device's folder (`my-devices\<name>\` or
@@ -76,7 +76,8 @@ byte-for-byte equal to its `device.mjs` by `tests\declarative-driver.mjs`.
     { "name": "status", "message": "status", "when": { "model.battery": true },
       "onError": { "wireless": "fail", "wired": "skip" },   "fail" (default) | "skip" | per link kind
       "asleepIf": { "link.wireless": true, "battery": 0, "charging": false } },
-    { "name": "colors", "message": "colors", "onDemand": true, "onError": "skip" }   only when a write needs it
+    { "name": "colors", "message": "colors", "onDemand": true, "onError": "skip" },  only when a write needs it
+    { "name": "dial", "notice": { "starts": "45", "reportId": 0, "len": 64 } }      heard, never asked (see Notices)
   ],
   "fields": {                            where each value sits in which read's reply
     "battery":  { "from": "status", "offset": 4 },
@@ -102,7 +103,8 @@ byte-for-byte equal to its `device.mjs` by `tests\declarative-driver.mjs`.
             { "label": "8K booster", "field": "probe.booster", "map": { "true": "on", "false": "off" } } ],
   "stepBack": { "processes": ["^armourycrate.*\\.exe$"] },   refuse to read or write while the maker's app runs
   "unsupported": ["firmware updates"],
-  "never": [ { "bytes": "51 21", "why": "button remap" } ]  this file's own never list (see Safety)
+  "never": [ { "bytes": "51 21", "why": "button remap" } ],  this file's own never list (see Safety)
+  "byPid": { "1A94": { "messages": { "status": { "bytes": "12 08" } } } }   one product id's own bytes (see byPid)
 }
 ```
 
@@ -155,6 +157,45 @@ everything fresh, refuse if the setting was not read, do the `needs` reads, send
 and compare. If the value or a `keep` field differs, the value read before is written back and the write fails; nothing
 more is sent. Only on a match is `then` (a save) sent. Wireless links say "asleep or out of range" for an error reply.
 
+### Battery
+
+`battery` is what the device's tile, its page's battery pill and the low-battery warning use (my-devices passes the
+driver's `battery()` on as it is). `from` is the read the level comes in, `percent` the field with the level (0-100),
+`charging` an optional field (any value other than 0 / false counts as charging). The fields may come from any read,
+a notice included; `awake` needs `from` to be a read DeviceHub asks for. Nothing is ever written for it.
+
+### Notices (22 Oct 2026)
+
+A read with `notice` instead of `message` is a report the device sends **by itself** (ChatMix when its wheel moves,
+a battery report every minute). Nothing is sent for it. `starts`: the bytes the report starts with (after the report
+id; 1-8 bytes, no placeholders); `reportId` (optional); `len`: its length in data bytes (default `transport.len`;
+its fields must fit in it). DeviceHub keeps the last one that arrived; until one has, its fields are simply not
+known (no error). Rules:
+- a field read from a notice may feed a `display`, a setting without `write`, `battery` or `info`, never a setting
+  that is written (a write is read before and after, so it must come from a read DeviceHub asks for), and never
+  `write.needs` or `battery.awake`;
+- `starts` must not be how any message starts (a reply repeats its request's start, so it could be taken for the
+  notice; a placeholder there counts as a match, and past a message's end it is zero padding);
+- a notice cannot be `onDemand` and has no `onError` or `asleepIf`;
+- the channel must be raw: the derived `hid` gets `reply: "raw"`; an explicit `hid` must say `"reply": "raw"`. On
+  the agent the waiting reports are read once per snapshot (hid-host `receiveReports`); in a browser every input
+  report is looked at;
+- a file whose every read is a notice needs no `messages` and no `replies`: it never sends a byte.
+
+### byPid (22 Oct 2026)
+
+Some devices are one USB id on the cable and another on the receiver, and some take other bytes on each. `pids` and a
+link per id cover the first kind (then `hid.pids` and `hid.byPid` choose each id's collection: docs/handoff/hid-core.md).
+For the second, `byPid: { "<pid>": { ... } }` holds what that id does differently, laid over the file when the device
+is on that id:
+- `transport`: merged over the file's (len, reportId, checksum, ...);
+- `replies`: replaces the file's;
+- `messages`, `fields`: replace those of the same name (it cannot add a name);
+- `notices`: `{ <read name>: { starts, reportId, len } }` for notice reads;
+- `encode`: `{ <setting key>: { map } }`, a written setting's codes on that id.
+Every pid named must be in `pids`, and the file as it is on that id is checked in full (`validate` on it, never lists
+included), its problems starting "on product id XXXX:". Settings, links and models stay the same for every id.
+
 ### Checksums
 
 `none`, `xor` (XOR of bytes `from`..`to`, one byte at `at`; this is Razer's "crc"), `sum8` (low byte of the sum),
@@ -181,11 +222,15 @@ Every refusal says what is wrong in a sentence. A file is refused when:
    are reached by an index handed out at run time).
 4. **A setting is written without a read**: every setting needs a field from a regular (not on-demand) read, so it can
    be read before and after each write.
-5. **A display has a write**, a color is not read from 3 bytes or not sent as `{value:rgb}`, a `{zone}` / `{button}`
+5. **A notice could be mistaken or misused**: a written setting, a `needs` or `battery.awake` reading from it, a
+   notice that starts like a message, placeholders in `starts`, or a notice without a raw channel (see Notices).
+   And **a byPid entry** for an id not in `pids`, adding a name the file does not have, or making the file unsafe on
+   that id.
+6. **A display has a write**, a color is not read from 3 bytes or not sent as `{value:rgb}`, a `{zone}` / `{button}`
    is in a message nothing gives it to, a zone or button has no `code`, or a remap target does not encode.
-6. **A numeric write has no range**: a slider without `min` and `max` (for every model it shows on), or a value the
+7. **A numeric write has no range**: a slider without `min` and `max` (for every model it shows on), or a value the
    page allows that does not encode into its placeholder.
-7. **A setting looks like a firmware, reset, flash or pairing control** by its key or label.
+8. **A setting looks like a firmware, reset, flash or pairing control** by its key or label.
 
 ## What it cannot express (then a device.mjs is still the way)
 
@@ -198,6 +243,7 @@ Every refusal says what is wrong in a sentence. A file is refused when:
 - Values computed from several fields, or unit conversions other than `raw * scale + add`, a map, or a bool
   (for example a battery voltage curve, the Arctis 9's 0x64-0x9A battery range, a doubled DPI).
 - Transports other than one HID collection with output or feature reports: the helper's own channels (the HS80's),
-  Bluetooth GATT, serial, two collections at once (only per-message report ids), unsolicited notices.
+  Bluetooth GATT, serial, two collections at once (only per-message report ids), notices on another collection than the
+  one the driver opens (a notice on its own collection is a `notice` read).
 - More than one request in flight, timing rules beyond one wait and one timeout, and info lines built from several
   values.

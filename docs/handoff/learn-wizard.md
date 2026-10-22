@@ -85,3 +85,6 @@ below for what the wizard refuses." And in the Map:
   name) are not set: the wizard says to close the maker's app before saving.
 - `helpers/library-updates.mjs` and `make-library-bundle.mjs` (signed library bundles) still carry device.mjs only; a
   shared driver.json-only entry ships with the next release, not between releases, until they learn it too.
+
+Since then (22 Oct 2026, docs/handoff/learn-readings.md): readings (battery, charging, ChatMix, a sensor) are learned
+too, and after a save the same device can be learned on its other USB id (cable and receiver) into the same driver.

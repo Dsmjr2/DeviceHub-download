@@ -348,6 +348,75 @@ async function refusesWrite(drv, key, v) { try { await drv.write(key, v); ok(fal
   ok(JSON.stringify(await drv.read()) === JSON.stringify({ temp: 41, color: '#12ab00', lights: { logo: '#ffffff', wheel: '#00ff00' }, buttons: { b1: 'right', b2: 'back' } }), 'the self-check left everything as it was');
 }
 
+// ---- 5. notices and byPid (22 Oct 2026, docs/handoff/learn-readings.md), on pretend devices ----
+{
+  // a file that only listens: no messages, no replies; a display and the battery from a report the device sends itself
+  const listen = () => mini({ id: 'pretend-dial', pids: ['FFE2'], models: [{ name: 'Pretend', pids: { usb: ['FFE2'] } }], transport: { report: 'output', len: 16, reportId: 0 },
+    replies: undefined, messages: undefined, reads: [{ name: 'dial', notice: { starts: '45', len: 16 } }],
+    fields: { mix: { from: 'dial', offset: 1, map: { 1: 'game', 2: 'chat' } }, level: { from: 'dial', offset: 2 } },
+    settings: [{ key: 'mix', label: 'ChatMix', type: 'display' }], battery: { from: 'dial', percent: 'level' } });
+  const lf = JSON.parse(JSON.stringify(listen()));
+  ok(validate(lf).ok, `a file that only listens (no messages, no replies) is accepted (${validate(lf).problems.join('; ')})`);
+  const drv = fromJson(lf);
+  drv.vendorApp = async () => null;
+  ok(drv.hid.reply === 'raw', `its channel listens raw (${JSON.stringify(drv.hid)})`);
+  const listeners = new Set(), sent = [];
+  const dev = { vendorId: 0xffff, productId: 0xffe2, opened: true, collections: [], async open() {},
+    addEventListener(t, f) { listeners.add(f); }, removeEventListener(t, f) { listeners.delete(f); },
+    async sendReport(id, d) { sent.push(h(d)); }, async sendFeatureReport() { sent.push('feature'); } };
+  const emit = (b) => { const u = new Uint8Array(16); u.set(b); listeners.forEach((f) => f({ reportId: 0, data: new DataView(u.buffer) })); };
+  plugged = dev;
+  ok(await drv.connect(false), 'it connects');
+  ok(JSON.stringify(await drv.read()) === '{}' && (await drv.battery()) === null, 'before the device sends anything, nothing is known (and nothing fails)');
+  emit([0x46, 9, 9]); emit([0x45, 2, 64]);
+  drv.snap = null;
+  ok((await drv.read()).mix === 'chat' && (await drv.battery())?.percent === 64, 'the report starting 45 is heard: ChatMix chat, battery 64%; the one starting 46 is not');
+  ok(sent.length === 0, `a file that only listens never sends a byte (${sent})`);
+  // the hid-host raw channel: reports waiting are read once per snapshot
+  const d2 = fromJson(lf); d2.vendorApp = async () => null;
+  const queue = [[0x45, 1, 33]];
+  const dev2 = { ...dev, receiveReports: async () => queue.splice(0).map((b) => { const u = new Uint8Array(16); u.set(b); return { reportId: 0, data: new DataView(u.buffer) }; }) };
+  plugged = dev2;
+  await d2.connect(false);
+  ok((await d2.read()).mix === 'game' && (await d2.battery())?.percent === 33, 'on the raw channel the waiting reports are read');
+
+  const withNotice = (over) => mini({ reads: [{ name: 'state', message: 'get' }, { name: 'dial', notice: { starts: '45' } }], fields: { brightness: { from: 'state', offset: 1 }, mix: { from: 'dial', offset: 1 } }, ...over });
+  ok(validate(withNotice({ settings: [{ key: 'brightness', label: 'Brightness', type: 'slider', min: 0, max: 100, write: { message: 'set' } }, { key: 'mix', label: 'Mix', type: 'display' }] })).ok, 'asked reads and a notice in one file are accepted');
+  refuses('a written setting read from a notice', withNotice({ settings: [{ key: 'mix', label: 'Mix', type: 'slider', min: 0, max: 100, write: { message: 'set' } }] }), /comes from a notice/);
+  refuses('a notice that starts like a request', withNotice({ reads: [{ name: 'state', message: 'get' }, { name: 'dial', notice: { starts: '20' } }] }), /could be taken for the notice/);
+  refuses('a notice that starts like a write with a value there', withNotice({ reads: [{ name: 'state', message: 'get' }, { name: 'dial', notice: { starts: '21 05' } }] }), /could be taken for the notice/);
+  refuses('a notice with a channel that does not listen raw', withNotice({ hid: { vid: 'FFFF', pid: 'FFE0' } }), /hid\.reply "raw"/);
+  refuses('a read with both a message and a notice', withNotice({ reads: [{ name: 'state', message: 'get' }, { name: 'dial', message: 'get', notice: { starts: '45' } }] }), /both "message" and "notice"/);
+  refuses('a notice read on demand', withNotice({ reads: [{ name: 'state', message: 'get' }, { name: 'dial', notice: { starts: '45' }, onDemand: true }] }), /cannot have "onDemand"/);
+  refuses('a notice with a placeholder', withNotice({ reads: [{ name: 'state', message: 'get' }, { name: 'dial', notice: { starts: '45 {value}' } }] }), /cannot hold placeholders/);
+  refuses('a battery wake-up question from a notice', withNotice({ battery: { from: 'dial', percent: 'mix', awake: true } }), /battery\.awake/);
+  refuses('a read with neither', withNotice({ reads: [{ name: 'state', message: 'get' }, { name: 'dial' }] }), /needs a message .* or a notice/);
+  refuses('a field outside its notice', withNotice({ reads: [{ name: 'state', message: 'get' }, { name: 'dial', notice: { starts: '45', len: 1 } }] }), /fit in the 1-byte reply/);
+
+  // byPid: one id's own bytes, checked in full on that id
+  const two = (over = {}) => mini({ pids: ['FFE0', 'FFE5'], links: { usb: { label: 'USB' }, rx: { label: 'Receiver', wireless: true } }, models: [{ name: 'Pretend', pids: { usb: ['FFE0'], rx: ['FFE5'] } }], ...over });
+  const bp = two({ byPid: { FFE5: { messages: { get: { bytes: '30' }, set: { bytes: '31 {value}' } }, fields: { brightness: { from: 'state', offset: 2 } } } } });
+  ok(validate(bp).ok, `byPid with that id's own messages and fields is accepted (${validate(bp).problems.join('; ')})`);
+  const bd = fromJson(bp);
+  const b0 = h(bd.build('get').data.slice(0, 1));
+  bd.usePid('FFE5');
+  ok(b0 === '20' && h(bd.build('get').data.slice(0, 1)) === '30' && h(bd.build('set', { value: 7 }).data.slice(0, 2)) === '31 07', 'each id builds its own bytes');
+  refuses('byPid for an id the file does not have', two({ byPid: { FFE9: { messages: { get: { bytes: '30' } } } } }), /not one of "pids"/);
+  refuses('byPid adding a message', two({ byPid: { FFE5: { messages: { boot: { bytes: '30' } } } } }), /byPid only changes what is there/);
+  refuses('byPid with a part it does not know', two({ byPid: { FFE5: { settings: [] } } }), /does not know/);
+  refuses('byPid breaking the file on that id', two({ byPid: { FFE5: { messages: { set: { bytes: '31' } } } } }), /on product id FFE5: .*has no \{value\}/);
+  refuses('byPid bytes on a never list', two({ transport: { report: 'output', len: 32, reportId: 0, usagePage: 'FF60' }, byPid: { FFE5: { messages: { get: { bytes: '0B' } } } } }), /on product id FFE5: .*VIA bootloader jump/);
+  // connect on the second id: its own bytes go out
+  const sent2 = [];
+  const listeners2 = new Set();
+  const dev3 = { vendorId: 0xffff, productId: 0xffe5, opened: true, collections: [], async open() {},
+    addEventListener(t, f) { listeners2.add(f); }, removeEventListener(t, f) { listeners2.delete(f); },
+    async sendReport(id, d) { sent2.push(h(d.slice(0, 2))); const r = new Uint8Array(32); r[0] = d[0]; r[2] = 55; setTimeout(() => listeners2.forEach((f) => f({ reportId: 0, data: new DataView(r.buffer) })), 1); } };
+  const bc = fromJson(bp); bc.vendorApp = async () => null;
+  plugged = dev3;
+  ok(await bc.connect(false) && (await bc.read()).brightness === 55 && sent2.every((x) => x.startsWith('30')), `on FFE5 it reads with 30 and finds the value where that id keeps it (${sent2})`);
+  plugged = null;
+}
 
 console.log(fails ? `declarative-driver: ${fails} FAILED` : 'declarative-driver (driver.json: ASUS ROG mouse byte-for-byte as its device.mjs, the safety check refusing bad files): all good');
 process.exitCode = fails ? 1 : 0;

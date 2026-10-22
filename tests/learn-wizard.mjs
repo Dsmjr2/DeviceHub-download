@@ -71,13 +71,13 @@ const takesOf = (bufs, vid, pid, opts = {}) => bufs.map((b) => lw.takeMessages([
 // output reports, no report id, 64 bytes. Read DPI: 05 81 -> 05 81 00 <dpi u16le>. Set DPI: 05 01 00 <dpi u16le> ->
 // 05 01 00 (ack). Battery poll 07 00 -> 07 00 55. Another device on the same hub (address 9) talks too.
 const D1 = 3, NOISE = 9;
-function acme(value, { drag = null, counter = null, twin = false, noRead = false, noReply = false, same = false } = {}) {
+function acme(value, { drag = null, counter = null, twin = false, noRead = false, noReply = false, same = false, pid = 0x5678, rd = 0x81 } = {}) {
   const r = new Rec();
-  r.descriptor(D1, 0x1234, 0x5678); r.descriptor(NOISE, 0x0BDA, 0x8153);
+  r.descriptor(D1, 0x1234, pid); r.descriptor(NOISE, 0x0BDA, 0x8153);
   const lo = (v) => v & 255, hi = (v) => v >> 8;
   for (let i = 0; i < 3; i++) { r.out(D1, pad([7, 0], 64)); r.inp(D1, pad([7, 0, 0x55], 64)); r.out(NOISE, pad([5, 1, 0, 0x20, 3], 64)); }
   const was = 400;
-  r.out(D1, pad([5, 0x81], 64)); r.inp(D1, pad([5, 0x81, 0, lo(was), hi(was)], 64));
+  r.out(D1, pad([5, rd], 64)); r.inp(D1, pad([5, rd, 0, lo(was), hi(was)], 64));
   const sendValue = (v) => {
     const msg = same ? [5, 1, 0, 0x90, 1] : [5, 1, counter ?? 0, lo(v), hi(v)];
     r.out(D1, pad(msg, 64));
@@ -86,7 +86,7 @@ function acme(value, { drag = null, counter = null, twin = false, noRead = false
   };
   if (drag) sendValue(drag);
   sendValue(value);
-  if (!noRead) { r.out(D1, pad([5, 0x81], 64)); r.inp(D1, pad([5, 0x81, 0, lo(value), hi(value)], 64)); }
+  if (!noRead) { r.out(D1, pad([5, rd], 64)); r.inp(D1, pad([5, rd, 0, lo(value), hi(value)], 64)); }
   r.out(D1, pad([7, 0], 64)); r.inp(D1, pad([7, 0, 0x54], 64));
   return { value, pcap: r.pcap() };
 }
@@ -309,6 +309,186 @@ check(/Sinowealth/.test(lw.vendorRefusal('258a') || '') && /Laview/.test(lw.vend
   await load(root, { register: (x) => regM.push(x), addSpec() {}, taken: (id) => regM.some((y) => y.id === id), selfCheck: {} });
   const am = regM.find((x) => x.plugin === shared.name);
   check(am && am.settings.find((x) => x.key === s2.key)?.readOnly, 'loaded guarded: the learned setting is read-only until its check');
+}
+
+// ---------------------------------------------------------------- readings (22 Oct 2026, docs/handoff/learn-readings.md)
+// device 4: Arc headset (5555:0101). Output reports, no report id, 64 bytes. Battery: 06 01 -> 06 01 00 <percent>
+// <charging>. ChatMix: the headset sends 45 <mode> 10 by itself when its wheel moves (1 game, 2 chat, 3 even); nothing
+// asks for it. On its receiver (5555:0102) the same bytes; on a newer receiver (5555:0103) the battery read is 06 02.
+const D4 = 5;
+const hexOf = lw.hexOf;
+function arc({ pid = 0x0101, pct = 55, charging = 0, mode = null, twin = false, cmd = 1 } = {}) {
+  const r = new Rec();
+  r.descriptor(D4, 0x5555, pid); r.descriptor(NOISE, 0x0BDA, 0x8153);
+  for (let i = 0; i < 2; i++) { r.out(D4, pad([6, cmd], 64)); r.inp(D4, pad([6, cmd, 0, pct, charging], 64)); r.out(NOISE, pad([6, 1, 0, pct], 64)); }
+  if (mode != null) { r.inp(D4, pad([0x45, 3, 0x10], 64)); r.inp(D4, pad([0x45, mode, twin ? mode + 5 : 0x10], 64)); }
+  r.out(D4, pad([6, cmd], 64)); r.inp(D4, pad([6, cmd, 0, pct, charging], 64));
+  return r.pcap();
+}
+const arcTake = (value, o) => ({ value, messages: lw.takeMessages([arc(o)], { vid: '5555', pid: (o?.pid ?? 0x0101).toString(16).padStart(4, '0') }).messages });
+{
+  // the analysis alone
+  let a = lw.analyzeReading([arcTake(55, { pct: 55 })], { label: 'Battery', kind: 'reading', role: 'battery' });
+  check(a.ok && a.learned.read?.field.offset === 3 && a.learned.read.data[0] === 6 && a.learned.read.data[1] === 1 && !a.learned.write && !a.learned.notice,
+    `battery: one recording finds the byte that matches the percent the app showed, in the reply to 06 01 (${JSON.stringify(a.why || a.learned?.read?.field)})`);
+  a = lw.analyzeReading([arcTake(1, { pct: 1, charging: 1 })], { label: 'Battery', kind: 'reading', role: 'battery' });
+  check(!a.ok && a.ambiguous && a.needMore && /another percent/.test((a.why || []).join(' ')), `battery: two bytes match the percent, so it asks for another percent (${(a.why || []).join(' ')})`);
+  a = lw.analyzeReading([arcTake(1, { pct: 1, charging: 1 }), arcTake(2, { pct: 2, charging: 1 })], { label: 'Battery', kind: 'reading', role: 'battery' });
+  check(a.ok && a.learned.read.field.offset === 3, `battery: a second percent settles it (${JSON.stringify(a.why)})`);
+  check(!lw.analyzeReading([arcTake(150, {})], { label: 'Battery', kind: 'reading', role: 'battery' }).ok, 'a battery level above 100 is refused');
+  a = lw.analyzeReading([arcTake('game', { mode: 1 }), arcTake('chat', { mode: 2 })], { label: 'ChatMix', kind: 'reading', role: 'display' });
+  check(a.ok && a.learned.notice && hexOf(a.learned.notice.starts) === '45' && a.learned.notice.field.offset === 1 && same(a.learned.notice.field.codes, [1, 2]) && !a.learned.read,
+    `ChatMix: the report the headset sends by itself (45 ...), one code per value at byte 1 (${JSON.stringify(a.why || a.learned?.notice)})`);
+  a = lw.analyzeReading([arcTake('game', { mode: 1, twin: true }), arcTake('chat', { mode: 2, twin: true })], { label: 'ChatMix', kind: 'reading' });
+  check(!a.ok && a.ambiguous && a.needMore && /More than one place/.test((a.why || []).join(' ')), `two bytes moving with ChatMix: ambiguous, ask for a third value (${(a.why || []).join(' ')})`);
+  a = lw.analyzeReading([arcTake('game', { mode: 1, twin: true }), arcTake('chat', { mode: 2, twin: true }), arcTake('even', { mode: 3, twin: true })], { label: 'ChatMix', kind: 'reading' });
+  check(!a.ok && a.ambiguous && !a.needMore && /cannot be learned/.test((a.why || []).join(' ')), `still two places after a third value: refused (${(a.why || []).join(' ')})`);
+  a = lw.analyzeReading([arcTake(7, {}), arcTake(9, {})], { label: 'Mic level', kind: 'reading' });
+  check(!a.ok && /found nothing/.test((a.why || []).join(' ')), `a value nothing carries: refused in plain words (${(a.why || []).join(' ')})`);
+  check(!lw.analyzeReading([arcTake('game', { mode: 1 })], { label: 'ChatMix', kind: 'reading' }).ok, 'a reading other than the battery needs two values');
+}
+
+// through the route: battery, charging and ChatMix learned, saved, then learned again on the receiver's USB id
+const arcCol = (pid) => ({ vid: '5555', pid, iface: 3, col: 1, page: 'FF00', usage: '0001', inLen: 65, outLen: 65, featLen: 0, inIds: [], outIds: [], featIds: [], product: 'Arc headset' });
+let arcFile = null;
+lw.reset();
+lw.options.deps = { ...lw.options.deps, owned: () => ({ runs: [], mine: [], copies: [] }), listHid: async () => ({ collections: [arcCol('0101'), arcCol('0102'), arcCol('0103')] }), readTake: () => [arcFile] };
+check(/Save a driver first/.test((await route('GET', 'devices'), await route('POST', 'second', { vid: '5555', pid: '0102' })).error || ''), 'the other USB id is offered only after a save');
+check((await route('POST', 'begin', { vid: '5555', pid: '0101' })).ok && (await route('POST', 'listen')).ok, 'the Arc headset is picked and listened to');
+const learnIt = async (setting, files) => {
+  const s = await route('POST', 'setting', setting);
+  if (!s.ok) return s;
+  for (const f of files) { arcFile = f; const r1 = await route('POST', 'record'); if (!r1.ok) return r1; const r2 = await route('POST', 'stop'); if (!r2.ok) return r2; }
+  const an = await route('POST', 'analyze');
+  if (!an.ok) return an;
+  return { an, add: await route('POST', 'add', { title: 'Arc headset', kind: 'Headset' }) };
+};
+let lr = await learnIt({ kind: 'reading', role: 'battery', values: ['55'] }, [arc({ pct: 55 })]);
+check(lr.an?.kind === 'reading' && lr.an.role === 'battery' && lr.add?.ok && lr.add.driver.battery?.percent === 'battery', `the battery level is learned from one recording (${JSON.stringify(lr.why || lr.error || lr.add?.why)})`);
+lr = await learnIt({ kind: 'reading', role: 'charging' }, [arc({ charging: 1 }), arc({ charging: 0 })]);
+check(lr.add?.ok && lr.add.driver.battery?.charging === 'charging' && same(lr.add.driver.fields.charging.map, { 0: false, 1: true }), `charging is learned on and off and goes with the battery (${JSON.stringify(lr.why || lr.error || lr.add?.why)})`);
+check((await route('POST', 'setting', { kind: 'reading', role: 'battery', values: ['200'] })).ok === false, 'a percent above 100 is refused');
+lr = await learnIt({ kind: 'reading', role: 'display', label: 'ChatMix', values: ['game', 'chat'] }, [arc({ mode: 1 }), arc({ mode: 2 })]);
+const arcDef = lr.add?.driver;
+check(lr.add?.ok && arcDef.reads.some((r) => r.notice?.starts === '45') && arcDef.settings.length === 1 && arcDef.settings[0].type === 'display' && !arcDef.settings[0].write && same(arcDef.fields.chatmix.map, { 1: 'game', 2: 'chat' }),
+  `ChatMix becomes a display read from the report the headset sends by itself (${JSON.stringify(lr.why || lr.error || lr.add?.why)})`);
+if (arcDef) {
+  check(Object.keys(arcDef.messages).join() === 'read1' && arcDef.messages.read1.bytes === '06 01' && arcDef.hid.reply === 'raw' && validate(arcDef).ok,
+    `the only message is the battery read seen in the recording, and the channel listens raw (${JSON.stringify(arcDef.messages)} ${validate(arcDef).problems.join('; ')})`);
+  check(!arcDef.settings.some((s) => s.write) && !Object.keys(arcDef.messages).some((k) => k.startsWith('set')), 'nothing is ever written for a reading');
+}
+let svArc = await route('POST', 'save', { title: 'Arc headset', kind: 'Headset' });
+check(svArc.ok && svArc.saved?.canSecond && fs.existsSync(path.join(root, 'my-devices', 'arc-headset', 'driver.json')), `the Arc driver is saved and offers its other USB id (${JSON.stringify(svArc.why || svArc.error)})`);
+
+// the saved driver, driven: it asks only for the battery and hears ChatMix when the headset sends it
+const hidMod = await import('../public/devices/hid.js');
+function fakeArc(pid, cmd = 1, { raw = true } = {}) {
+  const st = { pct: 40, charging: 1, queue: [], sent: [] };
+  const listeners = new Set();
+  const dev = { vendorId: 0x5555, productId: pid, productName: 'Arc', opened: true, async open() {},
+    addEventListener(t, f) { listeners.add(f); }, removeEventListener(t, f) { listeners.delete(f); },
+    emit(b) { const u = Uint8Array.from(pad(b, 64)); listeners.forEach((f) => f({ reportId: 0, data: new DataView(u.buffer) })); },
+    async sendReport(id, d) { st.sent.push(hexOf(d.slice(0, 4))); if (d[0] === 6 && d[1] === cmd) setTimeout(() => this.emit([6, cmd, 0, st.pct, st.charging]), 1); } };
+  if (raw) dev.receiveReports = async () => { const q = st.queue; st.queue = []; return q.map((b) => ({ reportId: 0, data: new DataView(Uint8Array.from(pad(b, 64)).buffer) })); };
+  return { dev, st };
+}
+const drive = async (def, fake) => {
+  hidMod.setDeviceProvider(async (filters) => (filters.some((f) => f.productId === fake.dev.productId) ? fake.dev : null));
+  const drv = fromJson(def); drv.vendorApp = async () => null;
+  return { drv, connected: await drv.connect() };
+};
+if (arcDef) {
+  const fk = fakeArc(0x0101);
+  const { drv, connected } = await drive(JSON.parse(fs.readFileSync(path.join(root, 'my-devices', 'arc-headset', 'driver.json'), 'utf8')), fk);
+  const r0 = await drv.read();
+  fk.st.queue.push([0x45, 2, 0x10]);
+  drv.snap = null;
+  const r1 = await drv.read(), bt = await drv.battery();
+  check(connected && !('chatmix' in r0) && r1.chatmix === 'chat' && bt?.percent === 40 && bt.charging === true, `it reads the battery and charging, and ChatMix once the headset sends it (${JSON.stringify([r0, r1, bt])})`);
+  check(fk.st.sent.length > 0 && fk.st.sent.every((x) => x === '06 01 00 00'), `it sent only the battery read it heard the app send (${fk.st.sent})`);
+  let refusedW = null; try { await drv.write('chatmix', 'game'); } catch (e) { refusedW = e.message; }
+  check(/read only|reading|not a setting/.test(refusedW || ''), `a reading cannot be written (${refusedW})`);
+  // without a raw channel (a browser): a report that answers nothing is still heard
+  const fb = fakeArc(0x0101, 1, { raw: false });
+  const b2 = await drive(arcDef, fb);
+  fb.dev.emit([0x45, 1, 0x10]);
+  b2.drv.snap = null;
+  check((await b2.drv.read()).chatmix === 'game', 'with no raw channel, ChatMix is heard from the input reports');
+}
+const regA = [];
+await load(root, { register: (x) => regA.push(x), addSpec() {}, taken: (id) => regA.some((y) => y.id === id), selfCheck: {} });
+const arcA = regA.find((x) => x.plugin === 'arc-headset');
+check(arcA && typeof arcA.battery === 'function' && arcA.settings.find((x) => x.key === 'chatmix')?.readOnly, 'my-devices loads it with its battery for the tile, ChatMix read only');
+
+// the same headset on its receiver (5555:0102): the same bytes, so the id is added to the same driver
+check(/learned on/.test((await route('POST', 'second', { vid: '5555', pid: '0101' })).error || ''), 'the id it was learned on is refused for the second id');
+let sc = await route('POST', 'second', { vid: '5555', pid: '0102', link: 'receiver' });
+check(sc.ok && sc.second?.total === 3 && sc.second.next?.label === 'Battery' && sc.second.link === 'receiver', `the receiver's id starts a session for the same three readings (${JSON.stringify(sc.error || sc.second)})`);
+check((await route('POST', 'listen')).ok, 'listening starts again for the second id');
+const second = async (pid, cmd = 1, { early = null } = {}) => {
+  const o = { pid, cmd };
+  for (const [set, files] of [[{ values: ['40'] }, [arc({ ...o, pct: 40 })]], [{}, [arc({ ...o, charging: 1 }), arc({ ...o, charging: 0 })]], [{ values: ['ignored'] }, [arc({ ...o, mode: 1 }), arc({ ...o, mode: 2 })]]]) {
+    const r = await learnIt(set, files);
+    if (!r.add?.ok) return r;
+    if (early && !early.done) { early.done = await route('POST', 'save', {}); }
+  }
+  return route('POST', 'save', {});
+};
+const early = {};
+let s2 = await second(0x0102, 1, { early });
+check(/Learn Charging on this id too/.test((early.done?.why || []).join(' ')), `the id is not added before every setting is learned on it (${JSON.stringify(early.done)})`);
+const arcFile2 = path.join(root, 'my-devices', 'arc-headset', 'driver.json');
+let d2 = JSON.parse(fs.readFileSync(arcFile2, 'utf8'));
+check(s2.ok && s2.saved?.same === true && /same bytes/.test(s2.saved.note), `the same bytes on the receiver: the id is added (${JSON.stringify(s2.why || s2.error || s2.saved)})`);
+check(same(d2.pids, ['0101', '0102']) && d2.links.receiver?.wireless === true && same(d2.models[0].pids.receiver, ['0102']) && same(d2.hid.pids, ['0101', '0102']) && !d2.byPid && validate(d2).ok,
+  `one driver, two ids, no copy of the bytes (${JSON.stringify({ pids: d2.pids, links: d2.links, hid: d2.hid })})`);
+check(fs.readdirSync(path.join(root, 'backups')).some((x) => x.startsWith('learn-arc-headset-')), 'the driver was backed up before the id was added');
+
+// a newer receiver (5555:0103) that asks for the battery with 06 02: its own bytes are kept for that id (byPid)
+sc = await route('POST', 'second', { vid: '5555', pid: '0103', link: 'receiver' });
+await route('POST', 'listen');
+s2 = await second(0x0103, 2);
+d2 = JSON.parse(fs.readFileSync(arcFile2, 'utf8'));
+check(s2.ok && s2.saved?.same === false && d2.byPid?.['0103']?.messages?.read1?.bytes === '06 02' && d2.messages.read1.bytes === '06 01' && same(d2.pids, ['0101', '0102', '0103']) && d2.links.receiver2,
+  `other bytes on 0103: kept under byPid for that id only (${JSON.stringify(s2.why || s2.error || d2.byPid)})`);
+check(validate(d2).ok && lw.verifySeen(d2, [], { pid: '0103' }).length === 0, `the file with byPid passes validate() (${validate(d2).problems.join('; ')})`);
+{
+  const f3 = fakeArc(0x0103, 2);
+  const { drv, connected } = await drive(d2, f3);
+  const bt = await drv.battery();
+  check(connected && bt?.percent === 40 && f3.st.sent.every((x) => x === '06 02 00 00'), `on 0103 it sends that id's own read, 06 02, and nothing else (${f3.st.sent} ${JSON.stringify(bt)})`);
+  const f1 = fakeArc(0x0101, 1);
+  const one1 = await drive(d2, f1);
+  await one1.drv.battery();
+  check(one1.connected && f1.st.sent.every((x) => x === '06 01 00 00'), `on 0101 it still sends 06 01 (${f1.st.sent})`);
+}
+hidMod.setDeviceProvider(null);
+await route('POST', 'quit');
+
+// addPid on its own, with a setting that is written (the Acme mouse's DPI)
+{
+  const t5 = takesOf([acme(800, { pid: 0x5679 }), acme(1600, { pid: 0x5679 })], '1234', '5679');
+  const s5 = { ...lw.withRange(lw.analyze(t5, { label: 'DPI', kind: 'number' }).learned, { min: 100, max: 26000, step: 50 }).setting, key: 'dpi' };
+  const other = lw.buildDriver({ vid: '1234', pid: '5679', title: 'Acme mouse', kind: 'Mouse', usagePage: 'FF00', usage: '0001', settings: [s5] });
+  const ap = lw.addPid(def1, other, { pid: '5679' });
+  check(ap.same && validate(ap.def).ok && lw.verifySeen(ap.def, [rg.setting]).length === 0 && lw.verifySeen(ap.def, [s5], { pid: '5679' }).length === 0 && ap.def.links.cable && !ap.def.byPid,
+    `the same DPI bytes on the cable's id: added as another id (${validate(ap.def).problems.join('; ')})`);
+  const t6 = takesOf([acme(800, { pid: 0x567a, rd: 0x82 }), acme(1600, { pid: 0x567a, rd: 0x82 })], '1234', '567A');
+  const s6 = { ...lw.withRange(lw.analyze(t6, { label: 'DPI', kind: 'number' }).learned, { min: 100, max: 26000, step: 50 }).setting, key: 'dpi' };
+  const other6 = lw.buildDriver({ vid: '1234', pid: '567A', title: 'Acme mouse', kind: 'Mouse', usagePage: 'FF00', usage: '0001', settings: [s6] });
+  const ap6 = lw.addPid(def1, other6, { pid: '567A' });
+  check(!ap6.same && ap6.def.byPid?.['567A']?.messages?.read1?.bytes === '05 82' && validate(ap6.def).ok && lw.verifySeen(ap6.def, [s6], { pid: '567A' }).length === 0 && lw.verifySeen(ap6.def, [rg.setting]).length === 0,
+    `another read on 567A: that id's own bytes under byPid, both ids proven against their own recordings (${validate(ap6.def).problems.join('; ')})`);
+  check(lw.verifySeen(ap6.def, [s5], { pid: '567A' }).some((x) => /not the one recorded/.test(x)), 'a recording from the other id does not pass for 567A');
+  const dd = fromJson(ap6.def);
+  dd.usePid('567A'); const b1 = hexOf(dd.build('read1').data.slice(0, 2));
+  dd.usePid('5678'); const b0 = hexOf(dd.build('read1').data.slice(0, 2));
+  check(b1 === '05 82' && b0 === '05 81', `the driver builds each id's own read (${b0} / ${b1})`);
+  let e1 = null; try { lw.addPid(def1, other, { pid: '5678' }); } catch (e) { e1 = e.message; }
+  check(/already/.test(e1 || ''), 'an id the driver has is refused');
+  const odd = JSON.parse(JSON.stringify(other)); odd.settings[0].max = 12000;
+  e1 = null; try { lw.addPid(def1, odd, { pid: '5679' }); } catch (e) { e1 = e.message; }
+  check(/came out different/.test(e1 || ''), `a setting with another range is refused (${e1})`);
 }
 
 // ---------------------------------------------------------------- what it refuses

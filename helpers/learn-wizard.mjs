@@ -22,7 +22,14 @@
 // wrong write has bricked devices (SHARED_CHIPS), a vendor DeviceHub never takes as a driver.json (never-commands.json
 // refuseVendors), a device whose driver refuses every write, and a device whose driver is code (device.mjs).
 //
-// The analysis (analyze, buildDriver, verifySeen, hidMessages) is pure and tested with made-up recordings:
+// Readings and a second USB id (22 Oct 2026, docs/handoff/learn-readings.md): a value the device reports and the
+// person cannot set (battery, charging, ChatMix, a sensor) is learned from a read and its reply, or from an input report
+// the device sends by itself (a notice), and becomes a display setting or the driver's battery; nothing is written for
+// it. After a save, the same device can be learned on its other USB id (cable and receiver): the same settings recorded
+// there are added to the same driver (addPid), as another id when the bytes match, with that id's own bytes (byPid)
+// when they do not.
+//
+// The analysis (analyze, analyzeReading, buildDriver, verifySeen, addPid, hidMessages) is pure and tested with made-up recordings:
 // tests/learn-wizard.mjs. The route: handle(url, req, res, send, readBody) for /api/learn/*.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -30,7 +37,7 @@ import { execFile, spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { readPcapBuffer } from './pcap-read.mjs';
-import { validate, fromJson } from './declarative-driver.mjs';
+import { validate, fromJson, forPid } from './declarative-driver.mjs';
 import { ROOT, devicehubVersion, match as libraryMatch, list as libraryList, installFromLibrary, loadDriver, driverFileOf } from './device-library.mjs';
 import { writable, libraryMark, LIBRARY_FILE } from './my-devices.mjs';
 
@@ -335,6 +342,129 @@ export function analyze(takes, setting) {
   return { ok: true, learned };
 }
 
+// ---------------------------------------------------------------- c2. a reading (22 Oct 2026; docs/handoff/learn-readings.md)
+// A value the device reports and the person cannot set: battery, charging, ChatMix, a sensor. Nothing is ever written
+// for it, so only a read and its reply (or an input report the device sends by itself, a "notice") are looked for.
+// setting: { label, kind: 'reading', role: 'battery' | 'charging' | 'display', unit }; each take's value is what the
+// maker's app showed at the end of that recording (a battery percent, on/off for charging, a number or a word).
+// { ok: true, learned } or { ok: false, why, ambiguous?, needMore? }, with the same refusals for ambiguity as a setting.
+export const READING_ROLES = ['battery', 'charging', 'display'];
+export function analyzeReading(takes, setting) {
+  const label = setting?.label || 'the reading';
+  const role = READING_ROLES.includes(setting?.role) ? setting.role : 'display';
+  const battery = role === 'battery';
+  if (!Array.isArray(takes) || !takes.length) return refuse('Record it first.');
+  const values = takes.map((t) => t.value);
+  const kindOf = values.every((v) => typeof v === 'number' && Number.isFinite(v)) ? 'number' : values.every((v) => typeof v === 'boolean') ? 'toggle' : 'words';
+  if (battery && !(kindOf === 'number' && values.every((v) => Number.isInteger(v) && v >= 0 && v <= 100))) return refuse('A battery level is a percent: a whole number from 0 to 100.');
+  if (role === 'charging' && kindOf !== 'toggle') return refuse('Charging is on or off.');
+  if (!battery && takes.length < 2) return refuse('Record at least two values first.');
+  if (new Set(values.map((v) => JSON.stringify(v))).size !== values.length) return refuse(battery ? 'Each recording needs a different percent. Record again once the maker\'s app shows another one.' : 'Each recording needs a different value.');
+  if (takes.some((t) => !t.messages.some((m) => m.dir === 'in'))) return refuse(`In recording ${takes.findIndex((t) => !t.messages.some((m) => m.dir === 'in')) + 1} the device sent nothing. Keep the maker's app open while DeviceHub listens, then record that value again.`);
+  const one = takes.length === 1;
+  const echoLen = (a, b) => { let k = 0; while (k < Math.min(a.length, b.length, 4) && a[k] === b[k]) k++; return k; };
+
+  // each take: the requests with their replies (the last of each request), and the input reports that answer nothing
+  const split = (t) => {
+    const ms = t.messages, pairs = new Map(), notices = new Map(), used = new Set();
+    ms.forEach((r, idx) => {
+      if (r.dir !== 'in') return;
+      for (let k = idx - 1; k >= 0; k--) {
+        const q = ms[k];
+        if (r.ts - q.ts > PAIR_S) break;
+        if (q.dir !== 'out' || used.has(k)) continue;
+        const fits = q.type === 'output' ? r.type === 'input' : q.type === 'feature' && r.type === 'feature' && q.reportId === r.reportId;
+        if (fits && echoLen(q.data, r.data) >= 1) { used.add(k); pairs.set(keyOf(q), { req: q, reply: r }); return; }
+        if (fits) break;
+      }
+      if (r.type === 'input' && r.data.length > 1) notices.set(`${r.reportId}:${r.data.length}:${r.data[0]}`, r);
+    });
+    return { pairs, notices };
+  };
+  const parts = takes.map(split);
+
+  // where in these reports the value sits: [{ offset, size, endian, scale, add } | { offset, size: 1, codes }]
+  const placesIn = (datas, skip) => {
+    const rl = datas[0].length, out = [];
+    for (let o = skip; o < rl; o++) {
+      if (kindOf !== 'number') {
+        const codes = datas.map((d) => d[o]);
+        if (new Set(codes).size === codes.length) out.push({ offset: o, size: 1, codes, rank: [1, 0, 0] });
+        continue;
+      }
+      for (const size of battery || one ? [1] : [1, 2, 4]) for (const endian of size === 1 ? ['little'] : ['little', 'big']) {
+        if (o + size > rl) continue;
+        const raws = datas.map((d) => readNum(d, o, size, endian));
+        if (!one && new Set(raws).size !== raws.length) continue;
+        (battery ? [1] : SCALES).forEach((s, si) => (battery ? [0] : [0, s, -s]).forEach((add, ai) => {
+          if (raws.every((r, i) => near(r * s + add, values[i]))) out.push({ offset: o, size, endian, scale: s, add, rank: [size, si, ai] });
+        }));
+      }
+    }
+    return out;
+  };
+  const found = [];
+  // a. a request sent byte for byte the same in every take, its reply holding it
+  for (const k of parts[0].pairs.keys()) {
+    if (!parts.every((p) => p.pairs.has(k))) continue;
+    const chosen = parts.map((p) => p.pairs.get(k));
+    const r0 = chosen[0].reply;
+    if (!chosen.every((c) => c.reply.data.length === r0.data.length && c.reply.reportId === r0.reportId)) continue;
+    const echo = Math.min(...chosen.map((c) => echoLen(c.req.data, c.reply.data)));
+    for (const f of placesIn(chosen.map((c) => c.reply.data), echo)) found.push({ src: 'reply', key: k, chosen, echo, field: f, rank: [0, ...f.rank] });
+  }
+  // b. a notice: an input report the device sent by itself, the same report and first byte in every take
+  for (const [sig, n0] of parts[0].notices) {
+    if (!parts.every((p) => p.notices.has(sig))) continue;
+    const got = parts.map((p) => p.notices.get(sig));
+    for (const f of placesIn(got.map((n) => n.data), 1)) found.push({ src: 'notice', key: sig, got, field: f, rank: [1, ...f.rank] });
+  }
+  const shown = values.map((v) => (v === true ? 'on' : v === false ? 'off' : String(v))).join(', ');
+  if (!found.length) {
+    return refuse([`DeviceHub found nothing the device sent that matches ${label} (${shown}).`,
+      battery ? 'Check the percent the maker\'s app showed, then record again with its battery page open.' : `Make sure the maker's app showed each value before you pressed Done, then record again.`]);
+  }
+  const cmp = (a, b) => { for (let i = 0; i < a.rank.length; i++) if (a.rank[i] !== b.rank[i]) return a.rank[i] - b.rank[i]; return 0; };
+  found.sort(cmp);
+  const best = found.filter((x) => cmp(x, found[0]) === 0);
+  const places = [...new Map(best.map((x) => [`${x.src}:${x.key}@${x.field.offset}`, x])).values()];
+  const needMore = takes.length < 3;
+  if (places.length > 1) {
+    const say = (x) => `byte ${x.field.offset} of ${x.src === 'reply' ? `the reply to ${hexOf(x.chosen[0].req.data.slice(0, 3))}` : `a report the device sends starting ${hexOf(x.got[0].data.slice(0, 2))}`}`;
+    return refuse([`More than one place matches ${label} (${places.slice(0, 3).map(say).join('; ')}${places.length > 3 ? ' and more' : ''}).`,
+      needMore ? (battery ? 'Record again once the maker\'s app shows another percent: that settles it.' : 'Record one more, different value: that settles it.')
+        : 'Three values did not settle it, so this reading cannot be learned here.'], { ambiguous: true, needMore });
+  }
+  const x = places[0];
+  const plain = (e) => ({ offset: e.offset, size: e.size, ...(e.endian && e.size > 1 ? { endian: e.endian } : {}), ...(e.codes ? { codes: e.codes } : { scale: e.scale, add: e.add }) });
+  const learned = { label, kind: 'reading', role, valueKind: kindOf, unit: setting.unit || '', values, write: null, checksum: null, replyChecksum: false };
+  if (x.src === 'reply') {
+    const q = x.chosen[0].req;
+    if (q.type === 'input') return refuse('The request went out as an input report, which a driver cannot send.');
+    Object.assign(learned, {
+      transport: { report: q.type, len: q.data.length, reportId: q.reportId }, echo: x.echo,
+      read: { reportId: q.reportId, data: q.data, field: plain(x.field), replies: x.chosen.map((c) => c.reply.data) },
+    });
+    learned.evidence = [`The read: ${hexOf(q.data.slice(0, 4))}..., its reply reports ${label} in ${where(x.field)}${x.field.codes ? `, one code per value (${x.field.codes.map((c, i) => `${show(values[i])} = ${hexOf([c])}`).join(', ')})` : howScaled(x.field) ? ` as the number${howScaled(x.field)}` : ''}.`];
+    learned.bytes = x.chosen.map((c) => hexOf(c.reply.data));
+  } else {
+    const n = x.got[0];
+    // the bytes it starts with: the leading bytes every take's report shares, before the value (at least one)
+    let k = 1;
+    while (k < Math.min(4, x.field.offset) && x.got.every((g) => g.data[k] === n.data[k])) k++;
+    Object.assign(learned, {
+      transport: null, echo: null,
+      notice: { reportId: n.reportId, len: n.data.length, starts: Array.from(n.data.slice(0, k)), field: plain(x.field), data: x.got.map((g) => g.data) },
+    });
+    learned.evidence = [`The device sends ${label} by itself: a report starting ${hexOf(n.data.slice(0, k))}${n.reportId ? ` (report ${n.reportId})` : ''}, ${label} in ${where(x.field)}${x.field.codes ? `, one code per value (${x.field.codes.map((c, i) => `${show(values[i])} = ${hexOf([c])}`).join(', ')})` : howScaled(x.field) ? ` as the number${howScaled(x.field)}` : ''}.`,
+      'DeviceHub listens for it; it never asks for it.'];
+    learned.bytes = x.got.map((g) => hexOf(g.data));
+  }
+  learned.evidence.push(one ? `Seen at ${shown}.` : `Seen for every value: ${shown}.`, 'Nothing is ever written for it.');
+  learned.at = { offset: x.field.offset, size: x.field.size };
+  return { ok: true, learned };
+}
+
 // ---------------------------------------------------------------- d. driver.json
 export const slug = (s, max = 31) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, max).replace(/-+$/, '');
 export function settingKey(label, taken = []) {
@@ -371,46 +501,78 @@ export function codeFor(s, v) {
 }
 
 // draft: { vid, pid, product, usagePage, usage, title, kind, settings: [learned + key, min, max, step] } -> driver.json
+// A reading (kind 'reading') adds no message to write: a display setting, the battery (battery.percent) or its
+// charging flag (battery.charging; a display when no battery level was learned), read from its request's reply or
+// heard as a notice. A setting's keep lists only the other SETTINGS: readings move by themselves.
 export function buildDriver(draft, { date = new Date() } = {}) {
   const ls = draft.settings || [];
   if (!ls.length) throw new Error('learn at least one setting first');
-  const t0 = ls[0].transport, cs = ls[0].checksum;
-  for (const s of ls) {
-    if (s.transport.report !== t0.report || s.transport.len !== t0.len) throw new Error(`${s.label} goes over ${s.transport.report} reports of ${s.transport.len} bytes and ${ls[0].label} over ${t0.report} reports of ${t0.len}: one driver.json uses one kind of report`);
-    if (!same(s.checksum, cs)) throw new Error(`${s.label} and ${ls[0].label} use different checksums: one driver.json uses one`);
+  const sets = ls.filter((s) => s.kind !== 'reading');
+  const asked = ls.filter((s) => s.transport);
+  const heard = ls.filter((s) => s.notice);
+  const t0 = asked[0]?.transport || null, cs = sets[0]?.checksum || null;
+  for (const s of asked) {
+    if (s.transport.report !== t0.report || s.transport.len !== t0.len) throw new Error(`${s.label} goes over ${s.transport.report} reports of ${s.transport.len} bytes and ${asked[0].label} over ${t0.report} reports of ${t0.len}: one driver.json uses one kind of report`);
   }
+  for (const s of sets) if (!same(s.checksum, cs)) throw new Error(`${s.label} and ${sets[0].label} use different checksums: one driver.json uses one`);
+  if (ls.filter((s) => s.role === 'battery').length > 1) throw new Error('The battery level is learned twice: keep one.');
+  if (ls.filter((s) => s.role === 'charging').length > 1) throw new Error('Charging is learned twice: keep one.');
+  const tr = t0 || { report: 'output', len: heard[0].notice.len, reportId: heard[0].notice.reportId || 0 };
   const vid = up4(draft.vid), pid = up4(draft.pid);
   const title = String(draft.title || draft.product || `USB device ${vid}:${pid}`).trim().slice(0, 60);
   let id = slug(title);
   if (!/^[a-z]/.test(id)) id = `dev-${id}`.slice(0, 31).replace(/-+$/, '');
   if (id.length < 2 || ['mouse', 'headset', 'keyboard'].includes(id)) id = `learned-${vid.toLowerCase()}-${pid.toLowerCase()}`;
+  // replies are checked against the checksum only when every reply recorded holds it (the readings' replies too)
+  const replyCs = !!cs && sets.every((s) => s.replyChecksum) && asked.filter((s) => s.kind === 'reading').every((s) => s.read.replies.every((r) => csHolds(r, cs)));
   const def = {
     format: 1, id, title, kind: draft.kind || 'Device',
     about: `Learned with DeviceHub's learning wizard on ${date.toISOString().slice(0, 10)} from what the maker's app sent while one setting at a time was changed. Every byte in "messages" was seen in those recordings.`,
     vid, pids: [pid],
-    hid: { vid, pid, ...(draft.usagePage ? { page: up4(draft.usagePage) } : {}), ...(draft.usage ? { usage: up4(draft.usage) } : {}), len: t0.len, reportId: t0.reportId },
-    transport: { report: t0.report, len: t0.len, reportId: t0.reportId, ...(draft.usagePage ? { usagePage: up4(draft.usagePage) } : {}), timeoutMs: 1000, tries: 2, ...(cs ? { checksum: cs } : {}) },
+    hid: { vid, pid, ...(draft.usagePage ? { page: up4(draft.usagePage) } : {}), ...(draft.usage ? { usage: up4(draft.usage) } : {}), len: tr.len, reportId: tr.reportId, ...(heard.length ? { reply: 'raw' } : {}) },
+    transport: { report: tr.report, len: tr.len, reportId: tr.reportId, ...(draft.usagePage ? { usagePage: up4(draft.usagePage) } : {}), timeoutMs: 1000, tries: 2, ...(cs ? { checksum: cs } : {}) },
     links: { usb: { label: 'USB', wireless: false } },
     models: [{ key: 'learned', name: title, pids: { usb: [pid] } }],
-    replies: { echo: Array.from({ length: Math.min(...ls.map((s) => s.echo)) }, (_, i) => i), ...(cs && ls.every((s) => s.replyChecksum) ? { checksum: true } : {}) },
+    ...(asked.length ? { replies: { echo: Array.from({ length: Math.min(...asked.map((s) => s.echo)) }, (_, i) => i), ...(replyCs ? { checksum: true } : {}) } } : {}),
     messages: {}, reads: [], fields: {}, settings: [], unsupported: [],
   };
-  const keys = ls.map((s) => s.key);
-  for (const s of ls) {
+  const keys = sets.map((s) => s.key);
+  const fieldOf = (rn, f, s) => (f.codes
+    ? { from: rn, offset: f.offset, map: Object.fromEntries(f.codes.map((c, i) => [String(c), s.kind === 'toggle' ? s.values[i] === true : s.values[i]])) }
+    : { from: rn, offset: f.offset, ...(f.size > 1 ? { size: f.size, endian: f.endian || 'little' } : {}), ...(f.scale !== 1 ? { scale: f.scale } : {}), ...(f.add ? { add: f.add } : {}) });
+  const askRead = (s) => {
     const rb = template(s.read.data, null, cs);
-    let rn = Object.keys(def.messages).find((n) => n.startsWith('read') && def.messages[n].bytes === rb && (def.messages[n].reportId ?? t0.reportId) === s.read.reportId);
+    let rn = Object.keys(def.messages).find((n) => n.startsWith('read') && def.messages[n].bytes === rb && (def.messages[n].reportId ?? tr.reportId) === s.read.reportId);
     if (!rn) {
       rn = `read${def.reads.length + 1}`;
-      def.messages[rn] = { bytes: rb, ...(s.read.reportId !== t0.reportId ? { reportId: s.read.reportId } : {}) };
+      def.messages[rn] = { bytes: rb, ...(s.read.reportId !== tr.reportId ? { reportId: s.read.reportId } : {}) };
       def.reads.push({ name: rn, message: rn });
     }
+    return rn;
+  };
+  const hearRead = (s) => {
+    const n = s.notice, starts = hexOf(n.starts);
+    let rd = def.reads.find((r) => r.notice && r.notice.starts === starts && (r.notice.reportId || 0) === (n.reportId || 0) && r.notice.len === n.len);
+    if (!rd) { rd = { name: `notice${def.reads.filter((r) => r.notice).length + 1}`, notice: { ...(n.reportId ? { reportId: n.reportId } : {}), starts, len: n.len } }; def.reads.push(rd); }
+    return rd.name;
+  };
+  let charging = null;
+  for (const s of ls) {
+    if (s.kind === 'reading') {
+      const rn = s.read ? askRead(s) : hearRead(s);
+      const f = (s.read || s.notice).field;
+      def.fields[s.key] = fieldOf(rn, f, { kind: s.valueKind, values: s.values });
+      if (s.role === 'battery') def.battery = { from: rn, percent: s.key };
+      else if (s.role === 'charging') charging = s;
+      else def.settings.push({ key: s.key, label: s.label, type: 'display', ...(s.unit ? { unit: s.unit.startsWith(' ') ? s.unit : ` ${s.unit}` } : {}) });
+      continue;
+    }
+    const rn = askRead(s);
     const f = s.read.field;
-    def.fields[s.key] = f.codes
-      ? { from: rn, offset: f.offset, map: Object.fromEntries(f.codes.map((c, i) => [String(c), s.kind === 'toggle' ? s.values[i] === true : s.values[i]])) }
-      : { from: rn, offset: f.offset, ...(f.size > 1 ? { size: f.size, endian: f.endian || 'little' } : {}), ...(f.scale !== 1 ? { scale: f.scale } : {}), ...(f.add ? { add: f.add } : {}) };
+    def.fields[s.key] = fieldOf(rn, f, s);
     const wn = `set${s.key[0].toUpperCase()}${s.key.slice(1)}`;
     const e = s.write.enc;
-    def.messages[wn] = { bytes: template(s.write.data[0], e, cs), ...(s.write.reportId !== t0.reportId ? { reportId: s.write.reportId } : {}) };
+    def.messages[wn] = { bytes: template(s.write.data[0], e, cs), ...(s.write.reportId !== tr.reportId ? { reportId: s.write.reportId } : {}) };
     const write = { message: wn, keep: keys.filter((k) => k !== s.key) };
     if (!write.keep.length) delete write.keep;
     if (e.codes && !same(e.codes, f.codes)) write.encode = { map: Object.fromEntries(e.codes.map((c, i) => [String(s.values[i]), c])) };
@@ -420,23 +582,42 @@ export function buildDriver(draft, { date = new Date() } = {}) {
     if (s.unit) st.unit = s.unit.startsWith(' ') ? s.unit : ` ${s.unit}`;
     def.settings.push(st);
   }
+  if (charging) {
+    if (def.battery) def.battery.charging = charging.key;
+    else def.settings.push({ key: charging.key, label: charging.label, type: 'display' });
+  }
+  if (!Object.keys(def.messages).length) delete def.messages;
   return def;
 }
 
 // every captured message, rebuilt by the driver itself (declarative-driver's build, the only way it sends bytes), must
-// come out byte for byte the same: [] or the sentences that say what would differ
-export function verifySeen(def, settings) {
+// come out byte for byte the same, and every recorded reply or notice must read back as the value recorded: [] or the
+// sentences that say what would differ. pid: check the driver as it is on that product id (byPid).
+export function verifySeen(def, settings, { pid = null } = {}) {
   const problems = [];
   let drv;
   try { drv = fromJson(def); } catch (e) { return [e.message]; }
-  const pad = (d) => { const a = new Uint8Array(def.transport.len); a.set(d.slice(0, def.transport.len)); return a; };
+  if (pid) drv.usePid(pid);
+  const len = forPid(def, pid || def.pids[0]).transport.len;
+  const pad = (d) => { const a = new Uint8Array(len); a.set(d.slice(0, len)); return a; };
+  const fdef = forPid(def, pid || def.pids[0]).fields;
+  const readsAs = (rn, data, key) => drv.fieldsOf({ [rn]: Uint8Array.from(data) }).values[key];
+  const sameValue = (a, b) => (typeof a === 'number' && typeof b === 'number' ? near(a, b) : same(a, b));
   for (const s of settings) {
+    const rn = fdef[s.key]?.from;
+    if (!rn) { problems.push(`${s.label}: it is not in the driver`); continue; }
+    if (s.read) {
+      try {
+        const b = drv.build(rn);
+        if (hexOf(b.data) !== hexOf(pad(s.read.data)) || b.reportId !== s.read.reportId) problems.push(`${s.label}: the read it would send is not the one recorded`);
+      } catch (e) { problems.push(`${s.label}: its read cannot be built (${e.message})`); }
+    }
+    if (s.kind === 'reading') {
+      const datas = s.read ? s.read.replies : s.notice.data;
+      s.values.forEach((v, i) => { const got = readsAs(rn, datas[i], s.key); if (!sameValue(got, v)) problems.push(`${s.label}: what was recorded at ${show(v)} would read ${got === undefined ? 'nothing' : show(got)}`); });
+      continue;
+    }
     const st = def.settings.find((x) => x.key === s.key);
-    const rn = def.fields[s.key].from;
-    try {
-      const b = drv.build(rn);
-      if (hexOf(b.data) !== hexOf(pad(s.read.data)) || b.reportId !== s.read.reportId) problems.push(`${s.label}: the read it would send is not the one recorded`);
-    } catch (e) { problems.push(`${s.label}: its read cannot be built (${e.message})`); }
     s.values.forEach((v, i) => {
       try {
         const b = drv.build(st.write.message, { value: codeFor(s, v) });
@@ -449,7 +630,8 @@ export function verifySeen(def, settings) {
 
 // a learned setting with its page range -> { setting } or { why }. Numbers: min, max, step from the maker's app.
 export function withRange(learned, { min, max, step } = {}, taken = []) {
-  const s = { ...learned, key: settingKey(learned.label, taken) };
+  // a field may not take a name driver.json keeps for itself
+  const s = { ...learned, key: settingKey(learned.label, [...taken, 'model', 'link', 'probe', 'value', 'zone', 'button']) };
   if (learned.kind !== 'number') return { setting: s };
   const vs = learned.values;
   const e = learned.write.enc;
@@ -557,7 +739,7 @@ async function driverFor(k, own, root) {
   const copy = (own.copies || []).find((c) => c.ids.includes(k));
   if (copy) {
     const dir = path.join(root, 'my-devices', copy.name);
-    return { name: copy.name, where: 'my-devices', dir, code: driverFileOf(dir) === 'device.mjs', writes: await writableCount(dir) };
+    return { name: copy.name, where: 'my-devices', dir, code: driverFileOf(dir) === 'device.mjs', writes: await writableCount(dir), learned: !!libraryMark(dir)?.learned };
   }
   const [vid, pid] = k.split(':');
   let m = null;
@@ -576,7 +758,8 @@ function coverageNote(d) {
 }
 function coverageRefusal(drv) {
   if (!drv) return null;
-  if (!drv.writes) return `Its driver (${drv.name}) refuses every write on purpose, so DeviceHub does not learn settings for it either. Use the maker's app for its settings.`;
+  // a driver the wizard made may hold only readings: more can still be learned into it
+  if (!drv.writes && !drv.learned) return `Its driver (${drv.name}) refuses every write on purpose, so DeviceHub does not learn settings for it either. Use the maker's app for its settings.`;
   if (drv.code) return `It already has a driver written as code (${drv.name}, device.mjs). Learned settings can only be added to a driver.json driver, so this one is not learned here.`;
   return null;
 }
@@ -586,10 +769,14 @@ function coverageRefusal(drv) {
 // one file (another report kind, checksum or reply matching, or a setting key already there).
 export function mergeDriver(base, add) {
   const tb = base.transport || {}, ta = add.transport || {};
-  if (tb.report !== ta.report || tb.len !== ta.len || (tb.reportId || 0) !== (ta.reportId || 0)) throw new Error(`The driver it has talks over ${tb.report} reports of ${tb.len} bytes (id ${tb.reportId || 0}) and the recording over ${ta.report} reports of ${ta.len} bytes (id ${ta.reportId || 0}): one driver.json uses one kind, so the setting was not added.`);
-  if (!same(tb.checksum || null, ta.checksum || null)) throw new Error('The driver it has and the recording use different checksums, so the setting was not added.');
+  // only heard notices (nothing sent): the report kind, checksum and reply matching do not come into it
+  const sends = Object.keys(add.messages || {}).length > 0;
+  if (sends && (tb.report !== ta.report || tb.len !== ta.len || (tb.reportId || 0) !== (ta.reportId || 0))) throw new Error(`The driver it has talks over ${tb.report} reports of ${tb.len} bytes (id ${tb.reportId || 0}) and the recording over ${ta.report} reports of ${ta.len} bytes (id ${ta.reportId || 0}): one driver.json uses one kind, so the setting was not added.`);
+  if (sends && Object.keys(add.fields || {}).some((k) => (add.settings || []).some((s) => s.key === k && s.write)) && !same(tb.checksum || null, ta.checksum || null)) throw new Error('The driver it has and the recording use different checksums, so the setting was not added.');
   const echo = base.replies?.echo || [], n = (add.replies?.echo || []).length;
-  if (echo.some((i) => i >= n)) throw new Error('The driver it has matches replies on more bytes than the device repeated in the recording, so the setting was not added.');
+  if (sends && echo.some((i) => i >= n)) throw new Error('The driver it has matches replies on more bytes than the device repeated in the recording, so the setting was not added.');
+  if (add.battery && base.battery) throw new Error('The driver it has reads the battery already, so the battery level was not added.');
+  if ((add.reads || []).some((r) => r.notice) && base.hid && base.hid.reply !== 'raw') throw new Error('The driver it has does not listen to what the device sends by itself, so that reading was not added.');
   const out = JSON.parse(JSON.stringify(base));
   out.messages = out.messages || {}; out.reads = out.reads || []; out.fields = out.fields || {}; out.settings = out.settings || [];
   const ren = {};
@@ -598,13 +785,23 @@ export function mergeDriver(base, add) {
     while (out.messages[nn] || out.reads.some((r) => r.name === nn)) nn = `learned${name[0].toUpperCase()}${name.slice(1)}${i++}`;
     ren[name] = nn; out.messages[nn] = m;
   }
-  for (const r of add.reads || []) out.reads.push({ ...r, name: ren[r.name] || r.name, message: ren[r.message] || r.message });
+  for (const r of add.reads || []) {
+    if (r.notice) {
+      const cap = `learned${r.name[0].toUpperCase()}${r.name.slice(1)}`;
+      let nn = cap, i = 2;
+      while (out.messages[nn] || out.reads.some((x) => x.name === nn)) nn = `${cap}${i++}`;
+      ren[r.name] = nn; out.reads.push({ ...r, name: nn });
+      continue;
+    }
+    out.reads.push({ ...r, name: ren[r.name] || r.name, message: ren[r.message] || r.message });
+  }
   for (const [k, fl] of Object.entries(add.fields || {})) {
     if (out.fields[k] || out.settings.some((s) => s.key === k)) throw new Error(`The driver it has already has a setting called "${k}".`);
     out.fields[k] = { ...fl, from: ren[fl.from] || fl.from };
   }
-  for (const s of add.settings || []) out.settings.push({ ...s, write: { ...s.write, message: ren[s.write.message] || s.write.message } });
-  const labels = (add.settings || []).map((s) => s.label).join(', ');
+  for (const s of add.settings || []) out.settings.push(s.write ? { ...s, write: { ...s.write, message: ren[s.write.message] || s.write.message } } : { ...s });
+  if (add.battery) out.battery = { ...add.battery, from: ren[add.battery.from] || add.battery.from };
+  const labels = [...(add.settings || []).map((s) => s.label), ...(add.battery ? ['battery'] : [])].join(', ');
   out.about = `${String(base.about || '').trim()} Added on this PC with DeviceHub's learning wizard: ${labels} (every byte of those seen in its recordings).`.trim();
   return out;
 }
@@ -626,6 +823,64 @@ export function saveInto(folder, def, keys, { root = ROOT, now = () => new Date(
   put('driver.json', JSON.stringify(def, null, 2) + '\n');
   put(LIBRARY_FILE, JSON.stringify({ ...mark, learnedKeys: [...new Set([...(mark.learnedKeys || []), ...keys])], learnedAt: now().toISOString() }, null, 2) + '\n');
   return { ok: true, name: path.basename(dir), folder: dir, id: def.id, backup: back };
+}
+
+// ---------------------------------------------------------------- the same device on its other USB id (22 Oct 2026)
+// Many devices are one USB id on the cable and another on the receiver. base: the driver the wizard saved; other: the
+// driver built from the same settings learned again on the other id (same keys, values and ranges, same order).
+// Same bytes: the id is added (pids, a link for it, hid.pids, and hid.byPid when its collection differs).
+// Different bytes: the same, plus byPid[pid] in the file: that id's own transport, replies, messages, fields, notices
+// and codes (docs/DRIVER-FORMAT.md). Throws a plain sentence when the two cannot be one driver.
+export function addPid(base, other, { pid, link = 'cable' } = {}) {
+  pid = up4(pid);
+  if ((base.pids || []).map(up4).includes(pid)) throw new Error(`USB id ${pid} is in this driver already.`);
+  if (up4(base.vid) !== up4(other.vid)) throw new Error('That is another maker\'s device (another USB vendor id), so it cannot share this driver.');
+  const names = (o) => Object.keys(o || {}).sort().join();
+  const readsOf = (d) => (d.reads || []).map((r) => `${r.name}:${r.notice ? 'notice' : r.message}`).sort().join();
+  if (names(base.messages) !== names(other.messages) || readsOf(base) !== readsOf(other) || names(base.fields) !== names(other.fields)) {
+    throw new Error('On this id the device is read in another way (other requests or reports), which one driver cannot hold. Learn it as its own device instead.');
+  }
+  const noEnc = (s) => (s.write ? { ...s, write: { ...s.write, encode: undefined } } : s);
+  if (!same(base.settings.map(noEnc), other.settings.map(noEnc)) || !same(base.battery || null, other.battery || null)) {
+    throw new Error('On this id the settings came out different (another kind, range or choice), so the id was not added. Learn the same settings, with the same choices, on it.');
+  }
+  const tOf = (t) => { const { usagePage, ...r } = t || {}; return r; };
+  const noticesOf = (d) => Object.fromEntries((d.reads || []).filter((r) => r.notice).map((r) => [r.name, r.notice]));
+  const encOf = (d) => Object.fromEntries(d.settings.filter((s) => s.write?.encode).map((s) => [s.key, s.write.encode]));
+  const sameBytes = same(tOf(base.transport), tOf(other.transport)) && same(base.replies || null, other.replies || null) && same(base.messages || {}, other.messages || {})
+    && same(base.fields, other.fields) && same(noticesOf(base), noticesOf(other)) && same(encOf(base), encOf(other));
+  const out = JSON.parse(JSON.stringify(base));
+  const ln0 = link === 'receiver' ? 'receiver' : 'cable';
+  let ln = ln0, i = 2;
+  while (out.links[ln]) ln = `${ln0}${i++}`;
+  const page = other.transport.usagePage ?? null, page0 = base.transport.usagePage ?? null;
+  out.links[ln] = { label: link === 'receiver' ? 'USB receiver' : 'USB cable', wireless: link === 'receiver', ...(page !== page0 ? { usagePage: page } : {}) };
+  out.pids = [...out.pids, pid];
+  out.models[0].pids[ln] = [pid];
+  // the channel: one per id (helpers/my-devices.mjs hidSpecs), with this id's collection where it differs
+  const h0 = out.hid, h1 = other.hid, diff = {};
+  for (const k of ['page', 'usage', 'len', 'reportId', 'reply']) if (!same(h0[k] ?? null, h1[k] ?? null)) diff[k] = h1[k] ?? null;
+  const byPidHid = { ...(h0.byPid || {}), ...(Object.keys(diff).length ? { [pid]: diff } : {}) };
+  out.hid = { ...h0, pids: [...new Set([...(h0.pids || [h0.pid]).map(up4), pid])], ...(Object.keys(byPidHid).length ? { byPid: byPidHid } : {}) };
+  if (!sameBytes) {
+    const o = { transport: tOf(other.transport), ...(other.replies ? { replies: other.replies } : {}), ...(other.messages ? { messages: other.messages } : {}), fields: other.fields };
+    const nz = noticesOf(other);
+    if (Object.keys(nz).length) o.notices = nz;
+    // codes: this id's own, and where the first id needed a code list and this one does not, the list its reads give
+    const en = encOf(other);
+    for (const k of Object.keys(encOf(base))) if (!en[k] && other.fields[k]?.map) en[k] = { map: Object.fromEntries(Object.entries(other.fields[k].map).map(([c, v]) => [String(v), Number(c)])) };
+    if (Object.keys(en).length) o.encode = en;
+    out.byPid = { ...(out.byPid || {}), [pid]: o };
+  }
+  out.about = `${String(base.about || '').trim()} Also learned on USB id ${pid} (${link === 'receiver' ? 'receiver' : 'cable'})${sameBytes ? ', where the device takes the same bytes' : ', with its own bytes under byPid'}.`.trim();
+  return { def: out, same: sameBytes, link: ln };
+}
+
+// the collection a notice arrives on (its report id and length), vendor pages first
+export function collectionForNotice(device, n) {
+  const cols = (device?.collections || []).slice().sort((a, b) => (parseInt(b.page, 16) >= 0xff00) - (parseInt(a.page, 16) >= 0xff00));
+  const fits = (c) => c.inLen - 1 === n.len;   // Windows counts the report id byte in every length
+  return cols.find((c) => fits(c) && (n.reportId ? (c.inIds || []).includes(n.reportId) : !(c.inIds || []).some((x) => x))) || cols.find(fits) || null;
 }
 
 // ---------------------------------------------------------------- the parts that touch Windows (replaced in tests)
@@ -688,8 +943,10 @@ export const options = { root: ROOT, deps };
 // ---------------------------------------------------------------- the session (one at a time)
 let session = null;
 let listed = [];
+// the driver saved last (made fresh by the wizard, not added to another): it can then be learned on its other USB id
+let lastSaved = null;
 export const current = () => session;
-export function reset() { session = null; listed = []; }
+export function reset() { session = null; listed = []; lastSaved = null; }
 
 async function listDevices() {
   const { root, deps: d } = options;
@@ -723,9 +980,13 @@ async function command(dir, verb, arg, want, ms = 15000) {
   return { status: 'timeout' };
 }
 
+// the setting the second-id session records next (the saved driver's own, in its order)
+const nextOf = (sec) => sec.orig[session.learned.length] || null;
+
 function summary() {
   if (!session) return { active: false };
   const st = session.listening ? options.deps.readState(session.dir) : null;
+  const sec = session.second;
   return {
     active: true,
     device: { vid: session.device.vid, pid: session.device.pid, name: session.device.name },
@@ -735,37 +996,59 @@ function summary() {
     setting: session.setting,
     takes: session.takes.map((t) => ({ value: t.value, heard: t.messages.length })),
     recording: session.recording || null,
-    learned: session.learned.map((s) => ({ key: s.key, label: s.label, kind: s.kind, min: s.min, max: s.max, step: s.step, unit: s.unit, values: s.values })),
+    learned: session.learned.map((s) => ({ key: s.key, label: s.label, kind: s.kind, role: s.role || null, min: s.min, max: s.max, step: s.step, unit: s.unit, values: s.values })),
+    second: sec ? { of: sec.name, pid: sec.def.pids[0], link: sec.link, total: sec.orig.length, done: session.learned.length,
+      next: nextOf(sec) ? { label: nextOf(sec).label, kind: nextOf(sec).kind, role: nextOf(sec).role || null, values: nextOf(sec).values, fixed: fixedValues(nextOf(sec)) } : null } : null,
     saved: session.saved || null,
   };
 }
 
 const clean = (s, max = 60) => String(s ?? '').replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, max);
-function parseValue(kind, v) {
-  if (kind === 'number') { const n = Number(String(v).trim()); return Number.isFinite(n) ? n : undefined; }
-  if (kind === 'toggle') return v === true || v === 'on' || v === 'true' ? true : v === false || v === 'off' || v === 'false' ? false : undefined;
+const onOff = (v) => (v === true || v === 'on' || v === 'true' ? true : v === false || v === 'off' || v === 'false' ? false : undefined);
+// a value as the person typed it; a reading's by its role (battery: a percent; charging: on/off; else a number or a word)
+function parseValue(kind, v, { role = null, numbers = null } = {}) {
+  if (kind === 'number') { const n = Number(String(v).trim()); return String(v).trim() !== '' && Number.isFinite(n) ? n : undefined; }
+  if (kind === 'toggle') return onOff(v);
+  if (kind === 'reading') {
+    if (role === 'battery') { const n = Number(String(v).trim().replace(/%$/, '')); return String(v).trim() !== '' && Number.isInteger(n) && n >= 0 && n <= 100 ? n : undefined; }
+    if (role === 'charging') return onOff(v);
+    if (numbers) return parseValue('number', v);
+  }
   const s = clean(v, 30);
   return s || undefined;
 }
+// a second-id session keeps the first id's choices and words (they are part of the driver); numbers may be new
+const fixedValues = (s) => !(s.kind === 'number' || (s.kind === 'reading' && (s.role === 'battery' || s.valueKind === 'number')));
+const noticeOf = (learned) => learned.find((s) => s.notice)?.notice || null;
 
 export async function act(name, b = {}) {
   const { root, deps: d } = options;
-  if (name === 'begin') {
+  if (name === 'begin' || name === 'second') {
     const dev = listed.find((x) => x.vid === up4(b.vid) && x.pid === up4(b.pid));
     if (!dev) return { ok: false, error: 'That device is not in the list: look again.' };
-    if (dev.refused) return { ok: false, error: dev.refused };
-    // a device with a driver.json driver already: the learned settings go into its my-devices copy
-    let base = null;
-    if (dev.driver) {
-      const def = readJson(path.join(dev.driver.dir, 'driver.json'));
-      if (!def) return { ok: false, error: `Its driver (${dev.driver.name}) could not be read, so nothing can be added to it.` };
-      base = { ...dev.driver, def };
+    let base = null, second = null;
+    if (name === 'second') {
+      // the same device on its other USB id: only after a driver the wizard made is saved
+      if (!lastSaved) return { ok: false, error: 'Save a driver first. Then it can be learned on its other USB id.' };
+      if (dev.vid !== up4(lastSaved.def.vid)) return { ok: false, error: 'That is another maker\'s device. Pick the same device, plugged in the other way.' };
+      if (lastSaved.def.pids.map(up4).includes(dev.pid)) return { ok: false, error: 'That is the USB id it was learned on. Plug it in the other way (cable or receiver), then look again.' };
+      const vr = vendorRefusal(dev.vid);
+      if (vr) return { ok: false, error: vr };
+      second = { ...lastSaved, link: b.link === 'receiver' ? 'receiver' : 'cable' };
+    } else {
+      if (dev.refused) return { ok: false, error: dev.refused };
+      // a device with a driver.json driver already: the learned settings go into its my-devices copy
+      if (dev.driver) {
+        const def = readJson(path.join(dev.driver.dir, 'driver.json'));
+        if (!def) return { ok: false, error: `Its driver (${dev.driver.name}) could not be read, so nothing can be added to it.` };
+        base = { ...dev.driver, def };
+      }
     }
     if (session?.listening) await command(session.dir, 'quit', null, 'ended', 3000).catch(() => {});
     const id = `${new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14)}-${dev.vid}-${dev.pid}`.toLowerCase();
     const dir = path.join(root, 'learn', 'wizard', id);
     fs.mkdirSync(dir, { recursive: true });
-    session = { id, dir, device: dev, base, setting: null, takes: [], learned: [], listening: false, seq: 0 };
+    session = { id, dir, device: dev, base, second, setting: null, takes: [], learned: [], listening: false, seq: 0 };
     return { ok: true, ...summary() };
   }
   if (!session) return { ok: false, error: 'Pick a device first.' };
@@ -781,23 +1064,36 @@ export async function act(name, b = {}) {
     return { ok: true, ...summary() };
   }
   if (name === 'setting') {
-    const kind = ['number', 'toggle', 'choice'].includes(b.kind) ? b.kind : 'number';
-    const label = clean(b.label, 40);
-    if (!label) return { ok: false, error: 'Name the setting first (for example DPI).' };
+    const sec = session.second, cur = sec ? nextOf(sec) : null;
+    if (sec && !cur) return { ok: false, error: 'Every setting is learned on this id: add it to the driver.' };
+    // on the second id the setting is the saved driver's own; only the values may be new (numbers and percents)
+    const kind = cur ? cur.kind : ['number', 'toggle', 'choice', 'reading'].includes(b.kind) ? b.kind : 'number';
+    const role = cur ? cur.role || null : kind === 'reading' ? (READING_ROLES.includes(b.role) ? b.role : 'display') : null;
+    const label = cur ? cur.label : clean(b.label, 40) || (role === 'battery' ? 'Battery' : role === 'charging' ? 'Charging' : '');
+    if (!label) return { ok: false, error: kind === 'reading' ? 'Name the reading first (for example ChatMix).' : 'Name the setting first (for example DPI).' };
     if (/firmware|bootloader|dfu|flash|factory|reset|pair/i.test(label)) return { ok: false, error: 'DeviceHub never learns firmware, reset, flash or pairing controls.' };
-    const values = (Array.isArray(b.values) ? b.values : []).map((v) => parseValue(kind, v));
-    if (values.length < 2 || values.some((v) => v === undefined)) return { ok: false, error: kind === 'number' ? 'Give two numbers.' : kind === 'toggle' ? 'Give on and off.' : 'Give two choices as the app names them.' };
+    let raw = Array.isArray(b.values) ? b.values.filter((v) => String(v ?? '').trim() !== '') : [];
+    if (cur && (fixedValues(cur) || !raw.length)) raw = cur.values;
+    if (kind === 'reading' && role === 'charging' && !raw.length) raw = [true, false];
+    const numbers = kind === 'reading' && role === 'display' && (cur ? cur.valueKind === 'number' : raw.every((v) => parseValue('number', v) !== undefined));
+    const values = raw.map((v) => parseValue(kind, v, { role, numbers }));
+    const need = kind === 'reading' && role === 'battery' ? 1 : 2;
+    if (values.length < need || values.some((v) => v === undefined)) {
+      return { ok: false, error: kind === 'number' ? 'Give two numbers.' : kind === 'toggle' ? 'Give on and off.' : kind === 'choice' ? 'Give two choices as the app names them.'
+        : role === 'battery' ? 'Give the percent the maker\'s app shows now (0 to 100).' : role === 'charging' ? 'Give charging and not charging.' : 'Give two values the maker\'s app shows for it (numbers or words).' };
+    }
     if (new Set(values.map((v) => JSON.stringify(v))).size !== values.length) return { ok: false, error: 'The two values must be different.' };
-    session.setting = { label, kind, unit: clean(b.unit, 10), values };
+    session.setting = { label, kind, unit: cur ? cur.unit || '' : clean(b.unit, 10), values, ...(role ? { role, numbers } : {}) };
     session.takes = [];
     return { ok: true, ...summary() };
   }
   if (name === 'record') {
     if (!session.setting) return { ok: false, error: 'Say which setting first.' };
-    let value = session.setting.values[session.takes.length];
-    if (b.value !== undefined) value = parseValue(session.setting.kind, b.value);
-    if (value === undefined) return { ok: false, error: 'Which value?' };
-    if (session.takes.some((t) => same(t.value, value))) return { ok: false, error: 'That value is recorded already: pick another.' };
+    const set = session.setting;
+    let value = set.values[session.takes.length];
+    if (b.value !== undefined) value = parseValue(set.kind, b.value, { role: set.role, numbers: set.numbers });
+    if (value === undefined) return { ok: false, error: set.role === 'battery' ? 'Which percent does the maker\'s app show now?' : 'Which value?' };
+    if (session.takes.some((t) => same(t.value, value))) return { ok: false, error: set.role === 'battery' ? 'That percent is recorded already. Wait until the maker\'s app shows another one.' : 'That value is recorded already: pick another.' };
     const take = `take-${session.takes.length + 1}-${Date.now().toString(36)}`;
     const s = await command(session.dir, 'start', take, 'recording');
     if (s.status !== 'recording') return { ok: false, error: s.error || (s.status === 'timeout' ? 'The listener did not answer. Press Start listening again.' : 'The listener stopped. Press Start listening again.') };
@@ -818,15 +1114,31 @@ export async function act(name, b = {}) {
     return { ok: true, heard: messages.length, ...summary() };
   }
   if (name === 'analyze') {
-    const r = analyze(session.takes, session.setting);
+    const reading = session.setting?.kind === 'reading';
+    const r = reading ? analyzeReading(session.takes, session.setting) : analyze(session.takes, session.setting);
     session.analysis = r.ok ? r.learned : null;
     if (!r.ok) return { ok: false, why: r.why, ambiguous: !!r.ambiguous, needMore: !!r.needMore };
-    const l = r.learned, e = l.write.enc;
+    const l = r.learned;
+    if (reading) return { ok: true, evidence: l.evidence, writeBytes: l.bytes, valueAt: l.at, kind: 'reading', role: l.role, range: null };
+    const e = l.write.enc;
     return { ok: true, evidence: l.evidence, writeBytes: l.writeBytes, valueAt: { offset: e.offset, size: e.size }, kind: l.kind,
       range: l.kind === 'number' ? { min: Math.min(...l.values), max: Math.max(...l.values), step: Number.isInteger(e.scale) ? e.scale : 1 } : null };
   }
   if (name === 'add') {
     if (!session.analysis) return { ok: false, error: 'Nothing learned yet.' };
+    const sec = session.second;
+    if (sec) {
+      // the saved driver's own key and range; checked together once every setting is learned on this id
+      const cur = nextOf(sec);
+      const r = withRange(session.analysis, cur.kind === 'number' ? { min: cur.min, max: cur.max, step: cur.step } : {});
+      if (!r.setting) return { ok: false, why: [r.why] };
+      session.learned = [...session.learned, { ...r.setting, key: cur.key }];
+      session.analysis = null; session.setting = null; session.takes = [];
+      return { ok: true, ...summary() };
+    }
+    const role = session.analysis.role;
+    if (role === 'battery' && (session.learned.some((s) => s.role === 'battery') || session.base?.def?.battery)) return { ok: false, why: ['The battery level is learned already. Remove the other one first.'] };
+    if (role === 'charging' && session.learned.some((s) => s.role === 'charging')) return { ok: false, why: ['Charging is learned already. Remove the other one first.'] };
     const r = withRange(session.analysis, b, [...session.learned.map((s) => s.key), ...(session.base?.def?.settings || []).map((s) => s.key), ...Object.keys(session.base?.def?.fields || {})]);
     if (!r.setting) return { ok: false, why: [r.why] };
     const all = [...session.learned, r.setting];
@@ -836,15 +1148,28 @@ export async function act(name, b = {}) {
     return { ok: true, driver: out.driver, ...summary() };
   }
   if (name === 'remove') {
-    session.learned = session.learned.filter((s) => s.key !== b.key);
+    session.learned = session.second ? session.learned.slice(0, -1) : session.learned.filter((s) => s.key !== b.key);
     return { ok: true, ...summary() };
   }
   if (name === 'preview') {
     if (!session.learned.length) return { ok: false, error: 'Learn at least one setting first.' };
-    return draftCheck(session.learned, b);
+    return session.second ? secondCheck() : draftCheck(session.learned, b);
   }
   if (name === 'save') {
     if (!session.learned.length) return { ok: false, error: 'Learn at least one setting first.' };
+    if (session.second) {
+      const sec = session.second;
+      const c = secondCheck();
+      if (!c.ok) return c;
+      const r = saveInto(sec.folder, c.driver, [], { root });
+      if (!r.ok) return { ok: false, why: r.why };
+      const dev = session.device;
+      lastSaved = { ...sec, def: c.driver };
+      session.saved = { name: r.name, id: r.id, second: true, same: c.same, pid: dev.pid, canSecond: true,
+        note: `${c.same ? `The device takes the same bytes on USB ${dev.vid}:${dev.pid}, so that id was added to the driver.` : `The device takes other bytes on USB ${dev.vid}:${dev.pid}, so the driver keeps its own copy of them for that id.`} Restart DeviceHub to use it there. Each setting stays read-only until it passes its check.` };
+      if (session.listening) { await command(session.dir, 'quit', null, 'ended', 3000).catch(() => {}); session.listening = false; }
+      return { ok: true, ...summary() };
+    }
     const c = draftCheck(session.learned, b);
     if (!c.ok) return c;
     if (session.base) {
@@ -860,6 +1185,7 @@ export async function act(name, b = {}) {
       if (!r.ok) return { ok: false, why: r.why };
       let loaded = null;
       if (session.base.where !== 'my-devices') { try { loaded = await d.loadNew(root); } catch {} }
+      lastSaved = null;
       session.saved = { name: r.name, id: r.id, added: keys, into: session.base.name, loaded: !!loaded?.some((x) => x.name === r.name && x.id),
         note: session.base.where === 'my-devices' ? 'Added to the driver it already had. Restart DeviceHub to load the new settings; each stays read-only until it passes its check.' : 'Added to a copy of its library driver. Each new setting stays read-only until it passes its check.' };
       if (session.listening) { await command(session.dir, 'quit', null, 'ended', 3000).catch(() => {}); session.listening = false; }
@@ -869,7 +1195,8 @@ export async function act(name, b = {}) {
     if (!r.ok) return { ok: false, why: r.why };
     let loaded = null;
     try { loaded = await d.loadNew(root); } catch {}
-    session.saved = { name: r.name, id: r.id, loaded: !!loaded?.some((x) => x.name === r.name && x.id) };
+    lastSaved = { name: r.name, folder: r.folder, def: c.driver, orig: session.learned };
+    session.saved = { name: r.name, id: r.id, loaded: !!loaded?.some((x) => x.name === r.name && x.id), canSecond: true };
     if (session.listening) { await command(session.dir, 'quit', null, 'ended', 3000).catch(() => {}); session.listening = false; }
     return { ok: true, ...summary() };
   }
@@ -881,9 +1208,24 @@ export async function act(name, b = {}) {
   return { ok: false, error: 'no such step' };
 }
 
+// the collection a driver opens: the one its asked reports go through (settings first), else the one its notices
+// arrive on. Every notice must arrive on that same collection (one driver opens one). { col } or { why }
+function collectionOf(dev, learned) {
+  const lead = learned.find((s) => s.kind !== 'reading' && s.transport) || learned.find((s) => s.transport);
+  const col = lead ? collectionFor(dev, lead.transport) : collectionForNotice(dev, noticeOf(learned));
+  for (const s of learned.filter((x) => x.notice)) {
+    const nc = collectionForNotice(dev, s.notice);
+    if (!nc) return { why: `DeviceHub cannot find the part of the device that sends ${s.label}, so it cannot listen for it.` };
+    if (col && nc !== col) return { why: `${s.label} arrives on another part of the device than ${lead ? lead.label : 'the rest'}, and one driver listens to one part. Learn it on its own.` };
+  }
+  return { col };
+}
+
 function draftCheck(learned, b = {}) {
   const dev = session.device;
-  const col = collectionFor(dev, learned[0].transport);
+  const cc = collectionOf(dev, learned);
+  if (cc.why) return { ok: false, why: [cc.why] };
+  const col = cc.col;
   let def;
   try { def = buildDriver({ vid: dev.vid, pid: dev.pid, product: dev.name, title: clean(b.title) || dev.name, kind: ['Mouse', 'Keyboard', 'Headset', 'Light', 'Controller', 'Device'].includes(b.kind) ? b.kind : 'Device', usagePage: col?.page, usage: col?.usage, settings: learned }); }
   catch (e) { return { ok: false, why: [e.message] }; }
@@ -903,11 +1245,36 @@ function draftCheck(learned, b = {}) {
   return { ok: true, driver: def };
 }
 
+// the second id: every setting learned on it, built the same way, then added to the saved driver (addPid), and the
+// whole file proven against the recordings of BOTH ids. { ok, driver, same } or { ok: false, why }
+function secondCheck() {
+  const sec = session.second, dev = session.device;
+  const next = nextOf(sec);
+  if (next) return { ok: false, why: [`Learn ${next.label} on this id too. Every setting is learned on it before the id is added, so nothing is ever sent there that was not heard there.`] };
+  const cc = collectionOf(dev, session.learned);
+  if (cc.why) return { ok: false, why: [cc.why] };
+  let other, r;
+  try { other = buildDriver({ vid: dev.vid, pid: dev.pid, product: dev.name, title: sec.def.title, kind: sec.def.kind, usagePage: cc.col?.page, usage: cc.col?.usage, settings: session.learned }); }
+  catch (e) { return { ok: false, why: [e.message] }; }
+  const v = validate(other);
+  if (!v.ok) return { ok: false, why: v.problems };
+  const seen = verifySeen(other, session.learned);
+  if (seen.length) return { ok: false, why: ['On this id the driver would send something not seen in the recordings, so the id was not added.', ...seen] };
+  try { r = addPid(sec.def, other, { pid: dev.pid, link: sec.link }); } catch (e) { return { ok: false, why: [e.message] }; }
+  const mv = validate(r.def);
+  if (!mv.ok) return { ok: false, why: mv.problems, driver: r.def };
+  const both = [...verifySeen(r.def, sec.orig), ...verifySeen(r.def, session.learned, { pid: dev.pid })];
+  if (both.length) return { ok: false, why: ['With the id added, the driver would send something not seen in the recordings, so it was not added.', ...both], driver: r.def };
+  return { ok: true, driver: r.def, same: r.same };
+}
+
 // ---------------------------------------------------------------- the route
 //   GET  /api/learn/devices   the devices DeviceHub does not run, and whether USBPcap is installed
 //   GET  /api/learn/state     where the wizard is
-//   POST /api/learn/<step>    begin {vid,pid}, listen, setting {label,kind,unit,values}, record {value?}, stop, analyze,
-//                             add {min,max,step}, remove {key}, preview {title,kind}, save {title,kind}, quit
+//   POST /api/learn/<step>    begin {vid,pid}, listen, setting {label,kind,role?,unit,values}, record {value?}, stop, analyze,
+//                             add {min,max,step}, remove {key}, preview {title,kind}, save {title,kind}, quit,
+//                             second {vid,pid,link: 'cable'|'receiver'} (after a save: the same device on its other USB id)
+//   kind 'reading' (role battery | charging | display): a value the device reports, never written (analyzeReading)
 export async function handle(url, req, res, send, readBody) {
   if (!url.pathname.startsWith('/api/learn/')) return false;
   const step = url.pathname.slice('/api/learn/'.length);

@@ -3,6 +3,8 @@
 //  - Windows Core Audio: headset volume and mic level / mute (iCUE not needed)
 //  - without iCUE: battery, mic flip, firmware, sleep timer straight from the receiver (helpers/hs80-direct.js)
 // Write keys: prop:<name> (only if iCUE marks it writable), vol:<flow>, mute:<flow>, led (#rrggbb)
+import { cleanPick, chosenOther, genericFor, headsetChoices, isHs80 } from '../core/headset-pick.js';
+
 let call = async (action, body) => {
   const r = await fetch(`/api/corsair/${action}`, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
   let j = {};
@@ -36,11 +38,32 @@ export const chargerLifted = (pct, mv) => mv != null && pct != null && mv - rest
 // test this route on a real headset.
 let generic = null;   // { usb, device, ids } in that mode
 const forceGeneric = () => globalThis.process?.env?.DEVICEHUB_HEADSET_GENERIC === '1';
+// Two or more USB headsets (22 Oct 2026, public/core/headset-pick.js): the one picked on the Headset page runs here.
+// pick: settings.json "headsetPick" (helpers/agent.mjs sets it); null = as before (the HS80 first, else the first one).
+let pick = null;
+let usbList = [], listAt = 0;  // Windows' USB headsets, last read (the picker's choices)
+let hs80FailedAt = 0;          // the HS80 was looked for and not found: no switch back to it on every read
+export function setHeadsetPick(k) { pick = cleanPick(k); hs80FailedAt = 0; }
+async function listHeadsets(maxAge = 0) {
+  if (maxAge && Date.now() - listAt < maxAge) return usbList;
+  try { usbList = (await call('usb-headsets', {})).headsets || []; listAt = Date.now(); } catch { return null; }
+  return usbList;
+}
+const toGeneric = (h) => ({ usb: h.usb, device: h.device || h.usb, ids: new Set([...h.playback, ...h.recording].map((e) => e.id)) });
+const gone = (msg) => Object.assign(new Error(msg), { gone: true });
 async function findGeneric() {
-  let list = [];
-  try { list = (await call('usb-headsets', {})).headsets || []; } catch { return null; }
-  const h = list.find((x) => forceGeneric() || !/^VID_1B1C&PID_0A6/.test(x.usb));
-  return h ? { usb: h.usb, device: h.device || h.usb, ids: new Set([...h.playback, ...h.recording].map((e) => e.id)) } : null;
+  const list = await listHeadsets();
+  if (!list) return null;
+  const h = genericFor(list, pick, { asGeneric: forceGeneric() });
+  return h ? toGeneric(h) : null;
+}
+// the HS80 is running: the picker's list (at most every 30 s, inside the usual read), and a switch when another
+// headset was picked and is plugged in
+async function hs80Pick() {
+  // capped at 3 s, so a slow Windows answer never holds up the HS80's own read
+  const list = await Promise.race([listHeadsets(30000), new Promise((r) => setTimeout(() => r(null), 3000))]);
+  const other = list && chosenOther(list, pick, { asGeneric: forceGeneric() });
+  if (other) throw gone(`switching to ${other.device || other.usb}`);
 }
 // a sidetone control's own range: percent as loudness, 100% = its top (the HS80's is -42..+4 dB)
 const pctOf = (db, min, max) => (db <= min ? 0 : Math.max(0, Math.min(100, Math.round(100 * 10 ** ((db - max) / 20)))));
@@ -81,10 +104,20 @@ const adapter = {
   get props() { return props; },
   get endpoints() { return endpoints; },
   get mode() { return mode; },
+  // the picker on the Headset page: one choice per USB headset (shown only with two or more), and the one running
+  get headsets() { return headsetChoices(usbList, { hs80: mode === 'direct' || mode === 'icue', asGeneric: forceGeneric() }); },
+  get picked() { return mode === 'generic' ? cleanPick(generic?.usb) : mode ? 'hs80' : null; },
 
   async connect() {
     mode = null; dev = null; generic = null;
+    // another headset was picked and is plugged in: that one, and the HS80 is left alone
+    if (pick && pick !== 'hs80') {
+      const list = await listHeadsets();
+      const other = list && chosenOther(list, pick, { asGeneric: forceGeneric() });
+      if (other) { generic = toGeneric(other); mode = 'generic'; dev = { id: 'generic' }; return true; }
+    }
     if (!forceGeneric() && (await adapter.connectHs80())) return true;
+    if (!forceGeneric()) hs80FailedAt = Date.now();
     const g = await findGeneric();
     if (!g) return false;
     generic = g; mode = 'generic'; dev = { id: 'generic' };
@@ -134,9 +167,14 @@ const adapter = {
 
   async read() {
     if (mode === 'generic') {
-      const now = await findGeneric();
-      if (!now || now.usb !== generic.usb) throw Object.assign(new Error(`${generic.device} was unplugged`), { gone: true });
-      generic = now;
+      const list = await listHeadsets();
+      const here = list && list.find((x) => x.usb === generic.usb);
+      if (!here) throw gone(`${generic.device} was unplugged`);
+      // the HS80 was picked and Windows has it again (not right after it was looked for and not found)
+      if (pick === 'hs80' && !forceGeneric() && list.some((x) => isHs80(x.usb)) && Date.now() - hs80FailedAt > 300000) throw gone('switching to the HS80');
+      const want = genericFor(list, pick, { asGeneric: forceGeneric() });
+      if (want && want.usb !== generic.usb) throw gone(`switching to ${want.device || want.usb}`);
+      generic = toGeneric(here);
       try { endpoints = ((await soon(call('audio-list', { match: '' }))).endpoints || []).filter((e) => generic.ids.has(e.id)); } catch { endpoints = []; }
       const v = {};
       for (const e of endpoints) { v[`vol:${e.flow}`] = e.volume; v[`mute:${e.flow}`] = e.muted; }
@@ -149,6 +187,7 @@ const adapter = {
     if (mode === 'direct') {
       // iCUE started: hand the headset back to it (reconnect picks the iCUE route).
       if ((await call('icue-running', {})).running) throw Object.assign(new Error('iCUE started; switching the headset over to it'), { gone: true });
+      await hs80Pick();
       const r = await call('direct-read', {});
       raw = r.values; via = r.connection;
       const on = !!raw.battery;
@@ -173,6 +212,7 @@ const adapter = {
     }
     const { devices } = await call('devices');
     if (!devices.some((d) => d.id === dev.id)) throw Object.assign(new Error('the HS80 receiver was unplugged'), { gone: true });
+    await hs80Pick();
     props = (await call('props', { id: dev.id })).props;
     try { endpoints = (await soon(call('audio-list', { match: 'HS80' }))).endpoints; } catch { endpoints = []; }
     const v = Object.fromEntries(Object.entries(props).map(([k, p]) => [`prop:${k}`, p.value]));

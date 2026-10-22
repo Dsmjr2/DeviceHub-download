@@ -413,7 +413,7 @@ async function api(req, res, url) {
   if (url.pathname === '/api/eq' && req.method === 'GET' && eqapo.installed()) {
     try {
       const r = await eqapo.read();
-      const d = await eqDevices();
+      const d = await eqapo.devices();  // the headset the Headset page controls (helpers/headset-pick-eq.js)
       r.notOn = (await require('./helpers/eqapo-devices').status({ render: d.headset, capture: d.mic })).off;
       return send(res, 200, r);
     } catch (e) { return send(res, 400, { error: e.message }); }

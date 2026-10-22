@@ -146,7 +146,8 @@ function text(s, stages, name, ctx) {
   }
   // every device with saved settings gets its section, also while it is off or unplugged (19 Oct 2026: a monitor that
   // was off lost its EQ whenever the file was rewritten): the ones Windows shows now, then the remembered ones
-  const seen = new Set([...ctx.speakers, ...(ctx.mics || [])].map((d) => d.guid));
+  // (the headset's own devices count as seen: one that once had a speaker EQ does not get both)
+  const seen = new Set([...[...ctx.speakers, ...(ctx.mics || [])].map((d) => d.guid), ...ctx.headset, ...ctx.mic]);
   const away = Object.entries(x.speakers).filter(([g, v]) => !seen.has(g) && v?.name).map(([guid, v]) => ({ guid, name: v.name, kind: v.kind }));
   for (const sp of [...ctx.speakers, ...(ctx.mics || []), ...away]) {
     const v = x.speakers[sp.guid] || {};
@@ -205,7 +206,9 @@ function extrasFrom(body, old) {
   return x;
 }
 
-module.exports = (icueEq, devices, backupDir) => {
+module.exports = (icueEq, allDevices, backupDir) => {
+  // the headset picked on the Headset page, when two or more are plugged in (helpers/headset-pick-eq.js)
+  const devices = require('./headset-pick-eq').withPick(allDevices);
   const state = async () => load() || first(icueEq);
   // draft: stages shown on the page but not saved (while the sliders move)
   let draft = null;
@@ -223,6 +226,7 @@ module.exports = (icueEq, devices, backupDir) => {
   };
   const api = {
     installed,
+    devices,  // the sound devices the EQ is written for, with the Headset page's pick applied
     async read() {
       const s = await state(); const p = s.presets.find((x) => x.id === s.activeId); const ctx = await devices();
       return { available: true, engine: 'eqapo', bands: BANDS, presets: s.presets, activeId: s.activeId, headroom: s.headroom !== false, unsaved: !!draft,

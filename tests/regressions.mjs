@@ -123,5 +123,82 @@ check(files.length >= 10 && files.every((f) => fs.existsSync(path.join(ROOT, 'pu
 const mouseSrc = fs.readFileSync(path.join(ROOT, 'public/pages/mouse.js'), 'utf8');
 check(/row\('Lift-off distance', '[^']+'/.test(mouseSrc) && /h\('h2', \{\}, 'Tracking'\)/.test(mouseSrc), 'Search finds Mouse > Lift-off distance and the Tracking section');
 
+// 14. Two USB headsets (22 Oct 2026, public/core/headset-pick.js): the picker's choices, the HS80 first and as
+//     before when nothing is picked, the picked one run instead, and Equalizer APO following the pick
+{
+  const hp = await import('../public/core/headset-pick.js');
+  const ep = (n) => [{ id: `{0.0.0.00000000}.{p${n}}` }];
+  const HS = { usb: 'VID_1B1C&PID_0A6B', device: 'CORSAIR HS80 RGB Wireless Gaming Headset', playback: ep(1), recording: [{ id: '{0.0.1.00000000}.{m1}' }] };
+  const HS_CABLE = { ...HS, usb: 'VID_1B1C&PID_0A69' };
+  const NOVA = { usb: 'VID_1038&PID_12E0', device: 'Arctis Nova 7 Wireless Gaming Headset', playback: ep(2), recording: [{ id: '{0.0.1.00000000}.{m2}' }] };
+  const CLOUD = { usb: 'VID_03F0&PID_0B92', device: 'HyperX Cloud III', playback: ep(3), recording: [{ id: '{0.0.1.00000000}.{m3}' }] };
+  const keys = (l, o) => hp.headsetChoices(l, o).map((c) => c.key).join(',');
+  check(keys([HS]) === 'hs80' && !hp.showPicker(hp.headsetChoices([HS])), 'one HS80: one choice, no picker');
+  check(keys([NOVA, HS, HS_CABLE]) === 'hs80,VID_1038&PID_12E0', 'HS80 first, its two USB ids as one headset');
+  check(keys([NOVA], { hs80: true }) === 'hs80,VID_1038&PID_12E0' && hp.showPicker(hp.headsetChoices([NOVA], { hs80: true })), 'a connected HS80 Windows does not list is still a choice');
+  check(keys([HS, NOVA], { asGeneric: true }) === 'VID_1B1C&PID_0A6B,VID_1038&PID_12E0', 'DEVICEHUB_HEADSET_GENERIC: the HS80 listed as any headset');
+  check(hp.headsetChoices([NOVA])[0].name === 'Arctis Nova 7', 'short picker names');
+  check(hp.cleanPick('vid_1038&pid_12e0') === 'VID_1038&PID_12E0' && hp.cleanPick('hs80') === 'hs80' && hp.cleanPick('x') === null && hp.cleanPick(5) === null, 'only hs80 or a USB id is a pick');
+  check(hp.genericFor([HS, NOVA, CLOUD], null) === NOVA && hp.genericFor([HS, NOVA, CLOUD], 'VID_03F0&PID_0B92') === CLOUD && hp.genericFor([HS, NOVA], 'VID_03F0&PID_0B92') === NOVA, 'without the HS80: the picked one if plugged in, else the first');
+  check(hp.chosenOther([HS, NOVA], 'hs80') === null && hp.chosenOther([HS, NOVA], null) === null && hp.chosenOther([HS, NOVA], 'VID_1B1C&PID_0A6B') === null, 'no pick or the HS80 picked: the HS80 tried first, as before');
+
+  // the adapter itself, over a pretend Corsair helper (no hardware): what it connects to
+  const ad = await import('../public/devices/headset-adapter.js');
+  let list = [HS, NOVA], hs80Here = true;
+  const calls = [];
+  ad.setCorsairCall(async (action, body) => {
+    calls.push(action);
+    if (action === 'usb-headsets') return { headsets: list };
+    if (action === 'icue-running') return { running: false };
+    if (action === 'direct-open') return { found: hs80Here };
+    if (action === 'direct-read') return { values: { battery: { value: 640 } }, connection: 'receiver' };
+    if (action === 'audio-list') return { endpoints: [] };
+    if (action === 'light-settings') return { logoBrightness: 50, micLight: true, logoColor: '#ff6a1a' };
+    if (action === 'sidetone' || action === 'mic-boost') return {};
+    throw new Error(`unexpected ${action}`);
+  });
+  const h = ad.default;
+  ad.setHeadsetPick(null);
+  calls.length = 0;
+  check(await h.connect() && h.mode === 'direct' && !calls.includes('usb-headsets'), 'no pick: the HS80 connects exactly as before (no extra look first)');
+  await h.read();
+  check(h.picked === 'hs80' && hp.showPicker(h.headsets), 'HS80 running with a second headset: the picker shows, on the HS80');
+  ad.setHeadsetPick('VID_1038&PID_12E0');
+  let threw = null; try { await h.read(); } catch (e) { threw = e; }
+  check(threw?.gone, 'another headset picked: the HS80 read lets go so it can switch');
+  check(await h.connect() && h.mode === 'generic' && h.picked === 'VID_1038&PID_12E0' && h.title === NOVA.device, 'picked headset connects in sound-only mode');
+  const v = await h.read();
+  check(v.headsetOn === true && !('prop:batteryLevel' in v) && !('led' in v), 'second headset: sound only (no battery, no lights)');
+  let refused = false; try { await h.write('micLight', true); } catch { refused = true; }
+  check(refused, 'second headset: the HS80 mic light write is refused');
+  list = [HS];
+  threw = null; try { await h.read(); } catch (e) { threw = e; }
+  check(threw?.gone, 'picked headset unplugged: it lets go');
+  check(await h.connect() && h.mode === 'direct', 'picked headset unplugged: back on the HS80');
+  list = [HS, NOVA]; ad.setHeadsetPick('hs80');
+  check(await h.connect() && h.mode === 'direct', 'HS80 picked: the HS80');
+  hs80Here = false; list = [NOVA, CLOUD]; ad.setHeadsetPick('VID_03F0&PID_0B92');
+  check(await h.connect() && h.picked === 'VID_03F0&PID_0B92', 'no HS80, two others: the picked one');
+  ad.setHeadsetPick(null);
+  threw = null; try { await h.read(); } catch (e) { threw = e; }
+  check(threw?.gone && (await h.connect()) && h.picked === 'VID_1038&PID_12E0', 'no HS80, pick cleared: the first one, as before');
+
+  // Equalizer APO: the picked headset takes the headset's place; no pick or the HS80: unchanged
+  const { withPick } = require(path.join(ROOT, 'helpers/headset-pick-eq.js'));
+  const base = { headset: ['{p1}'], mic: ['{m1}'], speakers: [{ guid: '{p2}', name: 'Arctis' }, { guid: '{s9}', name: 'Monitor' }], mics: [{ guid: '{m2}', name: 'Arctis mic' }], headsetModel: 'HS80' };
+  let saved = null;
+  const dv = withPick(async () => base, { readPick: () => saved, listHeadsets: async () => [HS, NOVA] });
+  check((await dv()) === base, 'EQ: no pick, the same devices as before');
+  saved = 'hs80'; check((await dv()) === base, 'EQ: HS80 picked, the same devices as before');
+  saved = 'VID_1038&PID_12E0';
+  const got = await dv();
+  check(got.headset.join() === '{p2}' && got.mic.join() === '{m2}' && got.headsetModel === NOVA.device && got.speakers.map((s) => s.guid).join() === '{s9}' && !got.mics.length, 'EQ: the picked headset gets the headset EQ and mic tools, and is no longer a speaker');
+  saved = 'VID_03F0&PID_0B92'; check((await dv()) === base, 'EQ: picked headset not plugged in, as before');
+  // the setting is kept by the settings route (it keeps keys it does not know) and the agent backs it up first
+  const ag = fs.readFileSync(path.join(ROOT, 'helpers/agent.mjs'), 'utf8');
+  check(/case 'headset-pick'/.test(ag) && /copyFileSync\(SETTINGS_FILE/.test(ag) && /headsetPick: k/.test(ag), 'agent: headset-pick backs up settings.json and saves the choice');
+  check(/const cur = readJsonFile\(SETTINGS, \{\}\);/.test(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8')), 'server: a settings change starts from the whole file (headsetPick is kept)');
+}
+
 console.log(fails.length ? `regressions: FAILED: ${fails.join('; ')}` : 'regressions (20 Oct fixes): all good');
 process.exit(fails.length ? 1 : 0);

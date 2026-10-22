@@ -1,9 +1,11 @@
 // Headset page: battery and iCUE status, Windows volume and mic, LED color.
 import { h, icon } from '../ui/dom.js';
-import { more, card, row, toggle, slider, button, pill } from '../ui/controls.js';
+import { more, card, row, toggle, slider, button, pill, segmented } from '../ui/controls.js';
 import { batteryCell, loadBatteryEstimates } from '../ui/controls.js';
 import { batteryChart } from '../ui/battery-chart.js';
-import { devices, write, prepare } from '../core/devices.js';
+import { devices, write, prepare, isDemo, isRemote, connect, markMissing } from '../core/devices.js';
+import { env } from '../core/env.js';
+import { showPicker } from '../core/headset-pick.js';
 import { headsetArt } from '../ui/art.js';
 import { meter, micState } from '../ui/gauges.js';
 import { topbar, connectState, deviceActions, vendorNote, kv, statusPill, isAway, awayBanner, undoButton } from './common.js';
@@ -42,6 +44,23 @@ function genericCard(a) {
     h('div', { class: 'actions' }, button('Copy a prompt for Claude', () => copyPrompt(u), { kind: 'small' })));
 }
 
+// Two or more USB headsets (22 Oct 2026): which one this page controls. The choice is kept in DeviceHub's settings
+// (helpers/agent.mjs "headset-pick"); a failed switch says why in a line next to it.
+let pickError = null;
+function headsetPicker(a, redraw) {
+  const choices = a.headsets || [];
+  if (!showPicker(choices)) return null;
+  return h('div', { class: 'chips' }, segmented({ value: a.picked, compact: true, options: choices.map((c) => ({ value: c.key, label: c.name })), onCommit: async (k) => {
+    pickError = null;
+    try {
+      if (isDemo()) { a.choose?.(k); markMissing('headset'); await connect('headset'); }
+      else if (isRemote()) await env.api('/api/agent/headset-pick', { pick: k });
+      else throw new Error('Needs DeviceHub running in the background.');
+    } catch (e) { pickError = e.message; }
+    redraw();
+  } }), pickError ? h('span', { class: 'faint' }, pickError) : null);
+}
+
 export default {
   id: 'headset', title: 'Headset', icon: 'headset', device: 'headset', accent: 'var(--c-headset)', grab: () => prepare('headset'), watches: ['headset'],
   render() {
@@ -52,7 +71,7 @@ export default {
     const direct = a.mode === 'direct';
     // any other USB headset (headset-adapter.js): its sound features only, under its own name
     const generic = a.mode === 'generic';
-    const head = topbar(generic ? 'USB headset · sound features' : direct ? 'Corsair · Wireless headset' : 'Corsair · Wireless headset · iCUE open', a.title, null, h('div', { class: 'chips' }, undoButton(dev), dev.status === 'connected' && !dev.values?.headsetOn ? pill('headset off', 'warn') : statusPill(dev)));
+    const head = topbar(generic ? 'USB headset · sound features' : direct ? 'Corsair · Wireless headset' : 'Corsair · Wireless headset · iCUE open', a.title, null, h('div', { class: 'chips' }, headsetPicker(a, redraw), undoButton(dev), dev.status === 'connected' && !dev.values?.headsetOn ? pill('headset off', 'warn') : statusPill(dev)));
     if (dev.status !== 'connected' && !(isAway(dev) && a.endpoints)) {
       return h('div', {}, head, connectState(dev, 'Plug in the HS80 receiver. DeviceHub finds it automatically within a few seconds, with or without iCUE.'));
     }
@@ -77,8 +96,8 @@ export default {
       h('div', { class: 'grid two' },
         // Sound: the sliders first, then the on/off switches
         card([h('h2', {}, 'Sound')],
-          has('playback') ? row('Volume', null, slider({ value: v['vol:playback'], min: 0, max: 100, unit: '%', accent: 'var(--c-headset)', grab: () => prepare('headset'), live: live('vol:playback'), onCommit: (x) => set('vol:playback', x, 'Volume', `${x}%`) })) : h('p', { class: 'faint' }, 'No HS80 speaker in Windows. Is the headset on?'),
-          has('recording') ? row('Mic level', null, slider({ value: v['vol:recording'], min: 0, max: 100, unit: '%', accent: 'var(--c-headset)', grab: () => prepare('headset'), live: live('vol:recording'), onCommit: (x) => set('vol:recording', x, 'Mic level', `${x}%`) })) : h('p', { class: 'faint' }, 'No HS80 mic in Windows.'),
+          has('playback') ? row('Volume', null, slider({ value: v['vol:playback'], min: 0, max: 100, unit: '%', accent: 'var(--c-headset)', grab: () => prepare('headset'), live: live('vol:playback'), onCommit: (x) => set('vol:playback', x, 'Volume', `${x}%`) })) : h('p', { class: 'faint' }, generic ? 'No speaker for this headset in Windows.' : 'No HS80 speaker in Windows. Is the headset on?'),
+          has('recording') ? row('Mic level', null, slider({ value: v['vol:recording'], min: 0, max: 100, unit: '%', accent: 'var(--c-headset)', grab: () => prepare('headset'), live: live('vol:recording'), onCommit: (x) => set('vol:recording', x, 'Mic level', `${x}%`) })) : h('p', { class: 'faint' }, generic ? 'No mic for this headset in Windows.' : 'No HS80 mic in Windows.'),
           v.micBoost != null ? row('Mic boost', 'Louder mic, more background noise.', slider({ value: v.micBoost, min: 0, max: 10, unit: ' dB', accent: 'var(--c-headset)', grab: () => prepare('headset'), live: live('micBoost'), onCommit: (x) => set('micBoost', x, 'Mic boost', `${x} dB`) })) : null,
           v.sidetone != null ? row('Sidetone', 'Hear your own voice.', h('div', { class: 'srow-ctl' }, toggle({ value: v.sidetoneOn !== false, label: 'Sidetone', onCommit: (on) => set('sidetoneOn', on, 'Sidetone', on ? 'on' : 'off') }),
             v.sidetoneOn !== false ? slider({ value: v.sidetone, min: 0, max: 100, unit: '%', label: 'Sidetone level', accent: 'var(--c-headset)', grab: () => prepare('headset'), live: live('sidetone'), onCommit: (x) => set('sidetone', x, 'Sidetone level', `${x}%`) }) : null)) : null,

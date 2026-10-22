@@ -159,7 +159,7 @@ public/ui/art.js, img/     the device drawings and product photos (the Realistic
 public/devices/demo.js     pretend devices for demo mode
 public/core/brands.js      the brand guide (made from docs/brands.json by helpers/make-brands.mjs; docs/BRANDS.md)
 helpers/fetch-bundled.mjs   the bundled tools for the zip (helpers/bundled-tools.json), pinned by SHA-256
-helpers/learn-wizard.mjs   Learn a device: USB recordings -> driver.json, read-only toward the device (public/pages/learn.js)
+helpers/learn-wizard.mjs   Learn a device: USB recordings -> driver.json (settings, readings, a second USB id), read-only toward the device (public/pages/learn.js)
 helpers/declarative-driver.mjs   driver.json drivers (docs/DRIVER-FORMAT.md): checked, then run with the device.mjs contract
 device-library/            shared drivers by USB id (README.md); helpers/device-library.mjs finds and installs them,
                            helpers/share-device.mjs makes one from a working my-devices driver (refuses personal files)
@@ -240,7 +240,11 @@ the person (a download or install, a learning session, or a check in the maker's
      (Wooting key depth). Nothing can be sent on an extra channel.
 3. **The person can do this without Claude**: Learn a device, in the sidebar under App (also Overview > Set up >
    Learn a device, and Lighting > This PC > Learn it, which picks that device) listens while they change one setting at a time in the maker's app, and saves a read-only
-   `my-devices\<name>\driver.json` (docs/handoff/learn-wizard.md). Claude follows the steps below for what the
+   `my-devices\<name>\driver.json` (docs/handoff/learn-wizard.md). It also learns readings (battery, charging,
+   ChatMix, a sensor), from a read and its reply or from a report the device sends by itself, and, after a save, the same
+   device on its other USB id (cable and receiver), added to the same driver (docs/handoff/learn-readings.md). A
+   driver.json may hear reports the device sends by itself (`notice` reads: display and battery only, never a written
+   setting) and hold one product id's own bytes (`byPid`): docs/DRIVER-FORMAT.md. Claude follows the steps below for what the
    wizard refuses.
    **Learn it by listening (read-only, needs the person's yes for USBPcap).** With USBPcap installed:
    `helpers/usb-find.ps1` finds the device's capture number, `helpers/hs80-learn.ps1 -Match '<USB name>'` records while
