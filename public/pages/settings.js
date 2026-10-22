@@ -197,10 +197,10 @@ function healthCard() {
 
 // Appearance: how the device drawings look, picked from a live preview of each style.
 function appearanceCard() {
-  const cur = document.documentElement.dataset.art || 'frosted';
+  const cur = document.documentElement.dataset.art || 'frosted';  // applyArtStyle has already mapped an old look to its new one
   return card([h('h2', {}, 'Appearance')],
     h('p', { class: 'faint', style: { margin: '-4px 0 12px', fontSize: '13px' } }, 'How the devices are drawn.'),
-    h('div', { class: 'art-styles' }, ...ART_STYLES.map(([key, name]) => h('button', { class: `art-style${key === cur ? ' sel' : ''}`, 'aria-pressed': String(key === cur),
+    h('div', { class: 'art-styles' }, ...ART_STYLES.map(([key, name]) => h('button', { class: `art-style${key === cur ? ' sel' : ''}`, 'aria-pressed': String(key === cur), dataset: { look: key },
       onclick: async () => { await saveArtStyle(key); toast(`Drawings: ${name}`, 'good', { ms: 1400 }); rerender(); } },
       h('div', { class: 'art-preview', dataset: { artPreview: key } }, artFor.mouse(), artFor.headset(), artFor.keyboard()),
       h('span', {}, name)))));
@@ -259,7 +259,7 @@ export default {
     // self-test and the safety promises share one small card. No jump links on this page.
     return h('div', { 'data-no-jump': '' },
       topbar('App', 'Settings', null),
-      h('div', { class: 'grid three top' },
+      h('div', { class: 'grid settings-cols top' },
         h('div', { class: 'stack' }, appearanceCard(),
           card([icon('shield'), h('h2', {}, 'Safety'), h('span', { class: 'spacer' }), button('Self-test', selfTest, { kind: 'small', ic: 'shield' })],
             results ? h('div', { class: 'diff', style: { marginBottom: '10px' } }, ...results.map(([dev, st, msg]) => h('div', { style: { gridTemplateColumns: '120px 52px 1fr' } }, h('span', { class: 'dev' }, dev), pill(st, st === 'pass' ? 'good' : st === 'fail' ? 'bad' : st === 'warn' ? 'warn' : ''), h('span', {}, msg)))) : null,

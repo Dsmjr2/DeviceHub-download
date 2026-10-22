@@ -375,67 +375,15 @@ html[data-art="frosted"] .art.mark .shade, .art-preview[data-art-preview="froste
 html[data-art="frosted"] .art.mark .led, .art-preview[data-art-preview="frosted"] .art.mark .led, html[data-art="photo"] .art.mark .led, .art-preview[data-art-preview="photo"] .art.mark .led { fill: color-mix(in srgb, var(--glowc, var(--tone)) 60%, #fff); filter: drop-shadow(0 0 2.5px color-mix(in srgb, var(--glowc, var(--tone)) 85%, #fff)); }
 html[data-art="frosted"] .art.art-mouse, .art-preview[data-art-preview="frosted"] .art.art-mouse, html[data-art="frosted"] .art.art-headset, .art-preview[data-art-preview="frosted"] .art.art-headset, html[data-art="photo"] .art.art-mouse, .art-preview[data-art-preview="photo"] .art.art-mouse, html[data-art="photo"] .art.art-headset, .art-preview[data-art-preview="photo"] .art.art-headset { --body: #1f2026; --body-soft: #33353d; }
 html[data-art="frosted"] .art.art-keyboard, .art-preview[data-art-preview="frosted"] .art.art-keyboard, html[data-art="photo"] .art.art-keyboard, .art-preview[data-art-preview="photo"] .art.art-keyboard { --body: #c9cdd4; --body-soft: #eceef2; }
-html[data-art="studio"] .art.mark, .art-preview[data-art-preview="studio"] .art.mark { filter: drop-shadow(0 18px 26px rgba(0,0,0,.6)) drop-shadow(0 2px 3px rgba(0,0,0,.4)); }
-html[data-art="studio"] .art.mark .solid, .art-preview[data-art-preview="studio"] .art.mark .solid { stroke: rgba(255,255,255,.85); stroke-width: .8; }
-html[data-art="studio"] .art.mark .hi, .art-preview[data-art-preview="studio"] .art.mark .hi { display: inline; fill: rgba(255,255,255,.36); }
-html[data-art="studio"] .art.mark .hi-line, .art-preview[data-art-preview="studio"] .art.mark .hi-line { display: inline; stroke: rgba(255,255,255,.55); }
-html[data-art="studio"] .art.mark .shade, .art-preview[data-art-preview="studio"] .art.mark .shade { fill: rgba(0,0,0,.4); }
-html[data-art="studio"] .art.mark .led, .art-preview[data-art-preview="studio"] .art.mark .led { fill: color-mix(in srgb, var(--glowc, var(--tone)) 50%, #fff); filter: drop-shadow(0 0 3px color-mix(in srgb, var(--glowc, var(--tone)) 85%, #fff)); }
-html[data-art="studio"] .art.art-mouse, .art-preview[data-art-preview="studio"] .art.art-mouse, html[data-art="studio"] .art.art-headset, .art-preview[data-art-preview="studio"] .art.art-headset { --body: #24262d; --body-soft: #3a3d46; }
-html[data-art="studio"] .art.art-keyboard, .art-preview[data-art-preview="studio"] .art.art-keyboard { --body: #d7dae0; --body-soft: #f6f7f9; }
-html[data-art="glow"] .art.mark, .art-preview[data-art-preview="glow"] .art.mark { filter: drop-shadow(0 0 12px color-mix(in srgb, var(--tone) 55%, transparent)) drop-shadow(0 12px 20px rgba(0,0,0,.45)); }
-html[data-art="glow"] .art.mark .solid, .art-preview[data-art-preview="glow"] .art.mark .solid { stroke: color-mix(in srgb, var(--tone) 75%, #fff); stroke-width: .9; }
-html[data-art="glow"] .art.mark .hi, .art-preview[data-art-preview="glow"] .art.mark .hi { display: inline; fill: rgba(255,255,255,.18); }
-html[data-art="glow"] .art.mark .hi-line, .art-preview[data-art-preview="glow"] .art.mark .hi-line { display: inline; stroke: color-mix(in srgb, var(--tone) 60%, #fff); }
-html[data-art="glow"] .art.mark .shade, .art-preview[data-art-preview="glow"] .art.mark .shade { fill: rgba(0,0,0,.26); }
-html[data-art="glow"] .art.mark .led, .art-preview[data-art-preview="glow"] .art.mark .led { fill: color-mix(in srgb, var(--glowc, var(--tone)) 45%, #fff); filter: drop-shadow(0 0 4px color-mix(in srgb, var(--glowc, var(--tone)) 90%, #fff)); }
-html[data-art="glow"] .art.art-mouse, .art-preview[data-art-preview="glow"] .art.art-mouse, html[data-art="glow"] .art.art-headset, .art-preview[data-art-preview="glow"] .art.art-headset { --body: #1f2026; --body-soft: #33353d; }
-html[data-art="glow"] .art.art-keyboard, .art-preview[data-art-preview="glow"] .art.art-keyboard { --body: #c9cdd4; --body-soft: #eceef2; }
-html[data-art="matte"] .art.mark, .art-preview[data-art-preview="matte"] .art.mark { filter: drop-shadow(0 10px 18px rgba(0,0,0,.35)); }
-html[data-art="matte"] .art.mark .solid, .art-preview[data-art-preview="matte"] .art.mark .solid { stroke: rgba(255,255,255,.18); stroke-width: .6; }
-html[data-art="matte"] .art.mark .hi, .art-preview[data-art-preview="matte"] .art.mark .hi { display: none; }
-html[data-art="matte"] .art.mark .hi-line, .art-preview[data-art-preview="matte"] .art.mark .hi-line { display: none; }
-html[data-art="matte"] .art.mark .shade, .art-preview[data-art-preview="matte"] .art.mark .shade { fill: rgba(0,0,0,.16); }
-html[data-art="matte"] .art.mark .led, .art-preview[data-art-preview="matte"] .art.mark .led { fill: color-mix(in srgb, var(--glowc, var(--tone)) 70%, #fff); filter: none; }
-html[data-art="matte"] .art.art-mouse, .art-preview[data-art-preview="matte"] .art.art-mouse, html[data-art="matte"] .art.art-headset, .art-preview[data-art-preview="matte"] .art.art-headset { --body: #26282e; --body-soft: #393b42; }
-html[data-art="matte"] .art.art-keyboard, .art-preview[data-art-preview="matte"] .art.art-keyboard { --body: #bfc3ca; --body-soft: #e2e4e8; }
-html[data-art="night"] .art.mark, .art-preview[data-art-preview="night"] .art.mark { filter: drop-shadow(0 14px 24px rgba(0,0,0,.55)); }
-html[data-art="night"] .art.mark .solid, .art-preview[data-art-preview="night"] .art.mark .solid { stroke: color-mix(in srgb, var(--tone) 70%, transparent); stroke-width: .9; }
-html[data-art="night"] .art.mark .hi, .art-preview[data-art-preview="night"] .art.mark .hi { display: inline; fill: rgba(255,255,255,.1); }
-html[data-art="night"] .art.mark .hi-line, .art-preview[data-art-preview="night"] .art.mark .hi-line { display: inline; stroke: color-mix(in srgb, var(--tone) 55%, transparent); }
-html[data-art="night"] .art.mark .shade, .art-preview[data-art-preview="night"] .art.mark .shade { fill: rgba(0,0,0,.35); }
-html[data-art="night"] .art.mark .led, .art-preview[data-art-preview="night"] .art.mark .led { fill: color-mix(in srgb, var(--glowc, var(--tone)) 35%, #fff); filter: drop-shadow(0 0 5px var(--glowc, var(--tone))) drop-shadow(0 0 2px #fff); }
-html[data-art="night"] .art.art-mouse, .art-preview[data-art-preview="night"] .art.art-mouse, html[data-art="night"] .art.art-headset, .art-preview[data-art-preview="night"] .art.art-headset { --body: #131418; --body-soft: #24262c; }
-html[data-art="night"] .art.art-keyboard, .art-preview[data-art-preview="night"] .art.art-keyboard { --body: #7d828c; --body-soft: #a9adb5; }
 /* the lit gradients (ui/art.js defs): the body and the soft parts of each device, per look */
 html[data-art="frosted"] .art.mark.art-mouse .solid, .art-preview[data-art-preview="frosted"] .art.mark.art-mouse .solid, html[data-art="photo"] .art.mark.art-mouse .solid, .art-preview[data-art-preview="photo"] .art.mark.art-mouse .solid { fill: url(#dhb-mouse-frosted); }html[data-art="frosted"] .art.mark.art-mouse .soft, .art-preview[data-art-preview="frosted"] .art.mark.art-mouse .soft, html[data-art="photo"] .art.mark.art-mouse .soft, .art-preview[data-art-preview="photo"] .art.mark.art-mouse .soft { fill: url(#dhs-mouse-frosted); }
 html[data-art="frosted"] .art.mark.art-headset .solid, .art-preview[data-art-preview="frosted"] .art.mark.art-headset .solid, html[data-art="photo"] .art.mark.art-headset .solid, .art-preview[data-art-preview="photo"] .art.mark.art-headset .solid { fill: url(#dhb-headset-frosted); }html[data-art="frosted"] .art.mark.art-headset .soft, .art-preview[data-art-preview="frosted"] .art.mark.art-headset .soft, html[data-art="photo"] .art.mark.art-headset .soft, .art-preview[data-art-preview="photo"] .art.mark.art-headset .soft { fill: url(#dhs-headset-frosted); }
 html[data-art="frosted"] .art.mark.art-keyboard .solid, .art-preview[data-art-preview="frosted"] .art.mark.art-keyboard .solid, html[data-art="photo"] .art.mark.art-keyboard .solid, .art-preview[data-art-preview="photo"] .art.mark.art-keyboard .solid { fill: url(#dhb-keyboard-frosted); }html[data-art="frosted"] .art.mark.art-keyboard .soft, .art-preview[data-art-preview="frosted"] .art.mark.art-keyboard .soft, html[data-art="photo"] .art.mark.art-keyboard .soft, .art-preview[data-art-preview="photo"] .art.mark.art-keyboard .soft { fill: url(#dhs-keyboard-frosted); }
-html[data-art="studio"] .art.mark.art-mouse .solid, .art-preview[data-art-preview="studio"] .art.mark.art-mouse .solid { fill: url(#dhb-mouse-studio); } html[data-art="studio"] .art.mark.art-mouse .soft, .art-preview[data-art-preview="studio"] .art.mark.art-mouse .soft { fill: url(#dhs-mouse-studio); }
-html[data-art="studio"] .art.mark.art-headset .solid, .art-preview[data-art-preview="studio"] .art.mark.art-headset .solid { fill: url(#dhb-headset-studio); } html[data-art="studio"] .art.mark.art-headset .soft, .art-preview[data-art-preview="studio"] .art.mark.art-headset .soft { fill: url(#dhs-headset-studio); }
-html[data-art="studio"] .art.mark.art-keyboard .solid, .art-preview[data-art-preview="studio"] .art.mark.art-keyboard .solid { fill: url(#dhb-keyboard-studio); } html[data-art="studio"] .art.mark.art-keyboard .soft, .art-preview[data-art-preview="studio"] .art.mark.art-keyboard .soft { fill: url(#dhs-keyboard-studio); }
-html[data-art="glow"] .art.mark.art-mouse .solid, .art-preview[data-art-preview="glow"] .art.mark.art-mouse .solid { fill: url(#dhb-mouse-glow); } html[data-art="glow"] .art.mark.art-mouse .soft, .art-preview[data-art-preview="glow"] .art.mark.art-mouse .soft { fill: url(#dhs-mouse-glow); }
-html[data-art="glow"] .art.mark.art-headset .solid, .art-preview[data-art-preview="glow"] .art.mark.art-headset .solid { fill: url(#dhb-headset-glow); } html[data-art="glow"] .art.mark.art-headset .soft, .art-preview[data-art-preview="glow"] .art.mark.art-headset .soft { fill: url(#dhs-headset-glow); }
-html[data-art="glow"] .art.mark.art-keyboard .solid, .art-preview[data-art-preview="glow"] .art.mark.art-keyboard .solid { fill: url(#dhb-keyboard-glow); } html[data-art="glow"] .art.mark.art-keyboard .soft, .art-preview[data-art-preview="glow"] .art.mark.art-keyboard .soft { fill: url(#dhs-keyboard-glow); }
-html[data-art="matte"] .art.mark.art-mouse .solid, .art-preview[data-art-preview="matte"] .art.mark.art-mouse .solid { fill: url(#dhb-mouse-matte); } html[data-art="matte"] .art.mark.art-mouse .soft, .art-preview[data-art-preview="matte"] .art.mark.art-mouse .soft { fill: url(#dhs-mouse-matte); }
-html[data-art="matte"] .art.mark.art-headset .solid, .art-preview[data-art-preview="matte"] .art.mark.art-headset .solid { fill: url(#dhb-headset-matte); } html[data-art="matte"] .art.mark.art-headset .soft, .art-preview[data-art-preview="matte"] .art.mark.art-headset .soft { fill: url(#dhs-headset-matte); }
-html[data-art="matte"] .art.mark.art-keyboard .solid, .art-preview[data-art-preview="matte"] .art.mark.art-keyboard .solid { fill: url(#dhb-keyboard-matte); } html[data-art="matte"] .art.mark.art-keyboard .soft, .art-preview[data-art-preview="matte"] .art.mark.art-keyboard .soft { fill: url(#dhs-keyboard-matte); }
-html[data-art="night"] .art.mark.art-mouse .solid, .art-preview[data-art-preview="night"] .art.mark.art-mouse .solid { fill: url(#dhb-mouse-night); } html[data-art="night"] .art.mark.art-mouse .soft, .art-preview[data-art-preview="night"] .art.mark.art-mouse .soft { fill: url(#dhs-mouse-night); }
-html[data-art="night"] .art.mark.art-headset .solid, .art-preview[data-art-preview="night"] .art.mark.art-headset .solid { fill: url(#dhb-headset-night); } html[data-art="night"] .art.mark.art-headset .soft, .art-preview[data-art-preview="night"] .art.mark.art-headset .soft { fill: url(#dhs-headset-night); }
-html[data-art="night"] .art.mark.art-keyboard .solid, .art-preview[data-art-preview="night"] .art.mark.art-keyboard .solid { fill: url(#dhb-keyboard-night); } html[data-art="night"] .art.mark.art-keyboard .soft, .art-preview[data-art-preview="night"] .art.mark.art-keyboard .soft { fill: url(#dhs-keyboard-night); }
 .target .art.mark .solid { fill: color-mix(in srgb, var(--tone) 52%, #d4d8e0) !important; } .target .art.mark .soft { fill: color-mix(in srgb, var(--tone) 45%, #6c717d) !important; }
 .art.art-mouse, .art.art-headset { --gb1: #6a6e7a; --gb2: #34363e; --gb3: #1c1d22; --gs1: #747884; --gs2: #3a3c44; }
 .art.art-keyboard { --gb1: #f3f5f7; --gb2: #c8ccd3; --gb3: #959aa3; --gs1: #ffffff; --gs2: #d2d5db; }
 html[data-art="frosted"] .art.art-mouse, html[data-art="frosted"] .art.art-headset, .art-preview[data-art-preview="frosted"] .art.art-mouse, .art-preview[data-art-preview="frosted"] .art.art-headset, html[data-art="photo"] .art.art-mouse, html[data-art="photo"] .art.art-headset, .art-preview[data-art-preview="photo"] .art.art-mouse, .art-preview[data-art-preview="photo"] .art.art-headset { --gb1: #6a6e7a; --gb2: #34363e; --gb3: #1c1d22; --gs1: #747884; --gs2: #3a3c44; }
 html[data-art="frosted"] .art.art-keyboard, .art-preview[data-art-preview="frosted"] .art.art-keyboard, html[data-art="photo"] .art.art-keyboard, .art-preview[data-art-preview="photo"] .art.art-keyboard { --gb1: #f3f5f7; --gb2: #c8ccd3; --gb3: #959aa3; --gs1: #ffffff; --gs2: #d2d5db; }
-html[data-art="studio"] .art.art-mouse, html[data-art="studio"] .art.art-headset, .art-preview[data-art-preview="studio"] .art.art-mouse, .art-preview[data-art-preview="studio"] .art.art-headset { --gb1: #7a7f8b; --gb2: #3a3d46; --gb3: #1d1e23; --gs1: #82868f; --gs2: #40434b; }
-html[data-art="studio"] .art.art-keyboard, .art-preview[data-art-preview="studio"] .art.art-keyboard { --gb1: #ffffff; --gb2: #d4d8de; --gb3: #9a9fa8; --gs1: #ffffff; --gs2: #dadde2; }
-html[data-art="glow"] .art.art-mouse, html[data-art="glow"] .art.art-headset, .art-preview[data-art-preview="glow"] .art.art-mouse, .art-preview[data-art-preview="glow"] .art.art-headset { --gb1: #6a6e7a; --gb2: #34363e; --gb3: #1c1d22; --gs1: #747884; --gs2: #3a3c44; }
-html[data-art="glow"] .art.art-keyboard, .art-preview[data-art-preview="glow"] .art.art-keyboard { --gb1: #f3f5f7; --gb2: #c8ccd3; --gb3: #959aa3; --gs1: #ffffff; --gs2: #d2d5db; }
-html[data-art="matte"] .art.art-mouse, html[data-art="matte"] .art.art-headset, .art-preview[data-art-preview="matte"] .art.art-mouse, .art-preview[data-art-preview="matte"] .art.art-headset { --gb1: #4c4f57; --gb2: #3b3d44; --gb3: #2c2e34; --gs1: #575a62; --gs2: #42444b; }
-html[data-art="matte"] .art.art-keyboard, .art-preview[data-art-preview="matte"] .art.art-keyboard { --gb1: #d9dce1; --gb2: #c0c4cb; --gb3: #aab0b8; --gs1: #eef0f2; --gs2: #dcdfe3; }
-html[data-art="night"] .art.art-mouse, html[data-art="night"] .art.art-headset, .art-preview[data-art-preview="night"] .art.art-mouse, .art-preview[data-art-preview="night"] .art.art-headset { --gb1: #45474f; --gb2: #24262b; --gb3: #131417; --gs1: #4c4f57; --gs2: #2a2c31; }
-html[data-art="night"] .art.art-keyboard, .art-preview[data-art-preview="night"] .art.art-keyboard { --gb1: #9fa4ad; --gb2: #7d828c; --gb3: #5e636c; --gs1: #b4b8bf; --gs2: #8f939b; }
 /* the Realistic look shows the product photos; every other look, and the Lighting previews, the drawing. The page
    follows the chosen look; each preview box on the Appearance card follows its own look (those rules come last and win) */
 .art .photo { display: none; filter: drop-shadow(0 0 .6px rgba(255,255,255,.35)) drop-shadow(0 0 3px rgba(150,160,180,.18)); }
@@ -446,10 +394,6 @@ html .art-preview[data-art-preview]:not([data-art-preview="photo"]) .art .photo 
 .target .art .photo { display: none !important; } .target .art .drawn { display: inline !important; }
 /* the mic light: off unless muted, in every look */
 html[data-art="frosted"] .art.mark .led.mic, .art-preview[data-art-preview="frosted"] .art.mark .led.mic, html[data-art="photo"] .art.mark .led.mic, .art-preview[data-art-preview="photo"] .art.mark .led.mic { fill: rgba(255,255,255,.18); filter: none; }
-html[data-art="studio"] .art.mark .led.mic, .art-preview[data-art-preview="studio"] .art.mark .led.mic { fill: rgba(255,255,255,.18); filter: none; }
-html[data-art="glow"] .art.mark .led.mic, .art-preview[data-art-preview="glow"] .art.mark .led.mic { fill: rgba(255,255,255,.18); filter: none; }
-html[data-art="matte"] .art.mark .led.mic, .art-preview[data-art-preview="matte"] .art.mark .led.mic { fill: rgba(255,255,255,.18); filter: none; }
-html[data-art="night"] .art.mark .led.mic, .art-preview[data-art-preview="night"] .art.mark .led.mic { fill: rgba(255,255,255,.18); filter: none; }
 html[data-art] .mic-muted .art.mark .led.mic { fill: #ff4d4d; filter: drop-shadow(0 0 2.5px #ff4d4d); }
 /* Appearance card: one button per look, each with the three devices in that look */
 .art-styles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
@@ -899,3 +843,78 @@ html[data-page="mouse"] #main input[type=range]::-webkit-slider-thumb, html[data
 .safety { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
 .safety li { display: flex; align-items: center; gap: 8px; }
 .safety li svg { width: 14px; height: 14px; color: var(--good); flex: none; }
+/* Settings: three columns on a wide window (one screen, no scrolling), two below that so nothing is squeezed, one on a
+   narrow one (Shawn, 21 Oct 2026: parts were cut off when the window was made smaller) */
+.grid.settings-cols { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1480px) { .grid.settings-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 980px) { .grid.settings-cols { grid-template-columns: minmax(0, 1fr); } }
+
+/* The drawing looks Blueprint, Neon, Pop and Arctic (21 Oct 2026, Shawn: "different colors as well as different icons ...
+   not different enough"; they replace Studio, Glow, Matte and Night). Each rule is written for the page and, more
+   specific, for its own preview tile, so a tile always shows its own look. */
+html[data-art="blueprint"] .art.mark, .art-preview[data-art-preview="blueprint"] .art.mark.art { filter: drop-shadow(0 0 5px rgba(90, 190, 255, .35)); }
+html[data-art="blueprint"] .art.mark .solid, .art-preview[data-art-preview="blueprint"] .art.mark.art .solid { fill: rgba(70, 160, 255, .10); stroke: #7cc8ff; stroke-width: 1.2; }
+html[data-art="blueprint"] .art.mark .soft, .art-preview[data-art-preview="blueprint"] .art.mark.art .soft { fill: rgba(70, 160, 255, .06); stroke: #7cc8ff; stroke-width: .8; }
+html[data-art="blueprint"] .art.mark .accent, .art-preview[data-art-preview="blueprint"] .art.mark.art .accent { fill: rgba(124, 200, 255, .32); stroke: #7cc8ff; stroke-width: .8; }
+html[data-art="blueprint"] .art.mark .cut, .art-preview[data-art-preview="blueprint"] .art.mark.art .cut { fill: rgba(6, 20, 40, .55); stroke: rgba(124, 200, 255, .7); stroke-width: .7; }
+html[data-art="blueprint"] .art.mark .cut-line, .art-preview[data-art-preview="blueprint"] .art.mark.art .cut-line { stroke: rgba(124, 200, 255, .75); stroke-width: .8; stroke-dasharray: 3 2; }
+html[data-art="blueprint"] .art.mark .shade, .art-preview[data-art-preview="blueprint"] .art.mark.art .shade { display: none; }
+html[data-art="blueprint"] .art.mark .hi, .art-preview[data-art-preview="blueprint"] .art.mark.art .hi { display: none; }
+html[data-art="blueprint"] .art.mark .hi-line, .art-preview[data-art-preview="blueprint"] .art.mark.art .hi-line { display: inline; stroke: rgba(124, 200, 255, .4); stroke-width: .7; stroke-dasharray: 2 2; }
+html[data-art="blueprint"] .art.mark .line, .art-preview[data-art-preview="blueprint"] .art.mark.art .line { stroke: rgba(124, 200, 255, .7); stroke-width: .6; }
+html[data-art="blueprint"] .art.mark .line.knurl, .art-preview[data-art-preview="blueprint"] .art.mark.art .line.knurl { stroke: rgba(124, 200, 255, .7); }
+html[data-art="blueprint"] .art.mark .led, .art-preview[data-art-preview="blueprint"] .art.mark.art .led { fill: #c9ecff; filter: drop-shadow(0 0 2px #7cc8ff); }
+html[data-art="blueprint"] .art.mark .logo-text, .art-preview[data-art-preview="blueprint"] .art.mark.art .logo-text { fill: #7cc8ff; }
+html[data-art="blueprint"] .art.mark .led.mic, .art-preview[data-art-preview="blueprint"] .art.mark.art .led.mic { fill: rgba(255, 255, 255, .18); filter: none; }
+html[data-art="neon"] .art.art-mouse, .art-preview[data-art-preview="neon"] .art.art.art-mouse { --neon: #22d3ee; }
+html[data-art="neon"] .art.art-headset, .art-preview[data-art-preview="neon"] .art.art.art-headset { --neon: #ff3da8; }
+html[data-art="neon"] .art.art-keyboard, .art-preview[data-art-preview="neon"] .art.art.art-keyboard { --neon: #a3ff3d; }
+html[data-art="neon"] .art.mark, .art-preview[data-art-preview="neon"] .art.mark.art { filter: drop-shadow(0 0 3px var(--neon)) drop-shadow(0 0 14px color-mix(in srgb, var(--neon) 45%, transparent)); }
+html[data-art="neon"] .art.mark .solid, .art-preview[data-art-preview="neon"] .art.mark.art .solid { fill: #0b0c11; stroke: var(--neon); stroke-width: 1.5; }
+html[data-art="neon"] .art.mark .soft, .art-preview[data-art-preview="neon"] .art.mark.art .soft { fill: #14151c; stroke: color-mix(in srgb, var(--neon) 70%, transparent); stroke-width: .8; }
+html[data-art="neon"] .art.mark .accent, .art-preview[data-art-preview="neon"] .art.mark.art .accent { fill: var(--neon); stroke: none; }
+html[data-art="neon"] .art.mark .cut, .art-preview[data-art-preview="neon"] .art.mark.art .cut { fill: #040406; stroke: none; }
+html[data-art="neon"] .art.mark .cut-line, .art-preview[data-art-preview="neon"] .art.mark.art .cut-line { stroke: color-mix(in srgb, var(--neon) 65%, transparent); stroke-width: 1; }
+html[data-art="neon"] .art.mark .shade, .art-preview[data-art-preview="neon"] .art.mark.art .shade { display: none; }
+html[data-art="neon"] .art.mark .hi, .art-preview[data-art-preview="neon"] .art.mark.art .hi { display: none; }
+html[data-art="neon"] .art.mark .hi-line, .art-preview[data-art-preview="neon"] .art.mark.art .hi-line { display: inline; stroke: color-mix(in srgb, var(--neon) 45%, transparent); stroke-width: .9; }
+html[data-art="neon"] .art.mark .line, .art-preview[data-art-preview="neon"] .art.mark.art .line { stroke: color-mix(in srgb, var(--neon) 60%, transparent); stroke-width: .7; }
+html[data-art="neon"] .art.mark .line.knurl, .art-preview[data-art-preview="neon"] .art.mark.art .line.knurl { stroke: var(--neon); }
+html[data-art="neon"] .art.mark .led, .art-preview[data-art-preview="neon"] .art.mark.art .led { fill: #fff; filter: drop-shadow(0 0 3px var(--neon)); }
+html[data-art="neon"] .art.mark .logo-text, .art-preview[data-art-preview="neon"] .art.mark.art .logo-text { fill: var(--neon); }
+html[data-art="neon"] .art.mark .led.mic, .art-preview[data-art-preview="neon"] .art.mark.art .led.mic { fill: rgba(255, 255, 255, .18); filter: none; }
+html[data-art="pop"] .art.art-mouse, .art-preview[data-art-preview="pop"] .art.art.art-mouse { --pop: #ff6b57; --pop-2: #ffb3a7; }
+html[data-art="pop"] .art.art-headset, .art-preview[data-art-preview="pop"] .art.art.art-headset { --pop: #2ec4b6; --pop-2: #9cefe5; }
+html[data-art="pop"] .art.art-keyboard, .art-preview[data-art-preview="pop"] .art.art.art-keyboard { --pop: #ffc23c; --pop-2: #fff1cc; }
+html[data-art="pop"] .art.mark, .art-preview[data-art-preview="pop"] .art.mark.art { filter: drop-shadow(0 5px 0 rgba(0, 0, 0, .35)); }
+html[data-art="pop"] .art.mark .solid, .art-preview[data-art-preview="pop"] .art.mark.art .solid { fill: var(--pop); stroke: none; }
+html[data-art="pop"] .art.mark .soft, .art-preview[data-art-preview="pop"] .art.mark.art .soft { fill: var(--pop-2); stroke: none; }
+html[data-art="pop"] .art.mark .accent, .art-preview[data-art-preview="pop"] .art.mark.art .accent { fill: #ff6b57; stroke: none; }
+html[data-art="pop"] .art.mark .cut, .art-preview[data-art-preview="pop"] .art.mark.art .cut { fill: rgba(20, 16, 30, .3); stroke: none; }
+html[data-art="pop"] .art.mark .cut-line, .art-preview[data-art-preview="pop"] .art.mark.art .cut-line { stroke: rgba(20, 16, 30, .25); stroke-width: 2.2; }
+html[data-art="pop"] .art.mark .shade, .art-preview[data-art-preview="pop"] .art.mark.art .shade { display: inline; fill: rgba(20, 16, 30, .14); }
+html[data-art="pop"] .art.mark .hi, .art-preview[data-art-preview="pop"] .art.mark.art .hi { display: none; }
+html[data-art="pop"] .art.mark .hi-line, .art-preview[data-art-preview="pop"] .art.mark.art .hi-line { display: none; }
+html[data-art="pop"] .art.mark .line, .art-preview[data-art-preview="pop"] .art.mark.art .line { stroke: rgba(20, 16, 30, .3); stroke-width: .8; }
+html[data-art="pop"] .art.mark .line.knurl, .art-preview[data-art-preview="pop"] .art.mark.art .line.knurl { stroke: rgba(20, 16, 30, .4); }
+html[data-art="pop"] .art.mark .led, .art-preview[data-art-preview="pop"] .art.mark.art .led { fill: #fff; filter: none; }
+html[data-art="pop"] .art.mark .logo-text, .art-preview[data-art-preview="pop"] .art.mark.art .logo-text { fill: rgba(255, 255, 255, .85); }
+html[data-art="pop"] .art.mark .led.mic, .art-preview[data-art-preview="pop"] .art.mark.art .led.mic { fill: rgba(255, 255, 255, .18); filter: none; }
+html[data-art="arctic"] .art.mark, .art-preview[data-art-preview="arctic"] .art.mark.art { filter: drop-shadow(0 10px 18px rgba(80, 170, 255, .3)); }
+html[data-art="arctic"] .art.mark .solid, .art-preview[data-art-preview="arctic"] .art.mark.art .solid { fill: #f3f7fc; stroke: #8fd0ff; stroke-width: .8; }
+html[data-art="arctic"] .art.mark .soft, .art-preview[data-art-preview="arctic"] .art.mark.art .soft { fill: #dce9f6; stroke: none; }
+html[data-art="arctic"] .art.mark .accent, .art-preview[data-art-preview="arctic"] .art.mark.art .accent { fill: #5ab8ff; stroke: none; }
+html[data-art="arctic"] .art.mark .cut, .art-preview[data-art-preview="arctic"] .art.mark.art .cut { fill: rgba(40, 80, 130, .35); stroke: none; }
+html[data-art="arctic"] .art.mark .cut-line, .art-preview[data-art-preview="arctic"] .art.mark.art .cut-line { stroke: rgba(40, 90, 150, .3); stroke-width: 1.6; }
+html[data-art="arctic"] .art.mark .shade, .art-preview[data-art-preview="arctic"] .art.mark.art .shade { display: inline; fill: rgba(60, 120, 190, .16); }
+html[data-art="arctic"] .art.mark .hi, .art-preview[data-art-preview="arctic"] .art.mark.art .hi { display: inline; fill: rgba(255, 255, 255, .7); }
+html[data-art="arctic"] .art.mark .hi-line, .art-preview[data-art-preview="arctic"] .art.mark.art .hi-line { display: inline; stroke: rgba(255, 255, 255, .8); stroke-width: 1; }
+html[data-art="arctic"] .art.mark .line, .art-preview[data-art-preview="arctic"] .art.mark.art .line { stroke: rgba(40, 90, 150, .35); stroke-width: .7; }
+html[data-art="arctic"] .art.mark .line.knurl, .art-preview[data-art-preview="arctic"] .art.mark.art .line.knurl { stroke: rgba(40, 90, 150, .45); }
+html[data-art="arctic"] .art.mark .led, .art-preview[data-art-preview="arctic"] .art.mark.art .led { fill: #5ab8ff; filter: drop-shadow(0 0 3px #5ab8ff); }
+html[data-art="arctic"] .art.mark .logo-text, .art-preview[data-art-preview="arctic"] .art.mark.art .logo-text { fill: rgba(40, 90, 150, .6); }
+html[data-art="arctic"] .art.mark .led.mic, .art-preview[data-art-preview="arctic"] .art.mark.art .led.mic { fill: rgba(255, 255, 255, .18); filter: none; }
+.art-style[data-look="blueprint"] { background: linear-gradient(rgba(124, 200, 255, .07) 1px, transparent 1px) 0 0 / 12px 12px, linear-gradient(90deg, rgba(124, 200, 255, .07) 1px, transparent 1px) 0 0 / 12px 12px, rgba(20, 60, 110, .28); }
+.art-style[data-look="neon"] { background: radial-gradient(circle at 50% 40%, rgba(255, 61, 168, .14), transparent 65%), rgba(255, 255, 255, .03); }
+.art-style[data-look="pop"] { background: linear-gradient(135deg, rgba(255, 107, 87, .14), rgba(46, 196, 182, .12)); }
+.art-style[data-look="arctic"] { background: linear-gradient(180deg, rgba(143, 208, 255, .16), rgba(255, 255, 255, .04)); }

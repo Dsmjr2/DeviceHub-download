@@ -15,8 +15,11 @@ export function setGlow(hex) {
 // Drawing style (Settings > Appearance, 19 Oct 2026): frosted (default), color, outline, silver or glass. Saved in
 // DeviceHub's settings, applied as html[data-art] so every drawing on every page follows it.
 // the looks are variations of the real-color drawings ('frosted' is the stored name of Classic, the drawn look; 'photo' is Realistic)
-export const ART_STYLES = [['photo', 'Realistic'], ['frosted', 'Classic'], ['studio', 'Studio'], ['glow', 'Glow'], ['matte', 'Matte'], ['night', 'Night']];
-export function applyArtStyle(style) { document.documentElement.dataset.art = ART_STYLES.some(([k]) => k === style) ? style : 'frosted'; }
+// six clearly different looks (21 Oct 2026, Shawn: the old ones were "not different enough"); a look saved before then
+// is shown as the nearest new one
+export const ART_STYLES = [['photo', 'Realistic'], ['frosted', 'Classic'], ['blueprint', 'Blueprint'], ['neon', 'Neon'], ['pop', 'Pop'], ['arctic', 'Arctic']];
+const RENAMED = { studio: 'frosted', glow: 'neon', matte: 'pop', night: 'neon' };
+export function applyArtStyle(style) { style = RENAMED[style] || style; document.documentElement.dataset.art = ART_STYLES.some(([k]) => k === style) ? style : 'frosted'; }
 export async function loadArtStyle() {
   try { applyArtStyle((await (await fetch('/api/settings')).json()).artStyle); } catch { applyArtStyle('frosted'); }
 }
