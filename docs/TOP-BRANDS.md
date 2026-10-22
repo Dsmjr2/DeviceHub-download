@@ -27,6 +27,23 @@ Sony also sells many headsets, but mostly for PlayStation; on a PC, SteelSeries 
 | **Turtle Beach** (incl. ROCCAT) | headset | vendor USB reports | HeadsetControl (some models) | battery, sidetone, mic monitoring | medium: fewer open references |
 | **SteelSeries** | headset, mouse | vendor USB reports; the Arctis line is well known | HeadsetControl, rivalcfg (mice) | headset battery, sidetone, auto-off; mouse DPI and lights | low to medium |
 
+## The mapping sheets
+
+One sheet per brand, with models and USB ids, how the devices talk, the settings map (feature or command ids and
+value formats, each cited to the open project it comes from), safe reads vs risky writes, a build plan, and the gaps
+(researched 22 Oct 2026, read-only, nothing tested on a device):
+
+- [Logitech G](brands/logitech.md): HID++ 2.0 for mice, keyboards and headsets (ASTRO separately). Gaps: some
+  current receiver ids (Superlight 2, PRO 2), the PRO X TKL and A50 X ids.
+- [Razer](brands/razer.md): the 90-byte report for mice and keyboards, mapped to the byte. Gap: no open project
+  covers Razer headsets' battery or settings.
+- [Corsair](brands/corsair.md): the HS80's property protocol (bragi) generalized to other headsets, mice and
+  keyboards. Gaps: HS65/HS55 unknown; the meaning of the battery status property (0x10).
+- [SteelSeries](brands/steelseries.md): three headset message families, rivalcfg's mice, the Apex keyboards.
+  Gaps: Apex Pro actuation, Nova Pro ChatMix and ANC; mouse settings cannot be read back.
+- [Turtle Beach and ROCCAT](brands/turtle-beach.md): battery on the newest headsets (Airoha RACE), ROCCAT mice and
+  keyboards. Gap: no open project sets any Turtle Beach headset setting; it would have to be learned.
+
 ## What already works for anyone, whatever the brand
 
 These need nothing per brand, so a new user gets them on day one:
