@@ -21,19 +21,32 @@ button that sets up Equalizer APO (free, from its official site).
 To remove it: Windows **Settings > Apps > Installed apps > DeviceHub > Uninstall** (your backups are kept in
 Documents).
 
-## What it controls
+## What it works with
 
-- **Mice:** Pulsar X-Lite CrazyLight (DPI, polling rate, buttons, lift-off and more)
-- **Headsets:** Corsair HS80 RGB Wireless (battery, lights, sidetone, mic boost, EQ); no iCUE needed
+**With any device of its kind, nothing to set up:**
+
+- **Headsets:** any USB headset: volume, mic level, mic mute and EQ (EQ with Equalizer APO, one click inside DeviceHub)
 - **Keyboards:** any keyboard that supports **VIA** (keys on every layer, knob, macros, lighting)
-- **Monitors:** brightness, contrast and speakers (DDC/CI)
-- **Webcams:** brightness, contrast, color, focus, exposure, zoom
-- **PC lights:** motherboard, fans and RAM, through OpenRGB if you use it
-- **Sound:** headset and speaker EQ, mic filters (with Equalizer APO)
+- **Monitors:** any monitor with DDC/CI, which is most: brightness, contrast and speakers
+- **Webcams:** any webcam: brightness, contrast, color, focus, exposure, zoom
+- **Lights:** USB lights through the OpenRGB inside DeviceHub, and any **Windows Dynamic Lighting** device
+- **Batteries:** Bluetooth devices show their battery
+
+**Fully supported models:** Pulsar X-Lite CrazyLight mouse (DPI, polling rate, buttons, lift-off and more) and Corsair HS80
+RGB Wireless headset (battery, lights, sidetone, mic boost; no iCUE needed).
+
+**Ready-made drivers** for many Logitech G, Razer, Corsair, SteelSeries, HyperX, ASUS ROG, Glorious, ROCCAT, Keychron and
+Wooting mice, keyboards and headsets. DeviceHub finds the right one (press **Install** if it asks), then **Turn on
+settings** once: it tests each setting before you use it. Most are new and not yet confirmed on every model; when
+yours works, **Tell others it works** in DeviceHub confirms it for everyone.
+
+**Motherboard, fan and RAM lights** work through the free OpenRGB app; DeviceHub shows you how (Lighting > PC lights).
 
 Profiles switch everything at once (also automatically when a game starts), and every change is backed up first.
 
 ## A device it does not know yet?
+
+In DeviceHub, **Learn a device** (in the sidebar) makes a driver while you change settings in the maker's app. Or:
 
 Open the installed DeviceHub folder (`%USERPROFILE%\DeviceHub`) in **Claude Code** and say **"set this up"**. It
 finds your devices, tells you which ones work straight away, and adds the others one at a time. Lighting > This PC
