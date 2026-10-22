@@ -1101,3 +1101,11 @@ html[data-art="live"] :not(.art-preview) > .art.mark.art-keyboard .shade, .art-p
 .art-style { padding: 10px 4px 8px; gap: 4px; font-size: 12px; }
 .art-preview { height: 40px; gap: 3px; }
 .art-preview .art-headset { height: 30px; } .art-preview .art-mouse { height: 28px; } .art-preview .art-keyboard { width: 34px; }
+/* asleep (21 Oct 2026): the battery still shows its last level, but the liquid lies still and dim, and the device
+   breathes slowly, so a sleeping mouse reads differently from an awake one at a glance */
+html[data-art="live"] :not(.art-preview) > .art.mark.sleeping :is(.wave, .wave-edge, .mote) { animation: none !important; }  /* still, whatever else animates them */
+html[data-art="live"] :not(.art-preview) > .art.mark.sleeping .mote { display: none; }
+html[data-art="live"] :not(.art-preview) > .art.mark.sleeping .liquid { opacity: .5; filter: saturate(.55); }
+html[data-art="live"] :not(.art-preview) > .art.mark.sleeping { animation: asleep-breathe 4.5s ease-in-out infinite; }
+@keyframes asleep-breathe { 50% { opacity: .6; } }
+@media (prefers-reduced-motion: reduce) { html[data-art="live"] :not(.art-preview) > .art.mark.sleeping { animation: none; opacity: .75; } }

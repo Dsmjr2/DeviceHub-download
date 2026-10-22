@@ -19,6 +19,9 @@ const KEEP = 'devicehub.liveLevels';
 let kept = {}; try { kept = JSON.parse(localStorage.getItem(KEEP) || '{}') || {}; } catch {}
 function battery(id) {
   const d = devices[id];
+  // asleep (the mouse after its idle time): its last level, shown still and dim (Shawn, 21 Oct 2026: "show the battery even
+  // when asleep")
+  if (d?.status === 'asleep') { const p = d.battery?.percent ?? kept[id]; return p == null ? null : { percent: p, charging: false, asleep: true }; }
   if (!d || (d.status !== 'connected' && d.status !== 'connecting') || (id === 'headset' && d.values?.headsetOn === false)) return null;
   const p = d.battery?.percent;
   if (p == null) return kept[id] != null && d.status === 'connected' ? { percent: kept[id], charging: false } : null;
@@ -39,6 +42,7 @@ export function paintLive(root = document) {
       if (u) u.style.display = b ? '' : 'none';
       art.classList.toggle('charging', !!b?.charging);
       art.classList.toggle('low', !!b && !b.charging && b.percent <= 20);
+      art.classList.toggle('sleeping', !!b?.asleep);
     }
   }
   const hv = devices.headset?.values || {};
