@@ -65,10 +65,13 @@ const EDGES = (k) => `${GREY}<feConvolveMatrix in="grey" order="3" kernelMatrix=
   <feColorMatrix in="e" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  ${k} ${k} ${k} 0 0" result="lines"/>
   <feComposite in="lines" in2="SourceAlpha" operator="in" result="lines"/>`;
 const RING = (r) => `<feMorphology in="SourceAlpha" operator="dilate" radius="${r}" result="d"/><feComposite in="d" in2="SourceAlpha" operator="out" result="ring"/>`;
+const FLAT = (tones) => `<feGaussianBlur in="grey" stdDeviation=".7" result="soft"/><feComponentTransfer in="soft" result="flat"><feFuncR type="discrete" tableValues="${tones}"/><feFuncG type="discrete" tableValues="${tones}"/><feFuncB type="discrete" tableValues="${tones}"/></feComponentTransfer>`;
 const fx = (id, body) => `<filter id="dh-fx-${id}" x="-8%" y="-8%" width="116%" height="116%" color-interpolation-filters="sRGB">${body}</filter>`;
 const PHOTO_FX = [
-  // Classic: the photo in cool silver monochrome
-  fx('frosted', `${GREY}<feComponentTransfer in="grey"><feFuncR type="linear" slope="1.35" intercept=".08"/><feFuncG type="linear" slope="1.38" intercept=".09"/><feFuncB type="linear" slope="1.45" intercept=".12"/></feComponentTransfer>`),
+  // Classic: a flat illustration in the devices' real colors: the photo cut into four flat tones, its outline lit
+  fx('frosted', `${GREY}${FLAT('.09 .2 .42 .86')}${RING(.8)}
+    <feFlood flood-color="#fff" flood-opacity=".45"/><feComposite in2="ring" operator="in" result="edge"/>
+    <feMerge><feMergeNode in="flat"/><feMergeNode in="edge"/></feMerge>`),
   // Blueprint: the edges as cyan lines, the outline brighter, a faint blue fill
   fx('blueprint', `${EDGES(2.4)}${RING(1.1)}
     <feMerge result="all"><feMergeNode in="lines"/><feMergeNode in="ring"/></feMerge>
@@ -81,18 +84,24 @@ const PHOTO_FX = [
     <feFlood class="fx-accent"/><feComposite in2="all" operator="in" result="c"/><feGaussianBlur in="c" stdDeviation="3" result="glow"/>
     <feFlood flood-color="#07080c"/><feComposite in2="SourceAlpha" operator="in" result="body"/>
     <feMerge><feMergeNode in="body"/><feMergeNode in="glow"/><feMergeNode in="c"/></feMerge>`),
-  // Duotone: the photo's light and shade mapped to a deep and a light shade of the theme accent
-  fx('duo', `<feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  .3 .59 .11 0 0" result="lum"/>
-    <feComponentTransfer in="lum" result="lum"><feFuncA type="linear" slope="2.6" intercept="0"/></feComponentTransfer>
+  // Duotone: the photo cut into three flat steps, drawn in a deep, a middle and a light shade of the theme accent
+  fx('duo', `${GREY}<feGaussianBlur in="grey" stdDeviation=".7" result="soft"/>
+    <feColorMatrix in="soft" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  2.6 0 0 0 -.05" result="lum"/>
+    <feComponentTransfer in="lum" result="mid"><feFuncA type="discrete" tableValues="0 1 1"/></feComponentTransfer>
+    <feComponentTransfer in="lum" result="top"><feFuncA type="discrete" tableValues="0 0 1"/></feComponentTransfer>
     <feFlood class="fx-duo-dark"/><feComposite in2="SourceAlpha" operator="in" result="dark"/>
-    <feFlood class="fx-duo-light"/><feComposite in2="lum" operator="in" result="light"/>
-    <feMerge result="m"><feMergeNode in="dark"/><feMergeNode in="light"/></feMerge><feComposite in="m" in2="SourceAlpha" operator="in"/>`),
-  // Arctic: light and shade turned round, so the black devices are white, with an ice-blue cast
-  fx('arctic', `${GREY}<feComponentTransfer in="grey"><feFuncR type="table" tableValues=".95 .5"/><feFuncG type="table" tableValues=".97 .58"/><feFuncB type="table" tableValues="1 .72"/></feComponentTransfer>`),
-  // Live battery: the device as dark glass with a soft white outline (the liquid is drawn over it, inside the photo's shape)
-  fx('live', `${GREY}<feComponentTransfer in="grey" result="dim"><feFuncR type="linear" slope=".45"/><feFuncG type="linear" slope=".45"/><feFuncB type="linear" slope=".5"/><feFuncA type="linear" slope=".9"/></feComponentTransfer>${RING(.9)}
-    <feFlood flood-color="#fff" flood-opacity=".55"/><feComposite in2="ring" operator="in" result="edge"/>
-    <feMerge><feMergeNode in="dim"/><feMergeNode in="edge"/></feMerge>`),
+    <feFlood class="fx-duo-mid"/><feComposite in2="mid" operator="in" result="m"/>
+    <feFlood class="fx-duo-light"/><feComposite in2="top" operator="in" result="light"/>
+    <feMerge result="all"><feMergeNode in="dark"/><feMergeNode in="m"/><feMergeNode in="light"/></feMerge><feComposite in="all" in2="SourceAlpha" operator="in"/>`),
+  // Arctic: a flat illustration in white and ice, light and shade turned round (the black devices white)
+  fx('arctic', `${GREY}<feGaussianBlur in="grey" stdDeviation=".7" result="soft"/><feComponentTransfer in="soft" result="flat"><feFuncR type="discrete" tableValues=".97 .86 .66 .5"/><feFuncG type="discrete" tableValues=".98 .9 .74 .58"/><feFuncB type="discrete" tableValues="1 .96 .86 .74"/></feComponentTransfer>${RING(.8)}
+    <feFlood flood-color="#8fd2ff" flood-opacity=".7"/><feComposite in2="ring" operator="in" result="edge"/>
+    <feMerge><feMergeNode in="flat"/><feMergeNode in="edge"/></feMerge>`),
+  // Live battery: a smooth dark shape in the device's exact outline, a soft white edge, no photo detail (the liquid is
+  // drawn over it, through the photo's shape)
+  fx('live', `<feFlood flood-color="#16171d"/><feComposite in2="SourceAlpha" operator="in" result="body"/>${RING(.9)}
+    <feFlood flood-color="#fff" flood-opacity=".6"/><feComposite in2="ring" operator="in" result="edge"/>
+    <feMerge><feMergeNode in="body"/><feMergeNode in="edge"/></feMerge>`),
   // the photo's shape in white, the mask the Live battery's liquid is drawn through
   fx('shape', '<feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1 0"/>'),
 ].join('');

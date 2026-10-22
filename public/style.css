@@ -1117,3 +1117,4 @@ html[data-art="live"] :not(.art-preview) > .art .pliquid .wave.front, .art-previ
 .art-style { padding: 10px 4px 8px; gap: 4px; font-size: 12px; }
 .art-preview { height: 40px; gap: 3px; }
 .art-preview .art-headset { height: 30px; } .art-preview .art-mouse { height: 28px; } .art-preview .art-keyboard { width: 34px; }
+.fx-duo-mid { flood-color: color-mix(in srgb, var(--theme-art) 75%, #0a0b10); }
