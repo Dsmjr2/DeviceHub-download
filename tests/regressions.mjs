@@ -63,7 +63,7 @@ await new Promise((resolve) => {
   const blocker = net.createServer(() => {});                     // takes connections, never answers HTTP
   blocker.listen(0, '127.0.0.1', () => {
     const port = blocker.address().port;
-    const p = spawn(process.execPath, [path.join(ROOT, 'server.js')], { cwd: ROOT, env: { ...process.env, DEVICEHUB_PORT: String(port), DEVICEHUB_AGENT: '0', DEVICEHUB_TRAY: '0', DEVICEHUB_TEST: '1' }, stdio: ['ignore', 'pipe', 'ignore'] });
+    const p = spawn(process.execPath, [path.join(ROOT, 'server.js')], { cwd: ROOT, env: { ...process.env, DEVICEHUB_PORT: String(port), DEVICEHUB_AGENT: '0', DEVICEHUB_TRAY: '0', DEVICEHUB_TEST: '1', DEVICEHUB_ISOLATED: '1' }, stdio: ['ignore', 'pipe', 'ignore'] });
     let out = ''; p.stdout.on('data', (d) => { out += d; });
     const t = setTimeout(() => { p.kill(); check(false, 'server with its port taken did not stop within 20 s'); blocker.close(); resolve(); }, 20000);
     p.on('exit', (code) => { clearTimeout(t); check(code === 4 && /\[start\] Port \d+ is used by another program/.test(out), `server with its port taken: exit ${code}, says "${out.trim().split('\n').pop()}"`); blocker.close(); resolve(); });

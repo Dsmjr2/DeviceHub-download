@@ -8,6 +8,12 @@ const path = require('path');
 const { spawn, execFile } = require('child_process');
 
 const PORT = Number(process.env.DEVICEHUB_PORT) || 5577;  // a test copy can use another port
+// ISOLATED TEST MODE (DEVICEHUB_ISOLATED=1, 22 Oct 2026; docs/handoff/isolated-mode.md): a second copy beside the real
+// one that touches no device and no Windows setting. No iCUE, native helper, agent, tray, OpenRGB, DDC/CI, cameras,
+// Equalizer APO, startup shortcut, settings sync or updates; the window runs in demo mode and every /api route that
+// would reach any of those answers from isolatedApi() below. Needs its own DEVICEHUB_PORT (never 5577).
+const ISOLATED = process.env.DEVICEHUB_ISOLATED === '1';
+if (ISOLATED && (!process.env.DEVICEHUB_PORT || PORT === 5577)) { console.log('[isolated] DEVICEHUB_ISOLATED=1 needs DEVICEHUB_PORT set to a free port other than 5577'); process.exit(5); }
 const ROOT = __dirname;
 const PUBLIC = path.join(ROOT, 'public');
 const BACKUPS = path.join(ROOT, 'backups');
@@ -74,15 +80,15 @@ async function eqDevices() {
 const ankerGuard = require('./helpers/anker-guard');
 const settingsSync = require('./helpers/settings-sync');
 const monitors = require('./helpers/monitors');
-monitors.start(require('./helpers/native'), BACKUPS, (text, bad) => serverLog({ kind: bad ? 'bad' : 'good', text }));  // the last: changes made while a monitor was off, applied
+if (!ISOLATED) monitors.start(require('./helpers/native'), BACKUPS, (text, bad) => serverLog({ kind: bad ? 'bad' : 'good', text }));  // the last: changes made while a monitor was off, applied
 const camera = require('./helpers/camera');
-camera.start(require('./helpers/native'), BACKUPS);
+if (!ISOLATED) camera.start(require('./helpers/native'), BACKUPS);
 let openWindows = 0;
 let pointerBackupAt = 0;   // when the Windows pointer settings were last backed up (/api/pointer)
 const pcMap = require('./helpers/pc-map');
 const openrgb = require('./helpers/openrgb');
 // DeviceHub's own devices are never written through OpenRGB as well (its location names their vendor:product)
-openrgb.start(BACKUPS, { ownDevice: new RegExp(Object.keys(pcMap.RUNS).map((id) => { const [v, p] = id.split(':'); return `vid_${v}&pid_${p}`; }).join('|'), 'i') });
+if (!ISOLATED) openrgb.start(BACKUPS, { ownDevice: new RegExp(Object.keys(pcMap.RUNS).map((id) => { const [v, p] = id.split(':'); return `vid_${v}&pid_${p}`; }).join('|'), 'i') });
 const eqapo = require('./helpers/eqapo')(icueEq, eqDevices, path.join(__dirname, 'backups'));
 let eqBusy = false;
 const updates = require('./helpers/updates');
@@ -106,7 +112,7 @@ function serverLog(e) {
   if (agent) return agent.op('log', e).catch(() => {});
   fs.appendFileSync(ACTIVITY, JSON.stringify({ at: new Date(), ...e }) + '\n');
 }
-try { corsair = require('./helpers/corsair'); } catch (e) { console.log('[corsair] helper not loaded:', e.message); }
+if (!ISOLATED) try { corsair = require('./helpers/corsair'); } catch (e) { console.log('[corsair] helper not loaded:', e.message); }
 // Mic boost without iCUE (20 Oct 2026): with Equalizer APO installed and the headset mic found, the boost is a gain on
 // the mic in DeviceHub's own Equalizer APO settings (helpers/eqapo.js); otherwise iCUE's setting as before
 if (corsair) corsair.setBoostVia({
@@ -176,12 +182,36 @@ const safeName = (s) => String(s || 'device').replace(/[^a-z0-9_-]/gi, '_').slic
 
 const HOSTS = new Set([`localhost:${PORT}`, `127.0.0.1:${PORT}`]);
 
+// Isolated test mode only (DEVICEHUB_ISOLATED=1): answers every route that would reach a device, the native helper,
+// iCUE, OpenRGB, Equalizer APO, Windows (sound, pointer, startup, processes, PnP/WMI reads), GitHub or another program,
+// and returns true. The routes left to api() read or write only files in this copy's own folder.
+const ISOLATED_PASS = new Set(['/api/version', '/api/windows', '/api/backup', '/api/backups', '/api/client-status', '/api/activity', '/api/settings', '/api/profiles', '/api/vendor-apps', '/api/quit']);
+function isolatedApi(req, res, url) {
+  const p = url.pathname;
+  if (ISOLATED_PASS.has(p) || (p.startsWith('/api/backups/') && req.method === 'GET')) return false;
+  res.setHeader('X-DeviceHub-Isolated', '1');   // every answer from here (tests/isolated.mjs checks it)
+  const m = process.memoryUsage();
+  const demo = {
+    '/api/agent-config': { agent: false, ready: false, isolated: true },
+    '/api/health': { uptimeS: Math.round(process.uptime()), serverMB: +(m.rss / 1048576).toFixed(0), heapMB: +(m.heapUsed / 1048576).toFixed(0), helperMB: null, crashes24h: 0, lastCrashAt: null, lastProblem: null, backups: { count: 0, mb: 0 }, isolated: true },
+    '/api/setups': [], '/api/monitors': [], '/api/cameras': [], '/api/power': { saver: false, isolated: true },
+    '/api/startup': { enabled: false, isolated: true }, '/api/processes': [], '/api/games': [],
+    '/api/battery-estimate': {}, '/api/helper-calls': { uptimeS: Math.round(process.uptime()), calls: {} },
+    '/api/settings-sync': { isolated: true, on: false }, '/api/self-update': { isolated: true, count: 0 }, '/api/self-update/progress': {},
+    '/api/updates': { isolated: true, apps: [] }, '/api/openrgb': { running: false, isolated: true, controllers: [] },
+  };
+  if (req.method === 'GET' && p in demo) { send(res, 200, demo[p]); return true; }
+  send(res, 503, { error: 'DeviceHub is in isolated test mode: it does not touch devices or Windows settings', isolated: true });
+  return true;
+}
+
 async function api(req, res, url) {
   // Only the dashboard itself may call the API: other web pages are refused by Origin, and anything that changes
   // state must be a POST (a page can make a browser send a GET, e.g. with an <img>, without an Origin header).
   const origin = req.headers.origin;
   if (origin && origin !== `http://localhost:${PORT}` && origin !== `http://127.0.0.1:${PORT}`) return send(res, 403, { error: 'origin' });
   if (req.method !== 'GET' && req.method !== 'POST') return send(res, 405, { error: 'method' });
+  if (ISOLATED && isolatedApi(req, res, url)) return;
 
   if (url.pathname === '/api/backup' && req.method === 'POST') {
     const body = await readBody(req);
@@ -682,6 +712,8 @@ http.createServer(async (req, res) => {
     const rel = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname).replace(/^\/+/, '');
     const file = path.normalize(path.join(PUBLIC, rel));
     if (!file.startsWith(PUBLIC) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return send(res, 404, 'not found', 'text/plain');
+    // isolated test mode: the window runs on the demo devices (public/devices/demo.js), so it never opens WebHID itself
+    if (ISOLATED && file === path.join(PUBLIC, 'index.html')) return send(res, 200, fs.readFileSync(file, 'utf8').replace('<script type="module" src="app.js"></script>', '<script>window.DEVICEHUB_DEMO = true; window.DEVICEHUB_ISOLATED = true;</script>\n  <script type="module" src="app.js"></script>'), 'text/html');
     send(res, 200, fs.readFileSync(file), TYPES[path.extname(file)] || 'application/octet-stream');
   } catch (e) {
     console.error(e);
@@ -709,6 +741,9 @@ http.createServer(async (req, res) => {
   console.log(`DeviceHub on http://localhost:${PORT}`);
   // a save cut off by a crash leaves a temporary file beside the whole old one: tidy those away
   for (const d of [ROOT, BACKUPS, path.join(ROOT, 'setups')]) require('./helpers/safe-write').cleanLeftovers(d);
+  // isolated test mode: none of the background parts below (self-update, agent, auto setup, library updates, audio,
+  // battery saver, Anker guard, settings sync, receiver light, backup tidy, battery history, tray)
+  if (ISOLATED) { console.log('[isolated] test mode: no devices, helper, iCUE, OpenRGB, tray, sync or updates'); return; }
   // just updated: a minute running well keeps the new version (else the keep-running loop goes back, self-update.js)
   require('./helpers/self-update').confirm(serverLog);
   // The agent owns the devices (set DEVICEHUB_AGENT=0 to fall back to the browser's own WebHID connection).
@@ -773,6 +808,7 @@ let agent = null;
 let tray = false;
 let quitting = false;
 async function shutdown() {
+  if (ISOLATED) process.exit(0);   // isolated test mode started nothing to stop (helpers/openrgb.js stop() would remove the real copy's pid file)
   // an AnkerCamera test running: muted again first (at most 1.5 s), while the audio helper is still there
   try { await Promise.race([ankerGuard.shutdown(), new Promise((r) => setTimeout(r, 1500))]); } catch {}
   try { agent?.stop(); } catch {}
