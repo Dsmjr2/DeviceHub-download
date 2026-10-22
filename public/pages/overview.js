@@ -85,7 +85,7 @@ function bay(d, go, redraw) {
   const off = d.status === 'connected' && d.id === 'headset' && !d.values.headsetOn;
   const el = h('div', { class: `bay ${d.status}${muted ? ' mic-muted' : ''}${off ? ' off' : ''}`, 'data-dev': d.id, 'data-shape': `${d.status}|${ro.length}|${bat != null}`, role: 'button', tabindex: 0, style: { '--cc': COLORS[d.id] }, onclick: () => go(d.id), onkeydown: (e) => { if (e.key === 'Enter') go(d.id); } },
     // the pill carries the state: CONNECTED, ASLEEP, HEADSET OFF ... (no "Ready" line under the name)
-    h('div', { class: 'bay-top' }, h('span', { class: 'bay-kind' }, a.kind), d.status === 'connected' && d.id === 'headset' && !d.values.headsetOn ? pill('headset off', 'off') : statusPill(d)),
+    h('div', { class: 'bay-top' }, h('span', { class: 'bay-kind' }, a.kind), linkStatus(d, off)),
     h('div', { class: 'bay-art' }, artOf(d)),
     // the name, with the battery beside it on the right (Shawn, 19 Oct 2026); up to two lines, the same height on all three
     h('div', { class: 'bay-head' }, h('h3', {}, a.title),
@@ -203,6 +203,18 @@ function gpuChip(go) {
   if (!gpuTimer) { gpuTimer = setInterval(tick, 5000); setTimeout(tick, 200); }
   if (!gpuText) el.hidden = true;
   return el;
+}
+
+// The state as a live link from the device to this PC (21 Oct 2026, Shawn: "something more unique than the current
+// connected and off"): connected, small lights travel along the line to the PC like data; asleep, one slow amber light;
+// switched off or not connected, the line is broken in red. CSS only (transform and opacity), so it costs nothing.
+function linkStatus(d, off) {
+  const st = off ? 'off' : d.status === 'connected' ? 'live' : d.status === 'asleep' ? 'asleep' : d.status === 'connecting' ? 'asleep' : 'none';
+  const text = off ? 'Headset off' : { live: 'Connected', asleep: d.status === 'connecting' ? 'Connecting' : 'Asleep', none: 'Not connected' }[st];
+  return h('div', { class: `link ${st}`, role: 'status', 'aria-label': text },
+    h('span', { class: 'link-label' }, text),
+    h('span', { class: 'link-track' }, h('i'), h('i'), h('i')),
+    h('span', { class: 'link-pc' }, icon('monitor')));
 }
 
 export default {

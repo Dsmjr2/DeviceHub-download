@@ -969,3 +969,28 @@ html[data-art="arctic"] .art.mark .led.mic, .art-preview[data-art-preview="arcti
 .theme-name { font: 500 12.5px var(--ui); color: var(--muted); margin-left: 2px; }
 /* Settings: slightly tighter rows, so the whole page fits on one screen (21 Oct 2026) */
 .page[data-no-jump] .srow { padding: 10px 0; }
+/* Settings: the three columns end level (Shawn, 21 Oct 2026: "make it all even length"); the last card in each column
+   grows to the tallest column */
+.grid.settings-cols { align-items: stretch; }
+.grid.settings-cols > .stack { display: flex; flex-direction: column; }
+.grid.settings-cols > .stack > :last-child { flex: 1; }
+/* The Overview's live link (21 Oct 2026): the state as a line from the device to this PC. Connected: three lights travel
+   along it to the PC; asleep: one slow amber light; off or not connected: the line breaks in red. Only transform and
+   opacity move, so the compositor does it and the page does not repaint. */
+.link { --lc: #3ddc97; display: inline-flex; align-items: center; gap: 8px; font: 600 11.5px var(--ui); letter-spacing: .02em; color: color-mix(in srgb, var(--lc) 55%, #fff); }
+.link-track { position: relative; width: 44px; height: 2px; border-radius: 2px; overflow: hidden; background: color-mix(in srgb, var(--lc) 28%, transparent); }
+.link-track i { position: absolute; top: -1px; left: 0; width: 10px; height: 4px; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--lc), #fff);
+  box-shadow: 0 0 6px var(--lc); transform: translateX(-12px); animation: link-flow 1.8s linear infinite; }
+.link-track i:nth-child(2) { animation-delay: .6s; } .link-track i:nth-child(3) { animation-delay: 1.2s; }
+@keyframes link-flow { to { transform: translateX(48px); } }
+.link-pc { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; border: 1px solid color-mix(in srgb, var(--lc) 45%, transparent);
+  background: color-mix(in srgb, var(--lc) 14%, transparent); color: color-mix(in srgb, var(--lc) 70%, #fff); box-shadow: 0 0 10px -2px color-mix(in srgb, var(--lc) 60%, transparent); }
+.link-pc .ic { width: 13px; height: 13px; }
+.link.asleep { --lc: #ffbe46; }
+.link.asleep .link-track i { animation-duration: 3.6s; } .link.asleep .link-track i:nth-child(n+2) { display: none; }
+.link.off, .link.none { --lc: #ff5a5a; }
+.link.off .link-track, .link.none .link-track { background: linear-gradient(90deg, color-mix(in srgb, var(--lc) 45%, transparent) 0 40%, transparent 40% 60%, color-mix(in srgb, var(--lc) 18%, transparent) 60%); }
+.link.off .link-track i, .link.none .link-track i { display: none; }
+.link.off .link-pc, .link.none .link-pc { box-shadow: none; opacity: .55; }
+.link.none { color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .link-track i { animation: none; opacity: 0; } }
