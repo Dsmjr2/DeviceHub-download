@@ -11,6 +11,8 @@ import { env } from '../core/env.js';
 import { isDemo } from '../core/devices.js';
 import { toast } from '../ui/overlay.js';
 import { brandForUsb, brandNamed, ROUTE } from '../core/brands.js';
+import { learnThis } from './learn.js';
+import { viaFileNote, isViaKeyboard } from './keyboard.js';
 
 const DEMO_PC = {
   cpu: 'AMD Ryzen 7 5800X3D', gpus: [{ name: 'NVIDIA GeForce RTX 4070', maker: 'MSI' }], board: { maker: 'Gigabyte Technology Co., Ltd.', model: 'B450 AORUS PRO WIFI-CF' },
@@ -80,8 +82,10 @@ function thisPc() {
       pc.lampArrays ? line('Dynamic Lighting', `${pc.lampArrays} device${pc.lampArrays === 1 ? '' : 's'}`, 'yes', 'Set in Windows Settings > Personalization > Dynamic Lighting.', null) : null),
     others.length ? h('div', { class: 'pc-others' }, h('h3', {}, 'Other devices plugged in'),
       ...others.map((u) => h('div', { class: 'pc-other' }, line(u.brand.shared ? 'USB device' : u.brand.name, u.name || `${u.brand.name} device`, null, null, u.brand),
-        h('div', { class: 'actions' }, button('Learn it', () => { location.hash = '#/learn'; }, { kind: 'ghost small', ic: 'plug', title: 'Teach DeviceHub this device: it listens while you change settings in the maker app' }),
-          button('Copy a prompt for Claude', () => copyPrompt(u), { kind: 'ghost small', title: 'A ready prompt to add this device with Claude Code' }))))) : null,
+        // a VIA keyboard needs no learning, only its layout file when VIA's library lacks it (keyboard.js viaFileNote)
+        isViaKeyboard(u) ? viaFileNote(u.vid, u.pid, u.brand.name) : null,
+        h('div', { class: 'actions' }, button('Learn it', () => { learnThis(u.vid, u.pid); location.hash = '#/learn'; }, { kind: 'ghost small', ic: 'plug' }),
+          button('Copy a prompt for Claude', () => copyPrompt(u), { kind: 'ghost small' }))))) : null,
     // paired Bluetooth devices: connected or off, and the battery Windows last read
     st.bt?.length ? h('div', { class: 'pc-others' }, h('h3', {}, 'Bluetooth'),
       ...st.bt.map((d) => line(d.connected ? 'connected' : 'off', d.name, null, d.battery != null ? `Battery ${d.battery}%${d.connected ? '' : ' when last connected'}` : null, null))) : null);

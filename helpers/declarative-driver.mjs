@@ -14,10 +14,11 @@ import { HidChannel, getDevice, hex } from '../public/devices/hid.js';
 export const FORMAT = 1;
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BUILT_IN = ['mouse', 'headset', 'keyboard'];
-const RESERVED = ['model', 'link', 'probe', 'value'];
-const TYPES = ['slider', 'toggle', 'choice'];
+const RESERVED = ['model', 'link', 'probe', 'value', 'zone', 'button'];
+const TYPES = ['slider', 'toggle', 'choice', 'display', 'color', 'remap'];
+const HEX = /^#[0-9a-f]{6}$/;
 const CHECKSUMS = ['none', 'xor', 'sum8', 'sum16le'];
-const PLACE = { u8: 1, u16le: 2, u16be: 2, u32le: 4, u32be: 4 };
+const PLACE = { u8: 1, u16le: 2, u16be: 2, u32le: 4, u32be: 4, rgb: 3 };
 const STEP_BACK_MS = 15000, SNAP_MS = 1000;
 
 class Refused extends Error {}
@@ -60,7 +61,7 @@ export function parseTemplate(text) {
   if (typeof text !== 'string' || !text.trim()) throw new Error('it has no bytes');
   return text.trim().split(/\s+/).map((t) => {
     if (/^[0-9A-F]{2}$/i.test(t)) return { byte: parseInt(t, 16) };
-    const m = /^\{([A-Za-z][A-Za-z0-9_]*)(?::(u8|u16le|u16be|u32le|u32be|bytes))?(\?)?\}$/.exec(t);
+    const m = /^\{([A-Za-z][A-Za-z0-9_]*)(?::(u8|u16le|u16be|u32le|u32be|bytes|rgb))?(\?)?\}$/.exec(t);
     if (!m) throw new Error(`"${t}" is neither a byte (two hex digits) nor a placeholder like {value} or {value:u16le}`);
     return { name: m[1], type: m[2] || null, optional: !!m[3] };
   });
@@ -116,6 +117,27 @@ function decodeField(f, r, ctx) {
   return { raw, value };
 }
 
+// a color or remap setting's parts (22 Oct 2026, page kinds): [{ key, field, code, label }]; key null = one color
+function partsOf(s) {
+  if (s.type === 'color') return s.zones ? s.zones.map((z) => ({ key: z.value, field: z.field, code: z.code, label: z.label })) : [{ key: null, field: s.field || s.key, label: s.label }];
+  if (s.type === 'remap') return s.buttons.map((b) => ({ key: b.value, field: b.field, code: b.code, label: b.label }));
+  return null;
+}
+const toHex = (b) => `#${Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('')}`;
+const fromHex = (t) => [1, 3, 5].map((i) => parseInt(t.slice(i, i + 2), 16));
+// a setting's value from decoded fields: a color as '#rrggbb' (or { zone: '#rrggbb' } with every zone), a remap as
+// { button: target } for the buttons the device reported, anything else its field's value
+function valueOf(s, values) {
+  const parts = partsOf(s);
+  if (!parts) return values[s.field || s.key];
+  const conv = (v) => (s.type === 'color' ? (Array.isArray(v) && v.length === 3 ? toHex(v) : undefined) : v);
+  if (parts[0].key == null) { const v = values[parts[0].field]; return v === undefined ? undefined : conv(v); }
+  const out = {};
+  for (const p of parts) { const v = values[p.field] === undefined ? undefined : conv(values[p.field]); if (v !== undefined) out[p.key] = v; }
+  if (s.type === 'color' && Object.keys(out).length !== parts.length) return undefined;
+  return Object.keys(out).length ? out : undefined;
+}
+
 // a setting's value -> the number its {value} placeholder sends (explicit encode.map, else the inverse of its field)
 function encodeValue(s, field, v, ctx) {
   const map = s.write?.encode?.map;
@@ -130,6 +152,17 @@ function encodeValue(s, field, v, ctx) {
 
 // is this value one the setting takes? (the same check device.mjs drivers make)
 function check(s, v) {
+  if (s.type === 'display') throw new Refused(`${s.label} is a reading: it is never written`);
+  if (s.type === 'color') {
+    const ok = s.zones ? !!v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === s.zones.length && s.zones.every((z) => HEX.test(v[z.value] ?? ''))
+      : typeof v === 'string' && HEX.test(v);
+    if (!ok) throw new Refused(`${s.label} must be ${s.zones ? `a color (#rrggbb) for each of: ${s.zones.map((z) => z.label).join(', ')}` : 'a color written #rrggbb'}`);
+  }
+  if (s.type === 'remap') {
+    const ok = !!v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length > 0
+      && Object.entries(v).every(([b, t]) => s.buttons.some((x) => x.value === b) && s.targets.some((x) => same(x.value, t)));
+    if (!ok) throw new Refused(`${s.label}: every button must be one of its buttons, and every action one of its listed actions`);
+  }
   if (s.type === 'toggle' && typeof v !== 'boolean') throw new Refused(`${s.label} must be on or off`);
   if (s.type === 'choice' && !s.options.some((o) => same(o.value, v))) throw new Refused(`"${v}" is not a choice for ${s.label}`);
   if (s.type === 'slider') {
@@ -148,7 +181,9 @@ const KNOWN = {
   message: ['bytes', 'reportId', 'note'],
   read: ['name', 'message', 'when', 'onError', 'onDemand', 'asleepIf', 'note'],
   field: ['from', 'offset', 'size', 'endian', 'type', 'mask', 'shift', 'absentIf', 'map', 'default', 'scale', 'add', 'when', 'note'],
-  setting: ['key', 'label', 'type', 'min', 'max', 'step', 'unit', 'options', 'hint', 'live', 'selfCheck', 'when', 'field', 'lockGroup', 'write', 'note'],
+  setting: ['key', 'label', 'type', 'min', 'max', 'step', 'unit', 'options', 'zones', 'buttons', 'targets', 'hint', 'live', 'selfCheck', 'when', 'field', 'lockGroup', 'write', 'note'],
+  part: ['value', 'label', 'field', 'code', 'note'],
+  target: ['value', 'label', 'note'],
   write: ['message', 'needs', 'then', 'keep', 'encode', 'note'],
   battery: ['from', 'percent', 'charging', 'when', 'awake', 'note'],
 };
@@ -288,6 +323,8 @@ export function validate(obj) {
       if (p.byte != null) { width++; continue; }
       if (p.optional && i !== parts.length - 1) no(`message "${name}": an optional placeholder ({${p.name}?}) may only be the last thing in it`);
       if (p.name === 'value') { if (p.type === 'bytes') no(`message "${name}": {value} cannot be bytes`); width += PLACE[p.type || 'u8']; continue; }
+      if (p.name === 'zone' || p.name === 'button') { if (p.type && p.type !== 'u8') no(`message "${name}": {${p.name}} is one byte`); width += 1; continue; }
+      if (p.type === 'rgb') no(`message "${name}": only {value:rgb} can be rgb`);
       const f = fields[p.name];
       if (!f) { no(`message "${name}": {${p.name}} is not "value" and not a field, so its bytes would come from nowhere`); continue; }
       if (f.type === 'bytes' ? p.type && p.type !== 'bytes' : p.type === 'bytes') no(`message "${name}": {${p.name}} must match its field's type`);
@@ -297,11 +334,16 @@ export function validate(obj) {
     const c = t?.checksum;
     if (c && c.type !== 'none' && Number.isInteger(c.at) && width > c.at) no(`message "${name}" reaches the checksum byte (${c.at})`);
   }
-  const msgUse = (name, where, { value = false } = {}) => {
+  const msgUse = (name, where, { value = false, give = null } = {}) => {
     if (!messages[name]) { no(`${where} sends the message "${name}", which "messages" does not have; nothing may be sent that is not a template`); return; }
     const hasValue = (parsed[name] || []).some((p) => p.name === 'value');
     if (value && !hasValue) no(`${where}: the message "${name}" has no {value}, so the value would not be sent`);
     if (!value && hasValue) no(`${where}: the message "${name}" has {value}, but nothing gives it one there`);
+    for (const k of ['zone', 'button']) {
+      const has = (parsed[name] || []).some((p) => p.name === k);
+      if (has && give !== k) no(`${where}: the message "${name}" has {${k}}, but nothing gives it one there`);
+      if (!has && give === k) no(`${where}: the message "${name}" has no {${k}}, so the ${k} would not be sent`);
+    }
   };
   for (const r of reads) if (r?.name) msgUse(r.message, `read "${r.name}"`);
   for (const [name, l] of Object.entries(links || {})) {
@@ -324,6 +366,7 @@ export function validate(obj) {
   if (!Array.isArray(obj.settings)) no('it needs "settings": [] (what its page shows; may be empty)');
   const kw = new RegExp(never.keywords || 'firmware|bootloader|dfu|flash|factory|reset', 'i');
   const valueSets = {};   // message -> list of the numbers its {value} can carry
+  const codeSets = {};    // message -> { zone: [...], button: [...] }: the codes its {zone} / {button} can carry
   for (const s of settings) {
     if (!isObj(s)) { no('every setting must be an object'); continue; }
     const w = `setting "${s.key}"`;
@@ -333,9 +376,34 @@ export function validate(obj) {
     if (!TYPES.includes(s.type)) no(`${w}: type must be ${TYPES.join(', ')}`);
     if (kw.test(`${s.key} ${s.label}`)) no(`${w} looks like a firmware, reset, flash or pairing control ("${s.label}"); DeviceHub never offers those`);
     const fname = s.field || s.key;
-    const f = fields[fname];
-    if (!f) no(`${w} has no field "${fname}" to read it from; every setting is read before it is written`);
-    else if (readByName[f.from]?.onDemand) no(`${w} is read only on demand ("${f.from}"); a setting must come from a regular read, so it can be read before and after each write`);
+    // the new kinds (22 Oct 2026): their lists, then the fields they read
+    const listOk = (l, kind, what, more) => {
+      if (!Array.isArray(l) || !l.length) { no(`${w} needs ${what}: a list of { value, label${more ? ', field, code' : ''} }`); return false; }
+      const vals = new Set();
+      for (const o of l) {
+        if (!isObj(o)) { no(`${w}: every one of its ${what} must be an object`); return false; }
+        unknown(o, kind, `${w} ${what}`);
+        if (typeof o.value !== 'string' || !o.value || typeof o.label !== 'string' || !o.label.trim()) no(`${w}: every one of its ${what} needs a value (text) and a label`);
+        if (vals.has(o.value)) no(`${w}: two of its ${what} have the value "${o.value}"`);
+        vals.add(o.value);
+        if (more && !(Number.isInteger(o.code) && o.code >= 0 && o.code <= 255)) no(`${w}: ${what} "${o.value}" needs a code (0-255), the byte its {${more}} sends`);
+      }
+      return true;
+    };
+    if (s.type === 'color' && s.zones != null) listOk(s.zones, 'part', 'zones', 'zone');
+    if (s.type === 'remap') { listOk(s.buttons, 'part', 'buttons', 'button'); listOk(s.targets, 'target', 'targets'); }
+    for (const k of ['zones', 'buttons', 'targets']) if (s[k] != null && !(k === 'zones' ? s.type === 'color' : s.type === 'remap')) no(`${w}: only a ${k === 'zones' ? 'color' : 'remap'} has ${k}`);
+    const parts = TYPES.includes(s.type) && (s.type !== 'color' || s.zones == null || Array.isArray(s.zones)) && (s.type !== 'remap' || Array.isArray(s.buttons)) ? partsOf(s) : null;
+    const fieldNames = parts ? parts.map((p) => p.field) : [fname];
+    let f = null;
+    for (const fn of fieldNames) {
+      const ff = fields[fn];
+      if (!ff) { no(`${w} has no field "${fn}" to read it from; every setting is read before it is written`); continue; }
+      if (readByName[ff.from]?.onDemand) no(`${w} is read only on demand ("${ff.from}"); a setting must come from a regular read, so it can be read before and after each write`);
+      if (s.type === 'color' && !(ff.type === 'bytes' && (ff.size ?? 1) === 3)) no(`${w}: a color is read from a field of type "bytes" and size 3 (red, green, blue); "${fn}" is not`);
+      f ||= ff;
+    }
+    if (s.type === 'display' && s.write != null) no(`${w} is a display: a reading, which is never written, so it cannot have "write"`);
     if (s.type === 'slider') {
       for (const c of ctxs.length ? ctxs : [{}]) {
         const min = resolve(s.min, c), max = resolve(s.max, c), step = resolve(s.step, c) ?? 1;
@@ -348,7 +416,7 @@ export function validate(obj) {
     if (s.write == null) continue;
     if (!isObj(s.write)) { no(`${w}: write must be an object`); continue; }
     unknown(s.write, 'write', `${w} write`);
-    msgUse(s.write.message, `${w} write`, { value: true });
+    if (!((s.type === 'color' && s.zones) || s.type === 'remap')) msgUse(s.write.message, `${w} write`, { value: true });
     if (s.write.then != null) msgUse(s.write.then, `${w} write "then"`);
     for (const n of s.write.needs || []) if (!readByName[n]) no(`${w}: needs the read "${n}", which "reads" does not have`);
     for (const k of s.write.keep || []) if (!fields[k]) no(`${w}: keep names "${k}", which is not a field`);
@@ -356,6 +424,26 @@ export function validate(obj) {
     if (!f || !messages[s.write.message]) continue;
     const slot = (parsed[s.write.message] || []).find((p) => p.name === 'value');
     const vals = (valueSets[s.write.message] ||= []);
+    if (s.type === 'color') {
+      if (slot && slot.type !== 'rgb') no(`${w}: a color is sent as {value:rgb}`);
+      if (s.zones) msgUse(s.write.message, `${w} write`, { value: true, give: 'zone' });
+      vals.push(null);   // any color
+      if (s.zones) (codeSets[s.write.message] ||= { zone: [], button: [] }).zone.push(...s.zones.map((z) => z.code));
+      continue;
+    }
+    if (slot?.type === 'rgb') no(`${w}: only a color is sent as {value:rgb}`);
+    if (s.type === 'remap') {
+      msgUse(s.write.message, `${w} write`, { value: true, give: 'button' });
+      (codeSets[s.write.message] ||= { zone: [], button: [] }).button.push(...(s.buttons || []).map((b) => b.code));
+      for (const b of s.buttons || []) {
+        const bf = fields[b.field];
+        if (!bf) continue;
+        for (const t of s.targets || []) {
+          try { const code = encodeValue(s, bf, t.value, {}); putNumber([], code, slot?.type, s.label); vals.push(code); } catch (e) { no(`${w}: ${b.label} -> ${JSON.stringify(t.value)} cannot be sent (${e.message})`); break; }
+        }
+      }
+      continue;
+    }
     for (const c of ctxs.length ? ctxs : [{}]) {
       if (!modelTest(s.when, c)) continue;
       let candidates = [];
@@ -404,7 +492,7 @@ export function validate(obj) {
   const linkIds = new Set([t?.reportId ?? 0, ...Object.values(links || {}).map((l) => l?.reportId).filter((x) => x != null)]);
   for (const [name, parts] of Object.entries(parsed)) {
     const ids = messages[name].reportId != null ? new Set([messages[name].reportId]) : linkIds;
-    const slots = expand(parts, fields, valueSets[name]);
+    const slots = expand(parts, fields, valueSets[name], codeSets[name]);
     const cs = t?.checksum && t.checksum.type !== 'none' ? t.checksum : null;
     if (cs) for (let i = cs.at; i <= cs.at + (cs.type === 'sum16le' ? 1 : 0); i++) { while (slots.length < i) slots.push([0]); slots[i] = null; }
     for (const n of [...own, ...builtIn]) {
@@ -421,10 +509,11 @@ export function validate(obj) {
 }
 
 // a template's bytes as sets of what each position can be: [number[] | null = any]
-function expand(parts, fields, values) {
+function expand(parts, fields, values, codes) {
   const out = [];
   for (const p of parts) {
     if (p.byte != null) { out.push([p.byte]); continue; }
+    if (p.name === 'zone' || p.name === 'button') { const c = codes?.[p.name]; out.push(c?.length ? [...new Set(c)] : null); continue; }
     if (p.name === 'value') {
       const size = PLACE[p.type || 'u8'];
       if (!values || !values.length || values.includes(null)) { for (let i = 0; i < size; i++) out.push(null); continue; }
@@ -489,6 +578,8 @@ function makeDriver(def) {
         if (s.lockGroup && this.locked?.has(s.lockGroup)) continue;
         const p = { key: s.key, label: s.label, type: s.type };
         for (const k of ['min', 'max', 'step', 'unit', 'options', 'hint', 'live', 'selfCheck']) if (s[k] !== undefined) p[k] = resolve(s[k], c);
+        // zones, buttons and targets as the page sees them (the codes and fields stay in the file)
+        for (const k of ['zones', 'buttons', 'targets']) if (s[k]) p[k] = s[k].map((o) => ({ value: o.value, label: o.label }));
         if (!s.write) p.readOnly = true;
         out.push(p);
       }
@@ -555,7 +646,12 @@ function makeDriver(def) {
       const out = [];
       for (const p of tmpl[name]) {
         if (p.byte != null) { out.push(p.byte); continue; }
+        if (p.name === 'value' && p.type === 'rgb') {
+          if (!(Array.isArray(vars.value) && vars.value.length === 3 && vars.value.every((b) => Number.isInteger(b) && b >= 0 && b <= 255))) throw new Refused('a color must be three bytes');
+          out.push(...vars.value); continue;
+        }
         if (p.name === 'value') { putNumber(out, vars.value, p.type, 'the value'); continue; }
+        if (p.name === 'zone' || p.name === 'button') { putNumber(out, vars[p.name], 'u8', `the ${p.name}`); continue; }
         const raw = vars.raw?.[p.name];
         if (raw === undefined || raw === null) { if (p.optional) continue; throw new Refused(`${p.name} was not read, so "${name}" cannot be built`); }
         if (Array.isArray(raw)) out.push(...raw); else putNumber(out, raw, p.type, p.name);
@@ -660,7 +756,7 @@ function makeDriver(def) {
     async read() {
       const { values } = this.fieldsOf(await this.snapshot());
       const out = {};
-      for (const s of this.settings) { const v = values[this.defOf(s.key).field || s.key]; if (v !== undefined) out[s.key] = v; }
+      for (const s of this.settings) { const v = valueOf(this.defOf(s.key), values); if (v !== undefined) out[s.key] = v; }
       return out;
     },
 
@@ -691,6 +787,47 @@ function makeDriver(def) {
       return { driver: def.id, model: this.model?.key || this.model?.name, link: this.link, productId: this.dev?.productId, pairedId: this.pairedId, probes: { ...this.probes }, replies };
     },
 
+    // a color or a remap (22 Oct 2026, page kinds): ONE setting, checked before anything is sent; a message for each
+    // zone or button whose value changes (each of them, with its own value, when none changes: the self-check's
+    // same-value write), read back as a whole; on a mismatch the values read before are written again
+    async writeParts(s, value) {
+      await this.stepBackCheck();
+      const parts = partsOf(s);
+      const before = this.fieldsOf(await this.snapshot(true));
+      const was = valueOf(s, before.values);
+      if (was === undefined) throw new Refused(`this device does not report ${s.label}`);
+      const single = parts[0].key == null;
+      // the value in the device's own order (a remap: only the buttons it reported)
+      const want = single ? value : Object.fromEntries(parts.filter((p) => p.key in was).map((p) => [p.key, p.key in value ? value[p.key] : was[p.key]]));
+      if (!single && Object.keys(value).some((k) => !(k in was))) throw new Refused(`this device does not report ${s.label} for ${Object.keys(value).filter((k) => !(k in was)).join(', ')}`);
+      const of = (v, p) => (single ? v : v[p.key]);
+      let todo = parts.filter((p) => (single || p.key in was) && !same(of(want, p), of(was, p)));
+      if (!todo.length) todo = parts.filter((p) => single || p.key in was);
+      const send = async (v, p) => {
+        const more = this.fieldsOf(await this.extra(s.write.needs));
+        const code = s.type === 'color' ? fromHex(v) : encodeValue(s, def.fields[p.field], v, this.ctx(before.values));
+        const r = await this.ask(s.write.message, { value: code, zone: p.code, button: p.code, raw: { ...before.raw, ...more.raw } });
+        if (r.error) throw this.failed(`${s.label}${p.key == null ? '' : ` (${p.label})`}`);
+      };
+      const sent = [];
+      let failed = null;
+      for (const p of todo) { try { await send(of(want, p), p); sent.push(p); } catch (e) { failed = e; break; } }
+      const back = this.fieldsOf(await this.snapshot(true));
+      const got = valueOf(s, back.values);
+      const kept = (s.write.keep || []).every((k) => same(back.values[k], before.values[k]));
+      if (failed || !same(got, want) || !kept) {
+        for (const p of sent.reverse()) { try { await send(of(was, p), p); } catch {} }
+        this.snap = null;
+        if (failed) throw failed;
+        throw new Error(`the device reads ${s.label} = ${JSON.stringify(got)} after writing ${JSON.stringify(want)}${kept ? '' : ' (and something else moved)'}; the values read before were written back, nothing saved`);
+      }
+      if (s.write.then) {
+        const r = await this.ask(s.write.then);
+        if (r.error) throw new Error(`${s.label} is set but the device refused "${s.write.then}": it may not last`);
+      }
+      return got;
+    },
+
     // ONE setting: checked before anything is sent, read, written, read back; on a mismatch the value read before is
     // written again and nothing more is sent; on a match the write's `then` message (a save) follows.
     async write(key, value) {
@@ -699,6 +836,7 @@ function makeDriver(def) {
       const s = this.defOf(key);
       if (!s.write) throw new Refused(`${s.label} is read only`);
       check(pub, value);
+      if (partsOf(s)) return this.writeParts(s, value);
       await this.stepBackCheck();
       const field = def.fields[s.field || key];
       const before = this.fieldsOf(await this.snapshot(true));

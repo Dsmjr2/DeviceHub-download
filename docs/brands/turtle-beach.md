@@ -268,6 +268,8 @@ Read only, simulated only (tests/sim-turtle-beach-battery.mjs), never run on a r
 - **Reads:** battery % (GSI key `240`), charging (`250`, a best guess on this model), linked (`230`), name (`220`),
   Signature Sound preset raw (`2c0`), from the two fixed frames in section 2 (CoAP enable `0x9942`, GET /GSI in
   `0x9902`). Nothing else can be sent. Steps back while Swarm II runs.
-- **Unconfirmed:** the source asks for replies with GET_REPORT; DeviceHub's helper reads input reports as they arrive.
+- **Unconfirmed:** the source asks for replies with GET_REPORT. The driver first reads input reports as they arrive,
+  then, if none came, asks with GET_REPORT itself (`getInputReport()` in `helpers/hid-host.mjs`, 22 Oct 2026). Which
+  of the two this transmitter answers is not measured yet.
 - Not covered: Stealth Pro II (request bytes only in a capture), Stealth 600 Gen 3, Stealth 700 G2, every headset
   setting, ROCCAT mice and keyboards.

@@ -39,7 +39,13 @@ not covered (a new device, a download nobody named), or when a step fails and th
 2. **Find their devices (read-only).** Start with `node helpers/setup-report.mjs` (the same as `GET /api/setup`):
    DeviceHub has already matched the PC's devices against the device library and installed every matching driver by
    itself (helpers/auto-setup.mjs), each read-only until its settings pass DeviceHub's own self-check (read, write the
-   same value, read back) the first time the device connects. The report lists what works now, what is optional and
+   same value, read back) the first time the device connects. A setting the driver refuses only because of the
+   device's current mode (an error with `waiting: true`) is recorded as waiting, not failed; failed and waiting
+   settings are tried again on a connect once a day and at once after a DeviceHub update (a value that moved only on
+   Check again), and the self-check never runs while the maker's app is open. An untested library entry installs on
+   the person's click (Set up card > Install) and loads read-only the same way. The learning wizard never learns
+   258A (Sinowealth), 22D4 (Laview) or Logitech (046D) ids; for a device with a driver.json driver it adds the learned
+   settings to the my-devices copy (backed up first), never to the library. The report lists what works now, what is optional and
    what still needs a learning session: do only what it lists. For more detail, these are GET requests to
    `http://127.0.0.1:5577`:
    - `/api/agent/state`: the mouse, headset and keyboard DeviceHub already runs, with each one's model (`info.Model`)
@@ -49,8 +55,8 @@ not covered (a new device, a download nobody named), or when a step fails and th
    - `/api/monitors`, `/api/cameras`, `/api/eq` (`engine: "eqapo"` = Equalizer APO is installed; `notOn` lists headset
      sound devices it is not switched on for), `/api/openrgb` (PC lights).
    - **What needs no learning at all** (22 Oct 2026): `/api/library` (the shared device library: a driver someone
-     else already made for the same USB id; a "tested" one is installed with `POST /api/library/install {name}`, then
-     a restart), `/api/std-battery` (any Bluetooth device's battery from Windows, and USB devices that declare the
+     else already made for the same USB id; tested and read-only ones are installed by auto setup, any other with
+     `POST /api/library/install {name}` or its Install button, then a restart), `/api/std-battery` (any Bluetooth device's battery from Windows, and USB devices that declare the
      standard HID battery fields), `/api/lamparrays` (lights that speak Windows Dynamic Lighting, HID LampArray).
    - What the maker's app left on the PC, read-only: `node helpers/vendor-files.mjs --vid <vid> --summary` (model
      names, product ids, setting names; see "Adding your own devices" step 2).
@@ -228,8 +234,12 @@ the person (a download or install, a learning session, or a check in the maker's
      data)` / `receiveFeatureReport(id, length)` on `HostDevice` (`helpers/hid-host.mjs`, the helper's `FSET` / `FGET`
      over `HidD_SetFeature` / `HidD_GetFeature`, 22 Oct 2026), used from the device's `my-devices` driver. Untried on
      a real device yet: check the first one with a read before any write.
-3. **The person can do this without Claude**: Overview > Set up > Learn a device (or Lighting > This PC > Learn it)
-   listens while they change one setting at a time in the maker's app, and saves a read-only
+   - **Input reports on request and a second collection** (22 Oct 2026, docs/handoff/hid-input-reports.md):
+     `getInputReport(id, length)` on a channel with `hid.inputReports` (the helper's IGET, HidD_GetInputReport; Turtle
+     Beach), and `hid.extra: [{ name, page, usage, ... }]` with `extraChannel(name)`, a listen-only second collection
+     (Wooting key depth). Nothing can be sent on an extra channel.
+3. **The person can do this without Claude**: Learn a device, in the sidebar under App (also Overview > Set up >
+   Learn a device, and Lighting > This PC > Learn it, which picks that device) listens while they change one setting at a time in the maker's app, and saves a read-only
    `my-devices\<name>\driver.json` (docs/handoff/learn-wizard.md). Claude follows the steps below for what the
    wizard refuses.
    **Learn it by listening (read-only, needs the person's yes for USBPcap).** With USBPcap installed:
@@ -256,7 +266,7 @@ the person (a download or install, a learning session, or a check in the maker's
    (a working pretend device, with the shape explained at its top) to a folder without the `_`. Everything the device
    needs lives in that folder: the protocol, the adapter (`id`, `title`, `kind`, `connect()`, `info()`, `read()`,
    `write(key, value)` with read-back, `battery()`, `rawBackup()`, `unsupported`), its HID channel (`hid: { vid, pid,
-   page, usage, len, reportId }`) and `settings`, the list its page is drawn from (slider, toggle or choice). DeviceHub
+   page, usage, len, reportId }`) and `settings`, the list its page is drawn from (slider, toggle, choice, display for a reading, color, remap; see helpers/my-devices.mjs). DeviceHub
    loads it at start (`helpers/my-devices.mjs`; `server.log` says `[my-devices] <name>: ... added`, or why not) and
    gives it a page, a tile and Undo by itself. **Do not edit DeviceHub's own files for a device**: files under
    `my-devices\` belong to that PC and no update ever changes them, while edits to DeviceHub's files have to be brought

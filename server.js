@@ -517,11 +517,18 @@ async function api(req, res, url) {
   if (url.pathname === '/api/library/install' && req.method === 'POST') {
     try {
       const lib = await import('./helpers/device-library.mjs');
-      const r = await lib.installFromLibrary((await readBody(req)).name, { readOnly: true });
+      // the person's click (the Set up card's Install button): an "untested" entry too, guarded like a read-only one,
+      // never one for a device DeviceHub's own drivers run (helpers/pc-map.js RUNS)
+      const name = (await readBody(req)).name;
+      const e = lib.list().find((x) => x.name === name && x.meta);
+      const runs = Object.keys(require('./helpers/pc-map.js').RUNS || {});
+      if (e && e.meta.pids.every((p) => runs.includes(`${lib.hex4(e.meta.vid)}:${lib.hex4(p)}`))) return send(res, 400, { ok: false, name, error: 'DeviceHub\'s own driver already runs this device, so the library driver is not installed' });
+      const r = await lib.installFromLibrary(name, { readOnly: true, untested: true });
       if (r?.ok) {
         let loaded = null;
         if (agent) try { loaded = await (await import('./helpers/my-devices.mjs')).loadNew(ROOT); } catch {}
         r.loaded = !!loaded?.some((x) => x.name === r.name && x.id);
+        try { (await import('./helpers/auto-setup.mjs')).cache.value = null; } catch {}   // the Set up card asks again
         if (!r.loaded) r.note = `${r.note || ''} (restart DeviceHub to load it)`.trim();
         serverLog({ kind: 'good', text: `Device library: ${r.name || 'a driver'} installed${r.status === 'tested' ? '' : ' read-only until its self-check'}${r.loaded ? '' : ' (restart DeviceHub to load it)'}` });
       }

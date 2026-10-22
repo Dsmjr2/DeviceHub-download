@@ -9,9 +9,12 @@
 // Entries whose name starts with "_" are examples: only offered and installed when DEVICEHUB_EXAMPLE_DEVICE=1 (demo/test).
 //
 //   list({ root })                    every entry, with its device.json and any problem
-//   match(usb, { root, readOnly })    the entries for these USB devices ([{ vid, pid, name }], as /api/pc lists them)
-//   installFromLibrary(name, { root, readOnly }) { ok, name, to } or { ok: false, error }
-//                                     readOnly: true also installs "read-only" entries (guarded); default tested only
+//   match(usb, { root, readOnly, untested })   the entries for these USB devices ([{ vid, pid, name }], as /api/pc lists them)
+//   installFromLibrary(name, { root, readOnly, untested }) { ok, name, to } or { ok: false, error }
+//                                     readOnly: true also installs "read-only" entries (guarded); default tested only;
+//                                     untested: true also installs "untested" ones, guarded the same way. Only the
+//                                     person's click asks for that (POST /api/library/install, the Set up card's button);
+//                                     auto setup never does (22 Oct 2026, docs/handoff/setup-gaps.md)
 //   validateMeta(meta)                what is wrong with a device.json, or null
 //   loadDriver(dir)                   { file, a }: the folder's device.mjs (wins when both are there) or driver.json
 //   devicehubVersion(root)            this copy's version (release.json's commit, else package.json's version)
@@ -91,7 +94,9 @@ function scan(dir, examples, origin) {
 
 // the library entries for this PC's USB devices. usb: [{ vid, pid, name }] (/api/pc's usb list, or pc-map's).
 // Returns [{ name, meta, matched: [{ vid, pid, name }], installed, installable, why }], one per entry that matches.
-export function match(usb, { root = ROOT, examples = showsExamples(), readOnly = false } = {}) {
+const allowed = (status, readOnly, untested) => status === 'tested' || (readOnly && status === 'read-only') || (untested && status === 'untested');
+const allowedText = (readOnly, untested) => `only tested${readOnly ? (untested ? ', read-only and untested' : ' and read-only') : untested ? ' and untested' : ''} entries`;
+export function match(usb, { root = ROOT, examples = showsExamples(), readOnly = false, untested = false } = {}) {
   const have = (Array.isArray(usb) ? usb : []).map((u) => ({ vid: hex4(u.vid), pid: hex4(u.pid), name: u.name || '' }));
   const out = [];
   for (const e of list({ root, examples })) {
@@ -100,23 +105,23 @@ export function match(usb, { root = ROOT, examples = showsExamples(), readOnly =
     const matched = have.filter((u) => u.vid === vid && pids.includes(u.pid));
     if (!matched.length) continue;
     const installed = fs.existsSync(path.join(root, 'my-devices', e.name));
-    const ok = e.meta.status === 'tested' || (readOnly && e.meta.status === 'read-only');
-    const why = installed ? 'already in my-devices' : !ok ? `its status is "${e.meta.status}": only tested${readOnly ? ' and read-only' : ''} entries install by themselves` : null;
-    const note = !why && e.meta.status === 'read-only' ? 'installs read-only: each setting can be changed once it passes its self-check' : undefined;
+    const ok = allowed(e.meta.status, readOnly, untested);
+    const why = installed ? 'already in my-devices' : !ok ? `its status is "${e.meta.status}": ${allowedText(readOnly, untested)} install by themselves` : null;
+    const note = !why && e.meta.status !== 'tested' ? 'installs read-only: each setting can be changed once it passes its self-check' : undefined;
     out.push({ name: e.name, meta: e.meta, matched, installed, installable: !why, why, ...(note ? { note } : {}) });
   }
   return out;
 }
 
 // copies a "tested" entry into my-devices/<name>/. Never over an existing folder, never anywhere but my-devices.
-export async function installFromLibrary(name, { root = ROOT, examples = showsExamples(), readOnly = false, now = () => new Date() } = {}) {
+export async function installFromLibrary(name, { root = ROOT, examples = showsExamples(), readOnly = false, untested = false, now = () => new Date() } = {}) {
   const fail = (error) => ({ ok: false, name, error });
   if (typeof name !== 'string' || !NAME.test(name)) return fail('not a library entry name');
   if (isExample(name) && !examples) return fail('examples install only in demo/test (DEVICEHUB_EXAMPLE_DEVICE=1)');
   const entry = list({ root, examples }).find((e) => e.name === name);
   if (!entry) return fail('no such library entry');
   if (entry.error) return fail(entry.error);
-  if (!(entry.meta.status === 'tested' || (readOnly && entry.meta.status === 'read-only'))) return fail(`its status is "${entry.meta.status}": only tested${readOnly ? ' and read-only' : ''} entries install`);
+  if (!allowed(entry.meta.status, readOnly, untested)) return fail(`its status is "${entry.meta.status}": ${allowedText(readOnly, untested)} install`);
   const to = path.join(root, 'my-devices', name);
   if (fs.existsSync(to)) return fail(`my-devices/${name} already exists: it is left as it is`);
   // the driver must load the way my-devices.mjs will load it

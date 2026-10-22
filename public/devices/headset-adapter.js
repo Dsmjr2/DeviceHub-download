@@ -74,7 +74,7 @@ const adapter = {
   get title() { return generic ? generic.device : 'Corsair HS80'; },
   kind: 'Headset',
   get vendor() { return generic ? { label: "its maker's app", app: null } : { label: 'iCUE', app: 'icue' }; },
-  get unsupported() { return generic ? ['lights', 'battery', 'its own settings (DeviceHub needs its protocol: ADD-YOUR-DEVICES.md)'] : ['firmware updates', 'receiver pairing']; },
+  get unsupported() { return generic ? ['lights', 'battery', 'its own settings (teach them in Learn a device)'] : ['firmware updates', 'receiver pairing']; },
   get generic() { return generic; },
   autoReconnect: true,
   pollRead: true,
@@ -205,7 +205,7 @@ const adapter = {
       if (after.on !== value) throw new Error(`Windows reads sidetone ${after.on ? 'on' : 'off'} after turning it ${value ? 'on' : 'off'}`);
       return value;
     }
-    if (mode === 'generic' && ['logoBrightness', 'micLight', 'brightness', 'autoOff', 'led'].includes(key)) throw new Error(`${generic.device}: DeviceHub does not know its own settings yet (ADD-YOUR-DEVICES.md)`);
+    if (mode === 'generic' && ['logoBrightness', 'micLight', 'brightness', 'autoOff', 'led'].includes(key)) throw new Error(`${generic.device}: DeviceHub does not know its own settings yet: teach them in Learn a device`);
     if (key === 'logoBrightness' || key === 'micLight') {
       if (mode !== 'direct') throw new Error('iCUE is open: it runs the headset lights while it is');
       const after = await call('light-settings-set', { [key]: value });

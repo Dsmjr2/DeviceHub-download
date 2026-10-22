@@ -204,17 +204,18 @@ Never:
 
 ### Does it need HID feature reports?
 
-Yes. Every command (init, single key, reset, profile, layout) is a feature report. DeviceHub's native helper has no
-`HidD_SetFeature` / `HidD_GetFeature` today (searched `helpers/native`, 2026-10-22), so that is step 1. The replies
-come back as input reports, which the helper already reads.
+Yes. Every command (init, single key, reset, profile, layout) is a feature report. DeviceHub's native helper has them
+now: `FSET` / `FGET` (`HidD_SetFeature` / `HidD_GetFeature`, `helpers/hidio.cs`), used through
+`sendFeatureReport()` / `receiveFeatureReport()` in `helpers/hid-host.mjs` (22 Oct 2026). The replies come back as
+input reports, which the helper already reads.
 
 ### Order
 
 | Step | What | Effort | Risk |
 |---|---|---|---|
-| 1 | Add feature-report send/get to the C# helper | 0.5 day | low |
+| 1 | Add feature-report send/get to the C# helper | done (22 Oct 2026) | low |
 | 2 | Find the board by `31e3`/`03eb`, list its collections, pick `1337` or `FF55`; read `19` (layout) and the product string | 0.5 day | low (read only) |
-| 3 | Live key-depth view from `FF53`/`FF54` | 1 day | low (input only) |
+| 3 | Live key-depth view from `FF53`/`FF54` | half done: read as an info line (22 Oct 2026); a live view is left | low (input only) |
 | 4 | Lights: first through OpenRGB; then direct `33` + raw `0B` with `32` on exit, if OpenRGB is too slow | 0-2 days | low |
 | 5 | Profile read `11` and switch `23`+`7`, then per-app switching | 1 day | low-medium (community protocol) |
 | 6 | Raw dumps of `49` / `54` / `51` next to Wootility, to learn actuation and rapid-trigger layouts | 2+ days | medium (unknown layouts); read only |
@@ -256,8 +257,9 @@ Read only, simulated only (tests/sim-wooting.mjs), never run on a real board; st
 - **Boards:** the `31e3` ids in section 1 (One, Two, Two Lekker, Two HE and ARM, 60HE and ARM, 60HE+, 60HE v2, 80HE,
   UwU, UwU RGB), on the `1337` config page.
 - **Reads:** model and size from the product id, layout from GetDeviceConfig `19` (reply byte 10), the one command it
-  sends. Steps back while Wootility runs.
+  sends. Key depth, as one info line (how many keys are pressed now), from the analog SDK's `FF54` / `FF53`
+  collection, opened as a second listen-only channel (`hid.extra`, `extraChannel()` in `helpers/hid-host.mjs`);
+  nothing is sent on it. Steps back while Wootility runs.
 - **Not covered, and why:** per-key lighting (documented by the RGB SDK, but no command reads a colour back; OpenRGB
-  drives it); actuation, rapid trigger, tachyon (no setter anywhere); key depth (the analog SDK's `FF54` / `FF53`
-  collection is not the config channel, and a driver opens one collection per product id); profiles (community
+  drives it); actuation, rapid trigger, tachyon (no setter anywhere); a live key-depth view (only the info line so far); profiles (community
   protocol only); the original `03eb` boards; boards with only the `FF55` page.

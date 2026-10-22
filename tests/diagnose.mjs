@@ -129,7 +129,11 @@ check(true, 'probe not run (it throws if it is)');
 r = analyze({ snap: dev('thing', 'connected'), profile: { usb: [], vids: [] }, library: { status: 'read-only', readOnly: [{ label: 'Brightness', why: 'not checked yet' }] } });
 check(r.findings[0].code === 'read-only' && /"read-only"/.test(r.findings[0].why), 'library driver not checked yet -> read-only until its check');
 r = analyze({ snap: dev('thing', 'connected'), profile: { usb: [], vids: [] }, library: { status: 'tested', readOnly: [{ label: 'Effect', why: 'it read back 2 after writing 3', failed: true }] } });
-check(r.findings[0].code === 'read-only' && /read back 2/.test(r.findings[0].why) && !r.findings[0].action, 'a failed self-check -> why, no button');
+check(r.findings[0].code === 'read-only' && /read back 2/.test(r.findings[0].why) && r.findings[0].action?.kind === 'check-again', 'a failed self-check -> why, and a Check again button');
+r = analyze({ snap: dev('thing', 'connected'), profile: { usb: [], vids: [] }, library: { status: 'read-only', readOnly: [{ label: 'DPI', why: 'the mouse is using its onboard profiles', waiting: true }] } });
+check(r.findings[0].code === 'read-only' && /could not be checked yet: the mouse is using its onboard/.test(r.findings[0].why) && r.findings[0].action?.kind === 'check-again', 'a waiting setting -> why, and a Check again button');
+r = analyze({ snap: dev('thing', 'missing'), profile: { usb: [], vids: [] }, library: { status: 'tested', readOnly: [{ label: 'Effect', why: 'x', failed: true }] } });
+check(r.findings.find((x) => x.code === 'read-only')?.action?.kind === 'retry', 'not connected: Connect, not Check again');
 
 // profiles: another VIA keyboard; the generic headset
 const p = deviceProfile(dev('keyboard', 'missing'), [{ id: 'keyboard', vid: '3434', pid: '0361', page: 'FF60', usage: '0061', productName: 'Keychron Q1' }]);

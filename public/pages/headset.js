@@ -32,8 +32,13 @@ function genericCard(a) {
   const g = a.generic || {};
   const vid = /VID_([0-9A-F]{4})/i.exec(g.usb || '')?.[1]?.toLowerCase(), pid = /PID_([0-9A-F]{4})/i.exec(g.usb || '')?.[1]?.toLowerCase();
   const u = { id: `${vid}:${pid}`, vid, name: g.device, brand: brandForUsb(vid) };
+  // a library or learned driver that runs this same headset (a my-devices page of kind Headset, same maker): its
+  // battery and own settings are on that page
+  const maker = u.brand && !u.brand.shared ? u.brand.name.toLowerCase().split(' ')[0] : null;
+  const own = maker ? Object.values(devices).find((x) => x.adapter?.plugin && /headset/i.test(x.adapter.kind || '') && ['connected', 'asleep'].includes(x.status) && String(x.adapter.title || '').toLowerCase().includes(maker)) : null;
   return card([h('h2', {}, 'Lights & battery')],
     h('p', { class: 'faint', style: { margin: '0 0 10px' } }, 'Sound, mic and EQ work for any USB headset. Its lights, battery and own settings need DeviceHub to learn this model.'),
+    own ? h('p', { style: { margin: '0 0 10px' } }, `Battery and its own settings: on its ${own.adapter.title} page. `, h('a', { href: `#/${own.id}` }, 'Open it')) : null,
     h('div', { class: 'actions' }, button('Copy a prompt for Claude', () => copyPrompt(u), { kind: 'small' })));
 }
 

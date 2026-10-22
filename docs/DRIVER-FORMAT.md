@@ -110,7 +110,10 @@ byte-for-byte equal to its `device.mjs` by `tests\declarative-driver.mjs`.
 
 A message's `bytes` is a list of tokens: a byte (`51`), or a placeholder:
 - `{value}` / `{value:u16le}`: the setting's new value, encoded (`u8` default, `u16le`, `u16be`, `u32le`, `u32be`).
-  A value that does not fit is refused before anything is sent.
+  A value that does not fit is refused before anything is sent. A `color` sends `{value:rgb}`: three bytes, red, green,
+  blue; only a color may use `rgb`.
+- `{zone}` / `{button}`: one byte, the `code` of the color zone or remap button being written. Only the write of a
+  color with `zones` (or of a `remap`) may hold it, and it must.
 - `{field}` / `{field:u16le}`: a field's raw value **as just read**, sent back unchanged (`{lowBattery}` above).
 - `{field?}`: an optional field (a `bytes` field such as a color read on demand): left out when its read failed. An
   optional placeholder may only be the last token.
@@ -125,11 +128,27 @@ may use fields above it.
 
 ### Settings
 
-`type` is `slider` (`min`, `max`, `step`), `toggle` or `choice` (`options: [{ value, label }]`), plus `unit`, `hint`,
+`type` is `slider` (`min`, `max`, `step`), `toggle`, `choice` (`options: [{ value, label }]`), `display`, `color` or
+`remap` (below), plus `unit`, `hint`,
 `live`, `selfCheck` as in `helpers/my-devices.mjs`. The same key may appear more than once with different `when`s: the
 first one that holds is shown (polling rates per link, above). A setting without `write` is shown read only.
 `lockGroup`: if a slider in the group ever reads outside its own range, the whole group becomes read only (the range is
 then wrong for this device).
+
+**The other kinds** (22 Oct 2026):
+- `display`: a reading (ChatMix, a sensor name), shown with its `unit`. It has a `field` and never a `write`; the
+  self-check skips it.
+- `color`: read from a `bytes` field of size 3 (red, green, blue), shown as `'#rrggbb'`, written with
+  `{value:rgb}`. With `zones: [{ value, label, field, code }]` each zone has its own 3-byte field and the value is
+  `{ <zone>: '#rrggbb' }`; the message carries `{zone}` (the zone's `code`).
+- `remap`: `buttons: [{ value, label, field, code }]` and `targets: [{ value, label }]` (only documented actions).
+  Each button's field decodes the device's code to a target `value` (a `map`), and the write encodes it back the same
+  way (or through `write.encode.map`); the message carries `{button}` (the button's `code`) and `{value}`. Every
+  target must encode for every button, or the file is refused. The value is `{ <button>: <target> }` for the buttons
+  the device reports.
+A color or remap write sends one message for each zone or button whose value changes (each of them, with its own
+value, when none changes: that is the self-check's same-value write), then reads everything back and compares the
+whole setting; on a mismatch the values read before are written back.
 
 A write does exactly what device.mjs drivers do: check the value against the setting (range, step, options), read
 everything fresh, refuse if the setting was not read, do the `needs` reads, send the message, read everything again,
@@ -162,9 +181,11 @@ Every refusal says what is wrong in a sentence. A file is refused when:
    are reached by an index handed out at run time).
 4. **A setting is written without a read**: every setting needs a field from a regular (not on-demand) read, so it can
    be read before and after each write.
-5. **A numeric write has no range**: a slider without `min` and `max` (for every model it shows on), or a value the
+5. **A display has a write**, a color is not read from 3 bytes or not sent as `{value:rgb}`, a `{zone}` / `{button}`
+   is in a message nothing gives it to, a zone or button has no `code`, or a remap target does not encode.
+6. **A numeric write has no range**: a slider without `min` and `max` (for every model it shows on), or a value the
    page allows that does not encode into its placeholder.
-6. **A setting looks like a firmware, reset, flash or pairing control** by its key or label.
+7. **A setting looks like a firmware, reset, flash or pairing control** by its key or label.
 
 ## What it cannot express (then a device.mjs is still the way)
 

@@ -199,10 +199,82 @@ const since = (n) => lines.slice(n);
   check(/tested must list/.test(validateMeta({ ...meta, status: 'tested' }) || ''), 'a tested entry still needs its record');
   check(/tested must list/.test(validateMeta({ ...meta, status: 'read-only', tested: [{ by: 'x' }] }) || ''), 'a record without date and version is still refused');
   const lg = (await import('../device-library/logitech-hidpp-mouse/device.mjs')).default;
-  check(lg.settings.find((s) => s.key === 'mode')?.selfCheck === false, 'Logitech "Settings source" is never written by the self-check');
+  check(lg.settings.find((s) => s.key === 'mode') && lg.settings.find((s) => s.key === 'mode').selfCheck !== false, 'Logitech "Settings source" gets the normal self-check (the same mode written back)');
   const specs = hidSpecs(lg);
   check(specs.length === 16 && specs.every((s) => s.reply === 'raw' && s.reportId === 0x11), `Logitech: one raw channel per receiver and wired mouse (${specs.length})`);
 }
 
-console.log(fails.length ? `hid-core: FAILED: ${fails.join('; ')}` : 'hid-core (several pids, interface/length matching, report ids, raw replies, refused vs gone, defaults unchanged): all good');
+// ---- 8. input reports on request (inputReports, IGET) and extra collections (extra, extraChannel): both opt-in ----
+{
+  // the defaults: no built-in spec asks for either, so their channel names and lines are the ones section 1 checked
+  check(host.SPECS.slice(0, 2).every((s) => !s.inputReports && !s.extra && host.channelOpts(s) === ''), 'the mouse and keyboard specs ask for neither');
+  answer = (chan, cmd) => (cmd === 'OPEN' || cmd.startsWith('WATCH') ? 'OK' : 'NONE');
+  const mouse = await host.provider([{ vendorId: 0x3710, usagePage: 0xff02 }]);
+  let n = lines.length;
+  check(/inputReports/.test((await throws(() => mouse.getInputReport(8, 16)))?.message || '') && since(n).length === 0, 'getInputReport is refused on the mouse, and sends nothing');
+  check(/no extra collection/.test((await throws(() => mouse.extraChannel('x')))?.message || '') && since(n).length === 0, 'the mouse has no extra collection, and nothing is opened');
+  check(mouse.chan === 'hid:3710:3506:FF02:0002:16:8', `the mouse's channel name is still ${mouse.chan}`);
+  mouse.close(); clearTimeout(mouse.watch); mouse.watch = null;
+  check(host.channelOpts({ reply: 'raw', inputReports: true }) === ':rw=1:gi=1' && host.channelOpts({ inputReports: false }) === '', 'inputReports adds gi=1, and only when true');
+  // helper.cs: IGET is only in HandleHidEx (a channel with options), never in the old HandleHid or the HS80 path
+  const fs = await import('node:fs');
+  const cs = fs.readFileSync(new URL('../helpers/native/helper.cs', import.meta.url), 'utf8');
+  const part = (a, b) => cs.slice(cs.indexOf(a), cs.indexOf(b, cs.indexOf(a) + a.length));
+  check(!part('static string HandleHid(Channel', '// A channel with options (see Opts above)').includes('IGET') && !part('static string HandleHs80(', 'case "CLOSE"').includes('IGET'), 'IGET is not on the plain HID or the HS80 path');
+  check(/case "IGET": \{\r?\n\s+if \(Opt\(o, "gi"\) != 1\) return "ERR/.test(part('static string HandleHidEx(', 'static string HandleHs80(')), 'IGET answers ERR on a channel without gi=1');
+  check(cs.includes('\r\n') && !/[^\r]\n/.test(cs), 'helper.cs keeps its CRLF line endings');
+
+  // a Turtle Beach style channel: raw, with input reports
+  let iget = '00 3a 00 05 5b';
+  answer = (chan, cmd) => (cmd === 'OPEN' ? 'OK' : cmd.startsWith('IGET') ? iget : 'NONE');
+  host.addSpec({ id: 'tb', vid: '10f5', pid: '2251', page: 'FF13', usage: '0001', len: 61, reportId: 6, reply: 'raw', replyMs: 300, inputReports: true });
+  const tb = await host.provider([{ vendorId: 0x10f5, productId: 0x2251, usagePage: 0xff13 }]);
+  check(lines.at(-1) === 'hid:10F5:2251:FF13:0001:61:6:rw=1:gi=1 OPEN', `the channel says gi=1 (${lines.at(-1)})`);
+  n = lines.length;
+  const r = await tb.getInputReport(7);
+  check(since(n)[0] === 'hid:10F5:2251:FF13:0001:61:6:rw=1:gi=1 IGET 07 61', `IGET with the id and the data length (${since(n)[0]})`);
+  check(r && r.reportId === 7 && r.data.byteLength === 5 && r.data.getUint8(1) === 0x3a, 'the reply comes back as { reportId, data }');
+  iget = 'NONE';
+  check((await tb.getInputReport(7, 61)) === null, 'NONE (no answer) is null');
+  iget = 'GONE';
+  const e = await throws(() => tb.getInputReport(7, 61));
+  check(e && e.gone && !tb.opened && gone.includes('tb'), 'GONE is an unplug');
+
+  // a Wooting style board: its config channel plus two listened-to collections, opened only on request
+  const reads = [];
+  answer = (chan, cmd) => {
+    if (cmd === 'OPEN') return chan.includes(':FF54:') ? 'NODEVICE' : 'OK';
+    if (cmd.startsWith('READ')) return reads.length ? reads.shift() : 'NONE';
+    return 'NONE';
+  };
+  const extra = [{ name: 'analog-v1', page: 'FF54', usage: '*', len: 256 }, { name: 'analog-v2', page: 'FF53', usage: '*', len: 256 }];
+  host.addSpec({ id: 'woot', vid: '31e3', pid: '1310', page: '1337', usage: '*', len: 256, reportId: 0, reply: 'raw', replyMs: 1000, extra });
+  check(host.SPECS.at(-1).opts === ':rw=1', `extra changes nothing about the main channel (${host.SPECS.at(-1).opts})`);
+  n = lines.length;
+  const wo = await host.provider([{ vendorId: 0x31e3, productId: 0x1310, usagePage: 0x1337 }]);
+  check(since(n).length === 1 && since(n)[0] === 'hid:31E3:1310:1337:*:256:0:rw=1 OPEN', `opening the board opens only its config channel (${since(n).join(' / ')})`);
+  const v1 = wo.extraChannel('analog-v1'), v2 = wo.extraChannel('analog-v2');
+  check(since(n).length === 1, 'asking for an extra channel opens nothing yet');
+  check(typeof v2.sendReport === 'undefined' && typeof v2.sendFeatureReport === 'undefined' && Object.keys(v2).sort().join() === 'close,name,open,opened,receiveReports,spec', 'an extra channel can only be read');
+  n = lines.length;
+  check((await v1.open()) === false && since(n)[0] === 'hid:31E3:1310:FF54:*:256:0:rw=1 OPEN', `a page the board lacks does not open (${since(n)[0]})`);
+  n = lines.length;
+  reads.push('00 04 00 80|00 05 00 40');
+  const got = await v2.receiveReports(60);
+  check(since(n)[0] === 'hid:31E3:1310:FF53:*:256:0:rw=1 OPEN' && since(n)[1] === 'hid:31E3:1310:FF53:*:256:0:rw=1 READ 60', `the extra opens on its first read, same pid, its own page (${since(n).join(' / ')})`);
+  check(got.length === 2 && got[1].reportId === 0 && got[1].data.getUint8(2) === 0x40, 'its reports come back as { reportId, data }');
+  check(!lines.some((l) => /:FF5[34]:.* (SEND|REQ|REQR|FSET|IGET|WATCH) /.test(l)), 'nothing but OPEN / READ / CLOSE ever reaches an extra collection');
+  // the extra going away closes only it
+  answer = (chan, cmd) => (chan.includes(':FF53:') && cmd.startsWith('READ') ? 'GONE' : cmd === 'OPEN' ? 'OK' : 'NONE');
+  const ge = await throws(() => v2.receiveReports(10));
+  check(ge && ge.gone && !v2.opened && wo.opened && !gone.includes('woot'), 'GONE on the extra closes the extra only; the board stays open, no gone event');
+  await v2.open();
+  n = lines.length;
+  wo.close();
+  check(since(n).some((l) => l === 'hid:31E3:1310:FF53:*:256:0:rw=1 CLOSE') && since(n).some((l) => l === 'hid:31E3:1310:1337:*:256:0:rw=1 CLOSE'), 'closing the board closes its extra too');
+  n = lines.length;
+  check((await v2.open()) === false && since(n).length === 0, 'an extra does not open while the board is closed');
+}
+
+console.log(fails.length ? `hid-core: FAILED: ${fails.join('; ')}` : 'hid-core (several pids, interface/length matching, report ids, raw replies, refused vs gone, input reports on request, extra collections, defaults unchanged): all good');
 process.exit(fails.length ? 1 : 0);

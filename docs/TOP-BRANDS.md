@@ -33,8 +33,9 @@ One sheet per brand, with models and USB ids, how the devices talk, the settings
 value formats, each cited to the open project it comes from), safe reads vs risky writes, a build plan, and the gaps
 (researched 22 Oct 2026, read-only, nothing tested on a device):
 
-- [Logitech G](brands/logitech.md): HID++ 2.0 for mice, keyboards and headsets (ASTRO separately). Gaps: some
-  current receiver ids (Superlight 2, PRO 2), the PRO X TKL and A50 X ids.
+- [Logitech G](brands/logitech.md): HID++ 2.0 for mice, keyboards and headsets (ASTRO separately). The library's
+  `logitech-hidpp-mouse` driver (read-only) lists the Superlight 2, PRO 2 and nine other mice. Gaps: which receiver id
+  ships with each current mouse, the PRO X TKL and A50 X ids.
 - [Razer](brands/razer.md): the 90-byte report for mice and keyboards, mapped to the byte. Gap: no open project
   covers Razer headsets' battery or settings.
 - [Corsair](brands/corsair.md): the HS80's property protocol (bragi) generalized to other headsets, mice and
@@ -54,7 +55,8 @@ The next six (researched the same day, same layout):
   write has bricked Redragon keyboards), so match product id and firmware before any write. GMMK Pro/2 are QMK/VIA.
 - [Keychron](brands/keychron.md): VIA (which DeviceHub already speaks) plus Keychron's own commands for debounce,
   sleep timers and report rate; Pro/Max/HE boards need Keychron's JSON file. Mice are undocumented.
-- [Wooting](brands/wooting.md): per-key lights and live key depth from Wooting's own open SDKs (feature reports);
+- [Wooting](brands/wooting.md): per-key lights and key depth from Wooting's own open SDKs (feature reports). The
+  library's `wooting` driver reads the model, layout and key depth (as an info line); lights go through OpenRGB;
   actuation and rapid trigger only in Wootility.
 - [Cooler Master](brands/cooler-master.md): only lighting is documented (OpenRGB); DPI, polling and battery are not.
 
@@ -65,18 +67,23 @@ The next six (researched the same day, same layout):
 - **Batteries Windows already knows** (any Bluetooth device) and devices that declare the standard HID battery fields.
 - **Windows Dynamic Lighting (HID LampArray)** lights, from the device's own description.
 - **What the maker's app left on the PC** (model names, ids, setting names), read in place.
-- And for what is left, Claude changes the settings in the maker's app itself during a learning session
+- And for what is left, **Learn a device** (in DeviceHub's sidebar, and on the Overview's Set up card) walks the
+  person through a learning session without Claude: DeviceHub listens while they change one setting at a time in the
+  maker's app, then makes the driver. With Claude, Claude can change the settings in the maker's app itself
   (`helpers/app-ui.ps1`), so the person only says yes once.
 
 ## What already works for anyone, whatever the brand
 
 These need nothing per brand, so a new user gets them on day one:
 
-- **Any USB or Bluetooth headset:** volume, mic level, mute, the equalizer, sound tools and the mic check
-  (Windows audio and Equalizer APO).
+- **Any USB headset:** volume, mic level, mute, the equalizer, sound tools and the mic check (Windows audio and
+  Equalizer APO). A Bluetooth headset shows its battery (from Windows), not a Headset page.
 - **Any VIA keyboard** (Keychron, Epomaker, many others): the key map, the knob, macros and lights, drawn from the
-  keyboard's own layout.
-- **Any monitor with DDC/CI:** brightness, contrast, speaker volume, color presets.
+  keyboard's own layout, from VIA's library. Keychron Pro, Max, HE and 8K boards are not in that library: they need
+  Keychron's VIA file from its site, saved as `<VID><PID>.json` (e.g. `34340610.json`) in the `via-definitions`
+  folder. The Keyboard page and Lighting > This PC name the file.
+- **Any monitor with DDC/CI:** brightness, contrast, speaker volume, and the color preset and color balance when the
+  monitor lists them.
 - **Any standard webcam:** brightness, contrast, zoom and the rest of its controls.
 - **PC lights through OpenRGB**, once the person installs it.
 - Profiles, auto-switch for games, backups, themes and looks, search, and settings sync.

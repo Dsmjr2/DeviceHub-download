@@ -14,6 +14,14 @@
 //   e. save: my-devices\<name>\driver.json with a library.json marker "read-only": helpers/my-devices.mjs loads it
 //      GUARDED, so no setting is written until it passes DeviceHub's self-check (read, write the same value, read back)
 //
+// A device that already has a driver (22 Oct 2026, docs/handoff/setup-gaps.md) is listed with "already has a driver;
+// Learn adds settings it lacks". For a driver.json driver the learned settings are added to its copy in my-devices
+// (installed from the library first when it is not there yet; the old files backed up to backups\ first); the library's
+// own copy is never edited. Added settings are listed in library.json learnedKeys and stay read-only until each passes
+// the self-check, whatever the entry's status. Refused at begin, in plain words: a chip maker's shared vendor id where a
+// wrong write has bricked devices (SHARED_CHIPS), a vendor DeviceHub never takes as a driver.json (never-commands.json
+// refuseVendors), a device whose driver refuses every write, and a device whose driver is code (device.mjs).
+//
 // The analysis (analyze, buildDriver, verifySeen, hidMessages) is pure and tested with made-up recordings:
 // tests/learn-wizard.mjs. The route: handle(url, req, res, send, readBody) for /api/learn/*.
 import fs from 'node:fs';
@@ -23,7 +31,8 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { readPcapBuffer } from './pcap-read.mjs';
 import { validate, fromJson } from './declarative-driver.mjs';
-import { ROOT, devicehubVersion, match as libraryMatch } from './device-library.mjs';
+import { ROOT, devicehubVersion, match as libraryMatch, list as libraryList, installFromLibrary, loadDriver, driverFileOf } from './device-library.mjs';
+import { writable, libraryMark, LIBRARY_FILE } from './my-devices.mjs';
 
 const require = createRequire(import.meta.url);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -509,6 +518,116 @@ export function saveDriver(def, { root = ROOT, folder, now = () => new Date() } 
   return { ok: true, name, folder: to, id: def.id };
 }
 
+// ---------------------------------------------------------------- a device that already has a driver
+// Chip makers' vendor ids that many brands share, where a wrong write has bricked devices: never learned
+// (docs/brands/glorious.md: OpenRGB turned off its Sinowealth keyboard detection after writes bricked Redragon
+// keyboards on the same ids; mxw's author bricked mice "repeatedly"; Laview 22d4 is the other chip Glorious ships on)
+export const SHARED_CHIPS = { '258A': 'Sinowealth', '22D4': 'Laview' };
+let neverList = null;
+const refusedVendors = () => {
+  if (!neverList) { try { neverList = JSON.parse(fs.readFileSync(path.join(HERE, 'never-commands.json'), 'utf8')).refuseVendors || []; } catch { neverList = []; } }
+  return neverList;
+};
+// why this vendor id is never learned, or null
+export function vendorRefusal(vid) {
+  const v = up4(vid);
+  if (SHARED_CHIPS[v]) return `USB vendor ${v} is the ${SHARED_CHIPS[v]} chip maker's id, which many brands share. A wrong write to a device on it has bricked mice and keyboards, so DeviceHub never learns one. Use the maker's app for its settings.`;
+  const r = refusedVendors().find((x) => up4(x.vid) === v);
+  if (r) return `${r.brand} devices cannot be learned: their settings are reached through numbers the device hands out while it runs, so a recorded message cannot be proven safe. ${r.brand} drivers are written as code instead.`;
+  return null;
+}
+
+// how many settings a driver can write, loaded the way my-devices.mjs loads it (cached per file and change time)
+const writesCache = new Map();
+async function writableCount(dir) {
+  const file = driverFileOf(dir);
+  if (!file) return 0;
+  let key = dir;
+  try { key = `${dir}|${fs.statSync(path.join(dir, file)).mtimeMs}`; } catch {}
+  if (!writesCache.has(key)) {
+    let n = 0;
+    try { const { a } = await loadDriver(dir, 'learn'); n = (Array.isArray(a?.settings) ? a.settings : []).filter((s) => writable(s) && !s.readOnly && s.selfCheck !== false).length; } catch { n = 0; }
+    writesCache.set(key, n);
+  }
+  return writesCache.get(key);
+}
+
+// the driver a listed device already has: { name, where: 'my-devices' | 'library', dir, code, writes, title } or null
+async function driverFor(k, own, root) {
+  const copy = (own.copies || []).find((c) => c.ids.includes(k));
+  if (copy) {
+    const dir = path.join(root, 'my-devices', copy.name);
+    return { name: copy.name, where: 'my-devices', dir, code: driverFileOf(dir) === 'device.mjs', writes: await writableCount(dir) };
+  }
+  const [vid, pid] = k.split(':');
+  let m = null;
+  try { m = libraryMatch([{ vid, pid }], { root, readOnly: true, untested: true }).find((x) => !x.installed) || null; } catch {}
+  if (!m) return null;
+  const e = libraryList({ root }).find((x) => x.name === m.name);
+  if (!e) return null;
+  return { name: m.name, where: 'library', dir: e.dir, code: driverFileOf(e.dir) === 'device.mjs', writes: await writableCount(e.dir), status: m.meta.status };
+}
+// the note a listed device shows, and why it cannot be picked (or null)
+function coverageNote(d) {
+  const drv = d.driver;
+  if (d.refused) return d.refused;
+  if (!drv) return null;
+  return 'already has a driver; Learn adds settings it lacks';
+}
+function coverageRefusal(drv) {
+  if (!drv) return null;
+  if (!drv.writes) return `Its driver (${drv.name}) refuses every write on purpose, so DeviceHub does not learn settings for it either. Use the maker's app for its settings.`;
+  if (drv.code) return `It already has a driver written as code (${drv.name}, device.mjs). Learned settings can only be added to a driver.json driver, so this one is not learned here.`;
+  return null;
+}
+
+// The learned settings added to a copy of the driver a device already has: the base driver.json with the learned
+// driver's messages (renamed "learned..."), reads, fields and settings. Throws a plain sentence when they cannot share
+// one file (another report kind, checksum or reply matching, or a setting key already there).
+export function mergeDriver(base, add) {
+  const tb = base.transport || {}, ta = add.transport || {};
+  if (tb.report !== ta.report || tb.len !== ta.len || (tb.reportId || 0) !== (ta.reportId || 0)) throw new Error(`The driver it has talks over ${tb.report} reports of ${tb.len} bytes (id ${tb.reportId || 0}) and the recording over ${ta.report} reports of ${ta.len} bytes (id ${ta.reportId || 0}): one driver.json uses one kind, so the setting was not added.`);
+  if (!same(tb.checksum || null, ta.checksum || null)) throw new Error('The driver it has and the recording use different checksums, so the setting was not added.');
+  const echo = base.replies?.echo || [], n = (add.replies?.echo || []).length;
+  if (echo.some((i) => i >= n)) throw new Error('The driver it has matches replies on more bytes than the device repeated in the recording, so the setting was not added.');
+  const out = JSON.parse(JSON.stringify(base));
+  out.messages = out.messages || {}; out.reads = out.reads || []; out.fields = out.fields || {}; out.settings = out.settings || [];
+  const ren = {};
+  for (const [name, m] of Object.entries(add.messages || {})) {
+    let nn = `learned${name[0].toUpperCase()}${name.slice(1)}`, i = 2;
+    while (out.messages[nn] || out.reads.some((r) => r.name === nn)) nn = `learned${name[0].toUpperCase()}${name.slice(1)}${i++}`;
+    ren[name] = nn; out.messages[nn] = m;
+  }
+  for (const r of add.reads || []) out.reads.push({ ...r, name: ren[r.name] || r.name, message: ren[r.message] || r.message });
+  for (const [k, fl] of Object.entries(add.fields || {})) {
+    if (out.fields[k] || out.settings.some((s) => s.key === k)) throw new Error(`The driver it has already has a setting called "${k}".`);
+    out.fields[k] = { ...fl, from: ren[fl.from] || fl.from };
+  }
+  for (const s of add.settings || []) out.settings.push({ ...s, write: { ...s.write, message: ren[s.write.message] || s.write.message } });
+  const labels = (add.settings || []).map((s) => s.label).join(', ');
+  out.about = `${String(base.about || '').trim()} Added on this PC with DeviceHub's learning wizard: ${labels} (every byte of those seen in its recordings).`.trim();
+  return out;
+}
+
+// writes a merged driver.json into a my-devices copy: its driver.json and library.json backed up to backups\ first,
+// then replaced (temp file, then rename); library.json gets learnedKeys. Never anywhere but my-devices.
+export function saveInto(folder, def, keys, { root = ROOT, now = () => new Date() } = {}) {
+  const dir = path.resolve(folder);
+  if (path.dirname(dir) !== path.resolve(root, 'my-devices')) return { ok: false, why: ['only a driver in my-devices can take learned settings'] };
+  const v = validate(def);
+  if (!v.ok) return { ok: false, why: v.problems };
+  const mark = libraryMark(dir);
+  if (!mark || !fs.existsSync(path.join(dir, 'driver.json'))) return { ok: false, why: ['that folder has no driver.json from the library or the wizard'] };
+  const stamp = now().toISOString().replace(/[:.]/g, '-');
+  const back = path.join(root, 'backups', `learn-${path.basename(dir)}-${stamp}`);
+  fs.mkdirSync(back, { recursive: true });
+  for (const x of ['driver.json', LIBRARY_FILE]) fs.copyFileSync(path.join(dir, x), path.join(back, x), fs.constants.COPYFILE_EXCL);
+  const put = (name, text) => { const p = path.join(dir, name); fs.writeFileSync(`${p}.tmp`, text); fs.renameSync(`${p}.tmp`, p); };
+  put('driver.json', JSON.stringify(def, null, 2) + '\n');
+  put(LIBRARY_FILE, JSON.stringify({ ...mark, learnedKeys: [...new Set([...(mark.learnedKeys || []), ...keys])], learnedAt: now().toISOString() }, null, 2) + '\n');
+  return { ok: true, name: path.basename(dir), folder: dir, id: def.id, backup: back };
+}
+
 // ---------------------------------------------------------------- the parts that touch Windows (replaced in tests)
 const PS = (args, ms = 60000) => new Promise((resolve) => execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', ...args], { windowsHide: true, timeout: ms, maxBuffer: 16 * 1024 * 1024 }, (e, out) => resolve({ error: e, out: String(out || '') })));
 const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, '')); } catch { return null; } };
@@ -522,22 +641,26 @@ export const deps = {
     if (at < 0) throw new Error('the device list could not be read');
     return JSON.parse(r.out.slice(at));
   },
-  // the ids DeviceHub already runs: its own drivers (pc-map RUNS) and every my-devices driver
+  // the ids DeviceHub already runs: its own drivers (pc-map RUNS), the person's own my-devices drivers (mine, hidden),
+  // and the copies from the library or the wizard (copies: [{ name, ids }], listed: Learn can add to them)
   owned(root) {
     let runs = [];
     try { runs = Object.keys(require('./pc-map.js').RUNS || {}); } catch {}
-    const mine = [];
+    const mine = [], copies = [];
     const dir = path.join(root, 'my-devices');
     let names = [];
     try { names = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name); } catch {}
     for (const n of names) {
+      const ids = [];
       for (const f of ['driver.json', 'device.json']) {
         const j = readJson(path.join(dir, n, f));
-        if (j?.vid) for (const p of [].concat(j.pids || [])) mine.push(`${up4(j.vid)}:${up4(p)}`);
+        if (j?.vid) for (const p of [].concat(j.pids || [])) ids.push(`${up4(j.vid)}:${up4(p)}`);
       }
-      try { const t = fs.readFileSync(path.join(dir, n, 'device.mjs'), 'utf8'); const v = /vid:\s*'([0-9A-Fa-f]{4})'/.exec(t); for (const m of t.matchAll(/pid:\s*'([0-9A-Fa-f]{4})'/g)) if (v) mine.push(`${up4(v[1])}:${up4(m[1])}`); } catch {}
+      try { const t = fs.readFileSync(path.join(dir, n, 'device.mjs'), 'utf8'); const v = /vid:\s*'([0-9A-Fa-f]{4})'/.exec(t); for (const m of t.matchAll(/pid:\s*'([0-9A-Fa-f]{4})'/g)) if (v) ids.push(`${up4(v[1])}:${up4(m[1])}`); } catch {}
+      if (fs.existsSync(path.join(dir, n, LIBRARY_FILE))) copies.push({ name: n, ids: [...new Set(ids)] });
+      else mine.push(...ids);
     }
-    return { runs: runs.map((k) => k.split(':').map(up4).join(':')), mine };
+    return { runs: runs.map((k) => k.split(':').map(up4).join(':')), mine, copies };
   },
   // the listener, through Windows' admin prompt (UAC): { started } or { started: false, declined, error }
   startCapture(dir) {
@@ -574,8 +697,17 @@ async function listDevices() {
   let library = [];
   const json = await d.listHid();
   const raw = groupDevices(json, { ...own });
-  try { library = libraryMatch(raw.map((x) => ({ vid: x.vid, pid: x.pid })), { root, readOnly: true }).flatMap((m) => m.matched.map((u) => `${up4(u.vid)}:${up4(u.pid)}`)); } catch {}
-  listed = groupDevices(json, { ...own, library });
+  try { library = libraryMatch(raw.map((x) => ({ vid: x.vid, pid: x.pid })), { root, readOnly: true, untested: true }).flatMap((m) => m.matched.map((u) => `${up4(u.vid)}:${up4(u.pid)}`)); } catch {}
+  for (const c of own.copies || []) library.push(...c.ids);
+  listed = groupDevices(json, { runs: own.runs, mine: own.mine, library });
+  for (const d of listed) {
+    d.refused = vendorRefusal(d.vid);
+    if (d.library) {
+      d.driver = await driverFor(`${d.vid}:${d.pid}`, own, root);
+      d.refused = d.refused || coverageRefusal(d.driver);
+    }
+    d.note = coverageNote(d);
+  }
   return listed;
 }
 
@@ -597,6 +729,7 @@ function summary() {
   return {
     active: true,
     device: { vid: session.device.vid, pid: session.device.pid, name: session.device.name },
+    addsTo: session.base ? { name: session.base.name, where: session.base.where, note: 'already has a driver; Learn adds settings it lacks' } : null,
     listener: !session.listening ? 'off' : !st ? 'waiting' : st.status,
     listenerError: st?.error || null,
     setting: session.setting,
@@ -620,11 +753,19 @@ export async function act(name, b = {}) {
   if (name === 'begin') {
     const dev = listed.find((x) => x.vid === up4(b.vid) && x.pid === up4(b.pid));
     if (!dev) return { ok: false, error: 'That device is not in the list: look again.' };
+    if (dev.refused) return { ok: false, error: dev.refused };
+    // a device with a driver.json driver already: the learned settings go into its my-devices copy
+    let base = null;
+    if (dev.driver) {
+      const def = readJson(path.join(dev.driver.dir, 'driver.json'));
+      if (!def) return { ok: false, error: `Its driver (${dev.driver.name}) could not be read, so nothing can be added to it.` };
+      base = { ...dev.driver, def };
+    }
     if (session?.listening) await command(session.dir, 'quit', null, 'ended', 3000).catch(() => {});
     const id = `${new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14)}-${dev.vid}-${dev.pid}`.toLowerCase();
     const dir = path.join(root, 'learn', 'wizard', id);
     fs.mkdirSync(dir, { recursive: true });
-    session = { id, dir, device: dev, setting: null, takes: [], learned: [], listening: false, seq: 0 };
+    session = { id, dir, device: dev, base, setting: null, takes: [], learned: [], listening: false, seq: 0 };
     return { ok: true, ...summary() };
   }
   if (!session) return { ok: false, error: 'Pick a device first.' };
@@ -686,7 +827,7 @@ export async function act(name, b = {}) {
   }
   if (name === 'add') {
     if (!session.analysis) return { ok: false, error: 'Nothing learned yet.' };
-    const r = withRange(session.analysis, b, session.learned.map((s) => s.key));
+    const r = withRange(session.analysis, b, [...session.learned.map((s) => s.key), ...(session.base?.def?.settings || []).map((s) => s.key), ...Object.keys(session.base?.def?.fields || {})]);
     if (!r.setting) return { ok: false, why: [r.why] };
     const all = [...session.learned, r.setting];
     const out = draftCheck(all, b);
@@ -706,6 +847,24 @@ export async function act(name, b = {}) {
     if (!session.learned.length) return { ok: false, error: 'Learn at least one setting first.' };
     const c = draftCheck(session.learned, b);
     if (!c.ok) return c;
+    if (session.base) {
+      // into the my-devices copy (installed from the library first when it is not there yet); never the library's own
+      const keys = session.learned.map((s) => s.key);
+      let folder = session.base.where === 'my-devices' ? session.base.dir : null;
+      if (!folder) {
+        const inst = await installFromLibrary(session.base.name, { root, readOnly: true, untested: true });
+        if (!inst.ok) return { ok: false, why: [`Its library driver could not be copied to my-devices: ${inst.error}`] };
+        folder = inst.to;
+      }
+      const r = saveInto(folder, c.driver, keys, { root });
+      if (!r.ok) return { ok: false, why: r.why };
+      let loaded = null;
+      if (session.base.where !== 'my-devices') { try { loaded = await d.loadNew(root); } catch {} }
+      session.saved = { name: r.name, id: r.id, added: keys, into: session.base.name, loaded: !!loaded?.some((x) => x.name === r.name && x.id),
+        note: session.base.where === 'my-devices' ? 'Added to the driver it already had. Restart DeviceHub to load the new settings; each stays read-only until it passes its check.' : 'Added to a copy of its library driver. Each new setting stays read-only until it passes its check.' };
+      if (session.listening) { await command(session.dir, 'quit', null, 'ended', 3000).catch(() => {}); session.listening = false; }
+      return { ok: true, ...summary() };
+    }
     const r = saveDriver(c.driver, { root, folder: b.title });
     if (!r.ok) return { ok: false, why: r.why };
     let loaded = null;
@@ -732,6 +891,15 @@ function draftCheck(learned, b = {}) {
   if (!v.ok) return { ok: false, why: v.problems, driver: def };
   const seen = verifySeen(def, learned);
   if (seen.length) return { ok: false, why: ['The driver would send something not seen in the recordings, so it was not made.', ...seen], driver: def };
+  if (session.base) {
+    let merged;
+    try { merged = mergeDriver(session.base.def, def); } catch (e) { return { ok: false, why: [e.message], driver: def }; }
+    const mv = validate(merged);
+    if (!mv.ok) return { ok: false, why: mv.problems, driver: merged };
+    const ms = verifySeen(merged, learned);
+    if (ms.length) return { ok: false, why: ['Added to its driver, it would send something not seen in the recordings, so it was not added.', ...ms], driver: merged };
+    return { ok: true, driver: merged };
+  }
   return { ok: true, driver: def };
 }
 
@@ -746,7 +914,7 @@ export async function handle(url, req, res, send, readBody) {
   try {
     if (req.method === 'GET' && step === 'devices') {
       const devices = await listDevices();
-      send(res, 200, { devices: devices.map(({ collections, ...x }) => ({ ...x, collections: collections.length })), usbpcap: options.deps.usbpcapInstalled(), ...summary() });
+      send(res, 200, { devices: devices.map(({ collections, driver, ...x }) => ({ ...x, collections: collections.length, ...(driver ? { driver: { name: driver.name, where: driver.where, code: driver.code, writes: driver.writes } } : {}) })), usbpcap: options.deps.usbpcapInstalled(), ...summary() });
       return true;
     }
     if (req.method === 'GET' && step === 'state') { send(res, 200, { usbpcap: options.deps.usbpcapInstalled(), ...summary() }); return true; }

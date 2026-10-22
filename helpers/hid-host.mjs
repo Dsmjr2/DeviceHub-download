@@ -97,6 +97,7 @@ class HostDevice {
     const was = this.opened;
     this.opened = false;
     if (this.kids) for (const k of Object.values(this.kids)) k.opened = false;
+    if (this.extras) for (const k of Object.values(this.extras)) k.opened = false;
     if (was) onGone(this.spec.id);
     return Object.assign(new Error(`${this.productName} was unplugged`), { gone: true });
   }
@@ -250,7 +251,55 @@ class HostDevice {
     return k.sendNow(id, bytes);
   }
 
+  // spec.inputReports: true (22 Oct 2026; docs/handoff/hid-input-reports.md): asks the device for input report `id`
+  // (helper IGET, HidD_GetInputReport, hidapi's get_input_report) instead of waiting for one to arrive. Resolves
+  // { reportId, data: DataView } (an inputreport event's shape; data = `length` bytes after the report id), or null when
+  // the device did not answer it. Refused on a channel that did not ask for it, so no other channel ever sends IGET.
+  async getInputReport(id, length = this.spec.inputLen ?? this.spec.len) {
+    if (!this.spec.inputReports) throw new Error(`${this.productName}: getInputReport needs hid.inputReports`);
+    return this.serial(async () => {
+      if (!this.opened) throw this.gone();
+      const r = await this.line(`IGET ${hex2(id)} ${Math.max(0, Math.round(length))}`, 5000);
+      if (r === 'GONE') throw this.gone();
+      if (r === 'NONE') return null;
+      if (!/^[0-9a-f]{2}( [0-9a-f]{2})*$/.test(r)) throw new Error(`${this.productName} did not answer input report ${id} (${r || 'empty'})`);
+      return { reportId: id, data: new DataView(Uint8Array.from(r.split(' ').map((x) => parseInt(x, 16))).buffer) };
+    });
+  }
+
+  // spec.extra: [{ name, page, usage, iface, col, len, inputLen, reportId }] (22 Oct 2026; docs/handoff/hid-input-reports.md)
+  // = another collection of the SAME device (same vid, the pid this one opened) that a driver only listens to, such as
+  // Wooting's analog key-depth collection beside its config channel. Nothing is opened until the driver asks:
+  // extraChannel(name) returns { name, spec, opened, open(), receiveReports(ms), close() }, a raw read-only channel
+  // (READ only: it has no way to send). Its GONE closes only it; the device's own channel finds out on its next request.
+  extraChannel(name) {
+    const e = (this.spec.extra || []).find((x) => x && x.name === name);
+    if (!e) throw new Error(`${this.productName}: no extra collection named ${name}`);
+    const pid = this.pid || this.spec.pid;
+    this.extras ||= {};
+    let k = this.extras[name];
+    if (!k || k.spec.pid !== pid) {
+      if (k) k.close();
+      const { name: _n, ...own } = e;
+      k = new HostDevice(normalize({ id: `${this.spec.id}:${name}`, vid: this.spec.vid, pid, productName: `${this.productName} (${name})`, len: 64, reportId: 0, ...own, reply: 'raw', replyMs: 0 }));
+      k.gone = () => { k.opened = false; return Object.assign(new Error(`${k.productName} is not open`), { gone: true }); };
+      this.extras[name] = k;
+    }
+    const main = this;
+    return {
+      name, spec: k.spec,
+      get opened() { return k.opened; },
+      async open() { return main.opened ? k.tryOpen() : false; },
+      async receiveReports(ms = 0) {
+        if (!k.opened && !(main.opened && (await k.tryOpen()))) throw k.gone();
+        return k.serial(async () => { if (!k.opened) throw k.gone(); return k.readRaw(ms); });
+      },
+      close() { k.close(); },
+    };
+  }
+
   close() {
+    if (this.extras) for (const k of Object.values(this.extras)) k.close();
     if (this.kids) for (const k of Object.values(this.kids)) k.close();
     if (this.opened) native.request(this.chan, 'CLOSE', 3000); this.opened = false; this.pid = null;
   }
@@ -268,6 +317,7 @@ const pageOf = (x) => (x === '*' ? '*' : up4(x));
 //                          (receiveFeatureReport's default length), so a LampArray spec opens as it did
 //   featureOnly            opened with no access: FSET / FGET only      reply: 'raw'   SEND / READ (sendRaw above)
 //   refusals               a refused write answers REFUSED, not GONE (always so on a raw channel)
+//   inputReports           IGET: getInputReport(id, length) asks the device for an input report (HidD_GetInputReport)
 export function channelOpts(s) {
   const o = [];
   if (s.iface != null) o.push(`if=${Number(s.iface)}`);
@@ -279,6 +329,7 @@ export function channelOpts(s) {
   if (s.featureOnly) o.push('fo=1');
   if (s.reply === 'raw') o.push('rw=1');
   if (s.refusals) o.push('rf=1');
+  if (s.inputReports) o.push('gi=1');
   return o.length ? `:${o.join(':')}` : '';
 }
 

@@ -45,6 +45,18 @@ check(mb['acme-reader'] && mb['acme-reader'].installable === false && /read-only
 check(!mb['broken-one'] && list({ root }).find((e) => e.name === 'broken-one')?.error, 'a broken device.json is listed with its problem, never matched');
 check(m.length === 2 && match([{ vid: '9999', pid: '0001' }], { root }).length === 0, 'devices with no entry match nothing');
 check(/status/.test(validateMeta(JSON.parse(meta({ status: 'works' }))) || ''), 'an unknown status is refused');
+// untested entries (22 Oct 2026): installable only when asked (the person's click), guarded like read-only ones
+write('device-library/acme-new/device.mjs', driver('acme-new'));
+write('device-library/acme-new/device.json', meta({ id: 'acme-new', pids: ['abd0'], status: 'untested', tested: [] }));
+const un = [{ vid: '1234', pid: 'abd0', name: 'Acme new' }];
+check(match(un, { root, readOnly: true })[0]?.installable === false, 'by itself an untested entry is not installable');
+const mu = match(un, { root, readOnly: true, untested: true })[0];
+check(mu?.installable === true && /read-only/.test(mu.note || ''), `asked for, it is installable and says it installs read-only (${JSON.stringify(mu)})`);
+check(!(await installFromLibrary('acme-new', { root, readOnly: true })).ok, 'without untested: true it does not install');
+const ru = await installFromLibrary('acme-new', { root, readOnly: true, untested: true });
+check(ru.ok && JSON.parse(fs.readFileSync(path.join(root, 'my-devices', 'acme-new', 'library.json'), 'utf8')).status === 'untested' && /read-only/.test(ru.note), `with untested: true it installs, marked untested (${ru.error})`);
+fs.rmSync(path.join(root, 'my-devices', 'acme-new'), { recursive: true, force: true });
+fs.rmSync(path.join(root, 'device-library', 'acme-new'), { recursive: true, force: true });
 
 // install, then it loads as a my-devices driver
 let r = await installFromLibrary('acme-pro-mouse', { root });

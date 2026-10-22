@@ -120,14 +120,16 @@ public class HidIo : IDisposable {
   readonly string path;
   SafeFileHandle feat;
   int featLen = -1;
+  int inRepLen = -1;      // the collection's input report length with its id byte (InputGet below)
 
   SafeFileHandle FeatureHandle() {
     if (feat != null) return feat;
     var h = CreateFile(path, featureOnly ? 0u : 0xC0000000, 3, IntPtr.Zero, 3, 0, IntPtr.Zero);
     if (h.IsInvalid) throw new Exception("open failed " + Marshal.GetLastWin32Error());
     IntPtr pp; int n = 0;
-    if (HidD_GetPreparsedData(h, out pp)) { var c = new byte[64]; HidP_GetCaps(pp, c); n = BitConverter.ToUInt16(c, 8); HidD_FreePreparsedData(pp); }
-    feat = h; featLen = n;
+    int ni = 0;
+    if (HidD_GetPreparsedData(h, out pp)) { var c = new byte[64]; HidP_GetCaps(pp, c); n = BitConverter.ToUInt16(c, 8); ni = BitConverter.ToUInt16(c, 4); HidD_FreePreparsedData(pp); }
+    feat = h; featLen = n; inRepLen = ni;
     return feat;
   }
 
@@ -153,6 +155,23 @@ public class HidIo : IDisposable {
     var b = new byte[featLen]; b[0] = id;
     if (!HidD_GetFeature(h, b, b.Length)) {
       if (Marshal.GetLastWin32Error() == 1167) throw new Exception("device not connected");
+      return null;
+    }
+    var r = new byte[len]; Array.Copy(b, 1, r, 0, len); return r;
+  }
+
+  // ---- input report on request (22 Oct 2026; helper.cs IGET, only on a gi=1 channel) ----
+  // HidD_GetInputReport: asks the device for input report `id` over the control pipe (hidapi's get_input_report; the
+  // Turtle Beach Airoha transmitter's replies are read this way), on the same non-overlapped handle as the feature
+  // reports, so it never meets the read kept in flight above. Its first `len` data bytes without the report id; null
+  // when the collection has no input report that long or the device did not answer; a device that is gone throws.
+  [DllImport("hid.dll", SetLastError = true)] static extern bool HidD_GetInputReport(SafeFileHandle h, byte[] b, int len);
+  public byte[] InputGet(byte id, int len) {
+    var h = FeatureHandle();
+    if (inRepLen <= 0 || len < 0 || len > inRepLen - 1) return null;
+    var b = new byte[inRepLen]; b[0] = id;
+    if (!HidD_GetInputReport(h, b, b.Length)) {
+      if (Marshal.GetLastWin32Error() == 1167) throw new Exception("device not connected");  // ERROR_DEVICE_NOT_CONNECTED
       return null;
     }
     var r = new byte[len]; Array.Copy(b, 1, r, 0, len); return r;

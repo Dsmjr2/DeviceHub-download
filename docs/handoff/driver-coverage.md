@@ -13,8 +13,8 @@ putting the original back, refusal of out-of-range values, and refusal while the
 `helpers/never-commands.json` is unchanged. None of the sources documents a firmware, reset or pairing command that
 is missing from it (see "Left for others" for one state-changing HyperX read).
 
-Setting kinds are still only `slider`, `toggle` and `choice`. Where a setting needed something else, each section
-says which kind stands in for it.
+Setting kinds were only `slider`, `toggle` and `choice` when this was written. `display`, `color` and `remap` came
+later the same day (docs/handoff/page-kinds.md); each section says which kind stood in.
 
 ## Logitech HID++ mouse (`device-library/logitech-hidpp-mouse`)
 
@@ -148,9 +148,8 @@ self-check anyway. Their bytes, with sources, are kept in a `WRITE_ONLY` list in
 - **Mic monitoring:** not documented for any Arctis.
 - **Saves** (`00 09`, `06 09`, `90 00`, `00 35 01`): never sent.
 
-**Closest kind:** ChatMix game and chat appear as two read-only sliders. They have `selfCheck: false`, and their
-`write()` always refuses. The page's note for them reads "self-check did not pass (its driver says it is not to be
-self-checked)", which is accurate but clumsy.
+**Kind:** ChatMix game and chat are `display` settings (readings) since 22 Oct 2026 (docs/handoff/page-kinds.md). Before
+that they were read-only sliders with `selfCheck: false`.
 
 ## HyperX Cloud (`device-library/hyperx-cloud`)
 

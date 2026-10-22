@@ -83,6 +83,10 @@ function diagAction(d, a, done) {
   if (!a) return null;
   if (a.kind === 'retry') return button(a.label || 'Connect again', () => { delete diagCache[d.id]; return connect(d.id, false); }, { kind: 'ghost small', ic: 'plug' });
   if (a.kind === 'settings' || a.kind === 'open-folder') return button(a.label, async () => { try { await diagPost({ kind: a.kind, page: a.page }); } catch (e) { done(`Could not open it: ${e.message}`); } }, { kind: 'ghost small', ic: 'external' });
+  if (a.kind === 'check-again') return button(a.label || 'Check again', async () => {
+    try { const r = await diagPost({ kind: 'check-again', id: d.id }); delete diagCache[d.id]; done(r.ran ? 'Checked again: the settings that passed can be changed now.' : `Not checked: ${r.why}`); }
+    catch (e) { done(`Not checked: ${e.message}`); }
+  }, { kind: 'ghost small', ic: 'search' });
   if (a.kind === 'close-app') {
     const box = h('span', { class: 'actions', style: { alignItems: 'center', margin: 0 } });
     const ask = () => box.replaceChildren(button(a.label, () => box.replaceChildren(h('small', {}, a.confirm || `${a.label}?`),

@@ -12,9 +12,14 @@
 //
 // HID LAYER (docs/handoff/hid-core.md): usage page FF13, usage 0001 (tb §1, "select it by usage, not interface
 // number"), output report 06 of 61 data bytes (62 with the report id, tb §2), replies on input report 07; reply 'raw'
-// so every input report is read with receiveReports(). UNCONFIRMED: the reader asks for its replies with GET_REPORT
-// (HidD_GetInputReport), which DeviceHub's helper does not have; this driver reads them as they arrive instead. If the
-// transmitter only answers GET_REPORT, the read finds no JSON and says so; nothing else is sent.
+// so every input report is read with receiveReports(), and inputReports so it can ask for one (getInputReport, helper
+// IGET = HidD_GetInputReport; docs/handoff/hid-input-reports.md).
+// How replies are read: halobattery-stealth700 src/stealth700_battery/reader.py reads ONLY with
+// `get_input_report(IN_REPORT_ID, HID_REPORT_SIZE)` (report 07, 62 bytes), never a plain read(), in this order: drain
+// (5 gets), enable, sleep 0.3 s, drain (5 gets), GET /GSI, then 30 gets 0.03 s apart, joined, first { to last }.
+// This driver first reads input reports as they arrive (its earlier path: it sends the same two frames and nothing
+// else); when that finds no GSI record, it runs the reader's GET_REPORT sequence above once, with the same two frames.
+// UNCONFIRMED until a transmitter is measured: which of the two ways it answers (tb §2 names only GET_REPORT).
 import { getDevice } from '../../public/devices/hid.js';
 
 export const OUT_ID = 0x06, IN_ID = 0x07, LEN = 61;   // tb §2: output report 0x06, 62 bytes; input report 0x07
@@ -27,6 +32,9 @@ export const FRAMES = Object.freeze({
 });
 export const KEYS = { battery: '240', charging: '250', linked: '230', name: '220', sound: '2c0' };   // tb §3 Headsets
 export const READ_MS = 2000;   // how long the replies are gathered (the reader concatenates every payload it reads)
+// reader.py's GET_REPORT sequence: `_drain(times=5)`, `time.sleep(0.3)` after the enable, `attempts=30` gets each
+// followed by `time.sleep(0.03)`; HID_REPORT_SIZE 62 = the report id + 61 data bytes
+export const GET = Object.freeze({ drain: 5, afterEnableMs: 300, attempts: 30, everyMs: 30 });
 // tb §1: 2251 verified; 2250 and 2253 are its siblings, "assumed same firmware, untested". The Stealth Pro II (229B,
 // 229E) is left out: its session and GSI request bytes are only in a capture, not on the page (tb §6).
 export const MODELS = {
@@ -61,13 +69,13 @@ export function gsiFrom(reports) {
   try { const j = JSON.parse(text.slice(a, b + 1)); return j && j.KVP && typeof j.KVP === 'object' ? j : null; } catch { return null; }
 }
 
-export function createTurtleBeach({ open = defaultOpen, vendorApp = defaultVendorApp, now = () => Date.now() } = {}) {
+export function createTurtleBeach({ open = defaultOpen, vendorApp = defaultVendorApp, now = () => Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   return {
     id: 'turtle-beach-battery',
     title: 'Turtle Beach headset',
     kind: 'Headset',
     vendor: 'Turtle Beach',
-    hid: { vid: '10F5', pid: '2251', pids: PIDS, page: 'FF13', usage: '0001', len: LEN, reportId: OUT_ID, reply: 'raw', replyMs: 300 },
+    hid: { vid: '10F5', pid: '2251', pids: PIDS, page: 'FF13', usage: '0001', len: LEN, reportId: OUT_ID, reply: 'raw', replyMs: 300, inputReports: true },
     settings: [],
     unsupported: ['every headset setting (sidetone, EQ, mic, auto-off: no open source documents them)', 'firmware updates and RACE nvkey writes (never)',
       'Stealth Pro II, Stealth 600 Gen 3 and older Stealth headsets (not documented for this read)'],
@@ -108,6 +116,7 @@ export function createTurtleBeach({ open = defaultOpen, vendorApp = defaultVendo
         const got = [], until = now() + READ_MS;
         let j = null;
         while (!j && now() < until) { got.push(...(await this.dev.receiveReports(Math.max(1, Math.min(250, until - now()))))); j = gsiFrom(got); }
+        if (!j) j = await this.gsiByGetReport();
         if (!j) throw new Error('the transmitter sent no GSI record (is the headset on and Swarm II closed?)');
         this.raw.gsi = JSON.stringify(j.KVP);
         this.last = j.KVP; this.lastAt = now();
@@ -116,6 +125,29 @@ export function createTurtleBeach({ open = defaultOpen, vendorApp = defaultVendo
       const p = this.q.then(run, run);
       this.q = p.catch(() => {});
       return p;
+    },
+
+    // reader.py's own way, step for step (GET above): every reply asked for with GET_REPORT on input report 07. Runs only
+    // inside gsi(), after the arriving-reports read found nothing; null when it finds nothing either (or the channel
+    // has no getInputReport, an older DeviceHub).
+    async gsiByGetReport() {
+      if (typeof this.dev.getInputReport !== 'function') return null;
+      const get = () => this.dev.getInputReport(IN_ID, LEN);
+      const drain = async () => { for (let i = 0; i < GET.drain; i++) await get(); };
+      await drain();
+      await this.send('enable');
+      await sleep(GET.afterEnableMs);
+      await drain();
+      await this.send('gsi');
+      const got = [];
+      for (let i = 0; i < GET.attempts; i++) {
+        const r = await get();
+        if (r) got.push(r);
+        await sleep(GET.everyMs);
+      }
+      const j = gsiFrom(got);
+      if (j) this.raw.via = 'GET_REPORT';
+      return j;
     },
 
     async info() {

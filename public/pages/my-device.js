@@ -3,7 +3,7 @@
 // built-in pages: every change backed up, written one at a time and read back (public/core/devices.js), Undo, changes
 // that wait while it is away.
 import { h, icon } from '../ui/dom.js';
-import { card, row, slider, toggle, segmented, pill } from '../ui/controls.js';
+import { card, row, slider, toggle, segmented, pill, readout, colorRow, lineList, remapSelect } from '../ui/controls.js';
 import { devices, write, prepare, connect } from '../core/devices.js';
 import { topbar, deviceActions, kv, statusPill, isAway, awayBanner, undoButton } from './common.js';
 import { artOf } from '../ui/art.js';
@@ -63,10 +63,52 @@ async function shareDriver(d) {
 function shareButton(d, shown) {
   if (!d.adapter?.plugin || d.status !== 'connected' || !shown.length) return null;
   return h('div', { class: 'actions', style: { marginTop: '12px' } },
-    button('Share this driver', () => shareDriver(d).catch((e) => toast('Not shared', 'bad', { detail: e.message })), { kind: 'ghost small', ic: 'external', title: 'Send this driver to the device library so others with this device need no setup' }));
+    button('Share this driver', () => shareDriver(d).catch((e) => toast('Not shared', 'bad', { detail: e.message })), { kind: 'ghost small', ic: 'external' }),
+    h('span', { class: 'faint', style: { fontSize: '12.5px' } }, 'Needs a free GitHub account: it opens a GitHub page that offers this driver to the shared library, so others with this device need no setup.'));
+}
+
+// a driver from the device library with settings still read-only (failed or waiting on their self-check): Check again
+// runs that check now (helpers/diagnose.mjs action "check-again"); the answer shows on the line, nothing pops up
+const checkNote = {};
+function checkAgain(d) {
+  const ro = (d.adapter?.settings || []).filter((s) => s.type !== 'display' && s.readOnly);
+  if (!d.adapter?.library || d.status !== 'connected' || !ro.length) return null;
+  const run = async () => {
+    checkNote[d.id] = 'Checking…';
+    try {
+      const r = await fetch('/api/diagnose/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'check-again', id: d.id }) });
+      const j = await r.json().catch(() => ({}));
+      checkNote[d.id] = !r.ok || j.error ? `Not checked: ${j.error || r.statusText}` : j.ran ? 'Checked again.' : `Not checked: ${j.why}`;
+    } catch (e) { checkNote[d.id] = `Not checked: ${e.message}`; }
+  };
+  return h('div', { class: 'actions', style: { marginTop: '12px', alignItems: 'center' } },
+    button('Check again', run, { kind: 'ghost small', ic: 'search' }),
+    h('span', { class: 'faint', style: { fontSize: '12.5px' } }, checkNote[d.id] || `${ro.map((s) => s.label).join(', ')} ${ro.length === 1 ? 'is' : 'are'} read-only until ${ro.length === 1 ? 'it passes' : 'each passes'} DeviceHub's check (write the same value, read it back).`));
 }
 
 const ICON = { mouse: 'mouse', headset: 'headset', keyboard: 'keyboard' };
+
+// the kinds beyond slider, toggle and choice (22 Oct 2026; helpers/my-devices.mjs): a reading, a color (one, or one
+// per zone) and button remaps. A zone or a button changes on its own, but the write is still the whole setting, once,
+// read back like any other.
+const nameOf = (list, v) => (list || []).find((o) => o.value === v)?.label ?? String(v);
+function settingRow(d, s) {
+  const v = d.values?.[s.key];
+  const send = (x, label, display) => write(d.id, s.key, x, { label, display }).catch(() => {});
+  if (s.type === 'display') return row(s.label, s.hint || null, readout({ value: v, unit: s.unit || '' }));
+  if (s.type === 'color' && !s.zones) return row(s.label, s.hint || null, colorRow({ value: v, label: s.label, onCommit: (x) => send(x, s.label, x) }));
+  if (s.type === 'color' || s.type === 'remap') {
+    const obj = v && typeof v === 'object' ? v : {};
+    const lines = s.type === 'color'
+      ? s.zones.map((z) => [z.label, colorRow({ value: obj[z.value], label: `${s.label}, ${z.label}`, onCommit: (x) => send({ ...obj, [z.value]: x }, `${s.label} (${z.label})`, x) })])
+      : s.buttons.filter((b) => b.value in obj).map((b) => [b.label, remapSelect({ value: obj[b.value], targets: s.targets, label: `${s.label}, ${b.label}`,
+        onCommit: (x) => send({ ...obj, [b.value]: x }, `${s.label} (${b.label})`, nameOf(s.targets, x)) })]);
+    const r = row(s.label, s.hint || null, lineList(lines));
+    r.classList.add('stack');
+    return r;
+  }
+  return row(s.label, s.hint || null, control(d, s));
+}
 
 function control(d, s) {
   const v = d.values?.[s.key];
@@ -95,8 +137,9 @@ export function devicePage(id) {
       return h('div', {}, head, awayBanner(d),
         h('div', { class: 'grid two top' },
           card([h('h2', {}, 'Settings'), d.battery?.percent != null ? pill(`battery ${d.battery.percent}%${d.battery.charging ? ', charging' : ''}`) : null],
-            shown.length ? shown.map((s) => row(s.label, s.hint || null, control(d, s))) : h('p', { class: 'faint', style: { margin: 0 } }, 'It has not reported any settings yet.'),
-            a.unsupported?.length ? h('p', { class: 'faint', style: { marginTop: '12px' } }, icon('external'), ` Still in its maker's app: ${a.unsupported.join(', ')}.`) : null),
+            shown.length ? shown.map((s) => settingRow(d, s)) : h('p', { class: 'faint', style: { margin: 0 } }, 'It has not reported any settings yet.'),
+            a.unsupported?.length ? h('p', { class: 'faint', style: { marginTop: '12px' } }, icon('external'), ` Still in its maker's app: ${a.unsupported.join(', ')}.`) : null,
+            checkAgain(d)),
           card([h('h2', {}, 'Device'), h('span', { class: 'spacer' }), deviceActions(d)], kv(d.info || {}), shareButton(d, shown))));
     },
   };

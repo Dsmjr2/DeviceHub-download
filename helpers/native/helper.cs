@@ -158,6 +158,7 @@ public static class Helper {
   //                   il / ol also size the reads and writes (len otherwise)
   //   fo=1  feature-only: opened with no access, FSET / FGET only      rw=1  raw: SEND / READ instead of REQ
   //   rf=1  a write the device refuses answers REFUSED <code> (the handle stays open) instead of GONE
+  //   gi=1  input reports on request: IGET (HidD_GetInputReport); refused on every other channel
   static Dictionary<string, int> Opts(string[] p) {
     var o = new Dictionary<string, int>();
     for (int i = 7; i < p.Length; i++) { int e = p[i].IndexOf('='); if (e > 0) o[p[i].Substring(0, e)] = int.Parse(p[i].Substring(e + 1)); }
@@ -223,6 +224,8 @@ public static class Helper {
   //   SEND <id hex> <hex...>             rw=1: one output report with that report id, waiting input dropped first;
   //                                      OK | REFUSED <code> | GONE
   //   READ <ms> [<max>]                  rw=1: input reports as sent, report id first, "|" between; NONE when none came
+  //   IGET <id hex> <len>                gi=1: asks for input report <id> (hidio.cs InputGet, HidD_GetInputReport):
+  //                                      its first <len> data bytes without the id, or NONE
   static string HandleHidEx(Channel c, string[] p, string[] w, Dictionary<string, int> o) {
     bool fo = Opt(o, "fo") == 1, raw = Opt(o, "rw") == 1, rf = Opt(o, "rf") == 1;
     int len = int.Parse(p[5]);
@@ -250,6 +253,12 @@ public static class Helper {
       case "FGET": {
         if (w.Length < 3) return "ERR need the id and length";
         var r = c.Hid.FeatureGet(Convert.ToByte(w[1], 16), int.Parse(w[2]));
+        return r == null ? "NONE" : hex(r);
+      }
+      case "IGET": {
+        if (Opt(o, "gi") != 1) return "ERR not an input-report channel (gi=1)";
+        if (w.Length < 3) return "ERR need the id and length";
+        var r = c.Hid.InputGet(Convert.ToByte(w[1], 16), int.Parse(w[2]));
         return r == null ? "NONE" : hex(r);
       }
     }

@@ -9,7 +9,8 @@
   "works": [
     "written from docs/brands/turtle-beach.md (halobattery-stealth700) and checked against a simulated transmitter only (tests/sim-turtle-beach-battery.mjs)",
     "reads: battery %, charging (key 250, a best guess on this model), headset linked, headset name, Signature Sound preset (raw)",
-    "sends only the sheet's two fixed frames (CoAP enable 0x9942, GET /GSI in 0x9902); steps back while Swarm II runs"
+    "sends only the sheet's two fixed frames (CoAP enable 0x9942, GET /GSI in 0x9902); steps back while Swarm II runs",
+    "reads replies as they arrive, then, if none came, asks for them with GET_REPORT exactly as the source's reader.py does"
   ],
   "doesNotWork": [
     "any setting (no open source documents one on any Turtle Beach headset)",

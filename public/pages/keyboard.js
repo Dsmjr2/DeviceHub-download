@@ -8,6 +8,7 @@ import { modal } from '../ui/overlay.js';
 import { keyName, shortName, isSpecialKey, isDangerous, pickerGroups, hex, CODE_TO_HID, EFFECTS } from '../devices/keycodes.js';
 import { hsv255ToHex, rgbToHsv255 } from '../devices/keyboard-adapter.js';
 import { toast } from '../ui/overlay.js';
+import { loadPc, pcLoaded, otherDevices } from './pc-lights.js';
 
 // The keyboard's layout (devices/via-layout.js): the P75's built in, any other VIA keyboard's from its VIA definition,
 // sent with the keyboard's session. [row][col] -> [x, y, width, kind] in key units; null = no key.
@@ -257,6 +258,26 @@ window.addEventListener('keyup', onKey);
 
 let rerender = () => {};
 
+// A VIA keyboard whose layout VIA's library does not have (Keychron Pro and Max boards among them): DeviceHub then
+// needs the maker's VIA file in the via-definitions folder, named <VID><PID>.json (helpers/via-defs.js definitionFor),
+// and reads it when it starts. Shown here and on Lighting > This PC for a VIA keyboard brand that nothing runs yet.
+export const isViaKeyboard = (u) => !!(u?.brand?.transport?.includes('via-qmk') && u.brand.categories?.includes('keyboard') && !/mouse|receiver|dongle/i.test(u.name || ''));
+export function viaFileNote(vid, pid, maker) {
+  const file = `${vid}${pid}`.toUpperCase() + '.json';
+  const site = maker ? `${maker}'s website` : 'the maker\'s website';
+  return h('div', { class: 'via-file' },
+    h('p', { class: 'faint', style: { margin: '6px 0' } }, `A VIA keyboard needs no learning. If its keys do not show on the Keyboard page, VIA's own list does not have this model: download its VIA file (a .json file) from ${site}, rename it ${file}, put it in the via-definitions folder inside DeviceHub's folder, then restart DeviceHub (tray icon > Quit, then open it again).`),
+    h('div', { class: 'actions' }, button('Open folder', () => fetch('/api/reveal', { method: 'POST' }).catch(() => {}), { kind: 'ghost small', ic: 'external' })));
+}
+// on the Keyboard page while no keyboard runs: the VIA keyboards This PC found (pc-lights.js reads the PC once)
+function viaHelp() {
+  if (isDemo()) return null;
+  if (!pcLoaded()) { loadPc(false, () => { if (location.hash === '#/keyboard') rerender(); }); return null; }
+  const kbs = otherDevices().filter(isViaKeyboard);
+  return kbs.length ? h('div', { style: { marginTop: '18px' } }, ...kbs.map((u) => card([h('h2', {}, u.name || `${u.brand.name} keyboard`)],
+    h('p', { style: { margin: 0 } }, `USB ${u.id}, plugged in.`), viaFileNote(u.vid, u.pid, u.brand.name)))) : null;
+}
+
 export default {
   id: 'keyboard', title: 'Keyboard', icon: 'keyboard', device: 'keyboard', accent: 'var(--c-keyboard)', watches: ['keyboard'],
   render() {
@@ -265,7 +286,7 @@ export default {
     rerender = () => { const el = document.querySelector('#main .page'); if (el) el.replaceWith(Object.assign(this.render(), { className: 'page no-anim' })); };
     const head = topbar('Epomaker · 75% wireless keyboard', a.title, null, h('div', { class: 'chips' }, undoButton(dev), statusPill(dev)));
     if ((dev.status !== 'connected' && !isAway(dev)) || !a.session) {
-      return h('div', {}, head, connectState(dev, 'Connect the keyboard with its USB cable and press Connect. Close VIA and the maker\'s app first.'));
+      return h('div', {}, head, connectState(dev, 'Connect the keyboard with its USB cable and press Connect. Close VIA and the maker\'s app first.'), viaHelp());
     }
     const s = a.session;
     const changed = s.original ? s.keymap.reduce((n, l, li) => n + l.reduce((m, r, ri) => m + r.filter((k, ci) => k !== s.original[li][ri][ci]).length, 0), 0) : 0;

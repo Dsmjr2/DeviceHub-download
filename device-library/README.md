@@ -23,15 +23,19 @@ Each entry is one folder, `device-library\<vendor-product>\` (a-z, 0-9 and `-`, 
 ```
 
 `status` means:
-- **tested**: every setting was written once and read back on the real device. Only these install by themselves.
-- **read-only**: the driver reads the device correctly; its writes were not tried. Offered, not installed.
-- **untested**: written from a protocol description, not yet run on the device. Offered, not installed.
+- **tested**: every setting was written once and read back on the real device. Auto setup installs these by itself.
+- **read-only**: the driver reads the device correctly; its writes were not tried. Auto setup installs these by itself
+  too, but each setting stays read-only until DeviceHub tests it once by writing back its current value
+  (`helpers/auto-setup.mjs`, `helpers/my-devices.mjs`). A plain `installFromLibrary(name)` without `readOnly: true`
+  still takes tested entries only.
+- **untested**: written from a protocol description, not yet run on the device. Not installed by itself: the Set up card offers an Install button, and it loads read-only until each setting passes the self-check.
 
 ## How it is used
 
 `helpers\device-library.mjs` compares the PC's USB devices (vendor and product ids, as `/api/pc` lists them) with the
-entries. `installFromLibrary(name)` copies a tested entry into `my-devices\<name>\` (never over a folder that is
-already there) and DeviceHub loads it on its next start. Nothing in the library is ever changed by that.
+entries. `installFromLibrary(name)` copies a tested entry (with `readOnly: true`, a read-only one too) into
+`my-devices\<name>\` (never over a folder that is already there). Auto setup (`helpers\auto-setup.mjs`) does this when
+DeviceHub starts and loads the driver at once, or says to restart. Nothing in the library is ever changed by that.
 
 ## How to add one
 

@@ -9,11 +9,11 @@
   "works": [
     "written from docs/brands/wooting.md (Wooting's own wooting-rgb-sdk) and checked against a simulated keyboard only (tests/sim-wooting.mjs)",
     "reads: the model and size (from the product id), the keyboard layout (GetDeviceConfig, command 19, the one command it sends)",
-    "steps back while Wootility runs"
+    "steps back while Wootility runs",
+    "key depth, read only: the analog collection's input reports (FF54 protocol 1 or FF53 protocol 2), parsed exactly as Wooting's own wooting-analog-sdk does; nothing is sent on it"
   ],
   "doesNotWork": [
     "any setting: per-key lighting has no read-back (OpenRGB drives it); actuation, rapid trigger and tachyon have no documented setter",
-    "key depth (the analog SDK's collection is not the config channel)",
     "profiles (community protocol only), firmware updates (Wootility only)",
     "the original One / Two (vendor 03EB) and boards that only expose the FF55 config page"
   ],

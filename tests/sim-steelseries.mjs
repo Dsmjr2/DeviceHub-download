@@ -107,7 +107,7 @@ check(JSON.stringify([...meta.pids].sort()) === JSON.stringify([...pids].sort())
 check(!pids.includes('22a7') && !pids.includes('220a'), 'the unconfirmed Nova 7 ids are left out');
 check(new Set(MODELS.map((m) => m.name)).size === meta.models.length && MODELS.every((m) => meta.models.includes(m.name)), 'device.json models = the model names');
 check(JSON.stringify(drv.settings.map((x) => x.key)) === JSON.stringify(['sidetone', 'chatGame', 'chatChat']), `the page shows only readable settings (${drv.settings.map((x) => x.key)})`);
-check(drv.settings.filter((x) => x.key.startsWith('chat')).every((x) => x.selfCheck === false), 'ChatMix is never self-checked (read-only)');
+check(drv.settings.filter((x) => x.key.startsWith('chat')).every((x) => x.type === 'display' && x.unit === '%' && x.min === undefined), 'ChatMix is a reading (display kind), not a slider');
 check(WRITE_ONLY.length >= 10 && WRITE_ONLY.every((w) => w.cite && w.bytes), 'write-only settings listed with their source, as documentation');
 check(VENDOR_APPS.test('SteelSeriesGG.exe') && VENDOR_APPS.test('SteelSeriesEngine3.exe') && VENDOR_APPS.test('SteelSeriesGGClient.exe') && !VENDOR_APPS.test('steam.exe'), 'GG and Engine are recognised');
 
@@ -159,7 +159,7 @@ check(await refuses(() => drv.write('sidetone', 2), /SteelSeries GG/, 'sidetone 
 drv.vendorApp = async () => null;
 // the library self-check: sidetone passes (same value written and read back), ChatMix is skipped
 const vc = await selfCheck(drv, drv.write, { backup: async () => true });
-check(vc.ran && vc.keys.sidetone?.ok === true && vc.keys.chatGame?.ok === false && vc.keys.chatChat?.ok === false, `self-check: sidetone ok, ChatMix read-only (${JSON.stringify(vc.keys)})`);
+check(vc.ran && vc.keys.sidetone?.ok === true && !('chatGame' in vc.keys) && !('chatChat' in vc.keys), `self-check: sidetone ok, ChatMix (a reading) not written or listed (${JSON.stringify(vc.keys)})`);
 check(s.state.sidetone === orig, 'self-check left sidetone as it was');
 s.o.online = false;
 check(await refuses(() => drv.write('sidetone', 2), /off or out of range/, 'write with the headset off', s) === 1, 'headset off: only the status read is sent, the write is refused');

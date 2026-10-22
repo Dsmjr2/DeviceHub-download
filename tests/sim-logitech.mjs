@@ -251,5 +251,46 @@ for (const [k, val] of [['dpiStage', 2], ['mode', 'host'], ['dpi', 800]]) {
 check(m5.sent.length === n && m5.state.slot === 0 && m5.state.mode === 1, 'nothing was sent while G HUB runs');
 driver.vendorApp = async () => null;
 
+// ---- 6. the library self-check on this driver (22 Oct 2026, docs/handoff/setup-gaps.md): Settings source gets the
+// normal check (the same mode written back, never switched); DPI / rate wait in onboard mode instead of failing; a
+// later connect after a day tries them again; G HUB open = nothing written, tried on a later connect ----
+{
+  const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path');
+  const { guard, readVerified } = await import('../helpers/my-devices.mjs');
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-logi-check-'));
+  const m6 = simMouse({ pid: 0xc539, slot: 1, features: { [F.ADJUSTABLE_DPI]: 7, [F.EXT_REPORT_RATE]: 9, [F.ONBOARD_PROFILES]: 11 },
+    dpiList: [100, 0xe000 | 50, 25600], rateExt: true, rateMask: 0x7f, battery: {}, mode: 1, profiles: { count: 3, oneBasedRead: false, profile: 1, slot: 1 } });
+  useDevice(m6);
+  let clock = Date.parse('2026-10-22T10:00:00Z');
+  const backups = [], logs = [];
+  driver.vendorApp = async () => 'lghub_agent.exe';
+  guard(driver, folder, { status: 'read-only', source: 'device-library/logitech-hidpp-mouse' }, { backup: async (b) => backups.push(b), log: (t) => logs.push(t), now: () => new Date(clock), version: 'v1' });
+  check(await driver.connect(false), 'guarded Logitech connects');
+  const modeSent = () => m6.sent.filter((s) => s.b[1] === 11 && (s.b[2] & 0xf0) === 0x10).length;
+  check(!fs.existsSync(path.join(folder, 'verified.json')) && backups.length === 0 && modeSent() === 0 && logs.some((t) => /not run: lghub_agent\.exe .*open/.test(t)), `G HUB open: the self-check writes nothing and says so (${logs.join(' | ')})`);
+  driver.vendorApp = async () => null;
+  check(await driver.connect(false), 'connects again with G HUB closed');
+  let vf = readVerified(folder);
+  check(vf.keys.mode?.ok === true && vf.keys.mode.value === 'onboard' && m6.state.mode === 1, `Settings source passes its check with the same mode written back, never switched (${JSON.stringify(vf.keys.mode)})`);
+  check(modeSent() === 1 && m6.sent.filter((s) => s.b[1] === 11 && (s.b[2] & 0xf0) === 0x10).every((s) => s.b[3] === 1), 'the only mode write is "onboard" (01), the mode it read');
+  check(vf.keys.dpi?.waiting && vf.keys.dpi.ran === false && /onboard/.test(vf.keys.dpi.why) && vf.keys.reportRate?.waiting, `DPI and rate in onboard mode are waiting, not failed (${JSON.stringify(vf.keys.dpi)})`);
+  check(!m6.sent.some((s) => s.b[1] === 7 && (s.b[2] & 0xf0) === 0x30), 'no DPI write was sent in onboard mode');
+  check(vf.keys.profile?.ok && vf.keys.dpiStage?.ok && m6.state.profile === 1 && m6.state.slot === 1, 'profile and DPI stage write their own value back');
+  let err = await refusal(() => driver.write('dpi', 1600));
+  check(/waiting/.test(err?.message || ''), `a waiting setting stays read-only and says why (${err?.message})`);
+  // the person switches to host mode themselves; the same day nothing runs again, a day later only the waiting ones do
+  m6.state.mode = 2;
+  const sentBefore = m6.sent.length;
+  await driver.connect(false);
+  check(!m6.sent.slice(sentBefore).some((s) => (s.b[2] & 0xf0) === 0x30 && s.b[1] === 7), 'the same day: not tried again');
+  clock += 25 * 60 * 60 * 1000;
+  await driver.connect(false);
+  vf = readVerified(folder);
+  check(vf.keys.dpi?.ok === true && vf.keys.reportRate?.ok === true && m6.state.mode === 2 && m6.state.dpi === 800, `a day later the waiting settings are checked and pass; the mode the person chose stays (${JSON.stringify(vf.keys.dpi)})`);
+  check(vf.keys.mode?.ok === true && vf.keys.mode.value === 'onboard', 'settings that passed keep their result (not written again)');
+  driver.vendorApp = async () => null;
+  fs.rmSync(folder, { recursive: true, force: true });
+}
+
 console.log(fails.length ? `sim-logitech: FAILED: ${fails.join('; ')}` : 'sim-logitech (Logitech HID++ mouse driver, simulated): all good');
 process.exit(fails.length ? 1 : 0);

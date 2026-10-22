@@ -107,5 +107,77 @@ for (const pid of PIDS) {
   ok(!(await make([board('1600')]).d.connect()), 'an id not in the table is not taken');
 }
 
-console.log(fails ? `sim-wooting: ${fails} FAILED` : 'sim-wooting (Wooting model, size and layout, read only): all good');
+// 4. key depth (wooting-analog-sdk device.rs): a second collection, listened to only; both report formats
+{
+  const { ANALOG, parseV1, parseV2, sdkBuffer } = await import('../device-library/wooting/device.mjs');
+  ok(JSON.stringify(shipped.hid.extra) === JSON.stringify([{ name: 'analog-v1', page: 'FF54', usage: '*', len: 256 }, { name: 'analog-v2', page: 'FF53', usage: '*', len: 256 }]),
+    `the driver asks for the two analog collections as extras, v1 (FF54) then v2 (FF53) (${JSON.stringify(shipped.hid.extra)})`);
+  ok(ANALOG[0].size === 48 && ANALOG[1].size === 64, 'the SDK buffer sizes: ANALOG_BUFFER_SIZE_V1 48, V2 64');
+  // v1: [code hi, code lo, value]; 0 values dropped; /255 capped at 1
+  const v1 = parseV1(Uint8Array.from([0x00, 0x04, 255, 0x00, 0x05, 0, 0x01, 0x02, 51]));
+  ok(v1.length === 2 && v1[0].code === 4 && v1[0].value === 1 && v1[1].code === 0x0102 && Math.abs(v1[1].value - 0.2) < 1e-9, `protocol 1 parse (${JSON.stringify(v1)})`);
+  ok(parseV1(new Uint8Array(60).fill(7)).length === 16, 'protocol 1 reads only the 48-byte SDK buffer (16 entries)');
+  // v2: [pos, key, packed, value]; row = pos >> 5 & 7, col = pos & 1F, actuated = bit 0, namespace = bits 2-5, value 10-bit
+  const pos = (2 << 5) | 9, packed = (3 << 6) | (1 << 2) | 1;
+  const v2 = parseV2(Uint8Array.from([pos, 0x1e, packed, 255, 0, 0x1f, 0, 0]));
+  ok(v2.length === 1 && v2[0].row === 2 && v2[0].col === 9 && v2[0].actuated && v2[0].code === 0x11e && v2[0].value === 1, `protocol 2 parse (${JSON.stringify(v2)})`);
+  const half = parseV2(Uint8Array.from([0, 4, 0, 128]))[0];
+  ok(Math.abs(half.value - 512 / 1023) < 1e-9 && !half.actuated, `protocol 2 value (128 << 2) / 1023 (${half.value})`);
+  ok(sdkBuffer({ reportId: 0, data: new DataView(Uint8Array.from([1, 2]).buffer) }).join() === '1,2' && sdkBuffer({ reportId: 3, data: new DataView(Uint8Array.from([1, 2]).buffer) }).join() === '3,1,2',
+    'hidapi\'s view: report id 0 dropped, any other id kept at byte 0');
+
+  // a board whose host offers extra channels; analogPage = the page that opens (null: none); reports = what READ hands back
+  const withAnalog = (pid, analogPage, reports) => {
+    const b = board(pid);
+    b.opens = []; b.reads = 0;
+    b.extraChannel = (name) => {
+      const e = shipped.hid.extra.find((x) => x.name === name);
+      let open = false;
+      return { name, get opened() { return open; },
+        async open() { b.opens.push(e.page); open = e.page === analogPage; return open; },
+        async receiveReports(ms) { b.reads++; if (!open) throw Object.assign(new Error('not open'), { gone: true }); return reports.splice(0); },
+        close() { open = false; } };   // no send of any kind: the real extraChannel has none either
+    };
+    return b;
+  };
+  const rep = (bytes) => ({ reportId: 0, data: new DataView(Uint8Array.from(bytes).buffer) });
+  {
+    const b = withAnalog('1310', 'FF53', [rep([0, 4, 0, 50]), rep([pos, 0x1e, packed, 255, 0, 5, 0, 64])]);
+    const { d } = make([b], { name: null });
+    await d.connect();
+    const k = await d.keyDepth();
+    ok(k && k.protocol === 2 && k.page === 'FF53' && k.keys.length === 2 && k.keys[0].row === 2 && k.keys[1].code === 5, `FF53 board: the last report's keys (${JSON.stringify(k)})`);
+    ok(b.opens.join() === 'FF54,FF53', `tried in the SDK's order, v1 then v2 (${b.opens})`);
+    const i = await d.info();
+    ok(/analog protocol 2 \(page FF53\): 0 keys pressed now/.test(i['Key depth'] || ''), `info names the key-depth channel (${i['Key depth']})`);
+    ok(b.opens.length === 2, 'the open channel is kept, not reopened');
+    ok(b.sets.every((x) => x === '0: d0 da 13 00 00 00 00') && b.bad.length === 0, `still only GetDeviceConfig on the config channel (${b.bad.join('; ')})`);
+  }
+  {
+    const b = withAnalog('1100', 'FF54', [rep([0, 4, 128])]);
+    const { d } = make([b], { name: null });
+    await d.connect();
+    const k = await d.keyDepth();
+    ok(k && k.protocol === 1 && k.keys.length === 1 && k.keys[0].code === 4 && Math.abs(k.keys[0].value - 128 / 255) < 1e-9, `FF54 board: protocol 1 (${JSON.stringify(k)})`);
+  }
+  {
+    const b = withAnalog('1400', null, []);
+    const { d } = make([b], { name: null });
+    await d.connect();
+    ok((await d.keyDepth()) === null && !('Key depth' in (await d.info())), 'no analog collection: keyDepth null, info without it');
+    const plain = board('1400');   // a host without extra channels (an older DeviceHub)
+    const p = make([plain], { name: null }); await p.d.connect();
+    ok((await p.d.keyDepth()) === null && (await p.d.info()).Layout === 'ISO', 'a host without extraChannel: keyDepth null, info unchanged');
+  }
+  {
+    const app = { name: null };
+    const b = withAnalog('1310', 'FF53', []);
+    const { d, tick } = make([b], app);
+    await d.connect();
+    app.name = 'Wootility.exe'; tick(20000);
+    ok(!(await attempt(() => d.keyDepth())).ok && b.opens.length === 0, 'steps back from key depth while Wootility runs (nothing opened)');
+  }
+}
+
+console.log(fails ? `sim-wooting: ${fails} FAILED` : 'sim-wooting (Wooting model, size, layout and key depth, read only): all good');
 process.exitCode = fails ? 1 : 0;

@@ -93,18 +93,17 @@ export const MODELS = [
   { pid: 0x1280, name: 'Arctis Pro GameDAC', line: 'a7old', noBattery: true },
 ];
 
-const READ_ONLY = 'Read-only: it is the ChatMix dial on the headset, which DeviceHub reads but cannot turn.';
+const READ_ONLY = 'The ChatMix dial on the headset. DeviceHub reads it; only the dial changes it.';
 
 // the settings the page shows. cmd: the command byte after the report id; check(v): the value is valid.
 //  sidetone: written AND read back, Nova 7 Gen 2 only.
-//  chatGame / chatChat: ChatMix, read only (the closest kind the page has is a slider; write() always refuses and the
-//  self-check skips them, so DeviceHub marks them read-only).
+//  chatGame / chatChat: ChatMix, a reading ('display', 22 Oct 2026): never written, and the self-check skips it.
 const DEFS = {
   sidetone: { label: 'Sidetone', type: 'slider', min: 0, max: 3, unit: '', hint: 'Hear your own voice, 4 levels (Arctis Nova 7 Gen 2: read back from the headset).',
     cmd: 0x39, check: (v) => int(v, 0, 3), cite: 'sheet s3 Sidetone / Nova 7: 00 39 <0-3>; read: Nova 7 Gen 2 (0x227E) only, 00 20, reply 20 ?? <0-3>' },
-  chatGame: { label: 'ChatMix: game', type: 'slider', min: 0, max: 100, unit: '%', hint: READ_ONLY, selfCheck: false, readOnly: true,
+  chatGame: { label: 'ChatMix: game', type: 'display', unit: '%', hint: READ_ONLY,
     cite: 'sheet s3 ChatMix: Nova 7 / 7+ status bytes 4-5 (0-100), Arctis 9 00 20 bytes 9-10 (0-19), Arctis 7 2017-19 06 24 bytes 2-3 (191-255, 0 = full)' },
-  chatChat: { label: 'ChatMix: chat', type: 'slider', min: 0, max: 100, unit: '%', hint: READ_ONLY, selfCheck: false, readOnly: true,
+  chatChat: { label: 'ChatMix: chat', type: 'display', unit: '%', hint: READ_ONLY,
     cite: 'same rows as ChatMix: game' },
 };
 function int(v, lo, hi) { return Number.isInteger(v) && v >= lo && v <= hi; }
@@ -313,7 +312,7 @@ export default {
     this.need();
     const d = DEFS[key];
     if (!d) throw new Error(`${key} is not a setting of this driver`);
-    if (d.readOnly) throw new Error(`${d.label} is read-only (the ChatMix dial is on the headset)`);
+    if (d.type === 'display') throw new Error(`${d.label} is read-only (the ChatMix dial is on the headset)`);
     if (!this.keys().includes(key)) throw new Error(`${key} is not a setting of the ${this.model.name}: the headset cannot report it back, so DeviceHub does not write it`);
     if (!d.check(value)) throw new Error(`${value} is not a valid ${d.label.toLowerCase()} for the ${this.model.name}`);
     const app = await this.vendorApp();

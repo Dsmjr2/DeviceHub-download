@@ -21,7 +21,8 @@
 //    failed their read-back check
 //  - the battery when last read: low, or charging
 // Actions: { kind: 'settings', page } (a Windows Settings page from a fixed list), { kind: 'retry' } (connect again),
-// { kind: 'close-app', app } (the maker's app, after a confirm), { kind: 'open-folder' } (DeviceHub's folder).
+// { kind: 'close-app', app } (the maker's app, after a confirm), { kind: 'open-folder' } (DeviceHub's folder),
+// { kind: 'check-again', id } (a library driver's self-check again now, for the settings that failed or wait).
 //
 // GET /api/diagnose?id=<device> answers { id, title, status, at, ms, findings, checked }; POST /api/diagnose/action
 // { kind, id?, page?, app?, confirm? }. server.js passes both to handle() (docs/handoff/diagnose.md).
@@ -230,12 +231,15 @@ export function analyze(f) {
   if (f.library) {
     checked.push('its driver from the device library');
     const ro = f.library.readOnly || [];
+    const again = { kind: 'check-again', label: 'Check again' };
     if (ro.length) {
-      const failed = ro.filter((r) => r.failed);
+      const failed = ro.filter((r) => r.failed), waiting = ro.filter((r) => r.waiting);
       add(60, 'read-only', `${ro.length === 1 ? 'One setting is' : `${ro.length} settings are`} read-only`,
         failed.length ? `${failed.map((r) => r.label).join(', ')} did not pass DeviceHub's own check (write the same value, read it back): ${failed[0].why}.`
+          : waiting.length ? `${waiting.map((r) => r.label).join(', ')} could not be checked yet: ${waiting[0].why}.`
           : `This driver came from the shared device library marked "${f.library.status}"; ${ro.map((r) => r.label).join(', ')} stay read-only until each passes DeviceHub's check, which runs the first time it connects.`,
-        failed.length ? "They stay read-only to keep the device safe; the maker's app can still change them." : 'Connect the device; the check runs by itself.', failed.length ? null : retry);
+        failed.length ? "They stay read-only to keep the device safe. DeviceHub tries again once a day when it connects; press Check again to try now." : waiting.length ? 'Fix that, then press Check again. DeviceHub also tries again by itself when the device connects.' : 'Connect the device; the check runs by itself.',
+        notConnected ? retry : (failed.length || waiting.length) ? again : retry);
     }
   }
   // btn0 (left click) is never written (mouse-adapter.js), so its lock changes nothing
@@ -302,6 +306,7 @@ function libraryFacts(snap) {
   const readOnly = (snap.adapter.settings || []).flatMap((st) => {
     const k = v.keys?.[st.key];
     if (k && k.ok === false) return [{ label: st.label, why: k.why || 'it read back differently', failed: true }];
+    if (k && k.waiting) return [{ label: st.label, why: k.why || 'waiting', waiting: true }];
     if (mark.status !== 'tested' && !(k && k.ok)) return [{ label: st.label, why: 'not checked yet' }];
     return [];
   });
@@ -397,6 +402,13 @@ export async function action(b, { port = PORT } = {}) {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || r.statusText);
     return { ok: true, status: j.status };
+  }
+  if (kind === 'check-again') {
+    // the person pressed Check again: the agent runs the library self-check (helpers/my-devices.mjs recheck)
+    const r = await fetch(`http://127.0.0.1:${port}/api/agent/recheck`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: String(b.id || '') }), signal: AbortSignal.timeout(120000) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || r.statusText);
+    return { ok: true, ran: !!j.ran, why: j.why || null, waiting: !!j.waiting };
   }
   if (kind === 'close-app') {
     // the person pressed Close, then confirmed: only then, and only a known maker's app

@@ -71,9 +71,9 @@ the sheet. A probe (`A7 01`) reads the board's feature bits, and each setting is
 - **Per-key lighting:** documented, but no command reads a colour back, so a write could never be checked. OpenRGB
   drives it.
 - **Actuation, rapid trigger, tachyon:** no setter in any source.
-- **Key depth:** documented (analog SDK, `FF54` / `FF53` input reports), but it lives on a second collection. A
-  driver gets one collection per product id, and the settings page has no live view. Doing it needs either a second
-  channel per pid in `helpers/my-devices.mjs` / `hid-host.mjs`, or a separate entry on the analog page.
+- **Key depth:** now read, as one info line ("Key depth: ... keys pressed now"). The analog SDK's `FF54` / `FF53`
+  collection is opened as a second, listen-only channel (`hid.extra` and `extraChannel()` in `helpers/hid-host.mjs`,
+  22 Oct 2026); nothing is sent on it. Still missing: a live view on the settings page.
 - **Profiles:** community protocol only.
 - The original `03EB` boards.
 - Boards that expose only `FF55` (v3 frame).
@@ -116,9 +116,11 @@ seen working".
 - Stealth Pro II: its request bytes are only in a capture.
 - Stealth 600 Gen 3, Stealth 700 G2 and older headsets.
 
-**Unconfirmed:** the source reads replies with GET_REPORT (`HidD_GetInputReport`), which the helper does not have.
-This driver reads input reports as they arrive. If the transmitter only answers GET_REPORT, the read says "no GSI
-record" and nothing else is sent. Adding an input-report GET to the helper is the fix if that happens.
+**Unconfirmed:** the source reads replies with GET_REPORT (`HidD_GetInputReport`). The helper has it now
+(`getInputReport()` in `helpers/hid-host.mjs`, helper command `IGET`, 22 Oct 2026, only on a channel that asks for
+`hid.inputReports`). This driver reads input reports as they arrive and asks with `getInputReport()` when none came;
+on an older DeviceHub without it, the read says "no GSI record" and nothing else is sent. Not yet run on a real
+transmitter.
 
 ## glorious (`device.mjs`, Mouse, 258A, READ ONLY, id `glorious-mouse`)
 

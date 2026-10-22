@@ -8,7 +8,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { load, loadNew, selfCheck, writeAllowed } from '../helpers/my-devices.mjs';
+import { pathToFileURL } from 'node:url';
+import { load, loadNew, selfCheck, writeAllowed, guard, readVerified } from '../helpers/my-devices.mjs';
 import { run, summary, dismiss, asText, readSetup } from '../helpers/auto-setup.mjs';
 
 const fails = [];
@@ -25,7 +26,7 @@ export default { id: '${id}', title: 'Pretend ${id}', kind: 'Mouse', hid: { vid:
     { key: 'profile', label: 'Profile', type: 'slider', min: 1, max: 5, selfCheck: false }],
   async connect() { return true; }, async info() { return { Model: 'Pretend', Firmware: st.fw }; },
   async read() { st.reads++; return { ...st.values }; },
-  async write(k, v) { st.writes.push({ k, v, before: st.values[k] }); if (st.failWrite[k]) throw new Error('the device refused it'); st.values[k] = k in st.drift ? st.drift[k] : v; return st.values[k]; } ${extra} };\n`;
+  async write(k, v) { st.writes.push({ k, v, before: st.values[k] }); if (st.failWrite[k]) throw new Error('the device refused it'); if (st.waitWrite?.[k]) throw Object.assign(new Error('the device is in its onboard mode'), { waiting: true }); st.values[k] = k in st.drift ? st.drift[k] : v; return st.values[k]; } ${extra} };\n`;
 const REAL = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..');
 fs.mkdirSync(path.join(root, 'docs'), { recursive: true });
 fs.copyFileSync(path.join(REAL, 'docs', 'brands.json'), path.join(root, 'docs', 'brands.json'));
@@ -101,6 +102,70 @@ await reg['no-backup'].connect();
 check(st('no-backup').writes.length === 0 && logs.some((l) => l.id === 'no-backup' && /not run: no backup/.test(l.t)), 'no backup = nothing written, and it says so');
 backupFails = false;
 
+// ---------- trying again (22 Oct 2026, docs/handoff/setup-gaps.md): waiting vs failed, once a day, after an update,
+// a moved value only on Check again, never while the maker's app is open ----------
+{
+  put('my-devices/again-mouse/device.mjs', driver('again-mouse', { extra: `, async vendorApp() { return st.app || null; }` }));
+  const folder = path.join(root, 'my-devices', 'again-mouse');
+  const a = (await import(pathToFileURL(path.join(folder, 'device.mjs')).href)).default;
+  const s = st('again-mouse');
+  let clock = Date.parse('2026-10-22T10:00:00Z'), version = 'v1';
+  const taken = [];
+  guard(a, folder, { status: 'read-only', source: 'device-library/again-mouse' }, { backup: async (b) => taken.push(b), log() {}, now: () => new Date(clock), get version() { return version; } });
+  // the maker's app open: nothing written, nothing kept, tried on the next connect
+  s.app = 'AcmeHub.exe';
+  await a.connect();
+  check(s.writes.length === 0 && taken.length === 0 && !fs.existsSync(path.join(folder, 'verified.json')), "the maker's app open: the self-check writes nothing and keeps nothing");
+  s.app = null;
+  // lights refuses only because of the device's mode (waiting); Effect is refused outright (failed); DPI passes
+  s.waitWrite = { lights: true }; s.failWrite = { mode: true };
+  await a.connect();
+  let v = readVerified(folder);
+  check(v.keys.dpi?.ok && v.keys.lights?.waiting && v.keys.lights.ran === false && v.keys.mode?.ok === false && !v.keys.mode.waiting && v.keys.profile?.skip, `waiting is kept apart from failed (${JSON.stringify(v.keys)})`);
+  check(v.devicehub === 'v1' && v.keys.lights.at === '2026-10-22T10:00:00.000Z', 'each setting records when it was checked, and the DeviceHub version');
+  let err = null; try { await a.write('lights', false); } catch (e) { err = e.message; }
+  check(/waiting/.test(err || ''), `a waiting setting stays read-only and says so (${err})`);
+  check(/waiting/.test(a.settings.find((x) => x.key === 'lights').hint || ''), 'its page hint says it is waiting');
+  // the same day: nothing again; a day later: only the failed and waiting ones are written
+  let n = s.writes.length;
+  await a.connect();
+  check(s.writes.length === n, 'the same day: not tried again');
+  s.waitWrite = {}; s.failWrite = {};
+  clock += 25 * 60 * 60 * 1000;
+  await a.connect();
+  v = readVerified(folder);
+  let tried = s.writes.slice(n).map((w) => w.k).sort().join();
+  check(tried === 'lights,mode' && v.keys.lights?.ok && v.keys.mode?.ok && v.keys.dpi?.ok, `a day later only the failed and waiting settings are tried, and pass (${tried})`);
+  check(s.writes.slice(n).every((w) => w.v === w.before), 'every retry writes the value just read');
+  // after a DeviceHub update a failed setting is tried at once, without the daily wait
+  s.fw = '2.0'; s.failWrite = { lights: true };
+  await a.connect();                     // firmware changed: a full check; lights fails
+  s.failWrite = {};
+  n = s.writes.length;
+  clock += 60 * 1000;
+  await a.connect();
+  check(s.writes.length === n, 'a minute later, same version: not tried');
+  version = 'v2';
+  await a.connect();
+  check(s.writes.slice(n).map((w) => w.k).join() === 'lights' && readVerified(folder).keys.lights?.ok, 'after a DeviceHub update the failed setting is tried at once and passes');
+  // a value that moved: never tried again by itself, only on Check again
+  s.fw = '3.0'; s.drift.dpi = 999;
+  await a.connect();
+  delete s.drift.dpi; s.values.dpi = 1200;
+  v = readVerified(folder);
+  check(v.keys.dpi?.ok === false && v.keys.dpi.readBack === 999, `a moved value fails (${JSON.stringify(v.keys.dpi)})`);
+  n = s.writes.length;
+  clock += 3 * 24 * 60 * 60 * 1000; version = 'v3';
+  await a.connect();
+  check(!s.writes.slice(n).some((w) => w.k === 'dpi'), 'a moved value is not tried again by itself, not after a day nor an update');
+  const r = await a.recheck();
+  v = readVerified(folder);
+  check(r.ran && v.keys.dpi?.ok && s.writes.slice(n).filter((w) => w.k === 'dpi').length === 1, `Check again tries it now (${JSON.stringify(v.keys.dpi)})`);
+  check((await a.recheck()).ran === false, 'Check again with nothing left to check says so, and writes nothing');
+  s.app = 'AcmeHub.exe'; s.failWrite = { lights: true };
+  check(/AcmeHub\.exe/.test((await selfCheck(a, async () => 1, { backup: async () => {} })).why || ''), "selfCheck itself refuses while the maker's app is open");
+  s.app = null;
+}
 // ---------- auto setup ----------
 const entry = (name, status, pids, id = name) => {
   put(`device-library/${name}/device.mjs`, driver(id, { pid: pids[0] }));
@@ -152,6 +217,28 @@ check(!summary({ root, sources: { agent, usb, eqapo: false } }).show || summary(
 check(!summary({ root, sources: { agent, usb, via: [{ vid: '342D', pid: 'E479', name: 'P75' }], eqapo: false } }).show, 'dismissed: the card stays hidden while nothing new is said');
 s = summary({ root, sources: { agent, usb: [...usb, { vid: '1532', pid: '0099', name: 'Razer thing' }], via: [{ vid: '342D', pid: 'E479', name: 'P75' }] } });
 check(s.show, 'something new shows it again');
+// an untested entry: an Install button the Set up card shows (never a POST for the person to type)
+const s1 = summary({ root, sources: { agent, usb } });
+const un = s1.learn.find((x) => x.name === 'acme-untested');
+check(un?.action?.kind === 'library-install' && un.action.name === 'acme-untested' && un.action.label && !/POST|CLAUDE\.md/.test(un.line), `an untested library entry gets an Install button, in plain words (${JSON.stringify(un)})`);
+check(!s1.learn.some((x) => /POST \/api/.test(x.line)), 'no item tells the person to send a POST');
+// a VIA keyboard counts as running: its library driver is offered under Optional, never as still to do
+entry('acme-via', 'untested', ['aa0b']);
+const viaUsb = [...usb, { vid: '1234', pid: 'aa0b', name: 'Acme VIA board' }];
+const sv = summary({ root, sources: { agent, usb: viaUsb, via: [{ vid: '1234', pid: 'AA0B', name: 'Acme VIA board' }] } });
+check(!sv.learn.some((x) => x.name === 'acme-via' || x.usb === '1234:aa0b') && sv.optional.some((x) => x.name === 'acme-via' && x.action?.kind === 'library-install') && sv.works.some((x) => x.what === 'via' && /Acme VIA/.test(x.line)),
+  `a VIA keyboard runs; its library driver is optional (${JSON.stringify(sv.optional.filter((x) => x.name))})`);
+// installing an untested entry: only on the person's click (installFromLibrary untested: true); loaded guarded
+const { installFromLibrary } = await import('../helpers/device-library.mjs');
+check(!(await installFromLibrary('acme-via', { root, readOnly: true })).ok, 'without the click an untested entry does not install');
+const ui = await installFromLibrary('acme-via', { root, readOnly: true, untested: true });
+check(ui.ok && json('my-devices/acme-via/library.json').status === 'untested', `the click installs it, marked untested (${ui.error})`);
+const regV = {};
+await load(root, { register: (x) => { regV[x.id] = x; }, addSpec() {}, taken: (id) => !!regV[id], selfCheck: deps });
+err = null; try { await regV['acme-via'].write('dpi', 900); } catch (e) { err = e.message; }
+check(/read-only/.test(err || '') && st('acme-via').writes.length === 0, `an untested driver writes nothing until its check passes (${err})`);
+r = await run({ root, usb: viaUsb, load: async () => [] });
+check(!r.lastRun.installed.length, 'auto setup still never installs an untested entry by itself');
 
 // a PC like Shawn's: everything built in, nothing installed, only Bluetooth adapters unknown: nothing to say
 const shawn = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-autosetup-shawn-'));

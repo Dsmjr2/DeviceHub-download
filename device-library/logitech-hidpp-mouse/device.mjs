@@ -103,9 +103,9 @@ const settings = [
   // range and step are replaced by the mouse's own list at connect (0x2201 fn 0x10); these only satisfy the loader
   { key: 'dpi', label: 'DPI', type: 'slider', min: 100, max: 25600, step: 50, unit: 'DPI', hint: 'Range from the mouse itself.' },
   { key: 'reportRate', label: 'Report rate', type: 'choice', options: [{ value: 1000, label: '1000 Hz' }], hint: 'Only the rates the mouse lists.' },
-  // sheet section 4 "Risky writes": the host switch's own warning, as the label says
-  // selfCheck: false: the library self-check never writes it (a switch to host mode changes how the mouse behaves)
-  { key: 'mode', label: 'Settings source', type: 'choice', selfCheck: false, hint: 'Host mode: settings stop persisting; the mouse falls back to onboard on re-plug, so its own stored settings come back.',
+  // sheet section 4 "Risky writes": the host switch's own warning, as the label says. The library self-check writes
+  // only the mode it just read (onboard stays onboard, host stays host), so it never switches the mouse.
+  { key: 'mode', label: 'Settings source', type: 'choice', hint: 'Host mode: settings stop persisting; the mouse falls back to onboard on re-plug, so its own stored settings come back.',
     options: [{ value: 'onboard', label: 'Onboard (the profiles stored in the mouse)' }, { value: 'host', label: 'Host (DeviceHub sets them live; not kept on re-plug)' }] },
   // only reported (and so only shown) when the mouse has 0x2202 with its LOD capability bit
   { key: 'liftOff', label: 'Lift-off distance', type: 'choice', hint: 'Host mode only, like DPI.',
@@ -352,12 +352,14 @@ const adapter = {
   async write(key, value) {
     if (!this.chan) throw new Error('the mouse is not connected');
     if (!settings.some((s) => s.key === key)) throw new Error(`${key} is not a setting`);
+    // waiting: true = refused only because of how things are right now (helpers/my-devices.mjs isWaiting): the library
+    // self-check records it as waiting and tries again later, instead of failing it
     const app = await this.vendorApp();
-    if (app) throw new Error(`${app} (G HUB) is running: close it first (two programs writing the mouse fight)`);
+    if (app) throw Object.assign(new Error(`${app} (G HUB) is running: close it first (two programs writing the mouse fight)`), { waiting: true });
     let back;
     if (key === 'dpi' || key === 'reportRate' || key === 'liftOff') {
       const mode = await this.readMode();
-      if (mode === 'onboard') throw new Error('the mouse is using its onboard profiles: set Settings source to Host first (DPI, report rate and lift-off are only changed live in host mode)');
+      if (mode === 'onboard') throw Object.assign(new Error('the mouse is using its onboard profiles: set Settings source to Host first (DPI, report rate and lift-off are only changed live in host mode)'), { waiting: true });
     }
     if (key === 'dpi') {
       const c = this.caps.dpi;

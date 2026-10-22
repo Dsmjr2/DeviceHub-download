@@ -11,6 +11,7 @@ import { EFFECTS } from '../devices/keycodes.js';
 import { meter, micState, dots, signal, colorDot } from '../ui/gauges.js';
 import { toast } from '../ui/overlay.js';
 import { loadPc, otherDevices, pcLoaded, copyPrompt } from './pc-lights.js';
+import { learnThis } from './learn.js';
 import { LIFT_OFF } from '../devices/pulsar.js';
 
 let profiles = null;
@@ -52,7 +53,8 @@ function readouts(d, redraw) {
   return [];
 }
 
-// A PC with none of the supported devices (yet): what DeviceHub supports, and how to add your own (ADD-YOUR-DEVICES.md).
+// A PC with none of the supported devices (yet): the shared library sets known ones up by itself; Learn a device for
+// the rest (ADD-YOUR-DEVICES.md for doing it with Claude Code).
 // While the window has just opened it only says it is looking, so a PC that has them never flashes this.
 function firstRun(go, redraw) {
   // the first seconds: the three device tiles as faint generic drawings with a light sweeping over them, marked Looking, and
@@ -68,20 +70,22 @@ function firstRun(go, redraw) {
         h('div', { class: 'readouts' }, skeleton([80, 64, 72])))));
   }
   return h('div', { class: 'panel first-run' },
-    h('h2', {}, 'None of your devices are supported yet'),
-    h('p', {}, 'DeviceHub knows the Pulsar X-Lite CrazyLight, the Corsair HS80 RGB Wireless and the Epomaker P75. Plug one in and it shows up here.'),
-    h('p', {}, 'To add your own mouse, headset or keyboard, open this folder in Claude Code and follow ADD-YOUR-DEVICES.md.'),
+    h('h2', {}, 'None of your devices are set up yet'),
+    h('p', {}, 'DeviceHub sets up known devices by itself: when a device is in its shared library, its driver is installed and it shows up here. Sound, monitors, webcams and most VIA keyboards need no setup.'),
+    h('p', {}, 'For any other mouse, headset or keyboard, Learn a device walks you through it: DeviceHub listens while you change one setting at a time in the maker\'s app.'),
     // devices on this PC from a known brand, each with a ready prompt for Claude Code (the brand guide, docs/BRANDS.md)
     (() => {
       if (!pcLoaded()) { loadPc(false, redraw); return null; }
       const found = otherDevices();
       return found.length ? h('div', { class: 'first-found' }, h('h3', {}, 'Found on this PC'),
         ...found.map((u) => h('div', { class: 'pc-other' }, h('div', { class: 'grow' }, h('b', {}, u.name || `${u.brand.name} device`), h('small', { class: 'faint' }, ` ${u.brand.shared ? u.brand.name : u.brand.name + ' · ' + u.brand.category} · USB ${u.id}`)),
+          button('Learn it', () => { learnThis(u.vid, u.pid); go('learn'); }, { kind: 'ghost small', ic: 'plug' }),
           button('Copy a prompt for Claude', () => copyPrompt(u), { kind: 'ghost small' })))) : null;
     })(),
     h('div', { class: 'actions' },
-      button('Open folder', () => fetch('/api/reveal', { method: 'POST' }), { kind: 'primary small', ic: 'external' }),
-      button('Monitors', () => go('monitors'), { kind: 'ghost small', ic: 'monitor' })));
+      button('Learn a device', () => go('learn'), { kind: 'primary small', ic: 'plug' }),
+      button('Monitors', () => go('monitors'), { kind: 'ghost small', ic: 'monitor' }),
+      button('Open folder', () => fetch('/api/reveal', { method: 'POST' }), { kind: 'ghost small', ic: 'external' })));
 }
 
 // The Set up card (22 Oct 2026; helpers/auto-setup.mjs, GET /api/setup): on a PC where DeviceHub installed something
@@ -89,12 +93,36 @@ function firstRun(go, redraw) {
 // what still needs a learning session. Shown only when /api/setup says show (never on a PC where everything is built
 // in); Dismiss hides it until the summary says something new (kept in setup.json).
 let setupInfo = null, setupAsked = false, setupHidden = false;
+const setupNote = {};   // an item's button: what it answered, by library entry name or device id
 function setupCard(redraw) {
   if (isDemo() || setupHidden) return null;
   if (!setupAsked) { setupAsked = true; fetch('/api/setup').then((r) => (r.ok ? r.json() : null)).then((j) => { setupInfo = j; if (j?.show) redraw(); }).catch(() => {}); }
   const s = setupInfo;
   if (!s?.show) return null;
-  const part = (title, items) => (items?.length ? h('div', { class: 'setup-part' }, h('h3', {}, title), h('ul', { style: { margin: '4px 0 10px', paddingLeft: '18px' } }, ...items.map((i) => h('li', {}, i.line)))) : null);
+  // an item's own button (helpers/auto-setup.mjs summary): install a library driver, or run its check again. The
+  // answer shows on the item's line; nothing pops up.
+  const act = async (i) => {
+    const a = i.action;
+    setupNote[a.name || a.id] = a.kind === 'library-install' ? 'Installing…' : 'Checking…'; redraw();
+    try {
+      const r = a.kind === 'library-install'
+        ? await fetch('/api/library/install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: a.name }) })
+        : await fetch('/api/diagnose/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'check-again', id: a.id }) });
+      const j = await r.json().catch(() => ({}));
+      setupNote[a.name || a.id] = !r.ok || j.error ? `Not done: ${j.error || r.statusText}`
+        : a.kind === 'library-install' ? (j.loaded ? 'Installed. It is read-only until each setting passes its check, which runs when it connects.' : 'Installed. Restart DeviceHub to load it.')
+        : j.ran ? 'Checked again.' : `Not checked: ${j.why}`;
+    } catch (e) { setupNote[a.name || a.id] = `Not done: ${e.message}`; }
+    redraw();
+  };
+  const itemOf = (i) => {
+    const a = i.action, note = a ? setupNote[a.name || a.id] : null;
+    if (!a || !['library-install', 'check-again'].includes(a.kind)) return h('li', {}, i.line);
+    return h('li', {}, i.line, h('div', { class: 'actions', style: { margin: '4px 0 6px', justifyContent: 'flex-start', alignItems: 'center' } },
+      /^Installed/.test(note || '') ? null : button(a.label || (a.kind === 'library-install' ? 'Install' : 'Check again'), () => act(i), { kind: 'ghost small', ic: a.kind === 'library-install' ? 'plug' : 'search' }),
+      note ? h('small', { class: 'faint' }, note) : null));
+  };
+  const part = (title, items) => (items?.length ? h('div', { class: 'setup-part' }, h('h3', {}, title), h('ul', { style: { margin: '4px 0 10px', paddingLeft: '18px' } }, ...items.map(itemOf))) : null);
   const dismiss = () => { setupHidden = true; redraw(); fetch('/api/setup/dismiss', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ signature: s.signature }) }).catch(() => {}); };
   return h('div', { class: 'panel setup-card', style: { marginBottom: '16px' } },
     h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } }, h('h2', { style: { margin: 0 } }, 'Set up'), h('span', { class: 'spacer', style: { flex: 1 } }), button('Dismiss', dismiss, { kind: 'ghost small' })),

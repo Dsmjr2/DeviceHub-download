@@ -9,7 +9,10 @@
 //                                   loads it at once (my-devices.mjs loadNew) or says to restart. Records what it did
 //                                   in setup.json (library names, statuses, USB ids, dates: nothing personal).
 //   summary({ root, sources })      what was found and installed, what works now, what is optional and what still needs
-//                                   a learning session, one plain line each (GET /api/setup, helpers/setup-report.mjs)
+//                                   a learning session, one plain line each (GET /api/setup, helpers/setup-report.mjs).
+//                                   An item may carry action: { kind: 'library-install', name, label } (the Set up card's
+//                                   Install button: POST /api/library/install) or { kind: 'check-again', id, label }
+//                                   (a library driver's self-check again: POST /api/diagnose/action)
 //
 // It installs drivers only (copies into my-devices\); it never writes to a device. A read-only driver writes nothing
 // until each setting passes its self-check (helpers/my-devices.mjs). Off: settings.json "autoSetup": false, or
@@ -123,8 +126,9 @@ export function libraryDrivers(root = ROOT, adapters = {}) {
     const keys = a?.settings?.map((s) => [s.key, s.label]) || Object.keys(v.keys || {}).map((k) => [k, k]);
     const ok = keys.filter(([k]) => v.keys?.[k]?.ok === true).map(([, l]) => l);
     const failed = keys.filter(([k]) => v.keys?.[k]?.ok === false).map(([k, l]) => ({ key: k, label: l, why: v.keys[k].why }));
+    const waiting = keys.filter(([k]) => v.keys?.[k]?.waiting).map(([k, l]) => ({ key: k, label: l, why: v.keys[k].why }));
     const unchecked = keys.filter(([k]) => !v.keys?.[k]).map(([, l]) => l);
-    out.push({ name, id: mark.id, status: mark.status, source: mark.source, title: a?.title || (meta.vendor ? `${meta.vendor} ${meta.product}` : name), checkedAt: v.checkedAt || null, firmware: v.firmware || null, verified: ok, failed, unchecked, deviceStatus: a?.status || null });
+    out.push({ name, id: mark.id, status: mark.status, source: mark.source, title: a?.title || (meta.vendor ? `${meta.vendor} ${meta.product}` : name), checkedAt: v.checkedAt || null, firmware: v.firmware || null, verified: ok, failed, waiting, unchecked, deviceStatus: a?.status || null });
   }
   return out;
 }
@@ -146,6 +150,7 @@ export function summary({ root = ROOT, sources = {} } = {}) {
     works.push({ what: d.id, line: `${d.adapter?.title || d.id}${model}: runs on its ${d.adapter?.kind || d.id} page${d.status === 'connected' ? '' : ` (${d.status} now)`}` });
   }
   const ran = new Set((sources.usb || []).filter((u) => u.runs).map(idOf));
+  const via = new Set((sources.via || []).map(idOf));   // a VIA keyboard runs on the Keyboard page: never "still to do"
   for (const k of (sources.via || []).filter((x) => !ran.has(idOf(x)))) works.push({ what: 'via', line: `${k.name || `${k.vid}:${k.pid}`}: a VIA keyboard, its keys and lights work with no setup (Keyboard page)` });
   const mons = (sources.monitors || []).filter((m) => m.ddc);
   if (mons.length) works.push({ what: 'monitors', line: `${plural(mons.length, 'monitor')} over DDC/CI: ${mons.map((m) => m.name || m.model).join(', ')} (Monitors page)` });
@@ -158,25 +163,35 @@ export function summary({ root = ROOT, sources = {} } = {}) {
   // library drivers
   for (const l of libraryDrivers(root, adapters)) {
     const ro = [...l.failed.map((f) => `${f.label} (${f.why})`), ...(l.status === 'tested' ? [] : l.unchecked)];
+    const wait = l.waiting.map((w) => `${w.label} (${w.why})`);
     const state = !l.checkedAt ? (l.status === 'tested' ? 'its settings change normally; its self-check runs when it connects' : 'read-only until it connects and its self-check runs')
-      : `verified: ${l.verified.length ? l.verified.join(', ') : 'none'}${ro.length ? `; read-only: ${ro.join('; ')}` : ''}`;
+      : `verified: ${l.verified.length ? l.verified.join(', ') : 'none'}${ro.length ? `; read-only: ${ro.join('; ')}` : ''}${wait.length ? `; waiting, tried again later: ${wait.join('; ')}` : ''}`;
     const item = { what: 'library', name: l.name, line: `${l.title}: library driver (${l.status}), ${state}` };
+    if (l.checkedAt && (l.failed.length || l.waiting.length) && l.deviceStatus === 'connected') item.action = { kind: 'check-again', id: l.id, label: `Check ${l.title} again` };
     works.push(item);
-    if (!l.checkedAt || l.failed.length || (l.status !== 'tested' && l.unchecked.length)) attention.push(item.line);
+    if (!l.checkedAt || l.failed.length || l.waiting.length || (l.status !== 'tested' && l.unchecked.length)) attention.push(item.line);
   }
   // what auto setup installed (until dismissed)
   for (const x of setup.installed || []) installed.push({ what: 'installed', name: x.name, line: `${x.product}: installed from the device library on ${String(x.at).slice(0, 10)} (${x.status})` });
   if (installed.length) attention.push(...installed.map((x) => x.line));
-  // library entries for this PC's devices that did not install by themselves ("untested", or one removed by the person)
+  // library entries for this PC's devices that did not install by themselves ("untested", or one removed by the
+  // person): each with an Install button (the person's click installs it, read-only until each setting passes its check)
   let matches = [];
-  try { matches = match(sources.usb || [], { root, readOnly: true }); } catch {}
+  try { matches = match(sources.usb || [], { root, readOnly: true, untested: true }); } catch {}
   const runs = new Set((sources.usb || []).filter((u) => u.runs).map(idOf));
   for (const m of matches) {
     if (m.installed || m.matched.every((u) => runs.has(idOf(u)))) continue;
-    const line = m.installable
-      ? `${product(m.meta)}: a library driver (${m.meta.status}) is there for it but not installed (removed earlier, or auto setup is off): POST /api/library/install {"name":"${m.name}"} to add it`
-      : `${product(m.meta)}: a library driver exists but is "${m.meta.status}", so it was not installed by itself: install it by hand and prove it (CLAUDE.md "Adding your own devices" step 6)`;
-    learn.push({ what: 'library-untested', name: m.name, line }); attention.push(line);
+    // a VIA keyboard already runs (keys and lights): a library driver for it only adds the maker's extra settings,
+    // so it is offered under Optional, never as still to do
+    if (m.matched.every((u) => runs.has(idOf(u)) || via.has(idOf(u)))) {
+      optional.push({ what: 'library-extra', name: m.name, line: `${product(m.meta)}: it already works as a VIA keyboard; a library driver adds the maker's own settings (${m.meta.status}, read-only until each passes DeviceHub's check)`, ...(m.installable ? { action: { kind: 'library-install', name: m.name, label: `Install the ${m.meta.vendor} driver` } } : {}) });
+      continue;
+    }
+    const line = m.meta.status === 'untested'
+      ? `${product(m.meta)}: a library driver is there for it, written from the maker's protocol but not yet run on a real device. Install adds it read-only; each setting opens only once it passes DeviceHub's check`
+      : `${product(m.meta)}: a library driver (${m.meta.status}) is there for it but not installed (removed earlier, or auto setup is off). Install adds it${m.meta.status === 'tested' ? '' : ' read-only until each setting passes its check'}`;
+    const action = m.installable ? { kind: 'library-install', name: m.name, label: `Install the ${m.meta.vendor} driver` } : null;
+    learn.push({ what: m.meta.status === 'untested' ? 'library-untested' : 'library-install', name: m.name, line, ...(action ? { action } : {}) }); attention.push(line);
   }
   // devices from a known brand that nothing runs yet
   const brands = brandsByVid(root);
@@ -185,7 +200,7 @@ export function summary({ root = ROOT, sources = {} } = {}) {
   const learned = new Set();
   for (const u of sources.usb || []) {
     const id = idOf(u), b = brands[hex4(u.vid)];
-    if (u.runs || covered.has(id) || !b || learned.has(id) || NOT_A_DEVICE.test(u.name || '')) continue;
+    if (u.runs || via.has(id) || covered.has(id) || !b || learned.has(id) || NOT_A_DEVICE.test(u.name || '')) continue;
     learned.add(id);
     const sheet = sheetFor(root, b.name);
     const line = `${u.name || `${b.name} device`} (USB ${id}${b.shared ? ', the vendor id is a chip maker\'s: unconfirmed' : ''}): no driver yet; ${sheet ? `start from ${sheet}, then ` : ''}a learning session in the maker's app`;
@@ -220,7 +235,7 @@ export function asText(s) {
   const sec = (title, items) => { if (items.length) { out.push(title); for (const i of items) out.push(`  - ${i.line}`); } };
   sec('Installed by DeviceHub\'s auto setup:', s.installed);
   sec('Works now:', s.works);
-  sec('Still to do (learning, or a library driver to prove):', s.learn);
+  sec('Still to do (learning, or a library driver to install):', s.learn);
   sec('Optional:', s.optional);
   if (!out.length) out.push('Nothing found to report.');
   out.push(s.learn.length ? `Next: follow CLAUDE.md "Adding your own devices" for the ${plural(s.learn.length, 'item')} under "Still to do", in that order.` : 'Next: nothing to set up. Run the checks (npm test) if anything was installed.');

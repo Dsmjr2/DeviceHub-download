@@ -212,7 +212,7 @@ function adapterMeta(d) {
   const a = d.adapter;
   const meta = { id: a.id, title: a.title, kind: a.kind, vendor: a.vendor, unsupported: a.unsupported, autoReconnect: true, pollRead: !!a.pollRead, hasLighting: !!a.hasLighting?.() };
   // a device added in my-devices/: its page is drawn from its settings list (public/pages/my-device.js)
-  if (a.plugin) Object.assign(meta, { plugin: a.plugin, settings: a.settings, battery: typeof a.battery === 'function' });
+  if (a.plugin) Object.assign(meta, { plugin: a.plugin, settings: a.settings, battery: typeof a.battery === 'function', ...(a.library ? { library: a.library } : {}) });
   // while the mouse is away its flash is not read: which settings read back cleanly is taken from its last visit
   if (a.id === 'mouse') meta.trusted = Object.fromEntries(Object.keys(d.values || {}).map((k) => [k, d.status !== 'connected' && d.savedTrusted ? !!d.savedTrusted[k] : !!a.trusted?.(k)]));
   if (a.id === 'headset') { meta.props = a.props; meta.endpoints = a.endpoints; meta.mode = a.mode; }
@@ -242,6 +242,8 @@ export async function op(name, b) {
     case 'refresh': await core.refresh(has(b.id)); return snapshot(b.id);
     case 'read': return { values: await core.readNow(has(b.id)) };
     case 'backup': return { file: await core.backupNow(has(b.id), String(b.why || 'manual')) };
+    // a library driver's self-check again, on the person's click (diagnose.mjs action "check-again")
+    case 'recheck': { const r = await core.recheck(has(b.id)); return { ran: !!r?.ran, why: r?.why || null, waiting: !!r?.waiting, device: snapshot(b.id) }; }
     // the daily self-check (Settings > Health): its last result, or run it now
     case 'check-result': return daily.result();
     case 'check-run': return daily.run({ all: true });

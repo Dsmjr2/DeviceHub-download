@@ -2,7 +2,8 @@
 // does not run gets a driver for it without Claude. DeviceHub listens (USBPcap) while the person changes one setting in
 // the maker's app, finds the bytes that carry it, and makes a driver.json that is saved read-only until DeviceHub's own
 // self-check passes. Nothing here sends anything to the device. One step on screen at a time; plain words; no pop-ups.
-// Reached from the Overview's Set up card and from Lighting > This PC ("Learn it").
+// Reached from the sidebar (under App), the Overview's Set up card and Lighting > This PC ("Learn it", which puts that
+// device first here: learnThis(vid, pid)).
 import { h } from '../ui/dom.js';
 import { card, row, segmented, button, pill } from '../ui/controls.js';
 import { installerButton } from '../ui/installer-button.js';
@@ -12,8 +13,14 @@ import { topbar } from './common.js';
 // the state of the page (kept across redraws)
 const st = { step: 'pick', devices: null, usbpcap: null, error: null, why: null, busy: false, server: null,
   form: { label: '', kind: 'number', unit: '', a: '', b: '' }, third: '', found: null, range: { min: '', max: '', step: '' },
-  save: { title: '', kind: 'Device' }, heard: null };
+  save: { title: '', kind: 'Device' }, heard: null, want: null };
 let redrawPage = () => {};
+
+// Lighting > This PC's "Learn it": that device goes first on the Pick step, as the one to learn
+export function learnThis(vid, pid) {
+  st.want = vid && pid ? `${vid}:${pid}`.toUpperCase() : null;
+  if (st.step === 'pick') st.devices = null;
+}
 
 async function api(path, body) {
   try {
@@ -78,11 +85,16 @@ function pickStep() {
     if (!st.loading) { st.loading = true; setTimeout(() => loadDevices().finally(() => { st.loading = false; }), 0); }
     return card([h('h2', {}, 'Pick the device'), h('span', { class: 'spacer' }), stepNo('pick')], faint('Looking at what is plugged in…'));
   }
-  const list = st.devices;
+  const idOf = (d) => `${d.vid}:${d.pid}`.toUpperCase();
+  // the device Lighting > This PC sent here goes first
+  const wanted = st.want ? st.devices.find((d) => idOf(d) === st.want) : null;
+  const list = wanted ? [wanted, ...st.devices.filter((d) => d !== wanted)] : st.devices;
+  const primary = (d) => (wanted ? d === wanted : !d.library);
   return card([h('h2', {}, 'Pick the device'), h('span', { class: 'spacer' }), stepNo('pick')],
     p('These are plugged in and DeviceHub does not run them yet. Pick the one to learn.'),
-    list.length ? list.map((d) => row(d.name, [`USB ${d.vid}:${d.pid}`, d.vendor ? 'has a settings channel' : 'no maker settings channel seen', d.library ? 'a shared driver exists for it: see Set up on the Overview first' : null].filter(Boolean).join(' · '),
-      button('Learn this one', () => run('begin', { vid: d.vid, pid: d.pid }, () => { st.step = 'ready'; st.save.title = d.name; }), { kind: d.library ? 'ghost small' : 'primary small' })))
+    st.want && !wanted ? faint(`USB ${st.want.toLowerCase()} is not in this list: DeviceHub may run it already, or it has nothing DeviceHub can learn.`) : null,
+    list.length ? list.map((d) => row(d.name, [d === wanted ? 'the one you picked on This PC' : null, `USB ${d.vid}:${d.pid}`, d.vendor ? 'has a settings channel' : 'no maker settings channel seen', d.library && !d.note ? 'a shared driver exists for it: install it from Set up on the Overview' : null, d.refused || d.note || null].filter(Boolean).join(' · '),
+      d.refused ? null : button('Learn this one', () => run('begin', { vid: d.vid, pid: d.pid }, () => { st.step = 'ready'; st.save.title = d.name; st.want = null; }), { kind: primary(d) ? 'primary small' : 'ghost small' })))
       : faint('No device to learn was found. Plug it in, then look again.'),
     problems(),
     h('div', { class: 'actions', style: { marginTop: '12px' } }, button('Look again', loadDevices, { kind: 'ghost small', ic: 'refresh' })));
@@ -116,6 +128,8 @@ function readyStep() {
   };
   return card([h('h2', {}, `Get ready${d ? `: ${d.name}` : ''}`), h('span', { class: 'spacer' }), stepNo('ready')],
     p('Open the maker\'s app for this device. Pick ONE setting to teach DeviceHub, and two values the app offers for it.'),
+    faint('Colors, button remaps, macros and EQ cannot be learned yet: pick a number, an on or off, or a choice.'),
+    st.server?.addsTo?.note ? faint(`${st.server.addsTo.name}: ${st.server.addsTo.note}.`) : null,
     row('Setting', 'As the maker\'s app names it, e.g. DPI or Brightness', field('Setting', 'label', f, { placeholder: 'e.g. DPI', maxlength: 40 })),
     row('Kind', null, kindCtl),
     f.kind === 'number' ? row('Unit', 'Optional, e.g. DPI or %', field('Unit', 'unit', f, { placeholder: 'optional', maxlength: 10, style: { width: '140px' } })) : null,
@@ -216,7 +230,7 @@ function driverStep() {
     p('Learn every setting you want here, one at a time, then save.', 'faint'),
     row('Name', 'Shown on its page', field('Name', 'title', st.save, { maxlength: 60 })),
     row('Kind', null, segmented({ value: st.save.kind, compact: true, options: kinds.map((k) => ({ value: k, label: k })), onCommit: (v) => { st.save.kind = v; redrawPage(); } })),
-    p('Close the maker\'s app before saving: when the device next connects, DeviceHub checks each setting by reading it, writing the same value back and reading it again, and two programs writing one device fight.', 'faint'),
+    p('Close the maker\'s app before saving. When the device next connects, DeviceHub tests each setting once by writing back its current value, and two programs writing to one device get in each other\'s way.', 'faint'),
     problems(),
     h('div', { class: 'actions', style: { marginTop: '12px' } },
       button('Learn another setting', () => { st.form = { label: '', kind: 'number', unit: '', a: '', b: '' }; st.heard = null; st.step = 'ready'; redrawPage(); }, { kind: 'ghost' }),
@@ -225,11 +239,12 @@ function driverStep() {
 
 function savedStep() {
   const sv = st.server?.saved || {};
-  return card([h('h2', {}, 'Saved'), h('span', { class: 'spacer' }), pill('read-only for now')],
+  return card([h('h2', {}, 'Saved'), h('span', { class: 'spacer' }), pill('reads only, for now')],
     p(`The driver is in my-devices\\${sv.name || ''}\\driver.json.`),
-    p('It starts read-only. The first time the device connects, DeviceHub checks each setting: it reads it, writes that same value, and reads it back. Each setting that passes can then be changed on its page.'),
-    p(sv.loaded ? 'DeviceHub has loaded it: its page is in the sidebar.' : 'Restart DeviceHub (tray icon > Quit, then open it again) to load it.'),
+    p('For now it only reads the device. The first time the device connects, DeviceHub tests each setting once by writing back its current value. Each setting that passes can then be changed on its page.'),
+    sv.note ? p(sv.note) : p(sv.loaded ? 'DeviceHub has loaded it: its page is in the sidebar.' : 'Restart DeviceHub (tray icon > Quit, then open it again) to load it.'),
     p('When it works, its page has a Share this driver button, so the next person with this device needs no learning.', 'faint'),
+    p('Sharing needs a free GitHub account: it opens a GitHub page that offers the driver to the shared library.', 'faint'),
     h('div', { class: 'actions' },
       sv.loaded && sv.id ? button('Open its page', () => { location.hash = `#/${sv.id}`; }, { kind: 'primary' }) : null,
       button('Learn another device', () => { Object.assign(st, { step: 'pick', devices: null, server: null, error: null, why: null, heard: null, form: { label: '', kind: 'number', unit: '', a: '', b: '' } }); redrawPage(); }, { kind: 'ghost' })));
@@ -250,7 +265,7 @@ function style() {
 }
 
 export default {
-  id: 'learn', title: 'Learn a device', icon: 'plug', rail: false, watches: [],
+  id: 'learn', title: 'Learn a device', icon: 'plug', watches: [],
   render({ redraw }) {
     redrawPage = redraw;
     style();

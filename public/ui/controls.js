@@ -203,3 +203,54 @@ function compactBattery(p) {
     <g clip-path="url(#${id}e)">${text.replace('<text ', '<text fill="rgba(255,255,255,.85)" ')}</g>
   </svg>`);
 }
+
+// ---------- the kinds an added device's page also uses (22 Oct 2026, page kinds; helpers/my-devices.mjs) ----------
+
+// A reading the device reports and DeviceHub never writes (ChatMix, a sensor name): just the value, with its unit.
+export function readout({ value, unit = '' }) {
+  const text = value == null ? '—' : typeof value === 'boolean' ? (value ? 'on' : 'off') : `${value}${typeof value === 'number' ? unit : ''}`;
+  return h('output', { class: 'readout' }, text);
+}
+
+// One RGB color: a row of swatches (the theme accent look) and a hex box. No color dialog. A swatch commits at once;
+// the hex box on Enter or when it loses focus (a typo puts the device's value back).
+export const COLOR_SWATCHES = [['#ffffff', 'White'], ['#ff0000', 'Red'], ['#ff8000', 'Orange'], ['#ffff00', 'Yellow'], ['#00ff00', 'Green'],
+  ['#00ffff', 'Cyan'], ['#0000ff', 'Blue'], ['#ff00ff', 'Magenta'], ['#000000', 'Off']];
+export function colorRow({ value, onCommit, label = 'color', disabled }) {
+  const cur = typeof value === 'string' ? value.toLowerCase() : null;
+  const el = h('div', { class: 'theme-row kind-color' });
+  const pick = (hex) => {
+    for (const b of el.querySelectorAll('.theme-swatch')) { const on = b.dataset.hex === hex; b.classList.toggle('sel', on); b.setAttribute('aria-pressed', String(on)); }
+    box.value = hex;
+    dot.style.setProperty('--s', hex);
+    run(el, () => onCommit(hex)).catch(() => {});
+  };
+  for (const [hex, name] of COLOR_SWATCHES) {
+    el.append(h('button', { class: `theme-swatch${cur === hex ? ' sel' : ''}`, style: { '--s': hex }, dataset: { hex }, disabled,
+      'aria-label': `${label}: ${name}`, 'aria-pressed': String(cur === hex), onclick: () => { if (hex !== cur) pick(hex); } }));
+  }
+  const box = h('input', { class: 'text hexbox', value: cur || '', placeholder: '#rrggbb', maxlength: 7, spellcheck: 'false', disabled, 'aria-label': `${label}, hex` });
+  const done = () => {
+    const t = box.value.trim().toLowerCase().replace(/^#?/, '#');
+    if (/^#[0-9a-f]{6}$/.test(t) && t !== cur) pick(t); else box.value = cur || '';
+  };
+  box.addEventListener('keydown', (e) => { if (e.key === 'Enter') box.blur(); if (e.key === 'Escape') { box.value = cur || ''; box.blur(); } });
+  box.addEventListener('blur', done);
+  const dot = h('i', { class: 'hexdot', style: { '--s': cur || 'transparent' }, 'aria-hidden': 'true' });
+  el.append(dot, box);
+  return el;
+}
+
+// Several lines under one setting (color zones, button remaps): a name on the left, its control on the right.
+export function lineList(lines) {
+  return h('div', { class: 'kind-list' }, ...lines.flatMap(([name, ctl]) => [h('span', { class: 'kind-name' }, name), h('div', { class: 'kind-ctl' }, ctl)]));
+}
+
+// A button -> action choice: one select per button, holding only the targets the driver lists.
+export function remapSelect({ value, targets, onCommit, label, disabled }) {
+  const sel = h('select', { class: 'text kind-select', disabled, 'aria-label': label },
+    ...(targets.some((t) => t.value === value) ? [] : [h('option', { value: '', disabled: true, selected: true }, value == null ? '—' : `unknown (${value})`)]),
+    ...targets.map((t) => h('option', { value: t.value, selected: t.value === value || null }, t.label)));
+  sel.addEventListener('change', () => { if (sel.value !== value) run(sel, () => onCommit(sel.value)).catch(() => {}); });
+  return sel;
+}

@@ -262,6 +262,55 @@ check(saved.ok && saved.saved?.name === 'pro-mouse' && fs.existsSync(path.join(r
 check(session.cmds.at(-1).endsWith('quit'), 'saving ends the listener');
 await route('POST', 'quit');
 
+// ---------------------------------------------------------------- a device that already has a driver (22 Oct 2026)
+// shown, not hidden; refused in plain words for shared chip ids, code drivers and drivers that never write; for a
+// driver.json driver the learned settings go into its my-devices copy (backed up first), never the library's own copy
+check(/Sinowealth/.test(lw.vendorRefusal('258a') || '') && /Laview/.test(lw.vendorRefusal('22D4') || '') && /Logitech/.test(lw.vendorRefusal('046d') || '') && lw.vendorRefusal('3456') === null, 'shared chip makers and code-only vendors are refused, others not');
+{
+  // a library entry whose driver never writes, for 7777:0001
+  const nw = path.join(root, 'device-library', 'never-writes');
+  fs.mkdirSync(nw, { recursive: true });
+  fs.writeFileSync(path.join(nw, 'device.mjs'), "export default { id: 'never-writes', title: 'Quiet', kind: 'Mouse', settings: [{ key: 'fw', label: 'Firmware', type: 'display' }], async connect() { return true; }, async info() { return {}; }, async read() { return {}; }, async write() { throw new Error('never'); } };\n");
+  fs.writeFileSync(path.join(nw, 'device.json'), JSON.stringify({ id: 'never-writes', vendor: 'Quiet', product: 'Mouse', kind: 'Mouse', vid: '7777', pids: ['0001'], models: ['Q'], works: [], status: 'untested', tested: [] }));
+  const col = (vid, pid, product) => ({ vid, pid, iface: 1, col: 1, page: 'FF00', usage: '0001', inLen: 65, outLen: 65, featLen: 0, inIds: [], outIds: [], featIds: [], product });
+  lw.options.deps = { ...lw.options.deps, owned: lw.deps.owned, listHid: async () => ({ collections: [col('1234', '5678', 'Acme mouse'), col('258A', '0036', 'Model O'), col('7777', '0001', 'Quiet mouse')] }) };
+  const ds = (await route('GET', 'devices')).devices || [];
+  const by = Object.fromEntries(ds.map((d) => [d.vid, d]));
+  check(by['1234']?.library && by['1234'].note === 'already has a driver; Learn adds settings it lacks' && by['1234'].driver?.where === 'my-devices' && !by['1234'].refused, `a device with a driver.json driver in my-devices is listed with the note (${JSON.stringify(by['1234'])})`);
+  check(by['258A']?.refused && /Sinowealth/.test(by['258A'].note), `a Sinowealth id is listed with why it cannot be learned (${JSON.stringify(by['258A'])})`);
+  check(by['7777']?.refused && /refuses every write/.test(by['7777'].note), `a device whose library driver never writes says so (${JSON.stringify(by['7777'])})`);
+  check(!ds.some((d) => d.driver?.dir), 'the page never gets a folder path');
+  check(/Sinowealth/.test((await route('POST', 'begin', { vid: '258A', pid: '0036' })).error || ''), 'begin refuses a Sinowealth id with a plain reason');
+  check(/refuses every write/.test((await route('POST', 'begin', { vid: '7777', pid: '0001' })).error || ''), 'begin refuses a device whose driver never writes');
+  const bg = await route('POST', 'begin', { vid: '1234', pid: '5678' });
+  check(bg.ok && bg.addsTo?.name === shared.name && bg.addsTo.where === 'my-devices', `begin on a covered device says where the settings go (${JSON.stringify(bg.addsTo || bg.error)})`);
+  await route('POST', 'quit');
+
+  // merging: a second setting learned on the Acme mouse goes into a copy of its driver
+  const s2 = lw.withRange(L1, { min: 100, max: 26000, step: 50 }, ['dpi']).setting;
+  s2.label = 'Second DPI';
+  const add2 = lw.buildDriver({ vid: '1234', pid: '5678', title: 'Acme mouse', kind: 'Mouse', usagePage: 'FF00', usage: '0001', settings: [s2] });
+  const merged = lw.mergeDriver(def1, add2);
+  check(validate(merged).ok && merged.settings.map((x) => x.key).join() === `dpi,${s2.key}` && lw.verifySeen(merged, [s2]).length === 0 && merged.id === def1.id, `the merged driver keeps its own and adds the learned one, every byte as recorded (${validate(merged).problems.join('; ')})`);
+  check(Object.keys(merged.messages).filter((k) => k.startsWith('learned')).length === Object.keys(add2.messages).length, 'the learned messages are added under their own names');
+  let mErr = null; try { lw.mergeDriver(def1, { ...add2, transport: { ...add2.transport, len: 32 } }); } catch (e) { mErr = e.message; }
+  check(/one driver\.json uses one kind/.test(mErr || ''), `another report kind is refused in plain words (${mErr})`);
+  mErr = null; try { lw.mergeDriver(def1, def1); } catch (e) { mErr = e.message; }
+  check(/already has a setting/.test(mErr || ''), 'a key the driver already has is refused');
+  const libBefore = fs.readFileSync(path.join(root, 'device-library', shared.name, 'driver.json'), 'utf8');
+  const copy = path.join(root, 'my-devices', shared.name);
+  const sv2 = lw.saveInto(copy, merged, [s2.key], { root });
+  const mk = JSON.parse(fs.readFileSync(path.join(copy, 'library.json'), 'utf8'));
+  check(sv2.ok && fs.existsSync(path.join(sv2.backup, 'driver.json')) && fs.existsSync(path.join(sv2.backup, 'library.json')), `the copy's files are backed up first (${JSON.stringify(sv2)})`);
+  check(JSON.parse(fs.readFileSync(path.join(copy, 'driver.json'), 'utf8')).settings.length === 2 && mk.learnedKeys?.includes(s2.key), 'the copy gets the setting, and library.json lists it as learned');
+  check(fs.readFileSync(path.join(root, 'device-library', shared.name, 'driver.json'), 'utf8') === libBefore, "the library's own copy is never edited");
+  check(!lw.saveInto(path.join(root, 'device-library', shared.name), merged, [s2.key], { root }).ok, 'saveInto refuses any folder outside my-devices');
+  const regM = [];
+  await load(root, { register: (x) => regM.push(x), addSpec() {}, taken: (id) => regM.some((y) => y.id === id), selfCheck: {} });
+  const am = regM.find((x) => x.plugin === shared.name);
+  check(am && am.settings.find((x) => x.key === s2.key)?.readOnly, 'loaded guarded: the learned setting is read-only until its check');
+}
+
 // ---------------------------------------------------------------- what it refuses
 const why = (r) => (r.why || []).join(' ');
 let r = lw.analyze(takesOf([acme(800, { twin: true }), acme(1600, { twin: true })], '1234', '5678'), { label: 'DPI', kind: 'number' });

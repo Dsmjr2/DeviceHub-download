@@ -248,6 +248,19 @@ export function prepare(id) {
   return withDevice(id, () => backupUnlocked(id, 'before a change')).catch(() => {});
 }
 export const backupNow = (id, why = 'manual') => (remote ? rcall('/api/agent/backup', { id, why }).then((r) => r.file) : withDevice(id, () => backupUnlocked(id, why)));
+// "Check again" for a library driver (22 Oct 2026; helpers/my-devices.mjs recheck): its self-check now, under the
+// device's lock, then a full read so the page shows which settings opened
+export function recheck(id) {
+  if (remote) return rcall('/api/agent/recheck', { id });
+  const a = devices[id]?.adapter;
+  if (!a?.recheck) return Promise.resolve({ ran: false, why: 'this device has no driver from the device library to check' });
+  return withDevice(id, async () => {
+    const r = await a.recheck();
+    await refreshUnlocked(id, { full: true });
+    set(id, { readAt: new Date() });
+    return r;
+  });
+}
 
 // The full raw dump (the keyboard's whole keymap and macros: ~2 s) is reused for the next backup while nothing
 // could have changed it: written keys the adapter calls raw-unaffected (lighting) leave it valid; any other write,

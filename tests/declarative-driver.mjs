@@ -254,5 +254,100 @@ ok(parseTemplate('51 31 {value:u16le} {c?}').length === 4, 'templates parse');
 }
 async function refusesWrite(drv, key, v) { try { await drv.write(key, v); ok(false, `${key} ${v} accepted`); } catch { ok(true, ''); } }
 
+// ---- 4. the page kinds (22 Oct 2026): display, color (one, and per zone) and remap, on a pretend device ----
+{
+  const { selfCheck, problem } = await import('../helpers/my-devices.mjs');
+  const BTN = { 1: 'left', 2: 'right', 16: 'back' };
+  const kinds = (over = {}) => mini({
+    id: 'pretend-kinds', pids: ['FFE2'], models: [{ name: 'Pretend', pids: { usb: ['FFE2'] } }],
+    messages: { get: { bytes: '30' }, setColor: { bytes: '31 {value:rgb}' }, setZone: { bytes: '32 {zone} {value:rgb}' }, setBtn: { bytes: '33 {button} {value}' } },
+    fields: { temp: { from: 'state', offset: 1 }, color: { from: 'state', offset: 2, size: 3, type: 'bytes' }, logo: { from: 'state', offset: 5, size: 3, type: 'bytes' },
+      wheel: { from: 'state', offset: 8, size: 3, type: 'bytes' }, btn1: { from: 'state', offset: 11, map: BTN }, btn2: { from: 'state', offset: 12, map: BTN } },
+    settings: [
+      { key: 'temp', label: 'Temperature', type: 'display', unit: ' C' },
+      { key: 'color', label: 'Color', type: 'color', write: { message: 'setColor' } },
+      { key: 'lights', label: 'Lights', type: 'color', zones: [{ value: 'logo', label: 'Logo', field: 'logo', code: 1 }, { value: 'wheel', label: 'Wheel', field: 'wheel', code: 2 }], write: { message: 'setZone' } },
+      { key: 'buttons', label: 'Buttons', type: 'remap', buttons: [{ value: 'b1', label: 'Button 1', field: 'btn1', code: 4 }, { value: 'b2', label: 'Button 2', field: 'btn2', code: 5 }],
+        targets: [{ value: 'left', label: 'Left click' }, { value: 'right', label: 'Right click' }, { value: 'back', label: 'Back' }], write: { message: 'setBtn' } },
+    ], ...over,
+  });
+  const v0 = validate(kinds());
+  ok(v0.ok, `a file with display, color, zones and remap is accepted (${v0.problems.join('; ')})`);
+  const k = () => kinds();
+  const st = (j, key) => j.settings.find((x) => x.key === key);
+  refuses('a display with a write', (() => { const j = k(); st(j, 'temp').write = { message: 'setColor' }; return j; })(), /a display: a reading/);
+  refuses('a color from a one-byte field', (() => { const j = k(); st(j, 'color').field = 'temp'; return j; })(), /type "bytes" and size 3/);
+  refuses('a color sent as a plain byte', (() => { const j = k(); j.messages.setColor.bytes = '31 {value}'; return j; })(), /a color is sent as \{value:rgb\}/);
+  refuses('rgb on a slider', mini({ messages: { get: { bytes: '20' }, set: { bytes: '21 {value:rgb}' } } }), /only a color is sent as \{value:rgb\}/);
+  refuses('rgb on a field placeholder', (() => { const j = k(); j.messages.setColor.bytes = '31 {value:rgb} {temp:rgb}'; return j; })(), /only \{value:rgb\} can be rgb/);
+  refuses('a {zone} in a read', (() => { const j = k(); j.messages.get.bytes = '30 {zone}'; return j; })(), /has \{zone\}, but nothing gives it one/);
+  refuses('a zone write without {zone}', (() => { const j = k(); j.messages.setZone.bytes = '32 {value:rgb}'; return j; })(), /has no \{zone\}/);
+  refuses('a zone without a code', (() => { const j = k(); delete st(j, 'lights').zones[1].code; return j; })(), /needs a code \(0-255\)/);
+  refuses('a zone with an unknown part', (() => { const j = k(); st(j, 'lights').zones[0].bytes = '51 21'; return j; })(), /does not know/);
+  refuses('a remap without targets', (() => { const j = k(); delete st(j, 'buttons').targets; return j; })(), /needs targets/);
+  refuses('a remap target the button field cannot encode', (() => { const j = k(); st(j, 'buttons').targets.push({ value: 'macro', label: 'Macro' }); return j; })(), /"macro" cannot be sent/);
+  refuses('zones on a slider', mini({ settings: [{ key: 'brightness', label: 'Brightness', type: 'slider', min: 0, max: 100, zones: [{ value: 'a', label: 'A', field: 'brightness', code: 1 }], write: { message: 'set' } }] }), /only a color has zones/);
+  refuses('a remap whose {button} codes reach a never pattern', (() => { const j = k(); j.never = [{ bytes: '33 05', why: 'pretend never' }]; return j; })(), /could send 33 05/);
+
+  const drv = fromJson(kinds());
+  drv.vendorApp = async () => null;
+  const m = { temp: 41, color: [255, 0, 0], logo: [0, 0, 255], wheel: [0, 255, 0], b1: 1, b2: 16, sticky: false };
+  const sent = [];
+  const listeners = new Set();
+  const dev = { vendorId: 0xffff, productId: 0xffe2, opened: true, collections: [],
+    addEventListener(t, fn) { listeners.add(fn); }, removeEventListener(t, fn) { listeners.delete(fn); },
+    async sendReport(id, bytes) {
+      const p = Uint8Array.from(bytes);
+      sent.push(h(p.slice(0, 6)));
+      if (!m.sticky) {
+        if (p[0] === 0x31) m.color = [p[1], p[2], p[3]];
+        if (p[0] === 0x32) m[p[1] === 1 ? 'logo' : 'wheel'] = [p[2], p[3], p[4]];
+        if (p[0] === 0x33) m[p[1] === 4 ? 'b1' : 'b2'] = p[2];
+      }
+      const r = new Uint8Array(32);
+      r[0] = p[0]; r[1] = m.temp; r.set(m.color, 2); r.set(m.logo, 5); r.set(m.wheel, 8); r[11] = m.b1; r[12] = m.b2;
+      setTimeout(() => listeners.forEach((fn) => fn({ reportId: id, data: new DataView(r.buffer) })), 1);
+    } };
+  plugged = dev;
+  ok(await drv.connect(false), 'the pretend device connects');
+  const page = drv.settings;
+  ok(JSON.stringify(page.map((x) => x.type)) === JSON.stringify(['display', 'color', 'color', 'remap']), `the page gets the kinds (${page.map((x) => x.type)})`);
+  ok(JSON.stringify(page[2].zones) === JSON.stringify([{ value: 'logo', label: 'Logo' }, { value: 'wheel', label: 'Wheel' }]) && !('code' in page[3].buttons[0]) && page[0].readOnly === true, 'zones and buttons reach the page without their codes; a display is read only');
+  ok(problem(drv) === null, `the driver passes the my-devices check (${problem(drv)})`);
+  const coded = (s) => problem({ id: 'x-y', title: 'X', kind: 'Mouse', connect() {}, info() {}, read() {}, write() {}, settings: [s] }) || '';
+  ok(/remap needs buttons and targets/.test(coded({ key: 'r', label: 'R', type: 'remap', buttons: [{ value: 'a', label: 'A' }] })) && /zones must be/.test(coded({ key: 'c', label: 'C', type: 'color', zones: [] }))
+    && coded({ key: 'd', label: 'D', type: 'display' }) === '', 'the device.mjs check: a remap needs targets, zones need entries, a display needs nothing more');
+  const r0 = await drv.read();
+  ok(JSON.stringify(r0) === JSON.stringify({ temp: 41, color: '#ff0000', lights: { logo: '#0000ff', wheel: '#00ff00' }, buttons: { b1: 'left', b2: 'back' } }), `read: ${JSON.stringify(r0)}`);
+  sent.length = 0;
+  ok((await drv.write('color', '#12ab00')) === '#12ab00' && JSON.stringify(m.color) === '[18,171,0]', 'one color written as 31 r g b and read back');
+  ok(sent.includes('31 12 ab 00 00 00'), `the color frame (${sent})`);
+  sent.length = 0;
+  const z = await drv.write('lights', { logo: '#ffffff', wheel: '#00ff00' });
+  ok(JSON.stringify(z) === JSON.stringify({ logo: '#ffffff', wheel: '#00ff00' }) && sent.filter((x) => x.startsWith('32')).join() === '32 01 ff ff ff 00', `only the zone that changed is sent (${sent})`);
+  sent.length = 0;
+  const b = await drv.write('buttons', { b1: 'right' });
+  ok(JSON.stringify(b) === JSON.stringify({ b1: 'right', b2: 'back' }) && sent.filter((x) => x.startsWith('33')).join() === '33 04 02 00 00 00', `a remap sends the button code and the action code (${sent})`);
+  sent.length = 0;
+  await refusesWrite(drv, 'temp', 50);
+  await refusesWrite(drv, 'color', 'red');
+  await refusesWrite(drv, 'color', '#FF0000');
+  await refusesWrite(drv, 'lights', { logo: '#ffffff' });
+  await refusesWrite(drv, 'buttons', { b1: 'macro' });
+  await refusesWrite(drv, 'buttons', { b3: 'left' });
+  ok(!sent.some((x) => /^3[123]/.test(x)), `refused writes send nothing (${sent})`);
+  m.sticky = true; sent.length = 0;
+  try { await drv.write('lights', { logo: '#000000', wheel: '#00ff00' }); ok(false, 'a zone that did not stick was believed'); } catch (e) { ok(/written back/.test(e.message), `a zone that does not stick fails: ${e.message.slice(0, 80)}`); }
+  ok(sent.filter((x) => x.startsWith('32')).length === 2, `the zone is sent, then the value read before (${sent})`);
+  m.sticky = false;
+  // the library self-check: each kind written with its own value and read back; the display is never written
+  sent.length = 0;
+  const vc = await selfCheck(drv, drv.write, { backup: async () => true });
+  ok(vc.ran && vc.keys.color?.ok && vc.keys.lights?.ok && vc.keys.buttons?.ok && !('temp' in vc.keys), `self-check: color, zones and remap pass, the display is left out (${JSON.stringify(vc.keys)})`);
+  ok(sent.filter((x) => x.startsWith('32')).length === 2 && sent.filter((x) => x.startsWith('33')).length === 2 && sent.filter((x) => x.startsWith('31')).length === 1, `the same-value write sends every zone and button once (${sent.filter((x) => !x.startsWith('30'))})`);
+  ok(JSON.stringify(await drv.read()) === JSON.stringify({ temp: 41, color: '#12ab00', lights: { logo: '#ffffff', wheel: '#00ff00' }, buttons: { b1: 'right', b2: 'back' } }), 'the self-check left everything as it was');
+}
+
+
 console.log(fails ? `declarative-driver: ${fails} FAILED` : 'declarative-driver (driver.json: ASUS ROG mouse byte-for-byte as its device.mjs, the safety check refusing bad files): all good');
 process.exitCode = fails ? 1 : 0;

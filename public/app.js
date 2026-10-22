@@ -79,7 +79,7 @@ function buildRail() {
     h('div', { class: 'nav-label' }, 'Desk'),
     ...PAGES.filter((p) => ['lighting', 'monitors', 'fans'].includes(p.id)).map(navBtn),
     h('div', { class: 'nav-label' }, 'App'),
-    // rail: false = reached from another page only (Learn a device: the Set up card, This PC)
+    // rail: false = reached from another page only (none today; Learn a device is listed here too, 22 Oct 2026)
     ...PAGES.filter((p) => !p.device && p.id !== 'overview' && p.rail !== false && !['lighting', 'monitors', 'fans'].includes(p.id)).map(navBtn),
     h('div', { class: 'rail-foot' },
       h('button', { class: 'cmd-hint', onclick: openPalette }, icon('search'), h('span', {}, 'Search'), h('kbd', { class: 'cmd-kbd' }, 'Ctrl K'))),

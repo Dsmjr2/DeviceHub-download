@@ -2,8 +2,9 @@
 
 One Windows app for a mouse, a headset and a keyboard, instead of three vendor apps.
 
-**Different devices?** See [ADD-YOUR-DEVICES.md](ADD-YOUR-DEVICES.md): open this folder in Claude Code, paste the prompt
-there, and it adds your own mouse, headset and keyboard, following the safety rules in CLAUDE.md.
+**Different devices?** Plug them in: DeviceHub's shared library (11 drivers so far) sets up known ones by itself, and
+**Learn a device** (in the sidebar) teaches it the rest while you change settings in the maker's app. No Claude needed;
+[ADD-YOUR-DEVICES.md](ADD-YOUR-DEVICES.md) has the steps, and how to do it with Claude Code instead.
 
 ## Supported devices
 
@@ -11,16 +12,20 @@ there, and it adds your own mouse, headset and keyboard, following the safety ru
 |---|---|
 | **Pulsar X-Lite CrazyLight** (on the Pulsar 8K dongle, or on its USB cable) | DPI stages, active stage, polling rate, lift-off, debounce, motion sync, angle snapping, ripple control, turbo, button remapping (left click locked), DPI light, stage colors, auto sleep, battery (with DeviceHub's own level while charging) |
 | **Corsair HS80 RGB Wireless** (receiver or USB cable) | battery, logo and mic lights, sleep timer, Windows volume and mic level, mic mute, sidetone, mic boost, EQ presets |
-| **Epomaker P75**, or any **VIA keyboard** (wired) | every key on every layer, the knob, macros, lights on/off, effect, color, brightness and speed (layouts from VIA's library of about 1,500 keyboards) |
-| **Monitors** (DDC/CI) | brightness, contrast, speaker volume |
+| **Epomaker P75**, or any **VIA keyboard** (wired) | every key on every layer, the knob, macros, lights on/off, effect, color, brightness and speed (layouts from VIA's library of about 1,500 keyboards; Keychron Pro, Max, HE and 8K boards need Keychron's VIA file, see ADD-YOUR-DEVICES.md) |
+| **Monitors** (DDC/CI) | brightness, contrast, speaker volume, color preset and color balance (when the monitor lists them) |
 | **Webcams** | brightness, contrast, color, sharpness, white balance, exposure, focus, zoom |
 | **PC lights** (motherboard, its RGB headers, lit RAM, many graphics cards) | one color, through OpenRGB (openrgb.org) when you run it; DeviceHub never writes to that hardware itself |
 | **Windows sound** (Equalizer APO) | headset and monitor EQ, Natural sound, mic filters |
 
-Other mice and headsets are not supported yet: DeviceHub only talks to these models, using what was measured on them.
-Plug in any of them and DeviceHub shows just the ones you have. Lighting > This PC lists what is inside the PC and any
-device from a known brand, with a ready prompt to add it with Claude Code (the brand guide, docs/BRANDS.md: the 10
-most popular brands for each kind of device).
+Plug in any of them and DeviceHub shows just the ones you have. Other devices come from the shared device library
+(`device-library/`, 11 drivers so far: Logitech, Razer, ASUS ROG and Glorious mice; SteelSeries Arctis, Corsair, HyperX
+and Turtle Beach headsets; Keychron and Wooting keyboards; HyperX mice and keyboards), installed by auto setup when it
+matches your USB devices ("tested" and "read-only" ones by themselves, the rest from the Overview's Set up
+card), or from **Learn a device**, a step-by-step wizard that makes a driver from what the maker's
+app sends. Lighting > This PC lists what is inside the PC and any device from a known brand, with a Learn it button
+and a ready prompt to add it with Claude Code (the brand guide, docs/BRANDS.md: the 10 most popular brands for each
+kind of device).
 
 Plus: profiles for all three (with automatic switching when a game starts), one-color lighting sync, typed commands
 in Search ("zoom 2x", "brightness 40", "eq competitive"), a setup file that saves or restores everything at once,
