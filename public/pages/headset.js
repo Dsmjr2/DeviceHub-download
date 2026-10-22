@@ -62,7 +62,7 @@ export default {
       h('section', { class: `hero${v.headsetOn ? '' : ' off'}` },
         v.headsetOn ? h('div', {},
           h('div', { class: 'hero-stats' },
-            bat != null ? batteryCell({ id: 'headset', percent: bat, charging: /cable/i.test(dev.info?.Control || ''), big: true }) : null,
+            bat != null ? batteryCell({ id: 'headset', percent: bat, charging: !!dev.battery?.charging || /cable/i.test(dev.info?.Control || ''), big: true }) : null,
             meter({ ic: 'volume', pct: v['vol:playback'], value: v['vol:playback'] != null ? `${v['vol:playback']}%` : '—', label: 'volume', big: true }),
             micState({ on: v['prop:micEnabled'], big: true }),
             meter({ ic: 'ear', pct: v.sidetoneOn === false ? 0 : v.sidetone, value: v.sidetone == null ? '—' : v.sidetoneOn === false ? 'Off' : `${v.sidetone}%`, label: 'sidetone', big: true })))

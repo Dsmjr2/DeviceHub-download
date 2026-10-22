@@ -130,7 +130,7 @@ function patchBay(d) {
   const fresh = bay(d, ctx.go, ctx.redraw);
   if (old.dataset.shape !== fresh.dataset.shape) { old.replaceWith(fresh); levelSoon(); return true; }
   old.classList.toggle('mic-muted', fresh.classList.contains('mic-muted'));
-  const pairs = [['.bay-top .pill', 'outerHTML']];
+  const pairs = [['.bay-top .link', 'outerHTML']];  // the live link (it replaced the pill; 22 Oct 2026: it kept saying Connected while charging)
   for (const [sel, prop] of pairs) { const a = old.querySelector(sel), b = fresh.querySelector(sel); if (a && b && a[prop] !== b[prop]) a[prop] = b[prop]; }
   const ra = old.querySelectorAll('.readout'), rb = fresh.querySelectorAll('.readout');
   let changed = false;
