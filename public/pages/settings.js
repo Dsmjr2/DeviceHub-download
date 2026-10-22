@@ -181,7 +181,7 @@ function healthCard() {
   const line = (label, value, ok) => h('div', { class: 'health-row' }, h('span', { class: `health-dot ${ok ? 'ok' : 'warn'}` }), h('span', {}, label), h('b', {}, value));
   // Save a report: one text file (health, versions, devices, the end of the log) for whoever helps with a problem
   const saveReport = () => { if (isDemo()) { toast('Not in demo mode', 'info'); return; } const a = Object.assign(document.createElement('a'), { href: '/api/report', download: '' }); document.body.append(a); a.click(); a.remove(); toast('Report saved', 'good', { detail: 'In your Downloads folder. No backups or profiles are in it.' }); };
-  return card([h('h2', {}, 'Health'), h('span', { class: 'spacer' }), button('Copy for help', copyShortReport, { kind: 'ghost small', ic: 'external', title: 'A short report to paste to whoever helps (or to Claude Code)' }), button('Save a report', saveReport, { kind: 'ghost small', ic: 'backups' }), button('Check now', () => loadHealth(true), { kind: 'ghost small', ic: 'refresh' })],
+  return card([h('h2', {}, 'Health'), h('span', { class: 'spacer' }), h('div', { class: 'head-actions' }, button('Copy', copyShortReport, { kind: 'ghost small', ic: 'external' }), button('Save', saveReport, { kind: 'ghost small', ic: 'backups' }), button('Check', () => loadHealth(true), { kind: 'ghost small', ic: 'refresh' }))],
     !x ? h('p', { class: 'faint', style: { margin: 0 } }, isDemo() ? 'Not shown in demo mode.' : 'Checking…')
       : x.error ? h('p', { class: 'faint', style: { margin: 0 } }, 'DeviceHub did not answer.')
       : h('div', { class: 'health' },
@@ -279,7 +279,7 @@ export default {
       topbar('App', 'Settings', null),
       h('div', { class: 'grid settings-cols top' },
         h('div', { class: 'stack' }, appearanceCard(),
-          card([icon('shield'), h('h2', {}, 'Safety'), h('span', { class: 'spacer' }), button('Self-test: read each device twice', selfTest, { kind: 'small', ic: 'shield' })],
+          card([icon('shield'), h('h2', {}, 'Safety'), h('span', { class: 'spacer' }), button('Self-test', selfTest, { kind: 'small', ic: 'shield' })],
             results ? h('div', { class: 'diff', style: { marginBottom: '10px' } }, ...results.map(([dev, st, msg]) => h('div', { style: { gridTemplateColumns: '120px 52px 1fr' } }, h('span', { class: 'dev' }, dev), pill(st, st === 'pass' ? 'good' : st === 'fail' ? 'bad' : st === 'warn' ? 'warn' : ''), h('span', {}, msg)))) : null,
             h('ul', { class: 'safety' }, ...SAFETY.map((t) => h('li', {}, icon('check'), t))),
             null)),
