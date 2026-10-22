@@ -90,22 +90,24 @@
   "works": [
     "battery level (property 0f), shown when the device answers a read of it",
     "firmware version (13) in the device info",
-    "mice: DPI (21 / 22) and polling rate (01), shown as readings only, each when the mouse answers a read of it",
+    "mice: DPI (21 / 22, X and Y together) 100 to the model's documented top (M75 26000, Dark Core RGB Pro 18000, Katar Pro 12400, Katar Pro XT / Ironclaw Wireless 18000, Harpoon Wireless 10000), written and read back, offered only when the mouse answers a read of both; a reading on other mice",
+    "polling rate 125 / 250 / 500 / 1000 Hz (01, codes 1-4), written and read back, offered only when the device answers a read of it",
+    "the helper's peripheral frame (hs80 channel with frame=peripheral: no report id, 65-byte reports, its own SET list); the headset frame (report id 02) when only that opens, and then DPI and polling are readings (docs/handoff/corsair-peripheral-frame.md)",
     "mice: sleep timer 1-60 minutes (0e) and sleep timer on/off (0d), written and read back, each offered only when the mouse answers a read of it",
-    "keyboards: brightness 0-100% (02, 0-1000), written and read back, offered only when the keyboard answers a read of it; polling rate (01) shown as a reading",
+    "keyboards: brightness 0-100% (02, 0-1000), written and read back, offered only when the keyboard answers a read of it",
     "the model behind a generic Slipstream receiver (1BA6, 1BDC, 2B00, 2B1B) from its product id (property 12 on endpoint 09)",
     "reads while iCUE runs; refuses every write while it runs",
     "all from docs/brands/corsair.md and simulated devices only (tests/sim-corsair-bragi-peripherals.mjs); never run on a real mouse or keyboard"
   ],
   "doesNotWork": [
     "firmware updates and receiver pairing (never: they stay in iCUE)",
-    "changing DPI, DPI stages (1e / 1f) and the polling rate: not in the native helper's SET list (docs/handoff/drivers-round3b.md)",
+    "DPI stages (1e / 1f) and the mouse sleep property 37: no documented range, not in the helper's peripheral SET list; polling rates above 1000 Hz (codes 5-7, some mice only)",
     "angle snapping (07), lift height (06), left-hand mode (52), button response (b0): write-only in every source",
     "lights, per-key colours, key and macro assignments (handle writes; OpenRGB drives Corsair lights)",
     "charging state (property 10 values are unconfirmed)",
     "keyboards with 128- or 1024-byte packets (K70 RGB Pro / Optic, K70 RGB TKL, K65 RGB Mini / Pro Mini, K100 RGB) and the 1BE3 Scimitar RGB Elite: the helper's channel opens 64-byte collections only",
     "older NXP-protocol mice and keyboards (K70 MK.2, K65 RGB, M65 Pro / Elite, Dark Core RGB SE, Scimitar Pro, Sabre RGB)",
-    "unconfirmed: whether these devices take the headset frame (report id 02) the helper sends; if not, the driver gets no reply and offers nothing",
+    "unconfirmed on hardware: the peripheral frame is read from OpenLinkHub and ckb-next (Linux hidapi / libusb); on Windows a device without report ids gets report id 00 and 65-byte reports. If neither frame answers, the driver offers nothing",
     "the HS80 RGB Wireless (0a69, 0a6b, 0a71) and other headsets: device-library/corsair-bragi-headset and DeviceHub's own headset page"
   ],
   "status": "untested",

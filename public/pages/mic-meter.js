@@ -1,5 +1,5 @@
-// Mic check: a live level meter for the HS80 microphone, measured in this window (the browser's own audio input,
-// with its voice processing switched off so it shows what Windows records). Nothing is recorded, saved or sent.
+// Mic check: a live level meter for the headset microphone (the one picked on the Headset page, else the HS80),
+// measured in this window (the browser's own audio input, with its voice processing switched off so it shows what Windows records). Nothing is recorded, saved or sent.
 // Test recording (19 Oct 2026): DeviceHub's helper records the mic through Windows' normal path, filters included, so
 // you hear what Discord hears; it lives only in memory (the helper's until played, then this window's audio memory,
 // never a file) and is erased on Delete, on a new recording, or 10 minutes after the last play.
@@ -9,6 +9,8 @@ import { card, button, segmented } from '../ui/controls.js';
 import { env } from '../core/env.js';
 import { isDemo, devices } from '../core/devices.js';
 import { toast } from '../ui/overlay.js';
+import { micMatcher, micTestUsb, startMicTest } from '../core/mic-test-pick.js';
+import { shortName } from '../core/headset-pick.js';
 
 const ui = { on: false, peak: -90, hold: -90, holdAt: 0, error: null, label: null };
 let stream = null, ctx = null, raf = 0, stopTimer = 0;
@@ -22,12 +24,14 @@ const zone = (db) => (db >= -1 ? ['clipping', 'bad', 'Turn Mic level or Mic Boos
 async function start(redraw) {
   ui.error = null;
   try {
-    // ask once (any mic) so device names become visible, then open the HS80 mic itself
+    // ask once (any mic) so device names become visible, then open the headset mic itself
     let s = await navigator.mediaDevices.getUserMedia({ audio: true });
     const mics = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput');
-    // the HS80's mic, or any other USB headset's by its name (20 Oct 2026)
-    const other = devices.headset?.adapter?.generic?.device;
-    const hs = mics.find((d) => (other ? d.label.includes(other) : /HS80/i.test(d.label)));
+    // the HS80's mic, or the picked USB headset's by its Windows mic name, its name or its USB id (22 Oct 2026)
+    const ad = devices.headset?.adapter;
+    const other = micTestUsb(ad?.generic) ? ad.generic.device : null;
+    const isIt = micMatcher(ad?.generic, ad?.endpoints);
+    const hs = mics.find((d) => isIt(d.label));
     s.getTracks().forEach((t) => t.stop());
     if (!hs) throw new Error(`no ${other || 'HS80'} microphone in Windows (is the headset on?)`);
     stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: hs.deviceId }, echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
@@ -104,7 +108,8 @@ async function recStart(redraw) {
   rec.error = null;
   if (isDemo()) { rec.state = 'recording'; rec.seconds = 0; rec.poll = setInterval(() => { rec.seconds += 0.2; rec.level = -30 + Math.random() * 18; paintRec(); }, 200); redraw(); return; }
   try {
-    const st = await api('start', { mic: rec.mic });
+    // the headset picked on the Headset page (the HS80 as before when it is picked or the only one)
+    const st = await startMicTest(env.api, { mic: rec.mic, generic: devices.headset?.adapter?.generic });
     if (st.error) throw new Error(st.error);
     rec.state = 'recording'; rec.headset = st.headsetMic; redraw();
     rec.poll = setInterval(async () => {
@@ -199,7 +204,8 @@ function testSection(redraw) {
     desc = rec.error ? `Couldn't record: ${rec.error}` : 'Record up to 30 seconds and hear how you sound.';
     ctl = h('div', { class: 'actions', style: { alignItems: 'center' } }, which, button('Record', () => recStart(redraw), { kind: 'primary small', ic: 'mic' }));
   } else if (rec.state === 'recording') {
-    desc = rec.mic === 'anker' ? 'Recording the AnkerCamera…' : 'Recording…';
+    const g = devices.headset?.adapter?.generic;
+    desc = rec.mic === 'anker' ? 'Recording the AnkerCamera…' : micTestUsb(g) ? `Recording the ${shortName(g.device)}…` : 'Recording…';
     ctl = button('Stop', () => recStop(redraw), { kind: 'small' });
     body = h('div', { id: 'mic-test', class: 'mt' }, h('div', { class: 'mt-bar rec' }, h('div', { class: 'mt-fill' })), h('span', { class: 'mt-time' }, `${mmss(rec.seconds)} / ${mmss(30)}`));
   } else if (rec.state === 'loading') {

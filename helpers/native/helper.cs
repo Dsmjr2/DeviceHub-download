@@ -10,7 +10,8 @@
 //                                                           feature reports: FSET <hex...> | FGET <id hex> <len>
 //        [:key=value ...]                                   library drivers' options (HandleHidEx): interface,
 //                                                           collection, lengths, feature-only, raw SEND / READ, REFUSED
-//   hs80:<pid>:<ep>[:tag]                                   headset: OPEN | GET | SET | MODE | LIGHT | OPENLIGHT | CLOSE
+//   hs80:<pid>:<ep>[:tag]                                   headset: OPEN | GET | SET | MODE | LIGHT | OPENLIGHT | FRAME | CLOSE
+//        [:frame=peripheral]                                Corsair Bragi mice / keyboards: no report ids, own SET list
 //   audio                                                   Windows audio, JSON requests
 //   cue                                                     iCUE SDK properties, JSON requests
 //   tray                                                    START <port> <folder>: the tray icon (tray.cs)
@@ -307,9 +308,15 @@ public static class Helper {
     switch (w[0]) {
       case "OPEN": {
         if (c.Hs != null && !c.Hs.Broken) return "OK";
-        var path = HidFind.Find(p[1]);
+        // "frame=peripheral" (22 Oct 2026, Corsair Bragi mice and keyboards; hs80io.cs): no report ids, 65-byte
+        // reports, the peripheral SET list. A channel without a frame part (the HS80's) opens exactly as before.
+        var frame = Hs80Io.FrameOf(c.Name);
+        if (frame == null) return "ERR unknown frame";
+        bool per = frame == "peripheral";
+        if (per && Hs80Io.IsHs80Pid(p[1])) return "ERR the HS80 is never opened on the peripheral frame";
+        var path = per ? HidFind.Find("1b1c", p[1], 0xFF42, 1, Hs80Io.ReportLen(true)) : HidFind.Find(p[1]);
         if (path == null) return "NODEVICE";
-        var io = new Hs80Io(path); io.Ep = byte.Parse(p[2]); c.Hs = io;
+        var io = per ? new Hs80Io(path, true) : new Hs80Io(path); io.Ep = byte.Parse(p[2]); c.Hs = io;
         var t = new Thread(() => { foreach (var b in io.Events.GetConsumingEnumerable()) { if (b == null) break; Say(c.Name + " EVT " + b[3].ToString("x2") + " " + BitConverter.ToInt32(b, 5)); } }) { IsBackground = true };
         t.Start(); c.Events = t;
         return "OK";
@@ -323,8 +330,10 @@ public static class Helper {
       // closed the handle). Nothing is sent for it either way.
       case "SET": try { return st(c.Hs.Set(Convert.ToInt32(w[1], 16), int.Parse(w[2]), 400)); } catch (ArgumentException e) { return "ERR " + e.Message; }
       case "MODE": try { return st(c.Hs.Set(3, int.Parse(w[1]), 400)); } catch (ArgumentException e) { return "ERR " + e.Message; }
-      case "LIGHT": { var rgb = w.Skip(1).Select(x => Convert.ToByte(x, 16)).ToArray(); if (rgb.Length != 9) return "ERR need 9 bytes"; return st(c.Hs.Light(rgb, 400)); }
-      case "OPENLIGHT": return st(c.Hs.OpenLight(400));
+      case "LIGHT": { var rgb = w.Skip(1).Select(x => Convert.ToByte(x, 16)).ToArray(); if (rgb.Length != 9) return "ERR need 9 bytes"; try { return st(c.Hs.Light(rgb, 400)); } catch (ArgumentException e) { return "ERR " + e.Message; } }
+      case "OPENLIGHT": try { return st(c.Hs.OpenLight(400)); } catch (ArgumentException e) { return "ERR " + e.Message; }
+      // which frame this channel speaks: an older helper answers "ERR unknown command" (it has only the headset's)
+      case "FRAME": return c.Hs.Peripheral ? "peripheral" : "hs80";
     }
     return "ERR unknown command";
   }

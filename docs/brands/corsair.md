@@ -263,6 +263,10 @@ of it. Not covered: DPI, DPI stage and polling writes, `07`, `06`, `52`, `b0`, `
 128- / 1024-byte keyboards and the `1BE3` Scimitar. Unconfirmed: whether these devices take the headset frame (`02`
 prefix) the helper sends. Details: docs/handoff/drivers-round3b.md.
 
+Update 22 Oct 2026: the helper has the peripheral frame (no report id, 65-byte reports) as an opt-in channel option,
+`hs80:<pid>:<ep>:bragi:frame=peripheral`, with its own SET list (02, 0d, 0e 1-60 min, polling 01 1-4, DPI 21 / 22 100-26000).
+The driver uses it, and writes DPI and polling there. Sources and proof: docs/handoff/corsair-peripheral-frame.md.
+
 ## 6. Gaps and unknowns
 
 - **HS65 Surround, HS55 Wireless:** no product ids and no protocol found in any open project.

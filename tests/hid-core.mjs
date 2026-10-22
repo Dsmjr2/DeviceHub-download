@@ -327,5 +327,43 @@ const since = (n) => lines.slice(n);
   check(neverHit({ vid: '2516', pid: '0173', bytes: [0x00, 0x00, 0xb0] }) && !neverHit({ vid: '2516', pid: '0173', bytes: [0x00, 0x00, 0x00, 0x00, 0xb0] }), '"within" lets a pattern start a few bytes later, no further');
 }
 
-console.log(fails.length ? `hid-core: FAILED: ${fails.join('; ')}` : 'hid-core (never list in the send path, several pids, interface/length matching, report ids, raw replies, refused vs gone, input reports on request, extra collections, defaults unchanged): all good');
+// ---- 9. the Corsair peripheral frame (22 Oct 2026, docs/handoff/corsair-peripheral-frame.md) is opt-in: the HS80's
+// channel names, its open path and its bytes are the ones it always had ----
+{
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { execFileSync } = await import('node:child_process');
+  const src = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
+  const cs = src('helpers/native/helper.cs'), io = src('helpers/native/hs80io.cs');
+  // the HS80's own channels (hs80-direct.js, receiver-light.js) carry no frame part, so they are the HS80 frame
+  const direct = src('helpers/hs80-direct.js'), rx = src('helpers/receiver-light.js');
+  check(direct.includes('this.chan = `hs80:${c.pid}:${c.ep}:${kind}${++hostCount}`') && !/frame=/.test(direct), 'hs80-direct.js names its channels as before, with no frame part');
+  check(rx.includes("const CHAN = 'hs80:0A6B:8:rx';") && !/frame=/.test(rx), 'receiver-light.js names its channel as before, with no frame part');
+  check(!/frame=/.test(src('device-library/corsair-bragi-headset/device.mjs')), 'the headset library driver asks for no frame (the headset frame)');
+  // the open path: no frame part = HidFind.Find(pid) (FF42 / 01 / 64 bytes) and the one-argument Hs80Io, as before
+  const hs = cs.slice(cs.indexOf('static string HandleHs80('), cs.indexOf('// ---- Windows audio ----'));
+  const p2 = (a, b) => hs.slice(hs.indexOf(a), hs.indexOf(b, hs.indexOf(a)));
+  check(/var path = per \? HidFind\.Find\("1b1c", p\[1\], 0xFF42, 1, Hs80Io\.ReportLen\(true\)\) : HidFind\.Find\(p\[1\]\);/.test(hs) && /var io = per \? new Hs80Io\(path, true\) : new Hs80Io\(path\); io\.Ep = byte\.Parse\(p\[2\]\); c\.Hs = io;/.test(hs), 'HandleHs80: the HS80 frame opens with HidFind.Find(pid) and new Hs80Io(path), as before');
+  check(io.includes('public static string Find(string pid) { return Find("1b1c", pid, 0xFF42, 1, 64); }') && io.includes('public Hs80Io(string path) : this(path, false) { }'), 'hs80io.cs: Find(pid) is still FF42 / 01 / 64 bytes, and Hs80Io(path) is the headset frame');
+  check(/public static string FrameOf\(string name\) \{\r?\n\s+var p = name\.Split\(':'\); string f = "hs80";/.test(io), 'FrameOf: a name with no frame part is the HS80 frame');
+  check(p2('case "SET"', 'case "MODE"').includes('c.Hs.Set(') && !p2('case "GET"', 'case "SET"').includes('Peripheral'), 'GET and SET answer as before (the frame lives in Hs80Io)');
+  check(cs.includes('\r\n') && !/[^\r]\n/.test(cs) && io.includes('\r\n') && !/[^\r]\n/.test(io), 'helper.cs and hs80io.cs keep CRLF line endings');
+  // the C# harness: the HS80's requests, replies and SET list against the old code, word for word (tests/native/hs80-frame.cs)
+  const csc = path.join(process.env.WINDIR || 'C:\\Windows', 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe');
+  if (process.platform === 'win32' && fs.existsSync(csc)) {
+    const exe = path.join(os.tmpdir(), `devicehub-hs80-frame-${process.pid}.exe`);
+    const { fileURLToPath } = await import('node:url');
+    const root = fileURLToPath(new URL('..', import.meta.url));
+    try {
+      execFileSync(csc, ['/nologo', `/out:${exe}`, path.join(root, 'helpers', 'native', 'hs80io.cs'), path.join(root, 'tests', 'native', 'hs80-frame.cs')], { timeout: 60000, windowsHide: true, stdio: 'pipe' });
+      const out = execFileSync(exe, [], { timeout: 120000, windowsHide: true, encoding: 'utf8' });
+      check(/all good/.test(out), `the C# frame harness: ${out.trim()}`);
+    } catch (e) {
+      check(false, `the C# frame harness failed: ${String(e.stdout || '') + String(e.stderr || '') || e.message}`);
+    } finally { try { fs.unlinkSync(exe); } catch {} }
+  } else console.log('hid-core: no csc.exe here, the C# frame harness (tests/native/hs80-frame.cs) was not run');
+}
+
+console.log(fails.length ? `hid-core: FAILED: ${fails.join('; ')}` : 'hid-core (Corsair peripheral frame opt-in, HS80 frame unchanged, never list in the send path, several pids, interface/length matching, report ids, raw replies, refused vs gone, input reports on request, extra collections, defaults unchanged): all good');
 process.exit(fails.length ? 1 : 0);

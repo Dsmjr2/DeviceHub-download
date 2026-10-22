@@ -200,5 +200,43 @@ check(/row\('Lift-off distance', '[^']+'/.test(mouseSrc) && /h\('h2', \{\}, 'Tra
   check(/const cur = readJsonFile\(SETTINGS, \{\}\);/.test(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8')), 'server: a settings change starts from the whole file (headsetPick is kept)');
 }
 
+// 15. The Mic check follows the picked headset (22 Oct 2026, public/core/mic-test-pick.js): the HS80 picked or the
+//     only one = server.js's /api/mictest/start exactly as before; another headset = its own mic by its USB id
+{
+  const mt = await import('../public/core/mic-test-pick.js');
+  const NOVA = { usb: 'VID_1038&PID_12E0', device: 'Arctis Nova 7 Wireless Gaming Headset' };
+  const HSG = { usb: 'VID_1B1C&PID_0A6B', device: 'CORSAIR HS80 RGB Wireless Gaming Headset' };
+  check(mt.micTestUsb(null) === null && mt.micTestUsb(HSG) === null && mt.micTestUsb({ usb: 'junk' }) === null && mt.micTestUsb(NOVA) === 'VID_1038&PID_12E0', 'mic check: only a non-HS80 pick leaves the HS80 path');
+  check(mt.micTestId([{ flow: 'recording', id: 'a', state: 1 }, { flow: 'recording', id: 'b', state: 1, wired: true }, { flow: 'playback', id: 'c', state: 1 }]) === 'b', 'mic check: the cable mic first');
+  check(mt.micTestId([{ flow: 'recording', id: 'a', state: 4 }, { flow: 'playback', id: 'c', state: 1 }]) === null && mt.micTestId(null) === null, 'mic check: no working mic, nothing to record');
+  const hsMatch = mt.micMatcher(null, []);
+  check(hsMatch('Microphone (CORSAIR HS80 RGB Wireless)') && !hsMatch('Microphone (Arctis Nova 7)'), 'mic meter: no pick, the HS80 mic as before');
+  const nMatch = mt.micMatcher(NOVA, [{ flow: 'recording', name: 'Microphone (Arctis Nova 7)' }, { flow: 'playback', name: 'Headphones (Arctis Nova 7)' }]);
+  check(nMatch('Microphone (Arctis Nova 7)') && nMatch('Headset Mic (1038:12e0)') && !nMatch('Microphone (CORSAIR HS80 RGB Wireless)') && !nMatch(''), 'mic meter: the picked headset mic, by Windows name or USB id, not the HS80');
+  const calls = [];
+  const fake = (eps) => async (p, b) => {
+    calls.push([p, b]);
+    if (p === '/api/mictest/start') return { recording: true, headsetMic: true };
+    if (p === '/api/corsair/hs80-endpoints') return { endpoints: eps };
+    if (p === '/api/corsair/mic-rec-start') return { ok: true, rec: { recording: true, id: b.id } };
+    throw new Error(`unexpected ${p}`);
+  };
+  const desc = () => calls.map(([p, b]) => `${p} ${JSON.stringify(b)}`).join(' | ');
+  await mt.startMicTest(fake([]), { mic: 'headset', generic: null });
+  check(desc() === '/api/mictest/start {"mic":"headset"}', `mic check: no pick, the same request as before (${desc()})`);
+  calls.length = 0; await mt.startMicTest(fake([]), { mic: 'headset', generic: HSG });
+  check(desc() === '/api/mictest/start {"mic":"headset"}', 'mic check: HS80 running as any headset, still the HS80 request');
+  calls.length = 0; await mt.startMicTest(fake([]), { mic: 'anker', generic: NOVA });
+  check(desc() === '/api/mictest/start {"mic":"anker"}', 'mic check: the AnkerCamera as before');
+  calls.length = 0;
+  const r = await mt.startMicTest(fake([{ flow: 'recording', id: 'nova-mic', state: 1 }, { flow: 'playback', id: 'nova-out', state: 1 }]), { mic: 'headset', generic: NOVA });
+  check(desc() === '/api/corsair/hs80-endpoints {"usb":"VID_1038&PID_12E0"} | /api/corsair/mic-rec-start {"id":"nova-mic"}' && r.headsetMic && r.recording, `mic check: another headset picked, its own mic recorded (${desc()})`);
+  calls.length = 0; let err = null;
+  try { await mt.startMicTest(fake([{ flow: 'recording', id: 'nova-mic', state: 4 }]), { mic: 'headset', generic: NOVA }); } catch (e) { err = e; }
+  check(/not connected/.test(err?.message || '') && !calls.some(([p]) => p.endsWith('mic-rec-start')), 'mic check: picked headset off, no recording of another mic');
+  const mm = fs.readFileSync(path.join(ROOT, 'public/pages/mic-meter.js'), 'utf8');
+  check(/startMicTest\(env\.api/.test(mm) && /micMatcher\(/.test(mm) && !/set-default/.test(mm), 'mic check page uses the pick and never changes Windows defaults');
+}
+
 console.log(fails.length ? `regressions: FAILED: ${fails.join('; ')}` : 'regressions (20 Oct fixes): all good');
 process.exit(fails.length ? 1 : 0);
