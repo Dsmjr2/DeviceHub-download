@@ -1,7 +1,7 @@
 // Monitors (20 Oct 2026): brightness, contrast, speaker volume, color preset and color balance of each monitor, over DDC/CI
 // (helpers/monitors.js). Each change is backed up, written one at a time and read back on the server.
 import { h, icon } from '../ui/dom.js';
-import { card, row, slider, segmented, more } from '../ui/controls.js';
+import { card, row, slider, segmented, more, loadingCard } from '../ui/controls.js';
 import { env } from '../core/env.js';
 import { isDemo } from '../core/devices.js';
 import { topbar } from './common.js';
@@ -64,7 +64,8 @@ export default {
     return h('div', {},
       topbar('Displays and camera', 'Monitors', null),
       error ? card([h('h2', {}, 'Monitors')], h('p', { class: 'faint' }, `Couldn't read the monitors: ${error}`))
-        : !list ? card([h('h2', {}, 'Monitors')], h('p', { class: 'faint' }, 'Reading your monitors…'))
+        // while they are read: two monitor cards with shimmering rows (21 Oct 2026)
+        : !list ? h('div', { class: 'grid two top' }, loadingCard('Monitor', 4, 'monitor'), loadingCard('Monitor', 4, 'monitor'))
           : list.length ? h('div', { class: 'grid two top' }, ...list.map(monitorCard))
             : card([h('h2', {}, 'Monitors')], h('p', { class: 'faint' }, 'No monitors found.')),
       // the camera: half width below the monitors

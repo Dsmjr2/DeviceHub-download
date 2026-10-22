@@ -1111,3 +1111,34 @@ html[data-art="live"] .hero .bcell.big { display: flex; }
 html[data-art="live"] .hero .bcell.big .bcell-shape { display: none; }
 html[data-art="live"] .hero .bcell.big .bcell-text b { font-size: 15px; }
 html[data-art="live"] .hero .bcell.big .bcell-text span { font-size: 11.5px; }
+/* Loading (21 Oct 2026, Shawn: "some sort of splash screen ... tiles ... with some sort of loading"): the splash the
+   window opens with, placeholder lines and cards that shimmer while their data loads, and the Overview's device tiles
+   drawn faint with a light sweeping over them while DeviceHub looks for the devices. Transforms and opacity only. */
+.splash { position: fixed; inset: 0; display: grid; place-content: center; justify-items: center; gap: 14px; animation: splash-in .5s var(--ease) both; }
+.splash img { width: 64px; height: 64px; filter: drop-shadow(0 10px 24px rgba(0, 0, 0, .6)); animation: splash-glow 2.4s ease-in-out infinite; }
+.splash b { font: 600 20px var(--ui); letter-spacing: .01em; color: var(--text); }
+.splash-bar { position: relative; width: 140px; height: 3px; border-radius: 3px; overflow: hidden; background: rgba(255, 255, 255, .08); }
+.splash-bar i { position: absolute; inset: 0 auto 0 0; width: 40%; border-radius: 3px; background: linear-gradient(90deg, transparent, var(--signal), transparent); animation: splash-run 1.3s ease-in-out infinite; }
+@keyframes splash-in { from { opacity: 0; transform: translateY(6px); } }
+@keyframes splash-glow { 50% { transform: scale(1.04); filter: drop-shadow(0 10px 30px rgba(200, 215, 255, .25)); } }
+@keyframes splash-run { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+.skel { display: grid; gap: 9px; width: 100%; }
+.skel i, .skel-ctl { position: relative; display: block; height: 10px; border-radius: 6px; overflow: hidden; background: rgba(255, 255, 255, .07); }
+.skel-ctl { width: 64px; height: 22px; border-radius: 999px; flex: none; }
+.skel i::after, .skel-ctl::after, .bay.ghost .bay-art::after, .target.ghost::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, .14) 50%, transparent 70%); transform: translateX(-100%); animation: skel-sweep 1.6s ease-in-out infinite; }
+@keyframes skel-sweep { to { transform: translateX(100%); } }
+.skel-row { gap: 24px; } .skel-row .skel { max-width: 60%; }
+.skel-note { font: 600 11px var(--ui); letter-spacing: .04em; color: var(--faint); animation: blink 1.6s ease-in-out infinite; }
+.bay.ghost { cursor: default; }
+.bay.ghost .bay-art { position: relative; overflow: hidden; border-radius: 18px; }
+.bay.ghost .bay-art .art { opacity: .28; filter: grayscale(1) blur(.3px); }
+.bay.ghost .bay-head .skel i { height: 16px; }
+.bay.ghost .readouts { padding-top: 12px; }
+.ghost-pill { display: inline-flex; align-items: center; gap: 7px; padding: 4px 11px 4px 9px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .14); color: var(--muted); font: 600 11.5px var(--ui); }
+.ghost-pill i { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid currentColor; border-right-color: transparent; animation: ghost-spin .9s linear infinite; }
+@keyframes ghost-spin { to { transform: rotate(360deg); } }
+.target.ghost { position: relative; overflow: hidden; } .target.ghost .art { opacity: .35; filter: grayscale(1); }
+@media (prefers-reduced-motion: reduce) { .splash img, .splash-bar i, .skel i::after, .skel-ctl::after, .bay.ghost .bay-art::after, .target.ghost::after, .ghost-pill i { animation: none; } }
+/* a placeholder drawing shows no reading in any look */
+.bay.ghost .art :is(.liquid, .mote, .bubble, .scan, .lq-text), .target.ghost .art :is(.liquid, .mote, .bubble, .scan, .lq-text) { display: none !important; }

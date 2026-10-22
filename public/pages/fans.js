@@ -3,7 +3,7 @@
 // fans run on the motherboard's own curve (its BIOS); reading the CPU temperature or the board's fans needs a kernel
 // driver, so they are not read here. docs/FANS.md has the BIOS settings to tune that curve.
 import { h } from '../ui/dom.js';
-import { card, row } from '../ui/controls.js';
+import { card, row, loadingCard } from '../ui/controls.js';
 import { env } from '../core/env.js';
 import { isDemo } from '../core/devices.js';
 import { topbar } from './common.js';
@@ -66,7 +66,7 @@ export default {
       topbar('Cooling', 'Fans', null),
       h('div', { class: 'grid two top' },
         error ? card([h('h2', {}, 'Graphics card')], h('p', { class: 'faint' }, `Could not read it: ${error}`))
-          : !gpu ? card([h('h2', {}, 'Graphics card')], h('p', { class: 'faint' }, 'Reading…'))
+          : !gpu ? loadingCard('Graphics card', 4)
             : gpus.length ? gpuCard(gpus[0]) : card([h('h2', {}, 'Graphics card')], h('p', { class: 'faint' }, gpu.reason || 'Not read on this PC.')),
         card([h('h2', {}, 'CPU and case fans')],
           h('p', { class: 'faint', style: { margin: 0 } }, "Run by the motherboard's BIOS curve. Guide: docs\\FANS.md"))));

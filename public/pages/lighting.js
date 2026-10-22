@@ -1,7 +1,7 @@
 // Lighting: one color for every device with RGB.
 import { h, icon } from '../ui/dom.js';
 import { card, slider, button, toggle, pill, more } from '../ui/controls.js';
-import { devices, write, writeBatch, log } from '../core/devices.js';
+import { devices, write, writeBatch, log, stillLooking } from '../core/devices.js';
 import { artFor } from '../ui/art.js';
 import { topbar } from './common.js';
 import { setGlow, getGlow } from '../core/theme.js';
@@ -112,9 +112,10 @@ export default {
     const target = (id, note) => {
       const d = devices[id];
       const ok = d.status === 'connected' && d.adapter.hasLighting?.();
-      return h('div', { class: 'target lighting-preview', style: { '--cc': `var(--c-${id})`, '--pick': ui.hex } },
+      const looking = !ok && d.status !== 'connected' && stillLooking();
+      return h('div', { class: `target lighting-preview${looking ? ' ghost' : ''}`, style: { '--cc': `var(--c-${id})`, '--pick': ui.hex } },
         artFor[id](),
-        h('div', { class: 'grow' }, h('b', {}, d.adapter.title), h('small', {}, ok ? note : d.status === 'connected' ? 'no lighting channel' : 'not connected')),
+        h('div', { class: 'grow' }, h('b', {}, d.adapter.title), h('small', {}, ok ? note : d.status === 'connected' ? 'no lighting channel' : looking ? 'looking…' : 'not connected')),
         toggle({ value: ui.include[id] && ok, disabled: !ok, label: `include ${id}`, onCommit: async (on) => { ui.include[id] = on; } }));
     };
     return h('div', {},

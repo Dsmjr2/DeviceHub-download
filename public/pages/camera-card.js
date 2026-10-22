@@ -1,7 +1,7 @@
 // The Monitors page's Camera card (20 Oct 2026): the webcam's picture settings (helpers/camera.js). Each change is
 // backed up, set one at a time and read back on the server; Auto (where the camera has it) leaves that one to the camera.
 import { h, icon } from '../ui/dom.js';
-import { card, row, slider, toggle, button } from '../ui/controls.js';
+import { card, row, slider, toggle, button, loadingCard } from '../ui/controls.js';
 import { env } from '../core/env.js';
 import { toast } from '../ui/overlay.js';
 
@@ -45,5 +45,6 @@ function cameraCard(cam, redraw) {
 export function cameraCards(redraw) {
   if (!cams && !error && !loading) queueMicrotask(() => load(redraw, false));
   if (error) return [card([h('h2', {}, 'Camera')], h('p', { class: 'faint' }, `Couldn't read the camera: ${error}`), h('div', { class: 'actions' }, button('Try again', () => load(redraw, true), { kind: 'small', ic: 'refresh' })))];
-  return (cams || []).map((c) => cameraCard(c, redraw));
+  if (!cams) return [loadingCard('Camera', 3, 'camera')];  // while it is read (21 Oct 2026)
+  return cams.map((c) => cameraCard(c, redraw));
 }

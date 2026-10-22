@@ -140,6 +140,13 @@ export function card(title, ...body) {
 }
 
 // sentence case: the first letter capital (pills are no longer set in capitals by the stylesheet)
+// A placeholder while something loads: shimmering lines (widths in %) where its text will be
+export function skeleton(widths = [70, 45, 60]) { return h('div', { class: 'skel', 'aria-hidden': 'true' }, ...widths.map((w) => h('i', { style: { width: `${w}%` } }))); }
+// a card that is still loading: its title, and shimmering rows where its settings will be
+export function loadingCard(title, rows = 3, ic) {
+  return card([ic ? icon(ic) : null, h('h2', {}, title), h('span', { class: 'spacer' }), h('span', { class: 'skel-note' }, 'Loading')].filter(Boolean),
+    ...Array.from({ length: rows }, (_, i) => h('div', { class: 'srow skel-row' }, skeleton([[55, 70, 40, 62][i % 4]]), h('i', { class: 'skel-ctl' }))));
+}
 export function pill(text, kind = '') { const t = typeof text === 'string' && text ? text[0].toUpperCase() + text.slice(1) : text; return h('span', { class: `pill ${kind}` }, t); }
 
 export function button(label, onclick, { kind = '', ic, title, disabled } = {}) {

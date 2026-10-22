@@ -6,7 +6,7 @@
 // - PC lights: the lights OpenRGB controls (helpers/openrgb.js), when OpenRGB runs with its SDK server. DeviceHub
 //   never writes to the motherboard's SMBus itself.
 import { h } from '../ui/dom.js';
-import { card, button, pill } from '../ui/controls.js';
+import { card, button, pill, skeleton } from '../ui/controls.js';
 import { env } from '../core/env.js';
 import { isDemo } from '../core/devices.js';
 import { toast } from '../ui/overlay.js';
@@ -110,7 +110,7 @@ export async function copyPrompt(u) {
 function pcLights() {
   const o = st.orgb;
   const head = [h('h2', {}, 'PC lights')];
-  if (!o) return card(head, h('p', { class: 'faint' }, 'Looking for OpenRGB…'));
+  if (!o) return card(head, skeleton([66, 48]));
   if (!o.running) {
     return card(head,
       h('p', { class: 'faint' }, 'Board, fan and RAM lights work through OpenRGB 1.1 or newer, a free app (openrgb.org). Open it and turn on its SDK server; the lights then show here and in Apply to all.'),
