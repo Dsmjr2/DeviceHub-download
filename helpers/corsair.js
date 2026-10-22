@@ -19,6 +19,10 @@ sdk.CorsairConnect((evt) => {
 // ---- properties and Windows audio: the native helper's 'cue' and 'audio' channels (helpers/native.js) ----
 const native = require('./native');
 const CUE_OPS = new Set(['props', 'write']);
+// the names given to headsets on the Headset page (settings.json "headsetNames": { "VID_..&PID_.." or "JACK_..": name })
+function headsetNames() {
+  try { const n = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', 'settings.json'), 'utf8')).headsetNames; return n && typeof n === 'object' ? n : {}; } catch { return {}; }
+}
 async function ask(q) {
   const r = await native.request(CUE_OPS.has(q.op) ? 'cue' : 'audio', JSON.stringify(q), 15000);
   if (r === 'GONE' || r === 'TIMEOUT') throw new Error(`audio helper ${r === 'GONE' ? 'stopped' : 'timed out'}`);
@@ -80,7 +84,20 @@ async function handle(action, body) {
   }
   // a headset's USB id ("VID_xxxx&PID_yyyy"): any USB headset; the HS80 when none is given (20 Oct 2026)
   const usb = typeof body?.usb === 'string' && /^VID_[0-9A-F]{4}&PID_[0-9A-F]{4}$/i.test(body.usb) ? body.usb.toUpperCase() : undefined;
-  if (action === 'usb-headsets') { const r = await ask({ op: 'usb-headsets' }); if (!r.ok) throw new Error(r.error); return { headsets: r.headsets }; }
+  if (action === 'usb-headsets') {
+    const r = await ask({ op: 'usb-headsets' }); if (!r.ok) throw new Error(r.error);
+    // plus wired headsets on the PC's jack (helpers/wired-headsets.js; used only when picked), and the names the person
+    // gave any headset on the Headset page (settings.json "headsetNames")
+    const names = headsetNames();
+    const usbList = (r.headsets || []).map((x) => (names[String(x.usb).toUpperCase()] ? { ...x, device: names[String(x.usb).toUpperCase()] } : x));
+    let wired = [];
+    try {
+      const all = await ask({ op: 'audio-list', match: '' });
+      const onUsb = await ask({ op: 'hs80-endpoints', usb: 'USB\\' });   // every sound device on a USB device, any state
+      if (all.ok && onUsb.ok) wired = require('./wired-headsets').wiredHeadsets(all.endpoints, (onUsb.endpoints || []).map((e) => e.id), names);
+    } catch {}
+    return { headsets: [...usbList, ...wired] };
+  }
   if (action === 'hs80-endpoints') { const r = await ask({ op: 'hs80-endpoints', usb }); if (!r.ok) throw new Error(r.error); return r; }
   if (action === 'set-default') {
     if (typeof body.id !== 'string' || ![0, 1].includes(body.flow)) throw new Error('bad endpoint');

@@ -5,7 +5,7 @@ import { batteryCell, loadBatteryEstimates } from '../ui/controls.js';
 import { batteryChart } from '../ui/battery-chart.js';
 import { devices, write, prepare, isDemo, isRemote, connect, markMissing } from '../core/devices.js';
 import { env } from '../core/env.js';
-import { showPicker } from '../core/headset-pick.js';
+import { showPicker, isJack } from '../core/headset-pick.js';
 import { headsetArt } from '../ui/art.js';
 import { meter, micState } from '../ui/gauges.js';
 import { topbar, connectState, deviceActions, vendorNote, kv, statusPill, isAway, awayBanner, undoButton } from './common.js';
@@ -47,9 +47,28 @@ function genericCard(a) {
 // Two or more USB headsets (22 Oct 2026): which one this page controls. The choice is kept in DeviceHub's settings
 // (helpers/agent.mjs "headset-pick"); a failed switch says why in a line next to it.
 let pickError = null;
+// Rename the headset in use (22 Oct 2026, Shawn: "add audio technica to the connection for the headset"): a wired one
+// shows as Windows names the jack ("Headphones (Realtek(R) Audio)"), so it can be given its own name; saved in
+// settings.json "headsetNames" and shown on the page, the picker and the Overview.
+let renaming = null;   // the text being typed, or null
+function renameHeadset(a, redraw) {
+  const key = a.generic?.usb;
+  if (!key || isDemo()) return null;
+  if (renaming == null) return button('Rename', () => { renaming = a.title || ''; redraw(); setTimeout(() => document.querySelector('.hs-rename input')?.select(), 0); }, { kind: 'ghost small' });
+  const save = async (name) => {
+    try { await env.api('/api/settings', { headsetName: { key, name } }); renaming = null; await env.api('/api/agent/refresh', { id: 'headset' }).catch(() => {}); }
+    catch (e) { pickError = e.message; }
+    redraw();
+  };
+  const box = h('input', { class: 'text', value: renaming, maxlength: 40, placeholder: 'e.g. Audio-Technica ATH-M50x', 'aria-label': 'Headset name',
+    oninput: (e) => { renaming = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter') save(renaming.trim()); if (e.key === 'Escape') { renaming = null; redraw(); } } });
+  return h('div', { class: 'hs-rename' }, box, button('Save', () => save(renaming.trim()), { kind: 'primary small' }),
+    button('Cancel', () => { renaming = null; redraw(); }, { kind: 'ghost small' }));
+}
 function headsetPicker(a, redraw) {
   const choices = a.headsets || [];
-  if (!showPicker(choices)) return null;
+  const rename = renameHeadset(a, redraw);
+  if (!showPicker(choices)) return rename;
   return h('div', { class: 'chips' }, segmented({ value: a.picked, compact: true, options: choices.map((c) => ({ value: c.key, label: c.name })), onCommit: async (k) => {
     pickError = null;
     try {
@@ -58,7 +77,7 @@ function headsetPicker(a, redraw) {
       else throw new Error('Needs DeviceHub running in the background.');
     } catch (e) { pickError = e.message; }
     redraw();
-  } }), pickError ? h('span', { class: 'faint' }, pickError) : null);
+  } }), rename, pickError ? h('span', { class: 'faint' }, pickError) : null);
 }
 
 export default {
@@ -71,7 +90,7 @@ export default {
     const direct = a.mode === 'direct';
     // any other USB headset (headset-adapter.js): its sound features only, under its own name
     const generic = a.mode === 'generic';
-    const head = topbar(generic ? 'USB headset · sound features' : direct ? 'Corsair · Wireless headset' : 'Corsair · Wireless headset · iCUE open', a.title, null, h('div', { class: 'chips' }, headsetPicker(a, redraw), undoButton(dev), dev.status === 'connected' && !dev.values?.headsetOn ? pill('headset off', 'warn') : statusPill(dev)));
+    const head = topbar(generic ? `${isJack(a.generic?.usb) ? 'Wired headset' : 'USB headset'} · sound features` : direct ? 'Corsair · Wireless headset' : 'Corsair · Wireless headset · iCUE open', a.title, null, h('div', { class: 'chips' }, headsetPicker(a, redraw), undoButton(dev), dev.status === 'connected' && !dev.values?.headsetOn ? pill('headset off', 'warn') : statusPill(dev)));
     if (dev.status !== 'connected' && !(isAway(dev) && a.endpoints)) {
       return h('div', {}, head, connectState(dev, 'Plug in the HS80 receiver. DeviceHub finds it automatically within a few seconds, with or without iCUE.'));
     }

@@ -3,7 +3,7 @@
 //  - Windows Core Audio: headset volume and mic level / mute (iCUE not needed)
 //  - without iCUE: battery, mic flip, firmware, sleep timer straight from the receiver (helpers/hs80-direct.js)
 // Write keys: prop:<name> (only if iCUE marks it writable), vol:<flow>, mute:<flow>, led (#rrggbb)
-import { cleanPick, chosenOther, genericFor, headsetChoices, isHs80 } from '../core/headset-pick.js';
+import { cleanPick, chosenOther, genericFor, headsetChoices, isHs80, isJack } from '../core/headset-pick.js';
 
 let call = async (action, body) => {
   const r = await fetch(`/api/corsair/${action}`, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
@@ -97,6 +97,9 @@ async function readBoost(v) {
   try { const b = await call('mic-boost', {}); if (b.available) v.micBoost = b.db; } catch {}
 }
 async function readSidetone(v) {
+  // a wired headset on the PC's jack: its sidetone lives in the sound card's own app, not one Windows control; and the
+  // HS80's must never be read (or set) for it
+  if (generic && isJack(generic.usb)) { sidetone = null; return; }
   try { sidetone = await soon(call('sidetone', generic ? { usb: generic.usb } : {})); } catch { sidetone = null; }
   if (sidetone && sidetone.db != null) { v.sidetone = generic ? pctOf(sidetone.db, sidetone.min, sidetone.max) : sidetonePct(sidetone.db); if (sidetone.on != null) v.sidetoneOn = sidetone.on; }
 }
@@ -150,6 +153,7 @@ const adapter = {
   },
 
   async info() {
+    if (mode === 'generic' && isJack(generic.usb)) return { Model: generic.device, Connection: 'Wired (headphone jack)', Control: 'Windows sound' };
     if (mode === 'generic') return { Model: generic.device, 'USB id': generic.usb.replace('VID_', '').replace('&PID_', ':').toLowerCase(), Control: 'Windows sound (any USB headset)' };
     if (mode === 'direct') {
       const f = raw.firmware?.bytes;
@@ -236,6 +240,7 @@ const adapter = {
 
   async write(key, value) {
     const [kind, name] = key.split(':');
+    if ((key === 'sidetone' || key === 'sidetoneOn') && generic && isJack(generic.usb)) throw new Error('a wired headset has no sidetone control in Windows');
     if (key === 'sidetone') {
       if (!(Number.isInteger(value) && value >= 0 && value <= 100)) throw new Error('sidetone must be 0-100');
       const g = generic ? { usb: generic.usb } : {};

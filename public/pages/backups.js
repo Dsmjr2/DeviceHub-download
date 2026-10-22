@@ -12,7 +12,7 @@ import { PROFILE_KEYS, keyLabel, showValue } from '../core/profiles.js';
 import { keyName } from '../devices/keycodes.js';
 import { splitMacros, decodeMacro } from '../devices/macros.js';
 import { saveSetup, planSetup, loadSetup } from '../core/setup.js';
-import { SHOWN, friendlyWhen, whenInSentence, weeklyWhen, sizeText, whyText, groupOf, OTHER_NAMES, contentLines } from '../core/backup-words.js';
+import { SHOWN, friendlyWhen, whenInSentence, weeklyWhen, whyText, groupOf, OTHER_NAMES, contentLines } from '../core/backup-words.js';
 import { demoBackups } from '../devices/demo-backups.js';
 
 
@@ -85,7 +85,16 @@ const ui = {
   older: new Set(),    // device cards showing their older backups
   note: {},            // key -> { text, kind }: one plain line after something happened
   busy: null,          // the key being put back right now
+  withWallpapers: false,   // Save a copy also puts the wallpapers in the file
 };
+let wallpaperSize = null;   // { wallpaperBytes, wallpaperCount }, read when the page opens
+const loadWallpaperSize = async () => { if (isDemo()) return; try { wallpaperSize = await getJson('/api/setup-extras?size=1'); } catch { wallpaperSize = null; } rerender(); };
+const mb = (n) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(n / 1e6))} MB`);
+
+// a setup file from somewhere else (the OneDrive copy of another PC: Overview, Settings): its confirmation opens here
+let pending = null;
+export function reviewSetup(file, when, pc) { pending = { file, when, pc }; location.hash = '#/backups'; }
+export function loadSetupFile() { pending = { pick: true }; location.hash = '#/backups'; }
 const why = new Map();   // file name -> its "before ..." words (null when it says nothing), read once per file
 const whyLoading = new Set();
 
@@ -137,27 +146,31 @@ async function yesDevice() {
 }
 
 // ---------- a whole setup file (a weekly copy or one picked by hand) ----------
-async function askSetup(key, file, when) {
+async function askSetup(key, file, when, pc) {
   ui.note = {};
   let planned;
   try { planned = await planSetup(file); } catch (e) { note(key, `Not loaded: ${e.message}.`, 'bad'); rerender(); return; }
-  if (isDemo()) planned.sound = null;   // demo mode never writes the real sound settings
-  const count = planned.changes.reduce((n, c) => n + c.plan.length, 0) + (planned.profiles ? 1 : 0) + (planned.sound ? 1 : 0);
+  if (isDemo()) { planned.sound = null; planned.extras = null; }   // demo mode never writes the real sound settings or files
+  const count = planned.changes.reduce((n, c) => n + c.plan.length, 0) + (planned.profiles ? 1 : 0) + (planned.sound ? 1 : 0)
+    + (planned.extras?.lines.filter((l) => l.what !== 'drivers-kept').length || 0);
   if (!count) {
     note(key, `Nothing to load: your devices already match this file${planned.notConnected.length ? ` (not connected: ${planned.notConnected.join(', ')})` : ''}.`);
     rerender(); return;
   }
-  ask({ key, kind: 'setup', file, planned, count, when });
+  ask({ key, kind: 'setup', file, planned, count, when, pc });
 }
 
 async function yesSetup() {
-  const { key, file, planned } = ui.confirm;
+  const { key, file, planned, pc } = ui.confirm;
   ui.confirm = null; ui.busy = key;
   note(key, 'Loading the setup…');
   rerender();
   try {
     const r = await loadSetup(file, planned);
-    note(key, r.failed ? `Finished with problems: ${r.done} changed, ${r.failed} not (see Activity).` : `Done. ${plural(r.done, 'setting')} changed.`, r.failed ? 'bad' : 'good');
+    // another PC's OneDrive copy, loaded: not offered again on the Overview (until it changes)
+    if (pc && !r.failed) fetch('/api/onedrive/dismiss', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pc }) }).catch(() => {});
+    const restart = r.restart ? ' Restart DeviceHub (tray icon > Quit, then the DeviceHub shortcut) to load the added devices.' : '';
+    note(key, (r.failed ? `Finished with problems: ${r.done} changed, ${r.failed} not (see Activity).` : `Done. ${plural(r.done, 'setting')} changed.`) + restart, r.failed ? 'bad' : 'good');
   } catch (e) { note(key, `Not finished: ${e.message}.`, 'bad'); }
   ui.busy = null;
   load();
@@ -187,7 +200,7 @@ async function saveCopy() {
   if (isDemo()) { note('setup', 'Demo mode: nothing is saved.'); rerender(); return; }
   note('setup', 'Saving…'); rerender();
   try {
-    const r = await saveSetup();
+    const r = await saveSetup({ wallpapers: ui.withWallpapers });
     note('setup', `Saved in your Downloads folder.${r.skipped.length ? ` Not connected, so not in it: ${r.skipped.join(', ')}.` : ''}`, 'good');
   } catch (e) { note('setup', `Not saved: ${e.message}.`, 'bad'); }
   load();
@@ -199,7 +212,8 @@ const askBox = (text, extra, yes, onYes) => h('div', { class: 'prof-confirm bk-a
   h('p', {}, text), ...[].concat(extra || []).filter(Boolean),
   h('div', { class: 'actions' }, button(yes, onYes, { kind: 'primary small' }), button('Cancel', cancel, { kind: 'ghost small' })));
 const changeList = (rows, more) => h('div', { class: 'bk-changes' },
-  ...rows.map((p) => h('div', {}, p.dev ? h('span', { class: 'bk-dev' }, `${p.dev} · `) : null, `${p.label}: `, h('s', {}, String(p.from)), ' → ', h('b', {}, String(p.show)))),
+  ...rows.map((p) => h('div', {}, p.dev ? h('span', { class: 'bk-dev' }, `${p.dev} · `) : null, `${p.label}: `,
+    ...(p.text != null ? [h('b', {}, p.text)] : [h('s', {}, String(p.from)), ' → ', h('b', {}, String(p.show))]))),
   more > 0 ? h('div', { class: 'faint' }, `and ${more} more`) : null);
 const LIST_MAX = 6;
 
@@ -213,15 +227,19 @@ function deviceAsk(c) {
 
 function setupAsk(c) {
   const p = c.planned;
-  const has = [...Object.keys(c.file.devices || {}).map(devName), Array.isArray(c.file.profiles) ? plural(c.file.profiles.length, 'profile') : null, c.file.sound ? 'sound settings' : null].filter(Boolean);
+  const x = c.file.extras || {};
+  const has = [...Object.keys(c.file.devices || {}).map(devName), Array.isArray(c.file.profiles) ? plural(c.file.profiles.length, 'profile') : null, c.file.sound ? 'sound settings' : null,
+    Object.keys(x.headsetNames || {}).length ? 'headset names' : null, x.background ? 'a background picture' : null,
+    x.myDevices?.length ? plural(x.myDevices.length, 'added device') : null, x.wallpapers?.length ? plural(x.wallpapers.length, 'wallpaper') : null].filter(Boolean);
   const rows = p.changes.flatMap((x) => x.plan.map((r) => ({ ...r, dev: x.kind })));
   if (p.profiles) rows.push({ dev: 'DeviceHub', label: 'Profiles', from: `${p.profiles.from} now`, show: `${p.profiles.to} from the file` });
   if (p.sound) rows.push({ dev: 'Sound', label: 'EQ, speakers, mics', from: 'now', show: 'from the file' });
+  for (const l of p.extras?.lines || []) rows.push({ dev: 'DeviceHub', label: l.label, text: l.text });
   return askBox(`Load the setup saved ${c.when}?`,
     [h('div', { class: 'bk-sub' }, `It holds: ${has.join(', ') || 'nothing DeviceHub knows'}.`),
       h('div', { class: 'bk-sub' }, `${plural(c.count, 'setting')} will change:`), changeList(rows.slice(0, LIST_MAX), rows.length - LIST_MAX),
       p.notConnected.length ? h('div', { class: 'bk-sub' }, `Not connected, so left as they are: ${p.notConnected.join(', ')}.`) : null,
-      h('div', { class: 'bk-sub' }, 'Each device is saved first, so you can come back to how it is now.')],
+      h('div', { class: 'bk-sub' }, 'Each device is saved first, so you can come back to how it is now. Added devices and pictures already on this PC are kept.')],
     'Yes, load it', yesSetup);
 }
 
@@ -252,12 +270,12 @@ function backupRow(f, id, canRestore) {
   const asking = ui.confirm?.key === key;
   const viewing = ui.view?.key === key;
   const w = why.get(f.name);
+  // one line: the date (it opens what is in the copy) and Go back
   return h('div', { class: 'bk-item' },
-    h('div', { class: 'file bk-row', style: { '--cc': `var(--c-${id})` } },
-      h('div', { class: 'bk-what' }, h('b', {}, friendlyWhen(f.at)), h('small', {}, [w, sizeText(f.size)].filter(Boolean).join(' · '))),
-      asking ? null : h('div', { class: 'bk-acts' },
-        button(viewing ? 'Hide' : "See what's in it", () => toggleView(f, id), { kind: 'ghost small' }),
-        canRestore ? button('Go back to this', () => askDevice(f, id), { kind: 'small', disabled: !!ui.busy }) : null)),
+    h('div', { class: 'bk-row' },
+      h('button', { class: `bk-what bk-open${viewing ? ' open' : ''}`, 'aria-expanded': String(viewing), 'aria-label': `What is in the copy from ${friendlyWhen(f.at)}`, onclick: () => toggleView(f, id) },
+        icon('arrow', 'ic bk-chev'), h('span', {}, h('b', {}, friendlyWhen(f.at)), w ? h('small', {}, w) : null)),
+      asking || !canRestore ? null : button('Go back', () => askDevice(f, id), { kind: 'ghost small', disabled: !!ui.busy })),
     viewing ? viewBox() : null,
     asking ? deviceAsk(ui.confirm) : null,
     noteLine(key));
@@ -268,11 +286,11 @@ function deviceCard(id, list) {
   const open = ui.older.has(id);
   const first = list.slice(0, SHOWN), rest = list.slice(SHOWN);
   readWhy(open ? list : first, id);
-  return card([icon(devices[id] ? id : 'backups'), h('h2', {}, `${devName(id)}: before each change`)],
-    h('div', { class: 'files' }, ...first.map((f) => backupRow(f, id, canRestore))),
-    rest.length && open ? h('div', { class: 'files bk-older' }, ...rest.map((f) => backupRow(f, id, canRestore))) : null,
-    rest.length ? h('button', { class: 'pill bk-more', 'aria-expanded': String(open), onclick: () => { if (open) ui.older.delete(id); else ui.older.add(id); rerender(); } },
-      open ? 'Show fewer' : `Show older (${rest.length})`) : null,
+  return card([icon(devices[id] ? id : 'backups'), h('h2', {}, devName(id))],
+    h('div', { class: 'bk-list' }, ...first.map((f) => backupRow(f, id, canRestore))),
+    rest.length && open ? h('div', { class: 'bk-list bk-older' }, ...rest.map((f) => backupRow(f, id, canRestore))) : null,
+    rest.length ? h('button', { class: 'bk-more', 'aria-expanded': String(open), onclick: () => { if (open) ui.older.delete(id); else ui.older.add(id); rerender(); } },
+      open ? 'Show fewer' : `Show ${rest.length} older`) : null,
     canRestore ? null : h('div', { class: 'bk-sub' }, 'You can look at these; they are not put back from here.'));
 }
 
@@ -280,24 +298,28 @@ function weeklyRow(f) {
   const key = `w:${f.name}`;
   const asking = ui.confirm?.key === key;
   return h('div', { class: 'bk-item' },
-    h('div', { class: 'file bk-row' },
-      h('div', { class: 'bk-what' }, h('b', {}, weeklyWhen(f.at)), h('small', {}, sizeText(f.size))),
-      asking ? null : h('div', { class: 'bk-acts' }, button('Go back to this', () => askWeekly(f), { kind: 'small', disabled: !!ui.busy }))),
+    h('div', { class: 'bk-row' },
+      h('div', { class: 'bk-what' }, h('b', {}, weeklyWhen(f.at))),
+      asking ? null : button('Go back', () => askWeekly(f), { kind: 'ghost small', disabled: !!ui.busy })),
     asking ? setupAsk(ui.confirm) : null,
     noteLine(key));
 }
 
 function setupCard() {
   const list = weeklyFiles || [];
-  return card([icon('backups'), h('h2', {}, 'Your whole setup')],
-    h('p', { class: 'bk-lede' }, 'A setup file holds all your devices, profiles and DeviceHub settings in one file.'),
-    ui.confirm?.key === 'file' ? setupAsk(ui.confirm) : h('div', { class: 'actions' },
-      button('Save a copy now', saveCopy, { kind: 'primary small', ic: 'backups' }),
-      button('Load a setup file…', pickSetupFile, { kind: 'small', ic: 'undo', disabled: !!ui.busy })),
+  // the title row carries the two buttons; below it the weekly copies (every device, profile and setting in one file)
+  return card([icon('backups'), h('h2', {}, 'Whole setup'),
+    ui.confirm?.key === 'file' ? null : h('div', { class: 'actions bk-head-acts' },
+      button('Save a copy', saveCopy, { kind: 'primary small' }),
+      button('Load a file…', pickSetupFile, { kind: 'small', disabled: !!ui.busy }))],
+    ui.confirm?.key === 'file' ? setupAsk(ui.confirm) : null,
+    wallpaperSize?.wallpaperCount && ui.confirm?.key !== 'file' ? h('label', { class: 'bk-sub bk-with' },
+      h('input', { type: 'checkbox', checked: ui.withWallpapers, onchange: (e) => { ui.withWallpapers = e.target.checked; } }),
+      ` Put my ${plural(wallpaperSize.wallpaperCount, 'wallpaper')} in the copy too (${mb(wallpaperSize.wallpaperBytes)})`) : null,
     noteLine('setup'), noteLine('file'),
-    h('div', { class: 'bk-label' }, 'Saved every week (the last 6 are kept)'),
+    h('div', { class: 'bk-label' }, 'Weekly copies of every device, profile and setting · the last 6 are kept'),
     weeklyFiles === null ? h('div', { class: 'faint' }, 'Reading…')
-      : list.length ? h('div', { class: 'files' }, ...list.map(weeklyRow))
+      : list.length ? h('div', { class: 'bk-list' }, ...list.map(weeklyRow))
         : h('div', { class: 'feed-empty' }, 'The first one is saved a minute or so after DeviceHub starts.'));
 }
 
@@ -309,17 +331,21 @@ export default {
     // the lists are read again each time the page is opened (no Refresh button)
     if (!opts.own && (opts.fresh || files === null)) {
       if (!ui.busy) { ui.confirm = null; ui.view = null; ui.note = {}; }
-      load(); loadWeekly();
+      load(); loadWeekly(); loadWallpaperSize();
+    }
+    if (pending) {
+      const p = pending; pending = null;
+      setTimeout(() => (p.pick ? pickSetupFile() : askSetup('file', p.file, p.when, p.pc)), 0);
     }
     const groups = new Map();
     for (const id of ['mouse', 'keyboard', 'headset']) if (devices[id]) groups.set(id, []);
     const ids = Object.keys(devices);
     for (const f of files || []) { const g = groupOf(f.name, ids); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(f); }
     const cards = [...groups].map(([id, list]) => (list.length ? deviceCard(id, list)
-      : card([icon(devices[id] ? id : 'backups'), h('h2', {}, `${devName(id)}: before each change`)], h('div', { class: 'feed-empty' }, 'None yet. One is saved before the first change.'))));
+      : card([icon(devices[id] ? id : 'backups'), h('h2', {}, devName(id))], h('div', { class: 'feed-empty' }, 'None yet. One is saved before the first change.'))));
     return h('div', {},
       topbar('Safety net', 'Backups'),
-      h('p', { class: 'lede bk-intro' }, 'DeviceHub saves your settings before every change, so you can always go back.'),
+      h('p', { class: 'lede bk-intro' }, 'Saved before every change. Click a date to see what is in it.'),
       h('div', { class: 'bk-top' }, setupCard()),
       files === null ? h('div', { class: 'faint' }, 'Reading…') : h('div', { class: 'grid three top bk-grid' }, ...cards),
       h('p', { class: 'faint', style: { marginTop: '18px', fontSize: '12.5px' } }, 'Stored in DeviceHub\\backups.'));

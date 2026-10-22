@@ -12,6 +12,7 @@ import { isDemo } from '../core/devices.js';
 import { toast } from '../ui/overlay.js';
 import { brandForUsb, brandNamed, ROUTE } from '../core/brands.js';
 import { learnThis } from './learn.js';
+import { getHelp } from '../ui/get-help.js';
 import { viaFileNote, isViaKeyboard } from './keyboard.js';
 
 const DEMO_PC = {
@@ -79,13 +80,17 @@ function thisPc() {
       line('Motherboard', board, null, boardSmbus ? 'Its lights and RGB headers: through OpenRGB only.' : 'Its lights: through OpenRGB.', null),
       line('Memory', ramParts.join(', '), ramLit ? 'yes' : ramNone ? 'no' : 'unknown', ramLit ? 'Through OpenRGB only.' : null, null),
       line('Case and fans', 'lit fans and strips', null, 'Follow the board when plugged into its RGB headers.', null),
-      pc.lampArrays ? line('Dynamic Lighting', `${pc.lampArrays} device${pc.lampArrays === 1 ? '' : 's'}`, 'yes', 'Set in Windows Settings > Personalization > Dynamic Lighting.', null) : null),
+      // Windows Dynamic Lighting: the lights work in Windows itself, no driver; one click opens that page (22 Oct 2026)
+      pc.lampArrays ? h('div', {}, line('Dynamic Lighting', `${pc.lampArrays} device${pc.lampArrays === 1 ? '' : 's'}`, 'yes', 'Works in Windows, no driver needed: colors and effects in Windows Settings.', null),
+        h('div', { class: 'actions', style: { margin: '6px 0 0' } }, button('Open Dynamic Lighting', openDynamicLighting, { kind: 'ghost small', ic: 'external' }))) : null),
     others.length ? h('div', { class: 'pc-others' }, h('h3', {}, 'Other devices plugged in'),
       ...others.map((u) => h('div', { class: 'pc-other' }, line(u.brand.shared ? 'USB device' : u.brand.name, u.name || `${u.brand.name} device`, null, null, u.brand),
         // a VIA keyboard needs no learning, only its layout file when VIA's library lacks it (keyboard.js viaFileNote)
         isViaKeyboard(u) ? viaFileNote(u.vid, u.pid, u.brand.name) : null,
         h('div', { class: 'actions' }, button('Learn it', () => { learnThis(u.vid, u.pid); location.hash = '#/learn'; }, { kind: 'ghost small', ic: 'plug' }),
-          button('Copy a prompt for Claude', () => copyPrompt(u), { kind: 'ghost small' }))))) : null,
+          button('Copy a prompt for Claude', () => copyPrompt(u), { kind: 'ghost small' })),
+        // or ask for it: a short request for GitHub with its USB id, shown in full first (ui/get-help.js)
+        getHelp(`request:${u.vid}:${u.pid}`, null, { label: 'Request support', request: { vid: u.vid, pid: u.pid, name: u.name || '' } })))) : null,
     // paired Bluetooth devices: connected or off, and the battery Windows last read
     st.bt?.length ? h('div', { class: 'pc-others' }, h('h3', {}, 'Bluetooth'),
       ...st.bt.map((d) => line(d.connected ? 'connected' : 'off', d.name, null, d.battery != null ? `Battery ${d.battery}%${d.connected ? '' : ' when last connected'}` : null, null))) : null);
@@ -112,6 +117,24 @@ export async function copyPrompt(u) {
   catch { toast('Could not copy', 'bad'); }
 }
 
+const openDynamicLighting = () => env.api('/api/diagnose/action', { kind: 'settings', page: 'lighting' }).catch((e) => toast('Could not open Windows Settings', 'bad', { detail: e.message }));
+
+// How to add the board, fan and RAM lights (22 Oct 2026, Shawn: "as simple as possible"): they need the person's own
+// OpenRGB, and for the board and RAM the PawnIO driver. DeviceHub never installs either (CLAUDE.md); this only says how.
+function boardGuide(open = false, again = 'Look again') {
+  const step = (n, ...text) => h('li', {}, h('span', { class: 'gh-num' }, String(n)), h('span', {}, ...text));
+  const link = (href, text) => h('a', { href, target: '_blank', rel: 'noopener' }, text);
+  return h('details', { class: 'pc-guide', open: open || null },
+    h('summary', {}, 'Add your board, fan and RAM lights'),
+    h('ol', { class: 'gh-steps' },
+      step(1, 'Download OpenRGB 1.1 or newer, free, from ', link('https://openrgb.org', 'openrgb.org'), '.'),
+      step(2, 'For the motherboard and RAM: install PawnIO from ', link('https://pawnio.eu', 'pawnio.eu'), '. It is a signed Windows driver, so it is your choice. Graphics cards and USB lights work without it.'),
+      step(3, 'Open OpenRGB as administrator (right-click it, Run as administrator) and let it find your lights.'),
+      step(4, 'In OpenRGB, open the SDK Server tab and press Start Server.'),
+      step(5, `Come back here and press ${again}. The lights show here and in Apply to all.`)),
+    h('p', { class: 'faint', style: { fontSize: '12px', margin: '8px 0 0' } }, 'DeviceHub never writes to the board or RAM itself: everything goes through OpenRGB.'));
+}
+
 function pcLights() {
   const o = st.orgb;
   const head = [h('h2', {}, 'PC lights')];
@@ -123,7 +146,8 @@ function pcLights() {
       b?.canStart ? h('p', { class: 'faint' }, `DeviceHub carries OpenRGB ${b.version} for USB lights (no drivers, so not the board, RAM or graphics card). Find lights starts it hidden; it stops when DeviceHub quits.`)
         : h('p', { class: 'faint' }, 'Board, fan and RAM lights work through OpenRGB 1.1 or newer, a free app (openrgb.org). Open it and turn on its SDK server; the lights then show here and in Apply to all.'),
       o.reason && o.reason !== 'not running' ? h('p', { class: 'faint', style: { fontSize: '12.5px' } }, o.reason) : null,
-      h('div', { class: 'actions' }, button(b?.canStart ? 'Find lights' : 'Look again', () => loadPc(true), { kind: 'small', ic: 'refresh' })));
+      h('div', { class: 'actions' }, button(b?.canStart ? 'Find lights' : 'Look again', () => loadPc(true), { kind: 'small', ic: 'refresh' })),
+      boardGuide(!b?.canStart, b?.canStart ? 'Find lights' : 'Look again'));
   }
   return card([...head, h('span', { class: 'spacer' }), pill(`${o.controllers.length} found`, 'good')],
     o.bundled ? h('p', { class: 'faint', style: { fontSize: '12.5px' } }, `Through the OpenRGB inside DeviceHub: USB lights only${o.readOnly ? '; read only for now (this OpenRGB version numbers lights wrongly for DeviceHub)' : ''}.`) : null,
@@ -133,8 +157,10 @@ function pcLights() {
       h('small', { class: 'faint' }, [c.mode ? `Mode: ${c.mode}` : null, `${c.leds} light${c.leds === 1 ? '' : 's'}`, c.zones.length > 1 ? c.zones.map((z) => z.name).join(', ') : null].filter(Boolean).join(' · ')))))
       : h('p', { class: 'faint' }, 'OpenRGB runs but found no lights.'),
     h('div', { class: 'actions' },
-      button('Put back as before', async () => { if (isDemo()) { st.orgb = DEMO_ORGB(); redraw(); toast('PC lights put back', 'good'); return; } try { await env.api('/api/openrgb/restore', {}); toast('PC lights put back', 'good'); } catch (e) { toast('Nothing to put back', 'bad', { detail: e.message }); } loadPc(true); }, { kind: 'small', ic: 'undo' }),
-      button('Look again', () => loadPc(true), { kind: 'ghost small', ic: 'refresh' })));
+      button('Undo', async () => { if (isDemo()) { st.orgb = DEMO_ORGB(); redraw(); toast('PC lights undone', 'good'); return; } try { await env.api('/api/openrgb/restore', {}); toast('PC lights undone', 'good'); } catch (e) { toast('Nothing to undo', 'bad', { detail: e.message }); } loadPc(true); }, { kind: 'small', ic: 'undo' }),
+      button('Look again', () => loadPc(true), { kind: 'ghost small', ic: 'refresh' })),
+    // the built-in OpenRGB reaches USB lights only: the way to the board and RAM stays one click away
+    o.bundled ? boardGuide() : null);
 }
 
 export function pcSection(onRedraw) {

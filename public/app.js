@@ -24,6 +24,7 @@ import fansPage from './pages/fans.js';
 import settingsPage from './pages/settings.js';
 import learnPage from './pages/learn.js';
 import supportedPage from './pages/supported.js';
+import wallpapersPage from './pages/wallpapers.js';
 import { devicePage } from './pages/my-device.js';
 import { commands } from './core/commands.js';
 import { startAutoSwitch, loadSettings, auto } from './core/autoswitch.js';
@@ -48,7 +49,7 @@ if (!REMOTE) adapters.forEach(register);
 // demo mode's pretend added device (?demo&added, public/devices/demo.js): its graph readings and time left are its own
 if (DEMO) for (const a of adapters) if (a.demoHistory) { useDemoHistory(a.id, a.demoHistory); if (a.demoEstimate) useDemoEstimate(a.id, a.demoEstimate); }
 
-const PAGES = [overview, mousePage, headsetPage, keyboardPage, lightingPage, monitorsPage, fansPage, profilesPage, backupsPage, settingsPage, learnPage, supportedPage];
+const PAGES = [overview, mousePage, headsetPage, keyboardPage, lightingPage, monitorsPage, fansPage, wallpapersPage, profilesPage, backupsPage, settingsPage, learnPage, supportedPage];
 // devices added on this PC (my-devices/, 21 Oct 2026): a page each, after the built-in devices
 if (REMOTE || DEMO) for (const d of Object.values(devices)) if (d.adapter?.plugin) PAGES.splice(PAGES.indexOf(lightingPage), 0, devicePage(d.id));
 let current = null;
@@ -69,6 +70,7 @@ document.addEventListener('pointermove', (e) => {
 }, { passive: true });
 
 // ---------- rail ----------
+const SETUP = ['lighting', 'monitors', 'fans', 'wallpapers'];
 function buildRail() {
   const rail = $('#rail');
   const navBtn = (p) => h('button', { class: 'nav', dataset: { page: p.id }, onclick: () => go(p.id) },
@@ -80,14 +82,16 @@ function buildRail() {
     navBtn(PAGES[0]),
     h('div', { class: 'nav-label' }, 'Devices'),
     ...PAGES.filter((p) => p.device).map(navBtn),
-    // the rest in two groups (20 Oct 2026, seven entries were one long list): what sits on the desk, and the app itself
-    h('div', { class: 'nav-label' }, 'Desk'),
-    ...PAGES.filter((p) => ['lighting', 'monitors', 'fans'].includes(p.id)).map(navBtn),
+    // the rest in two groups (20 Oct 2026, seven entries were one long list): the person's setup, and the app itself.
+    // "Desk" became "Setup" when Wallpapers joined it (22 Oct 2026, Shawn: "put it under the desk area and rename that to
+    // make more sense"): the lights, screens, fans and wallpapers of their setup
+    h('div', { class: 'nav-label' }, 'Setup'),
+    ...PAGES.filter((p) => SETUP.includes(p.id)).map(navBtn),
     h('div', { class: 'nav-label' }, 'App'),
     // rail: false = reached from another page only (Supported devices: Settings and Search; Learn a device is listed here too, 22 Oct 2026)
-    ...PAGES.filter((p) => !p.device && p.id !== 'overview' && p.rail !== false && !['lighting', 'monitors', 'fans'].includes(p.id)).map(navBtn),
+    ...PAGES.filter((p) => !p.device && p.id !== 'overview' && p.rail !== false && !SETUP.includes(p.id)).map(navBtn),
     h('div', { class: 'rail-foot' },
-      h('button', { class: 'cmd-hint', onclick: openPalette }, icon('search'), h('span', {}, 'Search'), h('kbd', { class: 'cmd-kbd' }, 'Ctrl K'))),
+      h('button', { class: 'cmd-hint', onclick: openPalette }, icon('search'), h('span', {}, 'Search'))),
   );
   paintRail();
 }

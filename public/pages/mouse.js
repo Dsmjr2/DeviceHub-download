@@ -1,6 +1,6 @@
 // Mouse page: DPI stages on a track, performance settings, device info.
 import { h, icon, fmt } from '../ui/dom.js';
-import { more, card, row, toggle, segmented, slider, stepper, ring, button, pill } from '../ui/controls.js';
+import { card, row, toggle, segmented, slider, stepper, ring, button, pill } from '../ui/controls.js';
 import { batteryCell, loadBatteryEstimates } from '../ui/controls.js';
 import { devices, write, isDemo, prepare } from '../core/devices.js';
 import { toast, modal } from '../ui/overlay.js';
@@ -44,12 +44,13 @@ function pointerCard(redraw) {
   if (!p) return card(head, h('p', { class: 'faint' }, 'Reading…'));
   if (!p.ok) return card(head, h('p', { class: 'faint' }, `Could not read them: ${p.error}`));
   const page = p.scrollLines === -1;
+  // the sliders together, then the switches (22 Oct 2026, Shawn: "group scrollables and buttons together")
   return card(head,
     row('Pointer speed', 'Windows default: 10.', slider({ value: p.speed, min: 1, max: 20, live: livePointer('speed'), onCommit: (v) => setPointer('speed', v, 'Pointer speed', `${v}`, redraw) })),
-    row('Enhance pointer precision', 'Mouse acceleration. Best off for gaming.', toggle({ value: p.precision, label: 'Enhance pointer precision', onCommit: (on) => setPointer('precision', on, 'Pointer precision', on ? 'on' : 'off', redraw) })),
-    row('Scroll one page at a time', null, toggle({ value: page, label: 'Scroll one page', onCommit: (on) => setPointer('scrollLines', on ? -1 : 3, 'Scrolling', on ? 'one page' : '3 lines', redraw) })),
     page ? null : row('Scroll lines', null, slider({ value: p.scrollLines, min: 1, max: 20, live: livePointer('scrollLines'), onCommit: (v) => setPointer('scrollLines', v, 'Scroll lines', `${v}`, redraw) })),
-    row('Double-click speed', 'Max time between two clicks. Windows default: 500 ms.', slider({ value: p.doubleClick, min: 200, max: 900, step: 10, unit: ' ms', live: livePointer('doubleClick'), onCommit: (v) => setPointer('doubleClick', v, 'Double-click speed', `${v} ms`, redraw) })));
+    row('Double-click speed', 'Max time between two clicks. Windows default: 500 ms.', slider({ value: p.doubleClick, min: 200, max: 900, step: 10, unit: ' ms', live: livePointer('doubleClick'), onCommit: (v) => setPointer('doubleClick', v, 'Double-click speed', `${v} ms`, redraw) })),
+    row('Enhance pointer precision', 'Mouse acceleration. Best off for gaming.', toggle({ value: p.precision, label: 'Enhance pointer precision', onCommit: (on) => setPointer('precision', on, 'Pointer precision', on ? 'on' : 'off', redraw) })),
+    row('Scroll one page at a time', null, toggle({ value: page, label: 'Scroll one page', onCommit: (on) => setPointer('scrollLines', on ? -1 : 3, 'Scrolling', on ? 'one page' : '3 lines', redraw) })));
 }
 const set = (key, value, label, display) => write('mouse', key, value, { label, display }).catch(() => {});
 const locked = (key) => d().adapter.trusted && !d().adapter.trusted(key);
@@ -211,7 +212,8 @@ export default {
             stepper({ value: count, min: 1, max: DPI_SLOTS, step: 1, disabled: locked('stageCount'), label: 'DPI stages in the cycle', onCommit: (n) => set('stageCount', n, 'DPI stages in the cycle', `${n}`) })) : null],
           dpiTrack(v, count),
           h('div', { class: 'stages' }, ...Array.from({ length: DPI_SLOTS }, (_, i) => stageCard(v, i, count)))),
-        more('mouse', 'Battery history, Windows pointer, device info',
+        // shown open, no "More" row to click first (22 Oct 2026, Shawn)
+        h('div', { class: 'more-body' },
           batteryChart('mouse', redraw),
           pointerCard(redraw),
           card([h('h2', {}, 'Device'), h('span', { class: 'spacer' }), deviceActions(dev)], kv(dev.info)))));

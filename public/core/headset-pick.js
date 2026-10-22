@@ -5,13 +5,16 @@
 
 const HS80 = /^VID_1B1C&PID_0A6/i;   // the HS80's receiver and its USB cable (0A6B, 0A69 ...)
 const USB_ID = /^VID_[0-9A-F]{4}&PID_[0-9A-F]{4}$/i;
+// a wired headset on the PC's jack (helpers/wired-headsets.js, 22 Oct 2026): offered in the picker, used only when picked
+const JACK = /^JACK_[0-9A-F]{8}$/i;
+export const isJack = (k) => JACK.test(String(k || ''));
 
 export const isHs80 = (usb) => HS80.test(String(usb || ''));
 
 // a saved or sent choice, cleaned up; anything else is no choice
 export function cleanPick(k) {
   if (k === 'hs80') return 'hs80';
-  return typeof k === 'string' && USB_ID.test(k) ? k.toUpperCase() : null;
+  return typeof k === 'string' && (USB_ID.test(k) || JACK.test(k)) ? k.toUpperCase() : null;
 }
 
 // a short name for the picker: Windows' device name without "Gaming Headset" and the like, at most 24 characters
@@ -45,7 +48,8 @@ export function chosenOther(list, pick, { asGeneric = false } = {}) {
 }
 
 // the USB headset to run when the HS80 is not used: the chosen one if it is plugged in, else the first one
+// (a wired one only when it is the chosen one: PC speakers are never taken for a headset by themselves)
 export function genericFor(list, pick, { asGeneric = false } = {}) {
   const all = (Array.isArray(list) ? list : []).filter((x) => x?.usb && (asGeneric || !isHs80(x.usb)));
-  return chosenOther(all, pick, { asGeneric }) || all[0] || null;
+  return chosenOther(all, pick, { asGeneric }) || all.find((x) => !isJack(x.usb)) || null;
 }

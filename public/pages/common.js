@@ -31,7 +31,7 @@ export function awayBanner(d, { off } = {}) {
 export function undoButton(d) {
   if (!d.undo) return null;
   return button(`Undo ${d.undo.label}`, async () => {
-    try { const r = await undo(d.id); toast(`${r.label} put back`, 'good'); } catch (e) { toast('Not undone', 'bad', { detail: e.message }); }
+    try { const r = await undo(d.id); toast(`${r.label} undone`, 'good'); } catch (e) { toast('Not undone', 'bad', { detail: e.message }); }
   }, { kind: 'ghost small', ic: 'undo', title: `${d.undo.count} change${d.undo.count === 1 ? '' : 's'} can be undone` });
 }
 

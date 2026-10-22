@@ -12,7 +12,10 @@ import { meter, micState, dots, signal, colorDot } from '../ui/gauges.js';
 import { toast } from '../ui/overlay.js';
 import { loadPc, otherDevices, pcLoaded, copyPrompt } from './pc-lights.js';
 import { learnThis } from './learn.js';
+import { getHelp } from '../ui/get-help.js';
+import { installerButton } from '../ui/installer-button.js';
 import { LIFT_OFF } from '../devices/pulsar.js';
+import { reviewSetup } from './backups.js';
 
 let profiles = null;
 let loading = false;
@@ -92,12 +95,39 @@ function firstRun(go, redraw) {
 // from the device library or something still needs attention, what was found, what works now, what is optional and
 // what still needs a learning session. Shown only when /api/setup says show (never on a PC where everything is built
 // in); Dismiss hides it until the summary says something new (kept in setup.json).
-let setupInfo = null, setupAsked = false, setupHidden = false;
+// Another PC's setup in OneDrive (helpers/onedrive-setup.mjs): offered once per copy it saves. Review opens the setup
+// file's usual confirmation on the Backups page (every change listed, nothing written before Load).
+let oneDriveOffer, oneDriveAsked = false;
+function oneDriveBanner(redraw, fresh) {
+  if (isDemo()) return null;
+  if (fresh) oneDriveAsked = false;   // asked again each time the Overview is opened
+  if (!oneDriveAsked) { oneDriveAsked = true; fetch('/api/onedrive').then((r) => (r.ok ? r.json() : null)).then((j) => { oneDriveOffer = j?.others?.find((o) => !o.seen) || null; if (oneDriveOffer) redraw(); }).catch(() => {}); }
+  const o = oneDriveOffer;
+  if (!o) return null;
+  const when = new Date(o.savedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const notNow = () => { oneDriveOffer = null; redraw(); fetch('/api/onedrive/dismiss', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pc: o.pc }) }).catch(() => {}); };
+  const review = async () => {
+    try {
+      const r = await fetch(`/api/onedrive/read?pc=${encodeURIComponent(o.pc)}`);
+      if (!r.ok) throw new Error(`error ${r.status}`);
+      reviewSetup(await r.json(), `on ${o.pc} (${when})`, o.pc);
+    } catch (e) { toast('Could not read it', 'bad', { detail: e.message }); }
+  };
+  return h('div', { class: 'banner info od-offer' }, icon('backups'),
+    h('div', { class: 'grow' }, h('b', {}, `Bring your settings from ${o.pc}?`), h('small', {}, `Saved in your OneDrive ${when}. You see every change before anything is loaded.`)),
+    h('div', { class: 'actions' }, button('Review', review, { kind: 'primary small' }), button('Not now', notNow, { kind: 'ghost small' })));
+}
+
+let setupInfo = null, setupAsked = false, setupHidden = false, reportsOn = false;
 const setupNote = {};   // an item's button: what it answered, by library entry name or device id
 const allNote = { busy: false, lines: [] };   // Turn on settings for all: its answer, one line per device
 function setupCard(redraw) {
   if (isDemo() || setupHidden) return null;
-  if (!setupAsked) { setupAsked = true; fetch('/api/setup').then((r) => (r.ok ? r.json() : null)).then((j) => { setupInfo = j; if (j?.show) redraw(); }).catch(() => {}); }
+  if (!setupAsked) {
+    setupAsked = true;
+    fetch('/api/setup').then((r) => (r.ok ? r.json() : null)).then((j) => { setupInfo = j; if (j?.show) redraw(); }).catch(() => {});
+    fetch('/api/auto-report').then((r) => (r.ok ? r.json() : null)).then((j) => { reportsOn = !!j?.active; if (reportsOn && setupInfo?.show) redraw(); }).catch(() => {});
+  }
   const s = setupInfo;
   if (!s?.show) return null;
   // an item's own button (helpers/auto-setup.mjs summary): install a library driver, or run its check again. The
@@ -116,12 +146,37 @@ function setupCard(redraw) {
     } catch (e) { setupNote[a.name || a.id] = `Not done: ${e.message}`; }
     redraw();
   };
+  // one plain line per thing found: its name, one sentence, and the one button it needs (22 Oct 2026, Shawn: "made as
+  // simple as possible for someone to download and use"). The long line (what setup-report.mjs prints) is kept for Claude.
+  const openPage = (page) => { location.hash = `#/${page}`; };
+  const buttonOf = (i) => {
+    const a = i.action, note = a ? setupNote[a.name || a.id] : null;
+    if (a?.kind === 'settings') return button(a.label || 'Open', () => fetch('/api/diagnose/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'settings', page: a.page }) }), { kind: 'ghost small', ic: 'external' });
+    if (a && ['library-install', 'check-again', 'turn-on'].includes(a.kind)) {
+      if (/^Installed/.test(note || '')) return null;
+      // settings just turned on: the next useful click is telling others it works (on the device's own page)
+      if (a.kind === 'turn-on' && /^Settings turned on/.test(note || '')) return button('Tell others it works', () => openPage(a.id), { kind: 'ghost small', ic: 'external' });
+      return button(a.kind === 'library-install' ? 'Install' : a.kind === 'turn-on' ? 'Turn on settings' : 'Check again', () => act(i), { kind: a.kind === 'check-again' ? 'ghost small' : 'primary small', ic: a.kind === 'check-again' ? 'search' : 'plug' });
+    }
+    if (i.what === 'learn' && i.usb) return button('Learn it', () => { const [vid, pid] = i.usb.split(':'); learnThis(vid, pid); openPage('learn'); }, { kind: 'ghost small', ic: 'plug' });
+    if (i.what === 'unknown-vendor') return button('Learn a device', () => openPage('learn'), { kind: 'ghost small', ic: 'plug' });
+    // Equalizer APO ships inside DeviceHub: its own Install button right here (ui/installer-button.js: the dialog says
+    // what happens, the maker's installer and Windows' own prompt follow)
+    if (i.what === 'eqapo') return installerButton('eqapo', { redraw, kind: 'primary small' });
+    if (i.page) return button('Open', () => openPage(i.page), { kind: 'ghost small' });
+    return null;
+  };
+  // a device with no driver also offers Request support: a short request for GitHub, shown in full first (get-help.js)
+  const requestOf = (i) => {
+    if (!['learn', 'packet-size'].includes(i.what) || !i.usb) return null;
+    const [vid, pid] = i.usb.split(':');
+    return getHelp(`request:${i.usb}`, null, { label: 'Request support', request: { vid, pid, name: i.title }, kind: 'ghost small' });
+  };
   const itemOf = (i) => {
     const a = i.action, note = a ? setupNote[a.name || a.id] : null;
-    if (!a || !['library-install', 'check-again', 'turn-on'].includes(a.kind)) return h('li', {}, i.line);
-    return h('li', {}, i.line, h('div', { class: 'actions', style: { margin: '4px 0 6px', justifyContent: 'flex-start', alignItems: 'center' } },
-      /^Installed/.test(note || '') ? null : button(a.label || (a.kind === 'library-install' ? 'Install' : a.kind === 'turn-on' ? 'Turn on settings' : 'Check again'), () => act(i), { kind: 'ghost small', ic: a.kind === 'check-again' ? 'search' : 'plug' }),
-      note ? h('small', { class: 'faint' }, note) : null));
+    return h('li', { class: `su-item ${i.state || ''}` },
+      h('div', { class: 'su-text' }, h('b', {}, i.title || i.name || i.what), h('small', {}, note || i.short || i.line)),
+      buttonOf(i), requestOf(i));
   };
   // Turn on settings for all (helpers/turn-on-all.mjs): every waiting, connected device in turn, the same checks as each
   // one's own button; one plain line per device, shown here and on that device's item
@@ -139,23 +194,26 @@ function setupCard(redraw) {
     } catch (e) { allNote.lines = [`Not done: ${e.message}`]; }
     allNote.busy = false; redraw();
   };
-  const allRow = waiting.length || allNote.lines.length ? h('div', { class: 'setup-all', style: { margin: '0 0 10px' } },
-    h('div', { class: 'actions', style: { margin: 0, justifyContent: 'flex-start', alignItems: 'center' } },
-      waiting.length && !allNote.busy ? button('Turn on settings for all', allOn, { kind: 'primary small', ic: 'plug' }) : null,
-      waiting.length && !allNote.lines.length ? h('small', { class: 'faint' }, `${waiting.length} device${waiting.length === 1 ? '' : 's'} waiting. Close each maker's app first.`) : null),
-    ...allNote.lines.map((l) => h('small', { class: 'faint', style: { display: 'block', marginTop: '4px' } }, l))) : null;
-  const part = (title, items) => (items?.length ? h('div', { class: 'setup-part' }, h('h3', {}, title), h('ul', { style: { margin: '4px 0 10px', paddingLeft: '18px' } }, ...items.map(itemOf))) : null);
+  const all = [...(s.works || []), ...(s.learn || []), ...(s.optional || [])];
+  const by = (st) => all.filter((i) => (i.state || (s.learn?.includes(i) ? 'not-yet' : s.optional?.includes(i) ? 'optional' : 'ready')) === st);
+  const ready = by('ready'), oneClick = by('one-click'), notYet = by('not-yet'), optional = by('optional');
+  const group = (title, ic, items, extra) => (items.length ? h('div', { class: 'su-group' },
+    h('div', { class: 'su-head' }, icon(ic, 'ic'), h('h3', {}, title), h('span', { class: 'su-count' }, String(items.length)), h('span', { class: 'spacer' }), extra || null),
+    h('ul', { class: 'su-list' }, ...items.map(itemOf))) : null);
+  const allBtn = waiting.length > 1 && !allNote.busy ? button('Turn on all', allOn, { kind: 'small', ic: 'plug' }) : null;
   const dismiss = () => { setupHidden = true; redraw(); fetch('/api/setup/dismiss', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ signature: s.signature }) }).catch(() => {}); };
-  return h('div', { class: 'panel setup-card', style: { marginBottom: '16px' } },
-    h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } }, h('h2', { style: { margin: 0 } }, 'Set up'), h('span', { class: 'spacer', style: { flex: 1 } }), button('Dismiss', dismiss, { kind: 'ghost small' })),
-    h('p', { class: 'faint', style: { margin: '4px 0 8px' } }, 'A ready-made driver reads your device at once. Press Turn on settings and DeviceHub tests each setting, then lets you change it.'),
-    allRow,
-    part('Installed from the device library', s.installed),
-    part('Works now', s.works),
-    part('Still to do', s.learn),
-    part('Optional', s.optional),
-    s.learn?.length ? h('div', { class: 'actions', style: { margin: '0 0 8px' } }, button('Learn a device', () => { location.hash = '#/learn'; }, { kind: 'primary small', ic: 'plug' })) : null,
-    s.learn?.length ? h('p', { class: 'faint', style: { margin: 0 } }, 'Learn a device walks you through it in DeviceHub. Or open this folder in Claude Code and say "set this up": it runs helpers/setup-report.mjs and does what is listed under Still to do.') : null);
+  const installedNames = (s.installed || []).map((x) => x.title || x.name);
+  return h('div', { class: 'panel setup-card' },
+    h('div', { class: 'su-top' }, h('h2', {}, 'Your devices'), h('span', { class: 'spacer' }), button('Hide', dismiss, { kind: 'ghost small' })),
+    h('p', { class: 'su-lede' }, oneClick.length ? 'Almost there: the devices below need one click. Close each maker\'s app first.' : 'Here is what DeviceHub found on this PC.'),
+    installedNames.length ? h('p', { class: 'su-fine' }, `Set up by itself from the device library: ${installedNames.join(', ')}.`) : null,
+    // the automatic problem reports (helpers/auto-report.mjs), said once here: only where they can go and are on
+    reportsOn ? h('p', { class: 'su-fine' }, 'When something goes wrong, DeviceHub sends Shawn a short report (nothing personal) so he can fix it. You can turn this off in Settings.') : null,
+    group('One click to finish', 'plug', oneClick, allBtn),
+    allNote.lines.length ? h('div', { class: 'su-fine' }, ...allNote.lines.map((l) => h('div', {}, l))) : null,
+    group('Ready to use', 'check', ready),
+    group('Not supported yet', 'alert', notYet, button('Learn a device', () => openPage('learn'), { kind: 'ghost small' })),
+    optional.length ? h('details', { class: 'su-more' }, h('summary', {}, `Optional extras (${optional.length})`), h('ul', { class: 'su-list' }, ...optional.map(itemOf))) : null);
 }
 
 function bay(d, go, redraw) {
@@ -299,6 +357,22 @@ function linkStatus(d, off) {
     h('span', { class: 'link-pc' }, icon('tower')));
 }
 
+// Batteries Windows already knows (22 Oct 2026, Shawn: "work with ANY headset, mouse, keyboard"): any connected Bluetooth
+// headset, earbuds, controller or mouse with its level, read-only from Windows (GET /api/bluetooth, at most once a
+// minute here). Shown only when there is one; a level Windows kept from before the device disconnected is left out.
+let bt = null, btAt = 0;
+const DEMO_BT = [{ name: 'Xbox Wireless Controller', connected: true, battery: 80 }, { name: 'AirPods Pro', connected: true, battery: 45 }];
+function batteries(redraw) {
+  if (isDemo()) bt = DEMO_BT;
+  else if (Date.now() - btAt > 60000) { btAt = Date.now(); env.api('/api/bluetooth').then((x) => { bt = Array.isArray(x) ? x : []; redraw(); }).catch(() => {}); }
+  const list = (bt || []).filter((d) => d.connected && d.battery != null);
+  if (!list.length) return null;
+  return h('div', { class: 'ov-batteries', 'aria-label': 'Bluetooth batteries' },
+    h('span', { class: 'ov-bat-label' }, 'Batteries'),
+    ...list.map((d) => h('span', { class: `ov-bat${d.battery <= 10 ? ' bad' : d.battery <= 20 ? ' warn' : ''}` },
+      h('i', { style: { '--lvl': `${Math.max(4, Math.min(100, d.battery))}%` } }), h('span', {}, d.name), h('b', {}, `${d.battery}%`))));
+}
+
 export default {
   id: 'overview', title: 'Overview', icon: 'overview',
   // handled in place (see patchBay): no page redraw for a device or activity change
@@ -323,9 +397,11 @@ export default {
 
       isDemo() ? h('div', { class: 'banner info' }, icon('shield'), h('div', { class: 'grow' }, h('b', {}, 'Demo with pretend devices'),
         h('small', {}, 'Click anything: change DPI, remap keys, switch profiles. The values start from a real Pulsar X-Lite, Corsair HS80 and Epomaker P75, and nothing leaves this page. The real app runs on the PC and talks to the devices over USB.'))) : null,
+      oneDriveBanner(redraw, fresh),
       setupCard(redraw),
       noDevicesYet() ? firstRun(go, redraw)
         : h('div', { class: 'bays', style: { gridTemplateColumns: `repeat(${list.length}, minmax(0, 1fr))` } }, ...list.map((d) => bay(d, go, redraw))),
+      batteries(redraw),
       h('div', { class: 'grid ov-bottom' },
         card([h('h2', {}, 'Profiles'), h('span', { class: 'spacer' }), button('Manage', () => go('profiles'), { kind: 'ghost small' })],
           profiles?.length

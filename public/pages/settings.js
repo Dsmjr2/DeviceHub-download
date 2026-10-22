@@ -19,35 +19,66 @@ async function uninstall() {
   } catch { toast('DeviceHub is not running', 'bad'); }
 }
 import { env } from '../core/env.js';
-import { ART_STYLES, saveArtStyle, THEME_ACCENTS, THEME_BGS, currentTheme, saveTheme } from '../core/theme.js';
+import { ART_STYLES, saveArtStyle, THEME_ACCENTS, THEME_BGS, currentTheme, saveTheme, hasPicture, removePicture } from '../core/theme.js';
 import { artFor } from '../ui/art.js';
 import { copyDownloadLink, copyShortReport } from '../core/share.js';
 import { installerButton, installerStatus, installing } from '../ui/installer-button.js';
 import { getHelp } from '../ui/get-help.js';
+import { smoothBar } from '../ui/progress.js';
+import { loadSetupFile } from './backups.js';
+import { saveSetup } from '../core/setup.js';
 
 let startup = null;
 // DeviceHub's own updates from GitHub (helpers/self-update.js): null = not read yet
 let self = null, selfBusy = false;
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+// looking for an update: the bar fills slowly while DeviceHub asks, then runs to the end before the answer shows
+let selfBar = null;
 async function loadSelf() {
   if (isDemo()) { self = { git: true, behind: 0 }; return; }
   self = { checking: true };
-  try { self = await (await fetch('/api/self-update')).json(); } catch { self = { error: 'DeviceHub did not answer' }; }
+  selfBar = smoothBar(); selfBar.step('Looking for updates', 0, 90, 2500);
+  rerender();
+  const started = Date.now();
+  let r;
+  try { r = await (await fetch('/api/self-update')).json(); } catch { r = { error: 'DeviceHub did not answer' }; }
+  await pause(Math.max(0, 1200 - (Date.now() - started)));   // long enough to see the bar move
+  // the bar runs to the end at its own calm pace (never longer than 4 s, e.g. when the page was left), then the answer
+  await Promise.race([selfBar.done('Looking for updates'), pause(4000)]); await pause(250);
+  selfBar.stop(); selfBar = null;
+  self = r;
   rerender();
 }
-// A loading bar (21 Oct 2026, Shawn: "put loading bars when updating or syncing"): a percentage when it is known (the
-// download), else a sweep, with the step in words under it. The update's steps come from /api/self-update/progress
-// every 0.4 s, and only the bar is redrawn.
+// A loading bar (21 Oct 2026, Shawn: "put loading bars when updating or syncing"): a sweep while syncing, with the
+// step in words under it. Updating uses one smooth bar for the whole update (ui/progress.js; 22 Oct 2026); its steps
+// come from /api/self-update/progress every 0.4 s and move the same bar, which is never rebuilt.
 function loadingBar(id, text, pct) {
   return h('div', { class: 'loadbar-wrap', id },
     h('div', { class: `loadbar${pct == null ? ' sweep' : ''}`, role: 'progressbar', 'aria-label': text, 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': pct == null ? null : String(pct) },
       h('span', { style: pct == null ? {} : { width: `${pct}%` } })),
     h('span', { class: 'loadbar-text' }, pct == null ? text : `${text} · ${pct}%`));
 }
+// each update step's share of the one bar (helpers/self-update.js step() words); a download's percentage is placed
+// inside its share. The zip copy: look, download, check, unpack, check, install. The git copy: look, get the
+// changes (or keep this PC's changes and bring them together), check, restart.
+const SHARES = [
+  [/^(Looking for|Checking for) the new version/, 0, 10],
+  [/^Downloading/, 10, 70],
+  [/^Checking the download/, 70, 76],
+  [/^Unpacking/, 76, 82],
+  [/^Getting the new changes/, 10, 62],
+  [/^Keeping the changes/, 62, 68],
+  [/^Bringing them together/, 68, 76],
+  [/^Checking the new version/, 82, 92],
+  [/^(Installing|Restarting)/, 92, 99],
+];
 let selfStep = null, stepTimer = null;
 function showStep(p) {
   selfStep = p;
-  const el = document.getElementById('self-bar');
-  if (el) el.replaceWith(loadingBar('self-bar', p.text, p.pct)); else rerender();
+  const share = SHARES.find(([re]) => re.test(p.text)) || [null, selfBar?.value || 0, 95];
+  let [, a, b] = share;
+  if (p.pct != null) { a += ((b - a) * p.pct) / 100; b = Math.min(share[2], a + 2); }
+  selfBar?.step(p.text, a, b);
 }
 function watchSteps() {
   clearInterval(stepTimer);
@@ -57,15 +88,16 @@ function watchSteps() {
   }, 400);
 }
 async function runSelfUpdate() {
-  selfBusy = true; selfStep = { text: 'Looking for the new version', pct: null }; rerender(); watchSteps();
+  selfBusy = true; selfBar?.stop(); selfBar = smoothBar(); rerender();
+  showStep({ text: 'Looking for the new version', pct: null }); watchSteps();
   try {
     const r = await env.api('/api/self-update', {});
     if (r.installing) toast('Updating DeviceHub', 'busy', { detail: 'Downloaded and checked. Installing; DeviceHub restarts by itself in under a minute.', ms: 30000 });
     else if (r.updated) toast('Updating DeviceHub', 'busy', { detail: `${r.count} new change${r.count === 1 ? '' : 's'}. Restarting…`, ms: 8000 });
-    else { toast('Already up to date', 'good'); selfBusy = false; loadSelf(); }
+    else { toast('Already up to date', 'good'); selfBusy = false; selfBar?.stop(); selfBar = null; loadSelf(); }
     // updated: the bar stays ("Restarting") until the window reloads itself with the new version
     if (r.updated) showStep({ text: r.installing ? 'Installing; DeviceHub restarts by itself' : 'Restarting DeviceHub', pct: null });
-  } catch (e) { toast('Not updated', 'bad', { detail: e.message }); selfBusy = false; rerender(); }
+  } catch (e) { toast('Not updated', 'bad', { detail: e.message }); selfBusy = false; selfBar?.stop(); selfBar = null; rerender(); }
 }
 // settings sync and the battery saver (helpers/settings-sync.js, helpers/power.js)
 let syncSt = null, powerSt = null, opts = null, syncBusy = false;
@@ -85,6 +117,7 @@ function syncRows() {
     row('Settings sync', syncBusy ? loadingBar('sync-bar', 'Syncing with your other PCs', null) : syncText, h('div', { class: 'srow-ctl' },
       opts?.settingsSync === false || sy.notSetUp ? null : button(syncBusy ? 'Syncing…' : 'Sync now', async () => { syncBusy = true; rerender(); syncSt = await env.api('/api/settings-sync', {}).catch((e) => ({ error: e.message })); syncBusy = false; toast(syncSt.error ? 'Not synced' : 'Synced', syncSt.error ? 'bad' : 'good', { detail: syncSt.error || (syncSt.lastLoaded ? `Loaded ${syncSt.lastLoaded.parts.join(', ')}` : null) }); loadSyncPower(); }, { kind: 'ghost small', ic: 'refresh', disabled: syncBusy }),
       toggle({ value: opts?.settingsSync !== false, label: 'Settings sync', onCommit: (on) => setOpt('settingsSync', on) }))),
+    oneDriveRow(),
     // battery care (helpers/battery-care.mjs): the wireless devices' lights down on a low battery, back once they charge
     row('Save device battery', 'Mouse and headset at 20% or less: their lights off, the mouse at 1000 Hz. Back once charged.', toggle({ value: opts?.batteryCare !== false, label: 'Save device battery', onCommit: (on) => setOpt('batteryCare', on) })),
     // only a PC with a battery has anything to save (a desktop always runs at full speed)
@@ -94,11 +127,39 @@ function syncRows() {
   ];
 }
 
+// Move to another PC (22 Oct 2026, Shawn: "What if they want to be able to go to another computer and bring their
+// settings"): the setup file (Backups page, core/setup.js) and a copy kept in OneDrive (helpers/onedrive-setup.mjs)
+let oneDrive = null, oneDriveBusy = false;
+async function loadOneDrive() {
+  if (isDemo()) { oneDrive = { folder: null, others: [] }; return; }
+  try { oneDrive = await (await fetch('/api/onedrive')).json(); } catch { oneDrive = { folder: null, others: [], error: true }; }
+  rerender();
+}
+async function setOneDrive(on) {
+  oneDriveBusy = true; rerender();
+  try { await env.api('/api/settings', { oneDriveCopy: on }); if (on) await env.api('/api/onedrive/save', {}); } catch (e) { toast('Not changed', 'bad', { detail: e.message }); }
+  oneDriveBusy = false; loadOneDrive();
+}
+// two rows, not a card of their own: Settings stays one screen (the offer of another PC's copy is on the Overview)
+function oneDriveRow() {
+  if (isDemo()) return null;
+  const od = oneDrive || {};
+  const text = !oneDrive ? 'Checking…' : !od.folder ? 'OneDrive is not set up on this PC.' : oneDriveBusy ? 'Saving…'
+    : !od.on ? 'Keeps your setup in OneDrive for your other PCs.' : `On. Saved ${syncAgo(od.mine?.savedAt)}.`;
+  return row('OneDrive copy', text, toggle({ value: !!od.on, disabled: !od.folder || oneDriveBusy, label: 'OneDrive copy', onCommit: setOneDrive }));
+}
+const setupFileRow = () => (isDemo() ? null : row('Move to another PC', 'Your whole setup in one file.', h('div', { class: 'srow-ctl' },
+  button('Save', async () => { try { await saveSetup(); toast('Saved in your Downloads folder', 'good'); } catch (e) { toast('Not saved', 'bad', { detail: e.message }); } }, { kind: 'ghost small' }),
+  button('Load…', loadSetupFile, { kind: 'ghost small' }))));
+
 function selfRow() {
   if (isDemo()) return null;
   const s = self || {};
-  const text = !self || s.checking ? 'Checking…' : !s.git && !s.zip ? 'Not set up for this copy.' : s.error ? `Couldn't check: ${s.error}` : s.blocked ? `A new version is ready, but ${s.blocked.charAt(0).toLowerCase()}${s.blocked.slice(1)}` : s.behind ? (s.zip ? `Ready: ${s.latest}` : `${s.behind} new change${s.behind === 1 ? '' : 's'}: ${s.latest}`) : s.skipped ? 'The newest version did not start here, so DeviceHub stayed on this one. A fix will show up here.' : 'Up to date.';
-  return row('DeviceHub updates', selfBusy && selfStep ? loadingBar('self-bar', selfStep.text, selfStep.pct) : text, s.behind && !s.blocked ? button(selfBusy ? 'Updating…' : 'Update', runSelfUpdate, { kind: 'primary small', ic: 'refresh', disabled: selfBusy })
+  const text = s.checking && selfBar ? selfBar.el : !self || s.checking ? 'Checking…' : !s.git && !s.zip ? 'Not set up for this copy.' : s.error ? `Couldn't check: ${s.error}` : s.blocked ? `A new version is ready, but ${s.blocked.charAt(0).toLowerCase()}${s.blocked.slice(1)}` : s.behind ? (s.zip ? `Ready: ${s.latest}` : `${s.behind} new change${s.behind === 1 ? '' : 's'}: ${s.latest}`) : s.skipped ? 'The newest version did not start here, so DeviceHub stayed on this one. A fix will show up here.' : 'Up to date.';
+  // while it looks or updates, the bar has the whole row (no button beside it: on a narrow window the two did not fit
+  // and ran off the card, 22 Oct 2026)
+  if ((selfBusy || s.checking) && selfBar) return row('DeviceHub updates', selfBar.el, null);
+  return row('DeviceHub updates', text, s.behind && !s.blocked ? button('Update', runSelfUpdate, { kind: 'primary small', ic: 'refresh' })
     : s.git === false && !s.zip ? null : button('Check', () => loadSelf(), { kind: 'ghost small', ic: 'refresh' }));
 }
 // Optional tools (22 Oct 2026, helpers/installers.mjs): Equalizer APO, ReaPlugs and USBPcap, each with its state and
@@ -241,14 +302,25 @@ function healthCard() {
 let helpFor = '';
 function helpCard() {
   if (isDemo()) return null;
-  const pick = h('select', { 'aria-label': 'What the report is about', onchange: (e) => { helpFor = e.target.value; } },
+  const pick = h('select', { class: 'text gh-pick', 'aria-label': 'What the report is about', onchange: (e) => { helpFor = e.target.value; } },
     h('option', { value: '' }, 'DeviceHub in general'),
     ...Object.values(devices).filter((d) => d?.adapter).map((d) => h('option', { value: d.id, selected: d.id === helpFor }, d.adapter.title || d.id)));
   // compact (Settings must fit one screen at 1650 x 910): the picker in the heading, the button under it; the report
   // opens in place below the button only when asked for
   const box = getHelp('health', () => helpFor);
   box.style.marginTop = '0';
-  return card([h('h2', {}, 'Get help'), h('span', { class: 'spacer' }), pick], box);
+  // the automatic problem reports' switch (helpers/auto-report.mjs) on the same line as the Get help button, so the
+  // card is no taller (Settings fits one screen at 1650 x 910); an open report pushes it under the report
+  return card([h('h2', {}, 'Get help'), h('span', { class: 'spacer' }), pick], h('div', { class: 'gh-line' }, box, autoReportSwitch()));
+}
+// "Send problem reports to Shawn" (on by default; settings.json autoReport): hidden where no report can go (the owner's
+// own PC, or no relay set up), so it never promises something this copy does not do
+let autoSt = null, autoAsked = false;
+function autoReportSwitch() {
+  if (!autoAsked) { autoAsked = true; fetch('/api/auto-report').then((r) => (r.ok ? r.json() : null)).then((j) => { autoSt = j; rerender(); }).catch(() => {}); }
+  if (!autoSt || autoSt.owner || !autoSt.configured) return null;
+  return h('label', { class: 'ar-toggle' }, h('span', {}, 'Send problem reports to Shawn'),
+    toggle({ value: autoSt.on !== false, label: 'Send problem reports to Shawn', onCommit: async (on) => { await env.api('/api/settings', { autoReport: on }); autoSt = { ...autoSt, on }; } }));
 }
 
 // Appearance: how the device drawings look, picked from a live preview of each style.
@@ -263,21 +335,33 @@ function appearanceCard() {
 }
 
 // the theme: the accent color (six swatches and any color) and the backdrop (21 Oct 2026)
+// the check mark's color on a swatch: dark on a light color, white on a dark one
+const inkOn = (hex) => { const [R, G, B] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255); return 0.2126 * R + 0.7152 * G + 0.0722 * B > 0.5 ? '#1b1a18' : '#ffffff'; };
 function themeControls() {
   const t = currentTheme();
   const pickAccent = async (hex, name) => { await saveTheme({ themeAccent: hex }); toast(`Accent: ${name}`, 'good', { ms: 1400 }); rerender(); };
-  const bgName = THEME_BGS.find(([k]) => k === t.bg)?.[1];
-  // two compact rows, the name of the picked one beside each (no hover text in this app)
+  // Old School shows the silver accent as the game's gold, and says so
+  const accentName = t.bg === 'old-school' && t.accent === THEME_ACCENTS[0][0] ? 'Gold' : THEME_ACCENTS.find(([x]) => x === t.accent)?.[1] || 'Custom';
+  // backdrops as small previews of the app: the page color, a card, and the accent (22 Oct 2026, Shawn: "make this
+  // area better looking and more options")
+  const tile = ([key, name, bg, pool]) => h('button', { class: `theme-tile${t.bg === key ? ' sel' : ''}`, 'aria-label': `${name} backdrop`, 'aria-pressed': String(t.bg === key),
+    onclick: async () => { await saveTheme({ themeBg: key }); rerender(); } },
+    h('span', { class: 'theme-mini', style: { '--b': bg, '--p': pool } }, h('i', { class: 'mini-card' }), h('i', { class: 'mini-dot' })),
+    h('span', { class: 'theme-tile-name' }, name));
   return h('div', { class: 'theme-grid' },
-      h('span', { class: 'theme-label' }, 'Accent'),
-      h('div', { class: 'theme-row' },
-        ...THEME_ACCENTS.map(([hex, name]) => h('button', { class: `theme-swatch${t.accent === hex ? ' sel' : ''}`, style: { '--s': hex }, 'aria-label': `${name} accent`, 'aria-pressed': String(t.accent === hex), onclick: () => pickAccent(hex, name) })),
-        h('input', { type: 'color', class: `theme-swatch-custom${THEME_ACCENTS.some(([x]) => x === t.accent) ? '' : ' sel'}`, value: t.accent, 'aria-label': 'any accent color', onchange: (e) => pickAccent(e.target.value.toLowerCase(), e.target.value) })),
-      h('span', { class: 'theme-label' }, 'Backdrop'),
-      h('div', { class: 'theme-row' },
-        ...THEME_BGS.map(([key, name, bg, pool]) => h('button', { class: `theme-swatch${t.bg === key ? ' sel' : ''}`, style: { '--s': `radial-gradient(circle at 35% 30%, rgba(${pool}, .95), rgba(${pool}, .35) 45%, ${bg} 80%)` }, 'aria-label': `${name} backdrop`, 'aria-pressed': String(t.bg === key),
-          onclick: async () => { await saveTheme({ themeBg: key }); rerender(); } })),
-        h('span', { class: 'theme-name' }, bgName)));
+    h('span', { class: 'theme-label' }, 'Backdrop'),
+    h('div', { class: 'theme-tiles' }, ...THEME_BGS.map(tile)),
+    // a background picture is picked on the Wallpapers page; here only a small way back to the plain backdrop (Shawn,
+    // 22 Oct 2026: "the background picture shouldnt be there, just have the remove for it very small")
+    hasPicture() ? h('button', { class: 'theme-unpic', onclick: async () => { await removePicture(); rerender(); } }, 'Remove background picture') : null,
+    h('span', { class: 'theme-label' }, 'Accent'),
+    h('div', { class: 'theme-row' },
+      ...THEME_ACCENTS.map(([hex, name]) => h('button', { class: `theme-swatch${t.accent === hex ? ' sel' : ''}`, style: { '--s': hex, '--ink': inkOn(hex) }, 'aria-label': `${name} accent`, 'aria-pressed': String(t.accent === hex), onclick: () => pickAccent(hex, name) },
+        t.accent === hex ? icon('check') : null)),
+      h('label', { class: `theme-swatch theme-swatch-any${THEME_ACCENTS.some(([x]) => x === t.accent) ? '' : ' sel'}`, style: THEME_ACCENTS.some(([x]) => x === t.accent) ? { '--ink': '#1b1a18' } : { '--s': t.accent, '--ink': inkOn(t.accent) } },
+        icon(THEME_ACCENTS.some(([x]) => x === t.accent) ? 'plus' : 'check'),
+        h('input', { type: 'color', value: t.accent, 'aria-label': 'Any accent color', onchange: (e) => pickAccent(e.target.value.toLowerCase(), e.target.value) })),
+      h('span', { class: 'theme-name' }, accentName)));
 }
 
 // Reads every connected device twice and checks the two readings agree and pass their own checks. Writes nothing.
@@ -328,8 +412,9 @@ export default {
     if (startup === null) loadStartup();
     if (self === null) loadSelf();
     if (syncSt === null) loadSyncPower();
+    if (oneDrive === null) loadOneDrive();
     // what DeviceHub always does to keep the devices safe (short, plain; 20 Oct 2026)
-    const SAFETY = ['Never flashes firmware', 'Never sends reset or bootloader commands', 'Backs up before every change', 'Reads back every change to confirm it', 'Stays offline, except to check for updates'];
+    const SAFETY = ['Never flashes firmware', 'Never sends reset or bootloader commands', 'Backs up and reads back every change', 'Stays offline, except to check for updates and send problem reports (if on)'];
     // one screen, no scrolling and nothing folded (Shawn, 21 Oct 2026): three columns that keep their own heights; the
     // self-test and the safety promises share one small card. (data-no-jump only scopes the tighter rows now).
     return h('div', { 'data-no-jump': '' },
@@ -357,6 +442,7 @@ export default {
             row('Share DeviceHub', 'Download link to send to people.', button('Copy link', copyDownloadLink, { kind: 'small', ic: 'external' })),
             // the devices DeviceHub runs and what each gets (pages/supported.js, 22 Oct 2026): a page of its own, not a dialog
             row('Supported devices', 'Which devices work, and what each gets.', button('Show', () => { location.hash = '#/supported'; }, { kind: 'ghost small' })),
+            setupFileRow(),
             isDemo() ? null : row('Files', 'Where DeviceHub keeps its data.', button('Open folder', () => fetch('/api/reveal', { method: 'POST' }), { kind: 'ghost small', ic: 'external' })),
             isDemo() ? null : row('Demo mode', 'Try it with pretend devices.', button('Open demo', () => window.open('/?demo#/overview', '_blank'), { kind: 'ghost small', ic: 'play' })),
             isDemo() ? null : row('Uninstall', 'Removes DeviceHub. Backups are kept.', button('Uninstall', uninstall, { kind: 'ghost small danger' })))))));

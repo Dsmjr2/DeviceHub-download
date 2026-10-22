@@ -25,6 +25,13 @@
   --lift: 0 18px 40px -18px rgba(0, 0, 0, .85);
   --blur: blur(28px) saturate(170%);
   --cutout: rgba(10, 11, 16, .58);
+  /* cards, tiles and dialogs take their tint from the backdrop (22 Oct 2026, Shawn: "make the cards change with the
+     theme as well"): the page color lifted with a little of the backdrop's own hue. On Graphite these come out at the
+     grey-blue the cards always had. */
+  --card: color-mix(in srgb, color-mix(in srgb, rgb(var(--pool)) 9%, var(--bg)) 86%, transparent);
+  --card-solid-a: color-mix(in srgb, rgb(var(--pool)) 11%, #121316); --card-solid-b: color-mix(in srgb, rgb(var(--pool)) 7%, #0c0d10);
+  --dialog-a: color-mix(in srgb, color-mix(in srgb, rgb(var(--pool)) 16%, #24262e) 86%, transparent);
+  --dialog-b: color-mix(in srgb, color-mix(in srgb, rgb(var(--pool)) 10%, #15161c) 84%, transparent);
   color-scheme: dark;
 }
 * { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .14) transparent; }
@@ -56,7 +63,7 @@ kbd { font: 11px var(--mono); padding: 1px 6px; border: 1px solid var(--line2); 
 /* on battery with the saver on: the same dark panes without the blur behind them (much cheaper to draw) */
 html[data-saving] .rail, html[data-saving] .panel, html[data-saving] .bay, html[data-saving] .hero, html[data-saving] .profile,
 html[data-saving] .toast, html[data-saving] .modal, html[data-saving] .palette {
-  -webkit-backdrop-filter: none; backdrop-filter: none; background: linear-gradient(160deg, #141519, #0d0e11 45%, #111216); }
+  -webkit-backdrop-filter: none; backdrop-filter: none; background: linear-gradient(160deg, var(--card-solid-a), var(--card-solid-b) 45%, var(--card-solid-a)); }
 /* each card and tile is its own layout and paint island, so a change inside one never re-checks the rest of the page */
 .panel, .stage, .toast { contain: layout style; }
 
@@ -677,20 +684,25 @@ html[data-art] .mic-muted .art.mark .led.mic { fill: #ff4d4d; filter: drop-shado
 .prof-when { color: var(--muted); font-size: 13.5px; margin-top: -6px; }
 .prof-label { font: 600 12px var(--ui); color: var(--faint); margin-bottom: 6px; }
 .prof-sets { display: grid; gap: 4px; font-size: 13.5px; min-width: 0; }
-.prof-sets .prof-label { margin-bottom: 2px; }
+.prof-sum { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; color: var(--muted); }
+.prof-link { background: none; border: 0; padding: 0; font: 600 12.5px var(--ui); color: var(--muted); cursor: pointer; }
+.prof-link:hover, .prof-link:focus-visible { color: var(--text); }
 .prof-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; overflow-wrap: anywhere; }
 .prof-line b, .prof-check b { font-weight: 600; }
 .prof-now { color: #e8b796; font-size: 12.5px; }
+.prof-saved { font: 400 12px var(--ui); color: var(--faint); margin-left: 10px; }
 .prof-confirm { display: grid; gap: 10px; padding: 12px; border-radius: 14px; background: var(--sunk); border: 1px solid var(--line2); }
 .prof-confirm p { margin: 0; font-weight: 500; }
-.prof-note { font-size: 12.5px; color: var(--muted); margin-top: -4px; }
+.prof-note { font-size: 12.5px; color: var(--muted); }
+.prof-use .prof-note { margin-top: 6px; }
 .prof-note.bad { color: var(--bad); }
 .prof-use select.text { width: 100%; }
 .prof-games { display: grid; gap: 8px; margin-top: 8px; }
 .prof-pick { display: grid; gap: 8px; }
 .prof-apps { max-height: 220px; overflow-y: auto; }
 .file.prof-app { grid-template-columns: minmax(0, 1fr) auto; text-align: left; color: var(--text); cursor: pointer; }
-.prof-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 28px; font-size: 12px; color: var(--faint); }
+.prof-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.prof-foot .actions { gap: 4px; margin-left: auto; }
 .prof-flow::before { background: var(--line2); }
 .prof-group { display: grid; gap: 4px; }
 .prof-check { display: flex; align-items: center; gap: 9px; font-size: 13.5px; cursor: pointer; padding: 2px 0; }
@@ -726,15 +738,23 @@ html[data-art] .mic-muted .art.mark .led.mic { fill: #ff4d4d; filter: drop-shado
 .bk-grid .panel-head h2 { min-width: 0; }
 .bk-top .panel { max-width: 860px; }
 .bk-lede { margin: -6px 0 12px; color: var(--muted); font-size: 13.5px; }
-.bk-label { margin: 16px 0 8px; font: 500 12px var(--ui); color: var(--faint); }
-.bk-item { display: grid; gap: 8px; min-width: 0; }
-.file.bk-row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 8px 12px; border-radius: 14px; }
-.bk-what { flex: 1 1 150px; min-width: 0; }
-.bk-what b { font-weight: 500; }
-.bk-what small { overflow-wrap: anywhere; }
-.bk-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
-.bk-older { margin-top: 6px; max-height: 340px; overflow: auto; padding-right: 2px; }
-.bk-more { cursor: pointer; background: none; justify-self: start; margin-top: 8px; }
+.bk-label { margin: 4px 0 4px; font: 500 12px var(--ui); color: var(--faint); }
+.bk-item { display: grid; gap: 8px; min-width: 0; padding: 4px 0; }
+.bk-list { display: grid; }
+.bk-list > .bk-item + .bk-item { border-top: 1px solid var(--line); }
+.bk-row { display: flex; align-items: center; gap: 10px; min-height: 36px; }
+.bk-what { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; text-align: left; }
+.bk-what b { font-weight: 500; font-size: 14px; }
+.bk-what small { display: block; color: var(--faint); font: 11.5px var(--ui); overflow-wrap: anywhere; }
+.bk-open { background: none; border: 0; padding: 4px 0; color: var(--text); cursor: pointer; font: inherit; }
+.bk-open:hover b, .bk-open:focus-visible b { text-decoration: underline; text-underline-offset: 3px; }
+.bk-chev { width: 14px; height: 14px; flex: none; color: var(--faint); transition: transform .15s; }
+.bk-open.open .bk-chev { transform: rotate(90deg); }
+.bk-older { margin-top: 0; max-height: 340px; overflow: auto; padding-right: 2px; border-top: 1px solid var(--line); }
+.bk-more { cursor: pointer; background: none; border: 0; padding: 6px 0 0; justify-self: start; font: 600 12.5px var(--ui); color: var(--muted); }
+.bk-more:hover { color: var(--text); }
+.bk-head-acts { margin-left: auto; flex-wrap: nowrap; }
+.bk-top .panel-head { flex-wrap: wrap; }
 .bk-sub { font-size: 12.5px; color: var(--muted); }
 .panel > .bk-sub { margin-top: 10px; }
 .bk-ask p { font-size: 13.5px; }
@@ -792,7 +812,7 @@ pre.json { margin: 0; max-height: 50vh; overflow: auto; font: 12px/1.5 var(--mon
 
 /* ---------- toasts / modal / search ---------- */
 #toasts { position: fixed; right: 20px; bottom: 20px; z-index: 50; display: grid; gap: 8px; justify-items: end; pointer-events: none; }
-.toast { pointer-events: auto; display: flex; gap: 12px; align-items: flex-start; min-width: 280px; max-width: 420px; padding: 12px 16px; border-radius: 18px; background: linear-gradient(160deg, rgba(40, 42, 52, .82), rgba(24, 25, 32, .78));
+.toast { pointer-events: auto; display: flex; gap: 12px; align-items: flex-start; min-width: 280px; max-width: 420px; padding: 12px 16px; border-radius: 18px; background: linear-gradient(160deg, var(--dialog-a), var(--dialog-b));
   transform: translateY(10px); opacity: 0; transition: transform .12s var(--ease), opacity .12s; }
 .toast.in { transform: none; opacity: 1; }
 .toast.out { transform: translateX(20px); opacity: 0; }
@@ -803,7 +823,7 @@ pre.json { margin: 0; max-height: 50vh; overflow: auto; font: 12px/1.5 var(--mon
 .toast-detail { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
 .modal-back, .palette-back { position: fixed; inset: 0; z-index: 60; background: rgba(6, 7, 10, .45); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); display: grid; place-items: center; opacity: 0; transition: opacity .1s; }
 .modal-back.in, .palette-back.in { opacity: 1; }
-.modal, .palette { border-radius: 26px; background: linear-gradient(160deg, rgba(40, 42, 52, .86), rgba(22, 23, 30, .84)); }
+.modal, .palette { border-radius: 26px; background: linear-gradient(160deg, var(--dialog-a), var(--dialog-b)); }
 .modal { width: min(560px, calc(100vw - 32px)); max-height: 86vh; display: flex; flex-direction: column; transform: translateY(8px); transition: transform .1s var(--ease); }
 .modal-back.in .modal { transform: none; }
 .modal header { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px 10px; }
@@ -876,13 +896,17 @@ pre.json { margin: 0; max-height: 50vh; overflow: auto; font: 12px/1.5 var(--mon
 .gpu-chip { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; border: 0; } .gpu-chip svg { width: 14px; height: 14px; } .gpu-chip[hidden] { display: none; }
 .hero-art.generic-art { display: grid; place-items: center; color: var(--c-headset); } .hero-art.generic-art svg { width: 150px; height: 150px; opacity: .6; stroke-width: 1.1; }
 /* loading bars (Settings: updating, syncing; 21 Oct 2026): a percentage, or a sweep while the length is unknown */
-.loadbar-wrap { display: grid; gap: 6px; margin-top: 4px; min-width: 220px; }
+.loadbar-wrap { display: grid; gap: 6px; margin-top: 4px; width: 100%; min-width: 0; }
+.loadbar-text { overflow-wrap: anywhere; }
 .loadbar { position: relative; height: 6px; border-radius: 99px; background: rgba(255, 255, 255, .1); overflow: hidden; }
 .loadbar span { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: inherit; background: var(--accent); transition: width .35s ease; }
-.loadbar.sweep span { width: 32%; animation: sweep 1.15s ease-in-out infinite; }
+.loadbar.sweep span { width: 32%; animation: sweep 2.4s cubic-bezier(.45, 0, .55, 1) infinite; }
+.loadbar.smooth .loadbar-fill { width: 100%; transform: translateX(-100%); transition: none; overflow: hidden; will-change: transform; }
+.loadbar.smooth .loadbar-fill::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .18), transparent); transform: translateX(-100%); animation: sweep-sheen 2.6s ease-in-out infinite; }
+@keyframes sweep-sheen { to { transform: translateX(100%); } }
 @keyframes sweep { 0% { transform: translateX(-100%); } 100% { transform: translateX(320%); } }
 .loadbar-text { font-size: 12px; color: var(--muted, rgba(255, 255, 255, .6)); }
-@media (prefers-reduced-motion: reduce) { .loadbar.sweep span { animation-duration: 3s; } }
+@media (prefers-reduced-motion: reduce) { .loadbar.sweep span { animation-duration: 4s; } .loadbar.smooth .loadbar-fill::after { animation: none; } }
 /* the Mouse page: the pointing hand over every control, sliders too (not the open grabbing hand; 21 Oct 2026, Shawn) */
 html[data-page="mouse"] #main :is(button, select, summary, .switch, .seg button, input[type=range], input[type=color], .swatch, .swatch-custom, a):not(:disabled) { cursor: pointer; }
 html[data-page="mouse"] #main input[type=range]::-webkit-slider-thumb, html[data-page="mouse"] #main input[type=range]:active::-webkit-slider-thumb { cursor: pointer; }
@@ -891,10 +915,9 @@ html[data-page="mouse"] #main input[type=range]::-webkit-slider-thumb, html[data
    while scrolling, measured on the 240 Hz screen, against 8 ms without. What is behind them is fixed and soft, so the
    tint matches the blurred look (checked side by side). The sidebar, messages and dialogs do not scroll and keep it. */
 #main :is(.panel, .bay, .hero, .profile, .banner) { -webkit-backdrop-filter: none; backdrop-filter: none; }
-#main :is(.panel, .bay, .hero, .profile) { background: var(--glass), rgba(10, 11, 17, .82); }
+#main :is(.panel, .bay, .hero, .profile) { background: var(--glass), var(--card); }
 
 /* Search's shortcut in the sidebar, and a setting found by Search (21 Oct 2026) */
-.cmd-kbd { margin-left: auto; font: 500 11px var(--ui); color: var(--faint); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; }
 .srow.found, .panel.found { box-shadow: 0 0 0 2px var(--signal); border-radius: 10px; transition: box-shadow .3s; }
 /* Settings' safety promises: a short checked list (21 Oct 2026) */
 .safety { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
@@ -1259,3 +1282,349 @@ html[data-art="blueprint"] .page.ov .bay-art > .art { position: relative; }
 .kind-ctl { display: flex; justify-content: flex-end; }
 select.text.kind-select { width: auto; min-width: 150px; font-size: 13px; padding: 5px 30px 5px 12px; }
 @media (max-width: 720px) { .kind-color { flex-wrap: wrap; } }
+
+/* ---------- Get help (ui/get-help.js) ---------- */
+.gh-card { display: grid; gap: 12px; padding: 16px; border-radius: 16px; background: var(--sunk); border: 1px solid var(--line); text-align: left; }
+.gh-title { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
+.gh-title .ic { width: 18px; height: 18px; }
+.gh-title.good .ic { color: var(--good); }
+.gh-title.bad .ic { color: var(--bad); }
+.gh-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 13.5px; }
+.gh-steps li { display: flex; align-items: flex-start; gap: 10px; }
+.gh-num { flex: none; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font: 600 11.5px var(--ui); background: var(--line2); color: var(--text); }
+.gh-acts { margin: 0; justify-content: flex-start; align-items: center; }
+.gh-fine { color: var(--faint); font-size: 12px; line-height: 1.45; }
+.gh-note { font-size: 12.5px; color: var(--muted); }
+.gh-note.bad { color: var(--bad); }
+.gh-report summary { cursor: pointer; font: 600 12.5px var(--ui); color: var(--muted); }
+.gh-report summary:hover { color: var(--text); }
+.gh-report pre.json { white-space: pre-wrap; word-break: break-word; max-height: 300px; margin: 8px 0 0; font-size: 11.5px; }
+.gh-busy { display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--muted); }
+.gh-spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line2); border-top-color: var(--text); animation: gh-spin .8s linear infinite; }
+@keyframes gh-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .gh-spin { animation: none; } }
+/* Settings > Get help: the button and the problem reports' switch on one line; an open report takes the whole width */
+.gh-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.gh-line > .get-help { flex: 1 1 auto; min-width: 0; }
+.gh-line:has(.gh-card) > .get-help { flex-basis: 100%; }
+.ar-toggle { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); cursor: pointer; }
+select.text.gh-pick { width: auto; min-width: 170px; font-size: 13px; padding: 5px 30px 5px 12px; }
+
+/* ---------- Your devices (the Overview's set up card, 22 Oct 2026) ---------- */
+.setup-card { margin-bottom: 16px; display: grid; gap: 14px; }
+.su-top { display: flex; align-items: center; gap: 8px; }
+.su-top h2 { margin: 0; }
+.su-top .spacer, .su-head .spacer { flex: 1; }
+.su-lede { margin: -8px 0 0; color: var(--muted); font-size: 13.5px; }
+.su-fine { margin: 0; color: var(--faint); font-size: 12.5px; display: grid; gap: 2px; }
+.su-group { display: grid; gap: 6px; }
+.su-head { display: flex; align-items: center; gap: 8px; }
+.su-head h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--muted); }
+.su-head .ic { width: 16px; height: 16px; color: var(--faint); }
+.su-count { font: 600 11px var(--ui); color: var(--faint); background: var(--sunk); border: 1px solid var(--line); border-radius: 99px; padding: 0 7px; }
+.su-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.su-item { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); }
+.su-item:first-child { border-top: 0; }
+.su-text { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; }
+.su-text b { font-weight: 600; font-size: 14px; }
+.su-text small { color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
+.su-item.one-click .su-text b::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--signal, var(--accent)); margin-right: 8px; vertical-align: middle; }
+.su-more summary { cursor: pointer; font: 600 12.5px var(--ui); color: var(--muted); }
+.su-more summary:hover { color: var(--text); }
+.su-more .su-list { margin-top: 6px; }
+
+.works-invite { display: grid; gap: 8px; padding: 12px 14px; border-radius: 14px; background: var(--sunk); border: 1px solid var(--line); }
+.works-invite p { margin: 0; font-size: 13px; color: var(--muted); }
+.works-invite b { color: var(--text); }
+
+.pc-guide { margin-top: 12px; }
+.pc-guide summary { cursor: pointer; font: 600 13px var(--ui); color: var(--muted); }
+.pc-guide summary:hover { color: var(--text); }
+.pc-guide .gh-steps { margin-top: 10px; }
+.pc-guide a { color: var(--text); }
+
+
+/* the theme picker (Settings > Appearance, 22 Oct 2026): backdrop tiles that preview the app, accent dots with a check */
+.theme-grid { grid-template-columns: auto 1fr; align-items: start; }
+.theme-grid .theme-label { padding-top: 6px; }
+.theme-tiles { display: flex; flex-wrap: wrap; gap: 8px 7px; align-items: flex-start; }
+.theme-tile { display: grid; justify-items: center; gap: 4px; padding: 0; border: 0; background: none; color: var(--faint); font: 500 11px var(--ui); }
+.theme-tile:hover, .theme-tile.sel { color: var(--text); }
+.theme-mini { position: relative; display: block; width: 48px; height: 34px; border-radius: 10px; overflow: hidden;
+  background: radial-gradient(90% 90% at 20% 15%, rgba(var(--p), .5), transparent 70%), var(--b);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .12); transition: box-shadow .12s; }
+.theme-tile:hover .theme-mini { box-shadow: inset 0 0 0 1px var(--line2), 0 0 0 1px var(--line2); }
+.theme-tile.sel .theme-mini { box-shadow: 0 0 0 2px var(--panel-solid), 0 0 0 4px var(--text); }
+.mini-card { position: absolute; left: 8px; right: 8px; top: 9px; bottom: 6px; border-radius: 5px; background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .1); }
+.mini-dot { position: absolute; left: 13px; top: 14px; width: 12px; height: 4px; border-radius: 2px; background: var(--signal); }
+.theme-swatch { display: inline-grid; place-items: center; width: 26px; height: 26px; color: var(--s); }
+.theme-swatch .ic { width: 14px; height: 14px; color: var(--ink, #1b1a18); stroke-width: 2.6; }
+.theme-swatch.sel { border-color: transparent; box-shadow: 0 0 0 2px var(--panel-solid), 0 0 0 4px var(--s); }
+.theme-swatch-any { position: relative; cursor: pointer; background: conic-gradient(#ff8f70, #ffd56b, #8fe0b0, #8fc4ff, #b9a2ff, #ff8f70); }
+.theme-swatch-any.sel { background: var(--s); }
+.theme-swatch-any input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; padding: 0; border: 0; cursor: pointer; }
+/* the drawn keyboard keeps its dark caps, so its labels stay light */
+/* the theme picker: each label above its row, so the five backdrops fit one line */
+.theme-grid { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.theme-grid .theme-label { padding-top: 0; }
+.theme-grid .theme-label + * + .theme-label { margin-top: 8px; }
+.theme-grid .theme-row { gap: 6px; }
+.theme-grid .theme-swatch { width: 24px; height: 24px; }
+
+/* the Macros card's how-to (22 Oct 2026) */
+.macro-help { display: grid; gap: 6px; margin: 0 0 12px; font-size: 13.5px; color: var(--muted); }
+.macro-help p { margin: 0; }
+.macro-help ol { margin: 0; padding-left: 20px; display: grid; gap: 2px; }
+.macro-help .faint { font-size: 12.5px; line-height: 1.6; }
+.macro-help code { font: 12px var(--mono); color: var(--text); background: var(--sunk); border: 1px solid var(--line); border-radius: 6px; padding: 0 5px; }
+
+/* Monitors: what each monitor says it supports (22 Oct 2026) */
+.mon-supports { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.mon-supports summary { cursor: pointer; font: 600 13px var(--ui); color: var(--muted); }
+.mon-supports summary:hover { color: var(--text); }
+.mon-sup-group { margin-top: 12px; }
+.mon-sup-group h4 { margin: 0 0 6px; font: 600 12.5px var(--ui); color: var(--muted); }
+.mon-sup-group p { margin: -2px 0 8px; font-size: 12px; }
+.mon-sup-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.mon-sup { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--sunk); font-size: 12.5px; }
+.mon-sup code { font: 11px var(--mono); color: var(--faint); }
+.mon-sup small { font-size: 11px; color: var(--faint); }
+.srow-desc:has(> .loadbar-wrap) { max-width: none; }
+.srow-text:has(.loadbar-wrap) { flex: 1 1 auto; min-width: 0; }
+.srow-ctl:empty { display: none; }
+
+/* Request support inside a Your devices line: the button beside the others, the panel on its own line below */
+.su-item { flex-wrap: wrap; }
+.su-item .get-help { margin-top: 0 !important; }
+.su-item .get-help:has(.gh-card) { flex-basis: 100%; }
+
+/* Overview: batteries Windows knows (any Bluetooth headset, earbuds, controller), 22 Oct 2026 */
+.ov-batteries { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+.ov-bat-label { font: 600 12px var(--ui); color: var(--faint); margin-right: 2px; }
+.ov-bat { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px 5px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--card, var(--panel)); font-size: 13px; color: var(--muted); }
+.ov-bat b { color: var(--text); font-weight: 600; }
+.ov-bat i { position: relative; width: 20px; height: 10px; border-radius: 3px; border: 1.5px solid currentColor; opacity: .8; }
+.ov-bat i::before { content: ""; position: absolute; inset: 1px; right: auto; width: calc(var(--lvl) - 2px); border-radius: 1px; background: var(--good); }
+.ov-bat.warn i::before { background: var(--warn); } .ov-bat.bad i::before { background: var(--bad); }
+
+/* ---------- Old School (22 Oct 2026, Shawn: "make an old school runescape theme") ----------
+   html[data-skin="old-school"], set by core/theme.js for that backdrop: brown stone interface panels with hard dark
+   edges and a bevel, orange headings, gold values, square stone buttons, black text shadows, a dark stone wall behind.
+   Inspired by the game's look; drawn in CSS only (no images, logos or fonts from it). */
+html[data-skin="old-school"] {
+  --stone: #3e3529; --stone-hi: #4d4233; --stone-lo: #2c251c; --edge: #0e0b08;
+  --osrs-orange: #ff981f; --osrs-yellow: #ffff00; --osrs-green: #0dc10d;
+  --panel: rgba(0, 0, 0, .2); --panel-2: rgba(0, 0, 0, .28); --panel-solid: var(--stone);
+  --raise: rgba(255, 255, 255, .06); --sunk: rgba(0, 0, 0, .3);
+  --line: rgba(0, 0, 0, .45); --line2: #5b4e3c;
+  --text: #f1dcae; --muted: rgba(241, 220, 174, .78); --faint: rgba(241, 220, 174, .6);
+  --good: var(--osrs-green); --warn: var(--osrs-yellow); --bad: #e8402a;
+  --r: 6px; --r-sm: 4px;
+  --glass: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(0, 0, 0, .06));
+  --rim: inset 1px 1px 0 rgba(255, 255, 255, .1), inset -1px -1px 0 rgba(0, 0, 0, .45);
+  --lift: 0 3px 0 rgba(0, 0, 0, .55);
+  --card: var(--stone); --card-solid-a: var(--stone-hi); --card-solid-b: var(--stone);
+  --dialog-a: var(--stone-hi); --dialog-b: var(--stone);
+}
+/* the wall behind: big dark stone blocks */
+html[data-skin="old-school"] body::before {
+  background:
+    linear-gradient(rgba(0, 0, 0, .38) 2px, transparent 2px) 0 0 / 120px 60px,
+    linear-gradient(90deg, rgba(0, 0, 0, .38) 2px, transparent 2px) 0 0 / 120px 120px,
+    linear-gradient(90deg, rgba(0, 0, 0, .38) 2px, transparent 2px) 60px 60px / 120px 120px,
+    radial-gradient(70% 60% at 30% 20%, rgba(140, 105, 60, .16), transparent 70%),
+    radial-gradient(60% 60% at 80% 90%, rgba(140, 105, 60, .12), transparent 70%); }
+html[data-skin="old-school"] :is(.rail, .panel, .bay, .hero, .profile, .toast, .modal, .palette),
+html[data-skin="old-school"] #main :is(.panel, .bay, .hero, .profile) {
+  background: var(--glass), radial-gradient(120% 90% at 20% 0%, var(--stone-hi), var(--stone) 55%, var(--stone-lo));
+  border: 2px solid var(--edge); border-radius: var(--r); box-shadow: var(--rim), var(--lift);
+  -webkit-backdrop-filter: none; backdrop-filter: none; }
+html[data-skin="old-school"] .rail { border-radius: var(--r); }
+/* the game's lettering: orange titles, a hard black shadow under all text */
+html[data-skin="old-school"] body { text-shadow: 1px 1px 0 #000; }
+html[data-skin="old-school"] :is(h1, h2, .panel-head h2, .bay-kind, .su-head h3, .theme-label, .prof-label, .nav-label) { color: var(--osrs-orange); }
+html[data-skin="old-school"] :is(.gauge-text b, .slider output, .bcell-text b, .ov-bat b, .prof-line b) { color: var(--osrs-yellow); }
+html[data-skin="old-school"] .nav { border-radius: 4px; }
+html[data-skin="old-school"] .nav:hover { background: rgba(0, 0, 0, .22); }
+html[data-skin="old-school"] .nav.active { background: rgba(0, 0, 0, .35); color: var(--osrs-yellow); box-shadow: inset 1px 1px 0 rgba(0, 0, 0, .6), inset -1px -1px 0 rgba(255, 255, 255, .08); }
+/* square stone buttons with a bevel; pressed sinks in */
+html[data-skin="old-school"] :is(.btn, .cmd-hint, .pill, .seg, .icon-btn, select.text, .text, .bk-more, .prof-link, .su-count) { border-radius: 4px; }
+html[data-skin="old-school"] .btn { background: linear-gradient(180deg, #5d4f3b, #463b2c); border: 1px solid var(--edge); color: var(--osrs-orange);
+  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, .16), inset -1px -1px 0 rgba(0, 0, 0, .5); }
+html[data-skin="old-school"] .btn:hover { background: linear-gradient(180deg, #6a5a43, #4f4231); color: var(--osrs-yellow); }
+html[data-skin="old-school"] .btn:active { box-shadow: inset 1px 1px 0 rgba(0, 0, 0, .55), inset -1px -1px 0 rgba(255, 255, 255, .1); }
+html[data-skin="old-school"] .btn.primary { background: linear-gradient(180deg, #7a6640, #5a4a2c); color: var(--osrs-yellow); }
+html[data-skin="old-school"] .btn.ghost { background: none; border-color: transparent; box-shadow: none; }
+html[data-skin="old-school"] .btn.ghost:hover { background: rgba(0, 0, 0, .25); }
+html[data-skin="old-school"] :is(.text, select.text, .seg, .cmd-hint) { background: var(--stone-lo); border: 1px solid var(--edge); box-shadow: inset 1px 1px 0 rgba(0, 0, 0, .5); }
+html[data-skin="old-school"] .seg-thumb { border-radius: 3px; background: linear-gradient(180deg, #6a5a43, #4f4231); border-color: var(--edge); }
+html[data-skin="old-school"] .seg button.sel { color: var(--osrs-yellow); }
+html[data-skin="old-school"] .pill { background: rgba(0, 0, 0, .3); border-color: var(--edge); box-shadow: none; }
+html[data-skin="old-school"] .switch { border-radius: 4px; background: var(--stone-lo); box-shadow: inset 1px 1px 0 rgba(0, 0, 0, .6); }
+html[data-skin="old-school"] .switch .knob { border-radius: 3px; background: linear-gradient(180deg, #8a7655, #5d4f3b); }
+html[data-skin="old-school"] .switch.on { background: #1b5e1b; }
+html[data-skin="old-school"] .slider input { border-radius: 2px; height: 6px; background: linear-gradient(90deg, var(--osrs-orange) var(--p), var(--stone-lo) var(--p)); }
+html[data-skin="old-school"] .slider input::-webkit-slider-thumb { border-radius: 3px; background: linear-gradient(180deg, #a08a63, #6a5a43); box-shadow: 0 1px 0 #000, inset 0 0 0 1px var(--edge); }
+html[data-skin="old-school"] :is(.gauge-bar i, .gauge-dots i.on, .gauge-signal i.on, .loadbar span, .loadbar-fill, .mt-fill) { background: var(--osrs-orange); }
+html[data-skin="old-school"] :is(.gauge-bar, .loadbar, .mt-bar) { border-radius: 2px; background: var(--stone-lo); }
+html[data-skin="old-school"] .bay-top .pill.good { color: var(--osrs-green); background: rgba(0, 0, 0, .3); border-color: var(--edge); }
+html[data-skin="old-school"] :is(.bay:hover, .profile:hover) { border-color: #000; transform: none; }
+html[data-skin="old-school"] .banner { border-radius: var(--r); border: 2px solid var(--edge); }
+
+/* the person's own background picture (Settings > Appearance), dimmed behind everything; with any backdrop */
+html[data-picture] body::before { inset: 0;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 55%, transparent), color-mix(in srgb, var(--bg) 70%, transparent)), var(--picture) center / cover no-repeat; }
+html[data-skin="old-school"][data-picture] body::before {
+  background: radial-gradient(120% 100% at 50% 40%, rgba(22, 18, 13, .35), rgba(22, 18, 13, .7)), var(--picture) center / cover no-repeat; }
+
+/* ---------- Wallpapers (22 Oct 2026, pages/wallpapers.js): a grid of the person's wallpapers and a large preview ---------- */
+.wp-where { margin: -6px 0 14px; font-size: 13px; overflow-wrap: anywhere; }
+.wp-page.wp-drop .panel { outline: 2px dashed var(--accent); outline-offset: 4px; }
+.wp-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.wp-tools .spacer { flex: 1; }
+.wp-search { width: 220px; max-width: 100%; }
+.wp-line { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 12px; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.wp-line.bad { color: var(--bad); }
+.wp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; }
+.wp-tile { position: relative; min-width: 0; }
+.wp-thumb { display: block; width: 100%; aspect-ratio: 16 / 10; padding: 0; border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; background: var(--sunk); cursor: default; }
+.wp-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; transition: transform .25s var(--ease); }
+.wp-thumb:hover img { transform: scale(1.03); }
+.wp-del { position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .2);
+  background: rgba(8, 9, 12, .62); color: #fff; opacity: 0; transition: opacity .12s; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.wp-del .ic { width: 15px; height: 15px; }
+.wp-del:hover { background: rgba(160, 40, 30, .85); }
+.wp-tile:hover .wp-del, .wp-del:focus-visible, .wp-tile:focus-within .wp-del { opacity: 1; }
+@media (hover: none) { .wp-del { opacity: 1; } }
+.wp-tile-ask { position: absolute; left: 0; right: 0; top: 0; aspect-ratio: 16 / 10; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; padding: 8px;
+  border-radius: var(--r-sm); background: rgba(8, 9, 12, .78); color: #fff; font-weight: 600; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+.wp-tile-ask > span { width: 100%; text-align: center; }
+.wp-tile.asking .wp-del { display: none; }
+.wp-meta { display: flex; justify-content: space-between; gap: 8px; padding: 7px 2px 0; font-size: 13px; }
+.wp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.wp-meta .faint { flex: none; }
+.wp-empty { display: grid; justify-items: center; gap: 4px; padding: 36px 12px; text-align: center; border: 1px dashed var(--line2); border-radius: var(--r-sm); background: var(--sunk); }
+.wp-empty p { margin: 0; }
+.wp-empty-ic { width: 40px; height: 40px; color: var(--muted); margin-bottom: 6px; }
+
+@media (max-width: 700px) { .wp-search { width: 100%; } }
+
+html[data-skin="old-school"] .wp-thumb { border: 1px solid var(--edge); box-shadow: var(--rim); }
+html[data-skin="old-school"] .wp-del { border-radius: var(--r-sm); background: var(--stone); border: 1px solid var(--edge); color: var(--osrs-orange); }
+html[data-skin="old-school"] .wp-tile-ask { background: rgba(30, 24, 17, .9); color: var(--osrs-orange); }
+
+/* ---------- Old School, closer to the game (22 Oct 2026, Shawn: "make the old school runescape theme more similar to
+   old school runescape") ----------
+   On top of the Old School rules above: pixel lettering (Pixelify Sans, SIL Open Font License, bundled in
+   public/fonts so it works offline; not the game's own font), the game's interface colors (orange text, yellow values,
+   white names), double stone frames with a rivet in each corner, stone side tabs with the selected one glowing red,
+   messages on chatbox parchment, chunky stone scrollbars. Still CSS only: no images from the game. */
+@font-face { font-family: "DH Pixel"; src: url("fonts/PixelifySans.woff2") format("woff2"); font-weight: 400 700; font-display: swap; }
+html[data-skin="old-school"] {
+  --ui: "DH Pixel", "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --text: #ff981f; --muted: #d7a35a; --faint: #b98a4c;
+  --osrs-white: #ffffff;
+  --stone-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.55' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .22 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --rivets:
+    radial-gradient(circle at 7px 7px, #a08860 0 1.6px, #3a2f22 2.2px, transparent 3px),
+    radial-gradient(circle at calc(100% - 7px) 7px, #a08860 0 1.6px, #3a2f22 2.2px, transparent 3px),
+    radial-gradient(circle at 7px calc(100% - 7px), #a08860 0 1.6px, #3a2f22 2.2px, transparent 3px),
+    radial-gradient(circle at calc(100% - 7px) calc(100% - 7px), #a08860 0 1.6px, #3a2f22 2.2px, transparent 3px);
+}
+html[data-skin="old-school"] body { font-size: 15.5px; -webkit-font-smoothing: none; font-smooth: never; letter-spacing: .01em; }
+html[data-skin="old-school"] :is(button, input, select, textarea) { font-family: var(--ui); }
+/* names and big numbers in white, values in yellow, titles orange: as the game's interfaces */
+html[data-skin="old-school"] :is(.bay-head h3, .bay-name, .prof-head h3, .su-text b, .wp-name) { color: var(--osrs-white); }
+html[data-skin="old-school"] h1 { font-weight: 600; letter-spacing: .02em; color: var(--osrs-orange); text-shadow: 2px 2px 0 #000; }
+html[data-skin="old-school"] :is(.gauge-text b, .slider output, .bcell-text b, .ov-bat b, .prof-line b, .kv b) { color: var(--osrs-yellow); }
+/* every interface: a double stone frame (dark outside, a lit line, dark inside) with rivets in the corners and grain */
+html[data-skin="old-school"] :is(.rail, .panel, .bay, .hero, .profile, .modal, .palette),
+html[data-skin="old-school"] #main :is(.panel, .bay, .hero, .profile) {
+  background: var(--rivets), var(--stone-grain), radial-gradient(120% 90% at 20% 0%, var(--stone-hi), var(--stone) 55%, var(--stone-lo));
+  border: 3px solid #120e09; border-radius: 3px;
+  box-shadow: inset 0 0 0 1px #6a5a42, inset 0 0 0 3px #231c13, inset 2px 2px 0 3px rgba(255, 255, 255, .05), 0 3px 0 rgba(0, 0, 0, .6); }
+/* the side tabs: each entry a stone tab; the open one glows red like the game's selected tab */
+html[data-skin="old-school"] .nav { border-radius: 2px; border: 1px solid transparent; }
+html[data-skin="old-school"] .nav:hover { background: rgba(0, 0, 0, .25); border-color: #1a140d; color: var(--osrs-yellow); }
+html[data-skin="old-school"] .nav.active { color: var(--osrs-white); border-color: #1a140d;
+  background: linear-gradient(180deg, #7a2a1a, #4a160d); box-shadow: inset 1px 1px 0 rgba(255, 140, 90, .35), inset -1px -1px 0 rgba(0, 0, 0, .5), 0 0 8px rgba(200, 60, 30, .35); }
+html[data-skin="old-school"] .nav.active .ic { color: var(--osrs-yellow); opacity: 1; }
+/* buttons: flat stone with a lit top edge; hover turns the words yellow, the game's way */
+html[data-skin="old-school"] .btn { border-radius: 2px; font-weight: 600; }
+html[data-skin="old-school"] .btn:hover { color: var(--osrs-yellow); }
+html[data-skin="old-school"] .btn.primary { color: var(--osrs-white); background: linear-gradient(180deg, #6b5a3b, #4b3e28); }
+/* switches as the game's square toggles: dark well, a stone block, green when on */
+html[data-skin="old-school"] .switch { width: 40px; border-radius: 2px; border: 1px solid #120e09; }
+html[data-skin="old-school"] .switch .knob { border-radius: 1px; }
+html[data-skin="old-school"] .switch.on { background: #0d6e0d; }
+html[data-skin="old-school"] .switch.on .knob { background: linear-gradient(180deg, #a08a63, #6a5a43); }
+/* bars inside a sunken stone frame */
+html[data-skin="old-school"] :is(.loadbar, .gauge-bar, .mt-bar) { border: 1px solid #120e09; box-shadow: inset 1px 1px 0 rgba(0, 0, 0, .6); }
+html[data-skin="old-school"] :is(.pill.good::before, .dot.connected) { background: var(--osrs-green); }
+/* messages read like the chatbox: parchment, black words, a stone frame */
+html[data-skin="old-school"] .toast { background: linear-gradient(180deg, #d8c9a3, #c3ae85); border: 3px solid #3e3529; border-radius: 2px; color: #000; text-shadow: none;
+  box-shadow: inset 0 0 0 1px #8a7552, 0 3px 0 rgba(0, 0, 0, .6); }
+html[data-skin="old-school"] .toast :is(b, strong, .toast-msg) { color: #000; }
+html[data-skin="old-school"] .toast :is(small, .toast-detail, p) { color: #3b1f00; }
+html[data-skin="old-school"] .toast .ic { color: #6b0000; }
+/* wide stone scrollbars (the page sets scrollbar-color, so Chrome draws its own bar in these colors) */
+html[data-skin="old-school"] * { scrollbar-width: auto; scrollbar-color: #6a5a42 #231c13; }
+
+/* the backdrops: six fixed columns, so picking one (its name turns bold) never moves another to a new row */
+.theme-tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px 6px; }
+.theme-tile { min-width: 0; }
+.theme-mini { width: 100%; height: auto; aspect-ratio: 48 / 34; }
+.theme-tile-name { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.theme-unpic { justify-self: start; margin-top: -2px; padding: 0; border: 0; background: none; color: var(--faint); font: 500 11.5px var(--ui); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.theme-unpic:hover { color: var(--text); }
+
+/* Wallpapers: each picture's actions in a row at the bottom of its tile, always shown (22 Oct 2026) */
+.wp-quick { display: flex; align-items: center; gap: 6px; padding: 7px 0 0; }
+.wp-quick-btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--sunk);
+  color: var(--text); font: 600 12px var(--ui); white-space: nowrap; cursor: pointer; transition: border-color .12s, background .12s; }
+.wp-quick-btn:hover { border-color: var(--line2); background: var(--panel); }
+.wp-quick-btn .ic { width: 14px; height: 14px; }
+.wp-quick-btn.icon { padding: 5px 7px; margin-left: auto; }
+html[data-skin="old-school"] .wp-quick-btn { border-radius: 2px; background: var(--stone); border-color: var(--edge); color: var(--osrs-orange); }
+html[data-skin="old-school"] .wp-quick-btn:hover { background: var(--stone-hi); color: var(--osrs-yellow); }
+.wp-grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.wp-quick-btn { font-size: 11.5px; padding: 5px 8px; }
+.wp-quick { flex-wrap: wrap; }
+.theme-tile-name { white-space: normal; text-overflow: clip; text-align: center; line-height: 1.15; }
+
+/* the Headset page's Rename (22 Oct 2026) */
+.hs-rename { display: inline-flex; align-items: center; gap: 6px; }
+.hs-rename .text { width: 220px; padding: 6px 12px; font-size: 13px; }
+/* Wallpapers, calmer (22 Oct 2026, Shawn: "make the size of the photo smaller and not as in your face"): three tile
+   sizes, Small by default; the zoom on hover is gone; the preview sits smaller on a lighter veil */
+.wp-grid.size-s { grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 12px; }
+.wp-grid.size-m { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+.wp-grid.size-l { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.wp-thumb:hover img { transform: none; }
+.wp-thumb { transition: border-color .12s; }
+.wp-thumb:hover { border-color: var(--line2); }
+.wp-size { min-width: 0; }
+.wp-meta { align-items: center; }
+.wp-name { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: text; text-align: left; }
+.wp-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.wp-pen { width: 12px; height: 12px; flex: none; color: var(--faint); opacity: 0; transition: opacity .12s; }
+.wp-name:hover .wp-pen, .wp-name:focus-visible .wp-pen { opacity: 1; }
+.wp-name-box { width: 100%; padding: 4px 10px; font-size: 13px; }
+/* the small sizes: the buttons on a picture shrink to icons only where a label would not fit */
+.wp-q-short { display: none; }
+.wp-grid.size-s .wp-q-long { display: none; }
+.wp-grid.size-s .wp-q-short { display: inline; }
+.wp-grid.size-s .wp-quick-btn { padding: 4px 7px; font-size: 11px; }
+.wp-grid.size-s .wp-quick-btn:not(.icon) .ic { display: none; }   /* the words fit on one line without the icons */
+.wp-grid.size-s .wp-quick-btn.icon { padding: 4px 6px; }
+.wp-grid.size-s .wp-quick-btn.icon .ic { width: 12px; height: 12px; }
+.wp-grid.size-s .wp-quick { gap: 4px; padding: 6px 0 0; }
+
+/* Wallpapers: sort, and the Low res badge (22 Oct 2026) */
+.wp-sort { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.wp-sort select.text { width: auto; min-width: 128px; padding: 5px 30px 5px 12px; font-size: 13px; }
+.wp-low { position: absolute; top: 8px; left: 8px; padding: 2px 8px; border-radius: 999px; font: 600 11px var(--ui); color: #2a1d00;
+  background: color-mix(in srgb, var(--warn) 92%, #fff); box-shadow: 0 1px 4px rgba(0, 0, 0, .4); pointer-events: none; }
+html[data-skin="old-school"] .wp-low { border-radius: 2px; color: #000; background: var(--osrs-yellow); text-shadow: none; }
+.bk-with { display: flex; align-items: center; gap: 6px; margin-top: 8px; cursor: pointer; }
+.bk-with input { accent-color: var(--accent); margin: 0; }

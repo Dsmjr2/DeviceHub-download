@@ -1,0 +1,11 @@
+name = "devicehub-relay"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+REPO = "Dsmjr2/DeviceHub-support"
+
+# the id comes from: npx --yes wrangler kv namespace create REPORTS (relay/README.md step 2)
+[[kv_namespaces]]
+binding = "REPORTS"
+id = "4191b2713fab43c7ba847518cb879953"

@@ -34,7 +34,11 @@ async function set(m, feature, value, label) {
 }
 
 function monitorCard(m) {
-  if (!m.ddc) return card([h('h2', {}, m.name)], h('p', { class: 'faint' }, 'Turn on DDC/CI in this monitor\'s menu to control it here.'));
+  // a laptop's own screen: brightness through Windows (helpers/monitor-wmi.js; 22 Oct 2026, Shawn: "on my laptop it says
+  // turn on ddc/ci in this monitors menu")
+  if (m.builtin) return card([icon('monitor'), h('h2', {}, m.name)],
+    row('Brightness', 'Through Windows: a built-in screen has no DDC/CI.', slider({ value: m.brightness.value, min: 0, max: 100, unit: '%', onCommit: (v) => set(m, 'brightness', v, `brightness ${v}`) })));
+  if (!m.ddc) return card([h('h2', {}, m.name)], h('p', { class: 'faint' }, 'This screen does not take settings from the PC. If it is a separate monitor, turn on DDC/CI in its own menu (often under Setup or Other), then come back.'));
   return card([icon('monitor'), h('h2', {}, m.name), h('span', { class: 'sub' }, m.model && m.model !== m.name ? m.model : null)],
     // off or not answering (21 Oct 2026): its last settings stay here and changes wait for it
     m.away || m.waiting?.length ? h('p', { class: 'faint', style: { margin: '0 0 8px' } }, m.away ? 'Off or not answering: changes are applied when it is on.' : 'Waiting for it to answer.', m.waiting?.length ? ` Waiting: ${m.waiting.join(', ')}.` : '') : null,
@@ -44,7 +48,27 @@ function monitorCard(m) {
     // the standard picture settings it lists (20 Oct 2026): color preset in view, the color balance folded under More
     m.colorPreset?.options?.length ? row('Color preset', 'Warm, neutral or cool whites.', segmented({ value: m.colorPreset.value, compact: true, options: m.colorPreset.options,
       onCommit: (v) => set(m, 'colorPreset', v, `color preset ${m.colorPreset.options.find((o) => o.value === v)?.label || v}`) })) : null,
-    colorBalance(m));
+    colorBalance(m),
+    supportsList(m));
+}
+
+// What this monitor says it supports (22 Oct 2026, Shawn: "why cant I change gamma or other settings on my agon
+// monitor?"): read-only, from its own capabilities, so it is plain what DeviceHub controls, what the monitor opens to the
+// PC that DeviceHub does not control yet, and what is the maker's own (only its menu or app changes those)
+function supportsList(m) {
+  const all = m.supports || [];
+  if (!all.length) return null;
+  const group = (title, items, note) => (items.length ? h('div', { class: 'mon-sup-group' }, h('h4', {}, title, h('span', { class: 'faint' }, ` ${items.length}`)),
+    note ? h('p', { class: 'faint' }, note) : null,
+    h('div', { class: 'mon-sup-chips' }, ...items.map((x) => h('span', { class: 'mon-sup' }, x.name || 'Unnamed', h('code', {}, x.code), x.values.length ? h('small', {}, `${x.values.length} options`) : null)))) : null);
+  const named = (x) => x.state === 'not yet' && x.name;
+  return h('details', { class: 'mon-supports' },
+    h('summary', {}, `What this monitor supports (${all.length})`),
+    group('Controlled here', all.filter((x) => x.state === 'controlled')),
+    group('Could be added', all.filter(named), 'The monitor opens these settings to the PC. Tell Claude Code which ones you want.'),
+    group('Information only', all.filter((x) => x.state === 'info')),
+    group('Left out on purpose', all.filter((x) => x.state === 'left out'), 'Resets, power and input switching: DeviceHub never sends these.'),
+    group("The maker's own", all.filter((x) => x.state === 'maker' || (x.state === 'not yet' && !x.name)), "Only the monitor's menu or its maker's app knows what these do."));
 }
 
 // red / green / blue gain, and black levels where the monitor has them

@@ -202,7 +202,7 @@ try {
   ok(!/toast\(|modal\(|\btitle:|alert\(|confirm\(|Notification/.test(ui), 'the Works on my device panel has no pop-ups, notifications or tooltips');
   ok(/\/api\/help\/works/.test(ui) && /\/api\/help\/open/.test(ui), 'it uses the works route and Get help\'s open route');
   const page = fs.readFileSync(path.join(REAL, 'public/pages/my-device.js'), 'utf8');
-  ok(/offersWorks\(d\) \? worksReport\(d\)/.test(page), 'the device page offers it');
+  ok(/offersWorks\(d\) \? worksReport\(d[,)]/.test(page), 'the device page offers it');
   const ov = fs.readFileSync(path.join(REAL, 'public/pages/overview.js'), 'utf8');
   ok(/Turn on settings for all/.test(ov) && /kind: 'turn-on-all'/.test(ov), 'the Set up card has Turn on settings for all');
   const diag = fs.readFileSync(path.join(REAL, 'helpers/diagnose.mjs'), 'utf8');

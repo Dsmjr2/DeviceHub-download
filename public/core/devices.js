@@ -285,6 +285,22 @@ const RAW_FOR_MS = 60 * 60 * 1000;  // 1 h (19 Oct 2026: after 10 min idle a lig
 // most of the wait a change took. "Back up now", restores and batches still always take their own.
 const BACKUP_REUSE_MS = 15000;
 const lastBackupAt = {};
+// A device's settings for a setup copy kept in OneDrive (22 Oct 2026; helpers/onedrive-setup.mjs): the same shape as
+// a backup, from what DeviceHub last read (no new read of the device, no backup file, so the Backups page does not fill
+// up); the raw part (keymap, macros) from the last few minutes' cache, else read once. Read-only toward the device.
+export function copyFor(id) {
+  const d = devices[id];
+  if (!d || d.status !== 'connected' || !d.values) return Promise.resolve(null);
+  return withDevice(id, async () => {
+    let raw;
+    if (d.adapter.rawBackup) {
+      const c = rawCache[id];
+      if (c && Date.now() - c.at < RAW_FOR_MS) raw = c.raw;
+      else { raw = await d.adapter.rawBackup(); rawCache[id] = { raw, at: Date.now() }; }
+    }
+    return { device: id, takenAt: new Date().toISOString(), why: 'setup copy', data: { info: d.info, settings: { ...d.values }, raw } };
+  });
+}
 async function backupUnlocked(id, why) {
   const d = devices[id];
   if (demo) return 'demo (no file written)';

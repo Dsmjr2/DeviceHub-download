@@ -64,7 +64,8 @@ async function eqDevices() {
     const generic = process.env.DEVICEHUB_HEADSET_GENERIC === '1';
     let hs = generic ? [] : (await corsair.handle('hs80-endpoints', {})).endpoints, headsetModel = hs.length ? 'HS80' : null;
     if (!hs.length) {
-      const g = ((await corsair.handle('usb-headsets', {})).headsets || []).find((x) => generic || !/^VID_1B1C&PID_0A6/.test(x.usb));
+      // (a wired headset on the jack only when picked: helpers/headset-pick-eq.js applies the pick)
+      const g = ((await corsair.handle('usb-headsets', {})).headsets || []).find((x) => !/^JACK_/.test(x.usb) && (generic || !/^VID_1B1C&PID_0A6/.test(x.usb)));
       if (g) { hs = [...g.playback.map((e) => ({ flow: 'playback', id: e.id })), ...g.recording.map((e) => ({ flow: 'recording', id: e.id }))]; headsetModel = g.device || g.usb; }
     }
     const headset = hs.filter((e) => e.flow === 'playback').map((e) => guidOf(e.id)), mic = hs.filter((e) => e.flow === 'recording').map((e) => guidOf(e.id));
@@ -80,6 +81,8 @@ async function eqDevices() {
 const ankerGuard = require('./helpers/anker-guard');
 const settingsSync = require('./helpers/settings-sync');
 const monitors = require('./helpers/monitors');
+const wallpapers = require('./helpers/wallpapers').create({ root: ROOT });
+const setupExtras = require('./helpers/setup-extras').create({ root: ROOT, wallpapers });
 if (!ISOLATED) monitors.start(require('./helpers/native'), BACKUPS, (text, bad) => serverLog({ kind: bad ? 'bad' : 'good', text }));  // the last: changes made while a monitor was off, applied
 const camera = require('./helpers/camera');
 if (!ISOLATED) camera.start(require('./helpers/native'), BACKUPS);
@@ -126,7 +129,7 @@ if (corsair) corsair.setBoostVia({
   },
 });
 
-const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
+const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.woff2': 'font/woff2' };
 
 function send(res, code, body, type = 'application/json') {
   res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store' });
@@ -188,7 +191,8 @@ const HOSTS = new Set([`localhost:${PORT}`, `127.0.0.1:${PORT}`]);
 const ISOLATED_PASS = new Set(['/api/version', '/api/windows', '/api/backup', '/api/backups', '/api/client-status', '/api/activity', '/api/settings', '/api/profiles', '/api/vendor-apps', '/api/quit', '/api/supported-devices']);
 function isolatedApi(req, res, url) {
   const p = url.pathname;
-  if (ISOLATED_PASS.has(p) || (p.startsWith('/api/backups/') && req.method === 'GET')) return false;
+  if (ISOLATED_PASS.has(p) || (p.startsWith('/api/backups/') && req.method === 'GET')
+    || ((p === '/api/wallpapers/starters' || p === '/api/wallpapers/starter') && req.method === 'GET')) return false;  // the shipped starter wallpapers, read-only (demo shows them)
   res.setHeader('X-DeviceHub-Isolated', '1');   // every answer from here (tests/isolated.mjs checks it)
   const m = process.memoryUsage();
   const demo = {
@@ -197,7 +201,7 @@ function isolatedApi(req, res, url) {
     '/api/setups': [], '/api/monitors': [], '/api/cameras': [], '/api/power': { saver: false, isolated: true },
     '/api/startup': { enabled: false, isolated: true }, '/api/processes': [], '/api/games': [],
     '/api/battery-estimate': {}, '/api/helper-calls': { uptimeS: Math.round(process.uptime()), calls: {} },
-    '/api/settings-sync': { isolated: true, on: false }, '/api/self-update': { isolated: true, count: 0 }, '/api/self-update/progress': {},
+    '/api/settings-sync': { isolated: true, on: false }, '/api/auto-report': { isolated: true, on: true, configured: false, owner: false, active: false }, '/api/self-update': { isolated: true, count: 0 }, '/api/self-update/progress': {},
     '/api/updates': { isolated: true, apps: [] }, '/api/openrgb': { running: false, isolated: true, controllers: [] },
   };
   if (req.method === 'GET' && p in demo) { send(res, 200, demo[p]); return true; }
@@ -366,19 +370,32 @@ async function api(req, res, url) {
     spawn('explorer.exe', [dir], { detached: true, stdio: 'ignore' }).unref();
     return send(res, 200, { ok: true });
   }
+  // automatic problem reports (helpers/auto-report.mjs): { on, configured, owner, active } for Settings and the Set up card
+  if (url.pathname === '/api/auto-report') { try { if (await (await import('./helpers/auto-report.mjs')).handle(url, req, res, send)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   if (url.pathname === '/api/settings') {
-    if (req.method === 'GET') return send(res, 200, readJsonFile(SETTINGS, {}));
+    if (req.method === 'GET')return send(res, 200, readJsonFile(SETTINGS, {}));
     if (req.method === 'POST') {
       // A POST changes only the keys it names, and only known keys with the right type (window and tray both write here).
       const cur = readJsonFile(SETTINGS, {});
       const b = await readBody(req);
-      for (const [k, type] of Object.entries({ autoSwitch: 'boolean', defaultProfile: 'string', artStyle: 'string', themeAccent: 'string', themeBg: 'string', ankerGuard: 'boolean', batterySaver: 'boolean', settingsSync: 'boolean', lightWindow: 'boolean', batteryCare: 'boolean' })) if (typeof b[k] === type) cur[k] = type === 'string' ? b[k].slice(0, 100) : b[k];
+      for (const [k, type] of Object.entries({ autoSwitch: 'boolean', defaultProfile: 'string', artStyle: 'string', themeAccent: 'string', themeBg: 'string', ankerGuard: 'boolean', batterySaver: 'boolean', settingsSync: 'boolean', lightWindow: 'boolean', batteryCare: 'boolean', oneDriveCopy: 'boolean', autoReport: 'boolean' }))if (typeof b[k] === type) cur[k] = type === 'string' ? b[k].slice(0, 100) : b[k];
       // the theme (Settings > Appearance): an accent color as #rrggbb and one of the backdrops
       if (cur.themeAccent && !/^#[0-9a-f]{6}$/i.test(cur.themeAccent)) delete cur.themeAccent;
-      if (cur.themeBg && !['graphite', 'black', 'midnight', 'plum', 'forest'].includes(cur.themeBg)) delete cur.themeBg;
+      if (cur.themeBg && !['graphite', 'black', 'ocean', 'midnight', 'espresso', 'old-school', 'slate', 'plum', 'forest', 'cream', 'paper'].includes(cur.themeBg)) delete cur.themeBg;
       if (cur.artStyle && !['photo', 'frosted', 'blueprint', 'neon', 'duo', 'pop', 'arctic', 'live', 'studio', 'glow', 'matte', 'night'].includes(cur.artStyle)) delete cur.artStyle;  // Settings > Appearance
+      // a name for a headset (the Headset page's Rename; 22 Oct 2026, Shawn: the wired Audio-Technica): { key, name },
+      // key a USB id or a wired headset's JACK_ key; an empty name puts Windows' name back
+      if (b.headsetName && typeof b.headsetName === 'object') {
+        const key = String(b.headsetName.key || '').toUpperCase(), name = String(b.headsetName.name ?? '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 40);
+        if (/^(VID_[0-9A-F]{4}&PID_[0-9A-F]{4}|JACK_[0-9A-F]{8})$/.test(key)) {
+          const names = { ...(cur.headsetNames && typeof cur.headsetNames === 'object' ? cur.headsetNames : {}) };
+          if (name) names[key] = name; else delete names[key];
+          cur.headsetNames = names;
+        }
+      }
       writeAtomic(SETTINGS, JSON.stringify(cur, null, 2));
       agent?.reloadSettings();
+      if (b.oneDriveCopy === true) agent?.saveOneDrive().catch(() => {});   // switched on: the first copy now
       return send(res, 200, cur);
     }
   }
@@ -418,6 +435,39 @@ async function api(req, res, url) {
     }
     if (req.method !== 'POST') return send(res, 405, { error: 'use POST' });
     return send(res, 200, await agent.op(name, await readBody(req)));
+  }
+  // The rest of a setup file (helpers/setup-extras.js): headset names and pick, the background picture, added drivers and,
+  // when asked, the wallpapers. GET gathers them (?wallpapers=1 adds those; ?size=1 only says how big they would be), POST
+  // /plan compares a summary with this PC, POST /apply (the raw JSON, which can be large) puts them here.
+  if (url.pathname === '/api/setup-extras' || url.pathname.startsWith('/api/setup-extras/')) {
+    try {
+      const sub = url.pathname.slice('/api/setup-extras'.length);
+      if (sub === '' && req.method === 'GET') {
+        if (url.searchParams.has('size')) { const l = wallpapers.list(); return send(res, 200, { wallpaperBytes: l.totalBytes, wallpaperCount: l.items.length }); }
+        return send(res, 200, setupExtras.gather({ withWallpapers: url.searchParams.get('wallpapers') === '1' }));
+      }
+      if (sub === '/plan' && req.method === 'POST') return send(res, 200, setupExtras.plan(await readBody(req)));
+      if (sub === '/apply' && req.method === 'POST') {
+        const chunks = []; let size = 0, big = false;
+        await new Promise((resolve, reject) => { req.on('data', (c) => { size += c.length; if (size > 1024 * 1024 * 1024) big = true; else chunks.push(c); }); req.on('end', resolve); req.on('error', reject); });
+        if (big) return send(res, 413, { error: 'That setup file is over 1 GB.' });
+        const x = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+        const r = setupExtras.apply(x);
+        if (typeof x.headsetPick === 'string') { try { await agent?.op('headset-pick', { pick: x.headsetPick }); } catch {} }
+        agent?.reloadSettings();
+        return send(res, 200, r);
+      }
+      return send(res, 405, { error: 'not here' });
+    } catch (e) { return send(res, 400, { error: e.message }); }
+  }
+  // This PC's setup in OneDrive, and the other PCs' (helpers/onedrive-setup.mjs; settings.json oneDriveCopy)
+  if (url.pathname === '/api/onedrive' || url.pathname.startsWith('/api/onedrive/')) {
+    try {
+      const od = await import('./helpers/onedrive-setup.mjs');
+      const saveNow = (o) => (agent ? agent.saveOneDrive(o) : Promise.resolve({ ok: false, error: 'DeviceHub is still starting' }));
+      if (await od.handle(url, req, res, send, readBody, { saveNow }) === false) send(res, 404, { error: 'not found' });
+      return;
+    } catch (e) { return send(res, 400, { error: e.message }); }
   }
   // Sound settings in the setup file: DeviceHub's EQ store (presets, speaker / mic curves, mic tools) and its own
   // options (settings.json). Putting them back backs up both first.
@@ -526,6 +576,45 @@ async function api(req, res, url) {
   }
   // the graphics card's temperature, fan, load and power, read-only (helpers/gpu.js; the Fans page)
   if (url.pathname === '/api/gpu') return send(res, 200, await require('./helpers/gpu').read());
+  // A background picture of the person's own (22 Oct 2026, Shawn: the OSRS map behind the Old School theme): one image
+  // they pick, kept in this folder only (background-picture.*, in .gitignore, so never in git, the installer or sync).
+  // PNG, JPEG or WebP, checked by its first bytes, at most 8 MB. GET serves it (?check: whether there is one), POST
+  // (the raw image) replaces it, POST /api/background/remove removes it (changes are POSTs, as for every route here).
+  if (url.pathname === '/api/background' || url.pathname === '/api/background/remove') {
+    const KINDS = [['png', 'image/png', (b) => b.length > 8 && b.readUInt32BE(0) === 0x89504e47],
+      ['jpg', 'image/jpeg', (b) => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff],
+      ['webp', 'image/webp', (b) => b.length > 12 && b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP']];
+    const saved = () => KINDS.map(([ext, type]) => ({ file: path.join(ROOT, `background-picture.${ext}`), type })).find((x) => fs.existsSync(x.file));
+    if (url.pathname === '/api/background/remove') {
+      if (req.method !== 'POST') return send(res, 405, { error: 'POST' });
+      const cur = saved(); if (cur) fs.unlinkSync(cur.file); return send(res, 200, { ok: true });
+    }
+    if (req.method === 'GET') {
+      const cur = saved();
+      if (url.searchParams.has('check')) return send(res, 200, { picture: !!cur });
+      if (!cur) return send(res, 404, { error: 'no background picture' });
+      res.writeHead(200, { 'Content-Type': cur.type, 'Cache-Control': 'no-store' });
+      return fs.createReadStream(cur.file).pipe(res);
+    }
+    if (req.method === 'POST') {
+      const chunks = []; let size = 0, big = false;
+      await new Promise((resolve, reject) => { req.on('data', (c) => { size += c.length; if (size > 8 * 1024 * 1024) big = true; else chunks.push(c); }); req.on('end', resolve); req.on('error', reject); });
+      if (big) return send(res, 413, { error: 'That picture is over 8 MB. Pick a smaller one.' });
+      const buf = Buffer.concat(chunks);
+      const kind = KINDS.find(([, , is]) => is(buf));
+      if (!kind) return send(res, 400, { error: 'Pick a PNG, JPEG or WebP picture.' });
+      const old = saved(); if (old) fs.unlinkSync(old.file);
+      writeAtomic(path.join(ROOT, `background-picture.${kind[0]}`), buf);
+      return send(res, 200, { ok: true, type: kind[1], bytes: buf.length });
+    }
+    return send(res, 405, { error: 'GET or POST' });
+  }
+  // Wallpapers (22 Oct 2026, Shawn: "store them in this wallpaper area so people can easily get them and preview them and
+  // back them up"): Pictures\DeviceHub Wallpapers, outside this folder (helpers/wallpapers.js; public/pages/wallpapers.js)
+  if (url.pathname === '/api/wallpapers' || url.pathname.startsWith('/api/wallpapers/')) {
+    if (await wallpapers.handle(url, req, res, send, readBody) === false) send(res, 404, { error: 'not found' });
+    return;
+  }
   if (url.pathname === '/api/bluetooth') {
     try { return send(res, 200, await pcMap.bluetooth(url.searchParams.has('fresh'))); } catch (e) { return send(res, 500, { error: e.message }); }
   }
@@ -753,6 +842,15 @@ http.createServer(async (req, res) => {
   // isolated test mode: none of the background parts below (self-update, agent, auto setup, library updates, audio,
   // battery saver, Anker guard, settings sync, receiver light, backup tidy, battery history, tray)
   if (ISOLATED) { console.log('[isolated] test mode: no devices, helper, iCUE, OpenRGB, tray, sync or updates'); return; }
+  // automatic problem reports to Shawn (helpers/auto-report.mjs): the helper's problems as they happen, and 2 minutes
+  // in, whether this run started after DeviceHub stopped with an error. Never from the owner's own PC.
+  let autoReport = null;
+  try {
+    autoReport = await import('./helpers/auto-report.mjs');
+    autoReport.start({ root: ROOT, port: PORT });
+    require('./helpers/native').onProblem((code, text) => autoReport.helperProblem(code, text));
+    setTimeout(() => { try { autoReport.checkCrash(); } catch {} }, 120000).unref();
+  } catch (e) { console.error('[report] not started:', e.message); }
   // just updated: a minute running well keeps the new version (else the keep-running loop goes back, self-update.js)
   require('./helpers/self-update').confirm(serverLog);
   // The agent owns the devices (set DEVICEHUB_AGENT=0 to fall back to the browser's own WebHID connection).
@@ -763,7 +861,7 @@ http.createServer(async (req, res) => {
       console.log('[agent] running');
       if (process.env.DEVICEHUB_TEST !== '1') import('./helpers/auto-setup.mjs').then((m) => m.startup({ root: ROOT, pcMap, log: serverLog })).catch((e) => console.error('[setup] auto setup:', e.message));  // AUTO SETUP (helpers/auto-setup.mjs): library drivers for this PC's USB devices
       if (process.env.DEVICEHUB_TEST !== '1') import('./helpers/library-updates.mjs').then((m) => m.schedule({ root: ROOT, log: serverLog })).catch((e) => console.error('[library] updates:', e.message));  // LIBRARY UPDATES: the signed library bundle, at most once a day
-    } catch (e) { agent = null; console.error('[agent] could not start:', e); }
+    } catch (e) { agent = null; console.error('[agent] could not start:', e); autoReport?.agentFailed(String(e?.message || e)); }
   }
   // DeviceHub's handling of Windows' speakers (helpers/audio-follow.js: one HS80 connection at a time, apps following
   // a new default) is OFF unless settings.json has "audioSwitching": true. Off since 19 Oct 2026: Shawn's Windows

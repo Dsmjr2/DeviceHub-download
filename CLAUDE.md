@@ -185,7 +185,10 @@ public/ui/art.js, img/     the device drawings and product photos (the Realistic
 public/devices/demo.js     pretend devices for demo mode
 public/core/brands.js      the brand guide (made from docs/brands.json by helpers/make-brands.mjs; docs/BRANDS.md)
 helpers/fetch-bundled.mjs   the bundled tools for the zip (helpers/bundled-tools.json), pinned by SHA-256
+helpers/setup-extras.js    the setup file's extras (headset names, background picture, my-devices drivers, wallpapers)
+helpers/onedrive-setup.mjs the opt-in OneDrive copy of this PC's setup, and the other PCs' copies (Overview offer)
 helpers/get-help.mjs      Get help: a short report, personal data taken out, a pre-filled GitHub issue opened on click
+helpers/auto-report.mjs   problem reports that send themselves from other PCs to the relay (never from the owner's PC)
 helpers/learn-wizard.mjs   Learn a device: USB recordings -> driver.json (settings, readings, a second USB id), read-only toward the device (public/pages/learn.js)
 helpers/declarative-driver.mjs   driver.json drivers (docs/DRIVER-FORMAT.md): checked, then run with the device.mjs contract
 helpers/supported-devices.mjs   Supported devices: the plain-words list (public/pages/supported.js; Settings > DeviceHub > Show, Search)
@@ -368,6 +371,19 @@ stand-in server written from OpenRGB's protocol document.
 - **When a device does not work, call `GET http://127.0.0.1:5577/api/diagnose?id=<device>` first** (or
   `node helpers/diagnose.mjs <device>`): it names the likeliest cause, the fix, and what it already checked
   (docs/handoff/diagnose.md). The same answer shows on the device's page, with a fix button.
+
+## Problem reports from other PCs
+
+When DeviceHub hits a real fault on someone else's PC (a crash and restart, the helper not building or starting or
+restarting over and over, a plugged-in device in an error for over 10 minutes, a write that failed its read-back, a
+library or learned driver whose self-check failed), helpers/auto-report.mjs sends Get help's stripped report by itself
+through the relay (relay/, see relay/README.md). It never sends from this PC (origin Dsmjr2/DeviceHub, or settings.json
+"ownerPc": true), and the person can switch it off in Settings (docs/handoff/auto-report.md).
+
+- They arrive as issues in Dsmjr2/DeviceHub-support, labeled `problem`: `gh issue list -R Dsmjr2/DeviceHub-support --label problem`,
+  then `gh issue view <n> -R Dsmjr2/DeviceHub-support`. The fingerprint at the bottom is `<code>:<device>`; the install id
+  tells one PC's reports apart (never its name).
+- Fix it here, then reply on the issue and close it (`gh issue comment <n> ...`, `gh issue close <n> ...`).
 
 ## Running it
 

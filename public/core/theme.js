@@ -25,29 +25,71 @@ const RENAMED = { studio: 'frosted', night: 'neon', pop: 'duo' };
 export function applyArtStyle(style) { style = RENAMED[style] || style; document.documentElement.dataset.art = ART_STYLES.some(([k]) => k === style) ? style : 'frosted'; }
 export async function loadArtStyle() {
   try { const s = await (await fetch('/api/settings')).json(); applyArtStyle(s.artStyle); applyTheme(s); } catch { applyArtStyle('frosted'); }
+  loadPicture();
+}
+
+// The person's own background picture (22 Oct 2026; server.js /api/background): shown behind everything, dimmed, with
+// any backdrop. Kept on this PC only. Demo mode shows a picked one without saving it.
+let picture = false;
+export const hasPicture = () => picture;
+function showPicture(src) {
+  const root = document.documentElement;
+  picture = !!src;
+  if (src) { root.style.setProperty('--picture', `url("${src}")`); root.dataset.picture = '1'; }
+  else { root.style.removeProperty('--picture'); delete root.dataset.picture; }
+}
+export async function loadPicture() {
+  if (new URLSearchParams(location.search).has('demo')) return;
+  try { const r = await (await fetch('/api/background?check')).json(); showPicture(r.picture ? `/api/background?v=${Date.now()}` : null); } catch {}
+}
+export async function savePicture(file) {
+  if (new URLSearchParams(location.search).has('demo') || window.DEVICEHUB_DEMO === true) { showPicture(URL.createObjectURL(file)); return { demo: true }; }
+  const r = await fetch('/api/background', { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  showPicture(`/api/background?v=${Date.now()}`);
+  return j;
+}
+export async function removePicture() {
+  if (!new URLSearchParams(location.search).has('demo')) await fetch('/api/background/remove', { method: 'POST' });
+  showPicture(null);
 }
 
 // The theme (Settings > Appearance, 21 Oct 2026, Shawn: "a simple theme area ... so people can customize it"): an accent
 // color (buttons, selections, switches, and the Neon and Duotone drawings) and a backdrop. Saved in DeviceHub's settings
 // (themeAccent, themeBg), so it syncs with the other settings.
 export const SILVER = '#dfe2e8';
-export const THEME_ACCENTS = [[SILVER, 'Silver'], ['#7fb4ff', 'Blue'], ['#a58bff', 'Violet'], ['#ff7aa2', 'Rose'], ['#ffb454', 'Amber'], ['#5fd3a4', 'Mint']];
-export const THEME_BGS = [['graphite', 'Graphite', '#050507', '110, 120, 145'], ['black', 'Black', '#000000', '55, 55, 62'], ['midnight', 'Midnight', '#03060e', '60, 95, 170'],
-  ['plum', 'Plum', '#08040c', '125, 85, 160'], ['forest', 'Forest', '#030806', '60, 130, 100']];
+// more accents, calmer ones first (22 Oct 2026, Shawn: "more options ... more minimal")
+export const THEME_ACCENTS = [[SILVER, 'Silver'], ['#d9c4a0', 'Sand'], ['#c9a27e', 'Clay'], ['#9fb3a1', 'Sage'], ['#8fb3d9', 'Mist'],
+  ['#7fb4ff', 'Blue'], ['#a58bff', 'Violet'], ['#ff8f70', 'Coral'], ['#ffb454', 'Amber'], ['#5fd3a4', 'Mint']];
+// backdrops: [key, name, page color, the soft pools' tint]. Plum and Forest went (22 Oct 2026, Shawn: "I dont like the
+// pink or green backdrop. Make it more minimal"), and so did the light Cream and Paper the same day ("no light mode");
+// a saved one shows as the nearest that is left. Slate (too close to Graphite) became Ocean, a deep teal.
+export const THEME_BGS = [['graphite', 'Graphite', '#050507', '110, 120, 145'], ['black', 'Black', '#000000', '55, 55, 62'],
+  ['ocean', 'Ocean', '#010a0d', '35, 150, 175'], ['midnight', 'Midnight', '#03060e', '60, 95, 170'],
+  ['espresso', 'Espresso', '#0a0806', '150, 122, 96'],
+  // a whole look, not only a color (22 Oct 2026, Shawn: "make an old school runescape theme"): stone panels, orange
+  // headings, square buttons, black text shadows (html[data-skin="old-school"], style.css end). Drawn in CSS only.
+  ['old-school', 'Old School', '#16120d', '140, 105, 60', 'old-school']];
+const OLD_BGS = { plum: 'midnight', forest: 'graphite', cream: 'espresso', paper: 'graphite', slate: 'graphite' };
 const theme = { accent: SILVER, bg: 'graphite' };
 export const currentTheme = () => ({ ...theme });
 export function applyTheme(s = {}) {
   if (/^#[0-9a-f]{6}$/i.test(s.themeAccent || '')) theme.accent = s.themeAccent.toLowerCase();
-  if (THEME_BGS.some(([k]) => k === s.themeBg)) theme.bg = s.themeBg;
-  const r = document.documentElement.style, a = theme.accent, silver = a === SILVER;
+  const bgKey = OLD_BGS[s.themeBg] || s.themeBg;
+  if (THEME_BGS.some(([k]) => k === bgKey)) theme.bg = bgKey;
+  const bg = THEME_BGS.find(([k]) => k === theme.bg);
+  if (bg[4]) document.documentElement.dataset.skin = bg[4]; else delete document.documentElement.dataset.skin;
+  // on Old School the silver accent is the game's gold
+  const r = document.documentElement.style, a = bg[4] === 'old-school' && theme.accent === SILVER ? '#ffb83f' : theme.accent, silver = a === SILVER;
   // text on the accent: dark on a light color, white on a dark one
   const [R, G, B] = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16) / 255);
   const lum = 0.2126 * R + 0.7152 * G + 0.0722 * B;
   r.setProperty('--signal', a); r.setProperty('--signal-ink', lum > 0.55 ? '#111216' : '#ffffff');
   r.setProperty('--theme-art', silver ? '#7fb4ff' : a);
   r.setProperty('--switch-on', silver ? 'var(--good)' : a);
-  const bg = THEME_BGS.find(([k]) => k === theme.bg);
   r.setProperty('--bg', bg[2]); r.setProperty('--pool', bg[3]);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bg[2]);
 }
 export async function saveTheme(change) {
   applyTheme(change);

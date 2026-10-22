@@ -101,7 +101,7 @@ function shareButton(d, shown) {
 // A driver with no real-device record (or one the learning wizard made) writes nothing, its check included, until the
 // person presses Turn on settings (safety round 2; helpers/my-devices.mjs turnOn): that button comes first.
 const checkNote = {};
-function checkAgain(d) {
+function checkAgain(d, redraw = () => {}) {
   const lib = d.adapter?.library;
   const ro = (d.adapter?.settings || []).filter((s) => s.type !== 'display' && s.readOnly);
   if (!lib || d.status !== 'connected' || (!ro.length && !lib.turnOn)) return null;
@@ -113,6 +113,7 @@ function checkAgain(d) {
       const j = await r.json().catch(() => ({}));
       checkNote[d.id] = !r.ok || j.error ? `Not done: ${j.error || r.statusText}` : checkAnswer(j, kind);
     } catch (e) { checkNote[d.id] = `Not done: ${e.message}`; }
+    redraw();   // the answer (and, once settings are on, the Tell others it works invitation) shows at once
   };
   const line = kind === 'turn-on'
     ? `Its settings are read-only until you turn them on. ${lib.turnOnLine || "DeviceHub writes each setting's current value back once to make sure it works."}`
@@ -184,8 +185,8 @@ export function devicePage(id) {
             shown.length ? shown.map((s) => settingRow(d, s)) : h('p', { class: 'faint', style: { margin: 0 } }, 'It has not reported any settings yet.'),
             a.unsupported?.length ? h('p', { class: 'faint', style: { marginTop: '12px' } }, icon('external'), ` Still in its maker's app: ${a.unsupported.join(', ')}.`) : null,
             careLine(d),
-            checkAgain(d),
-            offersWorks(d) ? worksReport(d) : null),
+            checkAgain(d, () => ctx.redraw?.()),
+            offersWorks(d) ? worksReport(d, { invite: /^Settings turned on/.test(checkNote[d.id] || '') }) : null),
           card([h('h2', {}, 'Device'), h('span', { class: 'spacer' }), deviceActions(d)], kv(d.info || {}), shareButton(d, shown))),
         a.battery ? batteryChart(id, () => ctx.redraw?.(), { title: a.title, kind: a.kind }) : null);
     },

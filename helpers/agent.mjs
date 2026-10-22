@@ -12,11 +12,13 @@ import headset, { setCorsairCall, setHeadsetPick } from '../public/devices/heads
 import { cleanPick } from '../public/core/headset-pick.js';
 import { auto, startAutoSwitch, loadSettings, onAuto } from '../public/core/autoswitch.js';
 import * as weekly from './weekly-setup.mjs';
+import * as oneDrive from './onedrive-setup.mjs';
 import * as daily from './daily-check.mjs';
 import * as batteryCare from './battery-care.mjs';
 import { loadProfiles, apply } from '../public/core/profiles.js';
 import { provider, closeAll, setGoneHandler, setMovedHandler, devicesChanged, useKeyboardSpec, addSpec, useWindowsEvents, setAnnounceHandlers } from './hid-host.mjs';
 import * as myDevices from './my-devices.mjs';
+import * as autoReport from './auto-report.mjs';
 import { applyAdded } from './profile-added.mjs';
 import { useKeyboardIds } from '../public/devices/via.js';
 import { useLayout } from '../public/devices/keyboard-adapter.js';
@@ -101,7 +103,11 @@ export async function start({ port, corsairHelper }) {
   env.toast = () => ({ update() {}, close() {} });
   // a profile's part for one added device (helpers/profile-added.mjs): public/core/profiles.js apply() calls it here
   env.applyAdded = (body) => applyAdded(body, { core });
-  env.onActivity = (entry) => send('activity', entry);
+  env.onActivity = (entry) => {
+    send('activity', entry);
+    // a write whose read-back did not match: an automatic problem report (helpers/auto-report.mjs)
+    if (entry?.kind === 'bad' && entry.device) autoReport.noteActivity(entry, core.devices[entry.device]?.adapter?.title);
+  };
 
   setDeviceProvider(provider);
   setGoneHandler((id) => core.markMissing(id)); // unplugged: marked missing at once, then looked for every 20 s
@@ -168,6 +174,11 @@ export async function start({ port, corsairHelper }) {
   // the weekly setup file (helpers/weekly-setup.mjs): checked 90 s after start (the devices have connected) and daily
   setTimeout(() => weekly.saveIfDue(core, core.log).catch((e) => console.error('[setup] weekly', e.message)), 90000);
   setInterval(() => weekly.saveIfDue(core, core.log).catch((e) => console.error('[setup] weekly', e.message)), 24 * 3600 * 1000);
+  // the OneDrive copy (helpers/onedrive-setup.mjs), when switched on: 2 minutes after start, then every 30 minutes,
+  // written only when something in it changed
+  const oneDriveTick = () => { if (readJson(SETTINGS_FILE).oneDriveCopy === true) saveOneDrive().catch((e) => console.error('[onedrive]', e.message)); };
+  setTimeout(oneDriveTick, 120000);
+  setInterval(oneDriveTick, 30 * 60 * 1000);
   // Windows says a device was added or removed (helpers/native/tray.cs DeviceWatch): look at once, not on the next timed
   // check. Several messages come per plug, so they are gathered for 400 ms first.
   let devTimer = null;
@@ -227,8 +238,12 @@ export async function start({ port, corsairHelper }) {
       for (const ms of [0, 400, 1200, 2500, 5000]) setTimeout(() => { if (core.devices.mouse.status === 'asleep') core.refresh('mouse', { quiet: true }).catch(() => {}); }, ms);
     });
   }
-  // A device that failed (not just unplugged) is retried every 30 s.
-  setInterval(() => { for (const d of Object.values(core.devices)) if (d.status === 'error') core.connect(d.id, false); }, 30000);
+  // A device that failed (not just unplugged) is retried every 30 s. First, on the same tick, the automatic problem
+  // reports look at how long each has been in an error (helpers/auto-report.mjs checkDevices: over 10 minutes, a fault)
+  setInterval(() => {
+    try { autoReport.checkDevices(Object.values(core.devices)); } catch {}
+    for (const d of Object.values(core.devices)) if (d.status === 'error') core.connect(d.id, false);
+  }, 30000);
 }
 
 export function stop() { closeAll(); }
@@ -305,5 +320,8 @@ export async function op(name, b) {
   }
 }
 
+// this PC's setup in OneDrive (helpers/onedrive-setup.mjs; the extras without wallpapers, helpers/setup-extras.js)
+const extras = require('./setup-extras.js').create();
+export const saveOneDrive = (opts) => oneDrive.save(core, extras, opts);
 // the weekly setup files, for the server's /api/setups routes
 export const setups = { list: weekly.list, read: weekly.read, saveNow: () => weekly.saveIfDue(core, core.log, { force: true }) };

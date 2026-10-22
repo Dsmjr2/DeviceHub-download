@@ -396,7 +396,9 @@ async function agentDeps() {
   try {
     const [{ env }, core] = await Promise.all([import('../public/core/env.js'), import('../public/core/devices.js')]);
     if (!env.agent || !env.api) return {};
-    return { log: (text, kind, id) => core.log(text, kind, id), backup: (body) => env.api('/api/backup', body), makerApp: makerAppByVid };
+    // selfChecked: a self-check that ran, for the automatic problem reports (helpers/auto-report.mjs: a failed setting)
+    return { log: (text, kind, id) => core.log(text, kind, id), backup: (body) => env.api('/api/backup', body), makerApp: makerAppByVid,
+      selfChecked: (a, r) => import('./auto-report.mjs').then((m) => m.selfCheckResult(a, r)).catch(() => {}) };
   } catch { return {}; }
 }
 async function makerAppByVid(vid) {
@@ -518,13 +520,14 @@ export function guard(a, folder, mark, deps = null) {
   const runCheck = async (only) => {
     const d = await depsNow();
     const version = d.version !== undefined ? d.version : versionAt(folder);
-    const { log: say, ...rest } = d;
+    const { log: say, selfChecked, ...rest } = d;
     const open = openKeys();
     const keys = (only || open).filter((k) => open.includes(k));
     if (!keys.length) return { ran: false, why: 'its settings are not turned on yet: press Turn on settings first' };
     const all = keys.length === a.settings.filter(writable).length;
     const r = await selfCheck(a, write, { folder, mark, ...rest, version, only: only || !all ? keys : null, previous: verified, log: (t, kind) => say?.(t, kind, a.id) });
     makerSeen = null;   // the check just asked; the next write asks again
+    try { selfChecked?.(a, r); } catch {}
     if (r.ran) verified = r; else say?.(`${a.title}: library self-check not run: ${r.why}`, 'info', a.id);
     relabel();
     return r;

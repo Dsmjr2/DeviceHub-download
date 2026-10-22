@@ -8,8 +8,8 @@ import { button, pill, card, row, toggle } from '../ui/controls.js';
 import { auto, saveSettings, runningWindows, onAuto, gameTitle } from '../core/autoswitch.js';
 import { devices, isDemo } from '../core/devices.js';
 import { topbar } from './common.js';
-import { loadProfiles, saveProfiles, capture, captureAdded, diff, apply, keyLabel, showValue, showAdded, PROFILE_KEYS, MONITOR_KEYS, PROFILE_COLORS, loadMonitors, monitorList, captureMonitors } from '../core/profiles.js';
-import { USES, useOf, planUse, whenLine, namedGames } from '../core/profile-use.js';
+import { loadProfiles, saveProfiles, capture, captureAdded, diff, apply, keyLabel, showValue, showAdded, PROFILE_KEYS, MONITOR_KEYS, PROFILE_COLORS, loadMonitors, monitorList, captureMonitors, findMonitor } from '../core/profiles.js';
+import { USES, useOf, planUse, namedGames } from '../core/profile-use.js';
 import { LIFT_OFF } from '../devices/pulsar.js';
 import { EFFECTS } from '../devices/keycodes.js';
 import { modal, toast } from '../ui/overlay.js';
@@ -69,7 +69,7 @@ const addedSetting = (id, key) => (devices[id]?.adapter?.plugin ? (devices[id].a
 
 // Every line of "What it sets": { dev, label, text, now } where now says how the device differs right now.
 function setsLines(p, rows) {
-  const at = new Map(rows.map((r) => [`${r.id === 'monitor' ? r.monitorId : r.id}|${r.key}`, r]));
+  const at = new Map(rows.map((r) => [`${r.id === 'monitor' ? r.savedId : r.id}|${r.key}`, r]));
   const out = [];
   for (const [id, vals] of Object.entries(p.devices || {})) {
     if (!PROFILE_KEYS[id]) continue;
@@ -86,7 +86,7 @@ function setsLines(p, rows) {
     for (const k of Object.keys(MONITOR_KEYS)) {
       if (vals?.[k] == null) continue;
       const r = at.get(`${mid}|${k}`);
-      const now = r ? `now ${showValue('monitor', k, r.from)}` : mons && !mons.some((m) => m.id === mid) ? 'not on this PC' : null;
+      const now = r ? `now ${showValue('monitor', k, r.from)}` : mons && !findMonitor(mid) ? 'off or not found now' : null;
       out.push({ dev: vals.name || 'Monitor', label: keyLabel('monitor', k), text: showValue('monitor', k, vals[k]), now });
     }
   }
@@ -230,40 +230,63 @@ function confirmBox(text, yes, yesKind, onYes) {
     h('div', { class: 'actions' }, button(yes, onYes, { kind: `${yesKind} small` }), button('Cancel', () => { ui.confirm = null; rerender(); }, { kind: 'ghost small' })));
 }
 
-const SHORT = 8;   // a longer "What it sets" list shows its first lines and a "Show all" button
+const SHORT = 3;   // a profile with more lines than this shows a one-line summary and a "Show" button
+const devicesOf = (lines) => [...new Set(lines.map((l) => l.dev))];
+const lineEl = (l) => h('div', { class: 'prof-line' }, h('span', {}, `${l.dev} · ${l.label}: `, h('b', {}, l.text)), l.now ? h('span', { class: 'prof-now' }, l.now) : null);
+
+// What it sets: a short list as it is; a long one as "29 settings · Mouse, Headset, Keyboard", plus the lines that
+// differ right now (what Use now would change), and the whole list behind Show
+function setsBlock(p, lines) {
+  if (!lines.length) return h('div', { class: 'prof-sets faint' }, 'Sets nothing yet. Press "Save current settings".');
+  if (lines.length <= SHORT) return h('div', { class: 'prof-sets' }, ...lines.map(lineEl));
+  const open = ui.showAll.has(p.name);
+  const differ = lines.filter((l) => l.now);
+  const toggleAll = () => { if (open) ui.showAll.delete(p.name); else ui.showAll.add(p.name); rerender(); };
+  return h('div', { class: 'prof-sets' },
+    h('div', { class: 'prof-sum' },
+      h('span', {}, `${lines.length} settings · ${devicesOf(lines).join(', ')}`),
+      h('button', { class: 'prof-link', 'aria-expanded': String(open), 'aria-label': `Show what ${p.name} sets`, onclick: toggleAll }, open ? 'Hide' : 'Show')),
+    ...(open ? lines : differ.slice(0, SHORT)).map(lineEl),
+    !open && differ.length > SHORT ? h('div', { class: 'faint' }, `and ${differ.length - SHORT} more different right now`) : null);
+}
+
+// an extra line under the choice only when the choice alone does not tell the whole story
+function useNote(p, use, s) {
+  const games = use === 'any' || use === 'named';
+  if (games && s.defaultProfile && p.name === s.defaultProfile) return 'Also used when no game is running.';
+  if (games && !s.autoSwitch) return 'Waits until switching is on at the top.';
+  return null;
+}
+
+const labelled = (el, text) => { el.setAttribute('aria-label', text); return el; };
+
 function profileCard(p) {
   const s = auto.settings;
   const rows = diff(p);
   const active = !rows.some((r) => !r.blocked);
   const use = useOf(p, s.defaultProfile, ui.pending.has(p.name));
   const lines = setsLines(p, rows);
-  const open = ui.showAll.has(p.name) || lines.length <= SHORT;
-  const shown = open ? lines : lines.slice(0, SHORT - 2);
-  const hiddenNow = open ? 0 : lines.slice(SHORT - 2).filter((l) => l.now).length;
   const asking = ui.confirm?.name === p.name ? ui.confirm.what : null;
   const note = ui.note[p.name];
+  const extra = useNote(p, use, s);
   const saved = p.savedAt && !Number.isNaN(Date.parse(p.savedAt)) ? `Saved ${new Date(p.savedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : '';
   const ask = (what) => { ui.confirm = { name: p.name, what }; ui.note = {}; rerender(); };
   return h('div', { class: 'profile', style: { '--pc': p.color } },
-    h('div', { class: 'prof-head' }, h('h3', {}, p.name), active ? pill('Active', 'good') : null),
-    h('div', { class: 'prof-when' }, whenLine(p, use, { defaultProfile: s.defaultProfile, autoSwitch: !!s.autoSwitch, title: gameTitle })),
-    h('div', { class: 'prof-sets' }, h('div', { class: 'prof-label' }, 'What it sets'),
-      ...(lines.length ? shown.map((l) => h('div', { class: 'prof-line' }, h('span', {}, `${l.dev} · ${l.label}: `, h('b', {}, l.text)), l.now ? h('span', { class: 'prof-now' }, l.now) : null))
-        : [h('div', { class: 'faint' }, 'Nothing yet. Press "Save my current settings here".')]),
-      lines.length > SHORT ? h('button', { class: 'pill', style: { cursor: 'pointer', background: 'none', justifySelf: 'start', marginTop: '4px' }, 'aria-expanded': String(open),
-        onclick: () => { if (open) ui.showAll.delete(p.name); else ui.showAll.add(p.name); rerender(); } },
-        open ? 'Show fewer' : `Show all ${lines.length} settings${hiddenNow ? ` (${hiddenNow} more ${hiddenNow === 1 ? 'is' : 'are'} different right now)` : ''}`) : null),
-    asking === 'save' ? confirmBox('Replace what this profile sets with your current settings?', 'Yes', 'primary', () => saveHere(p))
-      : asking === 'delete' ? confirmBox('Delete this profile? Your devices stay as they are.', 'Delete', 'danger', () => deleteProfile(p))
-        : h('div', { class: 'actions' },
-          button('Use now', () => { ui.note = {}; return applyWithPreview(p); }, { kind: 'primary small' }),
-          button('Save my current settings here', () => ask('save'), { kind: 'small' })),
-    note ? h('div', { class: `prof-note${note.kind ? ` ${note.kind}` : ''}`, role: 'status' }, note.text) : null,
-    h('div', { class: 'prof-use' }, h('div', { class: 'prof-label' }, 'When to use it'),
+    h('div', { class: 'prof-head' }, h('h3', {}, p.name, saved ? h('span', { class: 'prof-saved' }, saved) : null), active ? pill('Active', 'good') : null),
+    h('div', { class: 'prof-use' },
       h('select', { class: 'text', 'aria-label': `When to use ${p.name}`, onchange: (e) => setUse(p, e.target.value) },
         ...USES.map((o) => h('option', { value: o.value, selected: o.value === use ? true : null }, o.label))),
+      extra ? h('div', { class: 'prof-note' }, extra) : null,
       use === 'named' ? gamePicker(p) : null),
-    h('div', { class: 'prof-foot' }, h('span', {}, saved), asking ? null : button('Delete', () => ask('delete'), { kind: 'ghost small', ic: 'trash' })));
+    setsBlock(p, lines),
+    asking === 'save' ? confirmBox('Replace what this profile sets with your current settings?', 'Yes', 'primary', () => saveHere(p))
+      : asking === 'delete' ? confirmBox('Delete this profile? Your devices stay as they are.', 'Delete', 'danger', () => deleteProfile(p))
+        : h('div', { class: 'prof-foot' },
+          active ? null : button('Use now', () => { ui.note = {}; return applyWithPreview(p); }, { kind: 'primary small' }),
+          h('div', { class: 'actions' },
+            button('Save current settings', () => ask('save'), { kind: 'ghost small' }),
+            labelled(button('', () => ask('delete'), { kind: 'ghost small', ic: 'trash' }), `Delete ${p.name}`))),
+    note ? h('div', { class: `prof-note${note.kind ? ` ${note.kind}` : ''}`, role: 'status' }, note.text) : null);
 }
 
 // ---------- New profile from my current settings ----------
@@ -302,7 +325,7 @@ async function flowSave() {
   const color = PROFILE_COLORS[others.length % PROFILE_COLORS.length];
   await saveProfiles([...others, { name: a.name, color, games: [], devices: devs, ...(Object.keys(mons).length ? { monitors: mons } : {}), ...(Object.keys(added).length ? { added } : {}), savedAt: new Date().toISOString() }]);
   ui.adding = null;
-  say(a.name, 'Saved. Pick when to use it below.');
+  say(a.name, 'Saved. Pick when to use it at the top of the card.');
   await refreshList();
 }
 

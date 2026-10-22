@@ -24,7 +24,8 @@ export function offersWorks(d) {
   return (d.adapter.settings || []).some((s) => s.type !== 'display' && !s.readOnly);
 }
 
-export function worksReport(d) {
+// invite: the person just turned its settings on and they passed: say so and ask, instead of the quiet one-line button
+export function worksReport(d, { invite = false } = {}) {
   const id = d.id;
   const box = h('div', { class: 'works-report', style: { marginTop: '10px', textAlign: 'left' } });
   const s = state[id] || (state[id] = { stage: 'closed' });
@@ -48,6 +49,11 @@ export function worksReport(d) {
   const small = (t) => h('small', { class: 'faint', style: { display: 'block', marginTop: '6px' } }, t);
   const row = (...kids) => h('div', { class: 'actions', style: { margin: '6px 0 0', justifyContent: 'flex-start', alignItems: 'center' } }, ...kids);
   function draw() {
+    if (s.stage === 'closed' && invite) {
+      return box.replaceChildren(h('div', { class: 'works-invite' },
+        h('p', {}, h('b', {}, 'It works. '), 'Tell the device library, so the next person with this model gets it ready to use, with no setup. Nothing about you or this PC goes in it.'),
+        row(button('Tell others it works', start, { kind: 'primary small', ic: 'external' }))));
+    }
     if (s.stage === 'closed') {
       return box.replaceChildren(row(button('Works on my device', start, { kind: 'ghost small', ic: 'external' }),
         h('span', { class: 'faint', style: { fontSize: '12.5px' } }, 'Tell the library this driver works here, so others get it ready to use.')));

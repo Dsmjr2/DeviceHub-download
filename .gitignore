@@ -47,3 +47,9 @@ share-staging/
 bundled-cache/
 # the bundled OpenRGB's own settings (helpers/openrgb.js)
 openrgb-config/
+# the person's own background picture (Settings > Appearance), never shared
+background-picture.*
+# the Windows wallpaper DeviceHub kept for Put back (helpers/wallpapers.js); the wallpapers themselves live in Pictures
+wallpaper-previous/
+# problem reports already sent today (helpers/auto-report.mjs)
+auto-report-state.json

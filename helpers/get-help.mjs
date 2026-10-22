@@ -283,6 +283,42 @@ export async function gather(id, deps = {}) {
   return f;
 }
 
+// ---------- Request support (22 Oct 2026, Shawn: "as simple as possible"): a device DeviceHub has no driver for ----------
+// One click builds a short request: the device's USB id, the name Windows gives it, its maker from the brand guide when
+// known, DeviceHub's and Windows' versions. It goes through the same personal-data check and the same open path as Get
+// help: shown in full first, opened in the browser only on the person's click, sent by them with Submit.
+const hex4 = (x) => (/^[0-9a-f]{4}$/i.test(String(x || '')) ? String(x).toUpperCase() : null);
+export function composeRequest({ vid, pid, name, brand, version, windows }) {
+  const id = `${vid}:${pid}`;
+  const what = name || (brand ? `${brand.name} device` : 'USB device');
+  const title = `Support request: ${what} (USB ${id})`;
+  const body = [
+    '**Which device is it, and what would you like DeviceHub to do with it?** (write it here: the model, whether it is a mouse, headset, keyboard or light, and the settings you would like)', '',
+    '### The device', `- Windows calls it: ${name || 'no name'}`, `- USB: ${id}`,
+    `- Maker: ${brand ? `${brand.name}${brand.kinds?.length ? ` (${brand.kinds.join(', ')})` : ''}${brand.shared ? ', but this vendor id is a chip maker\'s, so unconfirmed' : ''}` : 'not in DeviceHub\'s brand guide'}`,
+    '- DeviceHub has: no driver for it yet', '',
+    '### This PC', `- DeviceHub: ${version}`, `- Windows: ${windows}`, '',
+    "Made with DeviceHub's Request support button. DeviceHub sent nothing; the person who opened this pressed Submit.",
+  ].join('\n');
+  return { title, body };
+}
+export async function requestSupport(q = {}, deps = {}) {
+  const vid = hex4(q.vid), pid = hex4(q.pid);
+  if (!vid || !pid) { const e = new Error('vid and pid must be 4 hex digits'); e.code = 400; throw e; }
+  const name = String(q.name || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 80);
+  let brand = null;
+  try { brand = (await import('./auto-setup.mjs')).brandsByVid(options.root)[vid.toLowerCase()] || null; } catch {}
+  const names = personalNames([...(options.names || []), ...(deps.names || [])]);
+  const tally = {};
+  const s = (x) => { const r = strip(x, names); for (const [k, v] of Object.entries(r.removed)) tally[k] = (tally[k] || 0) + v; return r.text; };
+  const f = composeRequest({ vid, pid, name: name ? s(name) : '', brand, version: s(devicehubVersion(options.root)), windows: s(deps.windows || await windowsVersion()) });
+  const removed = Object.entries(tally).map(([why, count]) => ({ why, count }));
+  const refused = [...findPersonal(f.title, names).map((x) => ({ ...x, line: 0 })), ...findPersonal(f.body, names)];
+  if (refused.length) return { ok: false, ...f, removed, refused };
+  const url = issueUrl(f.title, f.body);
+  return { ok: true, ...f, url, length: url.length, removed, token: remember(url) };
+}
+
 // ---------- made reports, by token, so the browser can only open a link DeviceHub built and checked ----------
 const made = new Map();   // token -> { url, at }
 const KEEP_MS = 30 * 60e3;
@@ -337,6 +373,7 @@ export async function handle(url, req, res, send, readBody) {
     if (url.pathname === '/api/help/report' && req.method === 'GET') { send(res, 200, await report(url.searchParams.get('id'), { port })); return true; }
     // "Works on my device" (helpers/works-report.mjs): the record to show; it opens through /api/help/open like a report
     if (url.pathname === '/api/help/works' && req.method === 'GET') { const r = await (await import('./works-report.mjs')).report(url.searchParams.get('id'), { port }); send(res, 200, r); return true; }
+    if (url.pathname === '/api/help/request' && req.method === 'GET') { send(res, 200, await requestSupport({ vid: url.searchParams.get('vid'), pid: url.searchParams.get('pid'), name: url.searchParams.get('name') })); return true; }
     if (url.pathname === '/api/help/open' && req.method === 'POST') { const r = await open((await readBody(req))?.token); send(res, r.ok ? 200 : 400, r); return true; }
     send(res, 404, { error: 'no such help route' });
   } catch (e) { send(res, e.code === 404 ? 404 : e.code === 503 ? 503 : 400, { error: e.message }); }

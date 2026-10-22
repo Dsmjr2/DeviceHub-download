@@ -123,7 +123,7 @@ try {
   $private = 'backups', 'profiles.json', 'settings.json', 'activity.jsonl', 'battery-history.jsonl', 'mouse-battery-study.jsonl',
     'mouse-level.json', 'headset-lights.json', 'headset-firmware.json', 'seen-devices.json', 'updates-cache.json', 'server.log',
     'server.old.log', 'captures', 'window-profile', 'screenshots', 'waiting-changes.json', 'waiting-monitors.json',
-    'last-device-values.json', 'last-monitor-values.json', 'daily-check.json', 'battery-care.json', 'setup.json', 'openrgb-config', 'bundled-cache'
+    'last-device-values.json', 'last-monitor-values.json', 'daily-check.json', 'battery-care.json', 'setup.json', 'openrgb-config', 'bundled-cache', 'wallpaper-previous'
   $z = [System.IO.Compression.ZipFile]::OpenRead($zip)
   try {
     $names = $z.Entries | ForEach-Object { ($_.FullName -replace '[\\/]', '/') -replace '^DeviceHub/', '' }

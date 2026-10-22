@@ -35,6 +35,17 @@ export async function loadMonitors(fresh) {
   try { monitors = (await env.api(`/api/monitors${fresh ? '?fresh=1' : ''}`)).filter((m) => m.ddc); } catch { monitors ||= []; }
   return monitors;
 }
+// the monitor a profile saved, on this PC: the same hardware id, or else the one monitor of the same model (Windows
+// can give a monitor a new instance id after a driver update or a cable change; the model code is the part before #).
+// Two monitors of that model and no exact match: neither is guessed.
+export function findMonitor(savedId) {
+  const list = monitors || [];
+  const exact = list.find((x) => x.id === savedId);
+  if (exact) return exact;
+  const model = String(savedId).split('#')[0];
+  const same = model ? list.filter((x) => String(x.id).split('#')[0] === model) : [];
+  return same.length === 1 ? same[0] : null;
+}
 // what the monitors are set to now (from the last read)
 export function captureMonitors() {
   const out = {};
@@ -182,11 +193,11 @@ export function diff(profile) {
   }
   // monitors: only the ones on this PC (another PC's monitors in the profile are left out, not counted)
   for (const [mid, vals] of Object.entries(profile.monitors || {})) {
-    const m = (monitors || []).find((x) => x.id === mid);
+    const m = findMonitor(mid);
     if (!m) continue;
     for (const k of Object.keys(MONITOR_KEYS)) {
       if (vals[k] == null || !m[k] || m[k].value === vals[k]) continue;
-      rows.push({ id: 'monitor', monitorId: mid, monitorName: m.name, key: k, from: m[k].value, to: vals[k], ready: true });
+      rows.push({ id: 'monitor', monitorId: m.id, savedId: mid, monitorName: m.name, key: k, from: m[k].value, to: vals[k], ready: true });
     }
   }
   // added devices: only the ones connected now (one not plugged in is left out, not counted). A setting that would be

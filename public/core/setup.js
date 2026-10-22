@@ -32,9 +32,10 @@ function order(id, plan) {
   return count.to >= (devices.mouse.values.stageCount ?? 0) ? [count, ...rest] : [...rest, count];
 }
 
-export async function saveSetup() {
+export async function saveSetup({ wallpapers = false } = {}) {
   const out = { kind: SETUP_KIND, version: 1, savedAt: new Date().toISOString(), devices: {}, profiles: await loadProfiles() };
   try { out.sound = await (await fetch('/api/sound-setup')).json(); } catch {}
+  try { out.extras = await (await fetch(`/api/setup-extras${wallpapers ? '?wallpapers=1' : ''}`)).json(); } catch {}
   const skipped = [];
   for (const [id, d] of Object.entries(devices)) {
     if (d.status !== 'connected') { skipped.push(d.adapter.title); continue; }
@@ -75,7 +76,27 @@ export async function planSetup(file) {
       if ((file.sound.eq && differs(file.sound.eq, now.eq)) || (file.sound.settings && differs(file.sound.settings, now.settings))) sound = file.sound;
     } catch {}
   }
-  return { changes, profiles, notConnected, sound };
+  // extras: described by hash (pictures stay in the file) and compared with this PC by the server
+  let extras = null;
+  if (file.extras && typeof file.extras === 'object') {
+    try {
+      const r = await fetch('/api/setup-extras/plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(await summarizeExtras(file.extras)) });
+      const { lines } = await r.json();
+      if (lines?.length) extras = { lines, data: file.extras };
+    } catch {}
+  }
+  return { changes, profiles, notConnected, sound, extras };
+}
+
+// the same summary helpers/setup-extras.js summarize() makes: pictures and drivers by SHA-256
+const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+const sha = async (bytes) => hex(await crypto.subtle.digest('SHA-256', bytes));
+const fromB64 = (b64) => Uint8Array.from(atob(b64 || ''), (c) => c.charCodeAt(0));
+export async function summarizeExtras(x) {
+  return { headsetNames: x.headsetNames || {}, headsetPick: x.headsetPick || null,
+    background: x.background ? { ext: x.background.ext, sha: await sha(fromB64(x.background.data)) } : null,
+    myDevices: await Promise.all((x.myDevices || []).map(async (d) => ({ name: d.name, sha: await sha(new TextEncoder().encode(JSON.stringify(Object.entries(d.files || {}).sort()))) }))),
+    wallpapers: await Promise.all((x.wallpapers || []).map(async (w) => ({ name: w.name, sha: await sha(fromB64(w.data)) }))) };
 }
 
 export async function loadSetup(file, planned) {
@@ -89,6 +110,12 @@ export async function loadSetup(file, planned) {
     const r = await fetch('/api/sound-setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(planned.sound) });
     if (r.ok) done++; else failed++;
   }
+  let restart = false;
+  if (planned.extras) {
+    const r = await fetch('/api/setup-extras/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(planned.extras.data) });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok) { done += planned.extras.lines.filter((l) => l.what !== 'drivers-kept').length; restart = !!j.restart; } else failed++;
+  }
   log(`Setup file loaded: ${done} changed${failed ? `, ${failed} failed` : ''}`, failed ? 'bad' : 'good');
-  return { done, failed };
+  return { done, failed, restart };
 }

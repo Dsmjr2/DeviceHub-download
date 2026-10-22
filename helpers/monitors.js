@@ -6,6 +6,7 @@
 const fs = require('fs');
 const { writeAtomic } = require('./safe-write');  // crash-proof saving (helpers/safe-write.js)
 const path = require('path');
+const wmi = require('./monitor-wmi');   // a laptop's built-in screen: brightness through Windows (no DDC/CI there)
 
 const FEATURES = { brightness: 0x10, contrast: 0x12, volume: 0x62,
   // the standard picture settings (20 Oct 2026, each tested on Shawn's two monitors: written, read back, put back)
@@ -27,6 +28,34 @@ function vcpList(caps) {
   // codes longer than two digits are the maker's own (E2A006 ...): never offered
   for (const k of Object.keys(out)) if (Number(k) > 0xff) delete out[k];
   return out;
+}
+// What a monitor says it supports (22 Oct 2026, Shawn: "why cant I change gamma or other settings on my agon monitor?"):
+// every code in its capabilities' vcp(...) list, with the standard name from VESA's MCCS where there is one, and
+// whether DeviceHub controls it. Read-only: shown on the Monitors page so it is plain which settings the monitor opens
+// to the PC; nothing here is ever sent. Codes E0-FF are the maker's own.
+const VCP_NAMES = { 0x02: 'New control value', 0x04: 'Restore factory defaults', 0x05: 'Restore brightness and contrast',
+  0x06: 'Restore geometry', 0x08: 'Restore color', 0x0B: 'Color temperature step', 0x0C: 'Color temperature', 0x10: 'Brightness',
+  0x11: 'Flesh tone', 0x12: 'Contrast', 0x14: 'Color preset', 0x16: 'Red', 0x18: 'Green', 0x1A: 'Blue', 0x1E: 'Auto setup',
+  0x52: 'Active control', 0x59: 'Red saturation', 0x5A: 'Yellow saturation', 0x5B: 'Green saturation', 0x5C: 'Cyan saturation',
+  0x5D: 'Blue saturation', 0x5E: 'Magenta saturation', 0x60: 'Input source', 0x62: 'Speaker volume', 0x6C: 'Red black level',
+  0x6E: 'Green black level', 0x70: 'Blue black level', 0x72: 'Gamma', 0x86: 'Display scaling', 0x87: 'Sharpness', 0x8A: 'Color saturation',
+  0x8D: 'Audio mute', 0x90: 'Hue', 0xAA: 'Screen orientation', 0xAC: 'Horizontal frequency', 0xAE: 'Vertical frequency',
+  0xB2: 'Sub-pixel layout', 0xB6: 'Display technology', 0xC0: 'Display usage time', 0xC6: 'Application enable key',
+  0xC8: 'Display controller', 0xC9: 'Firmware version', 0xCA: 'On-screen menu', 0xCC: 'Menu language', 0xD6: 'Power mode',
+  0xDC: 'Picture mode', 0xDF: 'MCCS version' };
+const hex2 = (n) => n.toString(16).toUpperCase().padStart(2, '0');
+// never offered: resets, power and input switching (input switching was left out on purpose, helpers/monitors.cs),
+// and the protocol's own housekeeping codes
+const NEVER = new Set([0x02, 0x04, 0x05, 0x06, 0x08, 0x1E, 0x52, 0x60, 0xC6, 0xD6]);
+// readings, not settings
+const INFO = new Set([0xAC, 0xAE, 0xB2, 0xB6, 0xC0, 0xC8, 0xC9, 0xDF]);
+function supportsList(caps) {
+  const ours = new Set(Object.values(FEATURES));
+  return Object.entries(vcpList(caps)).map(([c, vals]) => {
+    const code = Number(c);
+    return { code: hex2(code), name: VCP_NAMES[code] || (code >= 0xE0 ? "Maker's own" : null), values: vals.map(hex2),
+      state: ours.has(code) ? 'controlled' : code >= 0xE0 ? 'maker' : NEVER.has(code) ? 'left out' : INFO.has(code) ? 'info' : 'not yet' };
+  }).sort((a, b) => parseInt(a.code, 16) - parseInt(b.code, 16));
 }
 // Shawn's two (named as on the Equalizer's tabs); any other monitor shows its own model name
 const KNOWN = [[/AG276QZD2/i, 'AOC AGON OLED'], [/VG272UV/i, 'Acer IPS']];
@@ -64,6 +93,7 @@ function shape(m) {
     ...Object.fromEntries(['red', 'green', 'blue', 'blackRed', 'blackGreen', 'blackBlue'].map((k) => [k, vcp[FEATURES[k]] ? num(FEATURES[k]) : null])),
     colorPreset: vcp[0x14] && num(0x14) ? { ...num(0x14), options: vcp[0x14].filter((x) => PRESETS[x]).map((x) => ({ value: x, label: PRESETS[x] })) } : null,
     error: m.error || null,
+    supports: caps ? supportsList(caps) : null,
   };
 }
 
@@ -124,6 +154,19 @@ function withWaiting(list) {
   });
 }
 
+// a screen that does not answer over DDC/CI but whose brightness Windows sets (a laptop's own panel, helpers/monitor-wmi.js)
+// gets that brightness, marked builtin; nothing else is offered for it
+async function builtIn(list) {
+  if (!list.some((m) => !m.ddc)) return list;
+  const screens = await wmi.read().catch(() => []);
+  if (!screens.length) return list;
+  return list.map((m) => {
+    if (m.ddc || m.away) return m;
+    const s = wmi._test.match(m.id, screens);
+    return s ? { ...m, name: m.model ? m.name : 'Built-in screen', builtin: true, wmiInstance: s.instance, brightness: { value: s.value, max: 100 } } : m;
+  });
+}
+
 async function list(fresh) {
   if (!fresh && cache.list && Date.now() - cache.at < 10000) return cache.list;
   const result = await serial(async () => {
@@ -132,7 +175,7 @@ async function list(fresh) {
     if (r0.monitors.some((m) => !m.ddc && capsById.has(m.id))) r0 = await call({ op: 'monitors', caps: false }, 30000);
     // capabilities only for a monitor not read before
     const r = r0.monitors.some((m) => m.ddc && !capsById.has(m.id)) ? await call({ op: 'monitors', caps: true }, 30000) : r0;
-    cache = { at: Date.now(), list: withWaiting(r.monitors.map(shape)) };
+    cache = { at: Date.now(), list: await builtIn(withWaiting(r.monitors.map(shape))) };
     return cache.list;
   });
   if (result.some((m) => m.waiting && m.ddc && !m.away)) setTimeout(() => flush().catch(() => {}), 0);
@@ -151,6 +194,8 @@ async function set(id, feature, value, { live = false, fromQueue = false } = {})
   if (!cur) throw new Error(`this monitor does not offer ${feature}`);
   if (feature === 'colorPreset') { if (!cur.options.some((o) => o.value === value)) throw new Error('this monitor does not offer that color preset'); }
   else if (!Number.isInteger(value) || value < 0 || value > cur.max) throw new Error(`${feature} must be 0-${cur.max}`);
+  // a built-in screen: Windows sets its brightness (backed up, written once on release, read back)
+  if (m.builtin) return setBuiltIn(m, feature, value, live);
   // off or not answering: the change waits for it (a step while dragging is not kept)
   if (m.away || !m.ddc) { if (live) return { name: m.name, feature, value, live: true }; return wait(m, feature, value); }
   // a direct change replaces one that was waiting
@@ -177,6 +222,21 @@ async function set(id, feature, value, { live = false, fromQueue = false } = {})
   return { name: m.name, feature, value: back };
 }
 
+async function setBuiltIn(m, feature, value, live) {
+  if (feature !== 'brightness') throw new Error('a built-in screen offers brightness only');
+  // each Windows call takes a moment, so the steps while dragging are not sent; the release is
+  if (live) return { name: m.name, feature, value, live: true };
+  if (!(Date.now() - (lastBackupAt.get(m.id) || 0) < 15000)) {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    writeAtomic(path.join(backupDir, `monitor-builtin-${stamp}.json`), JSON.stringify({ at: new Date().toISOString(), monitor: m.name, id: m.id, via: 'Windows (WMI)', brightness: m.brightness }, null, 1));
+    lastBackupAt.set(m.id, Date.now());
+  }
+  const back = await serial(() => wmi.set(m.wmiInstance, value));
+  cache.at = 0;
+  if (back !== value) throw new Error(back == null ? 'Windows did not read the brightness back' : `the screen reads ${back} instead of ${value}`);
+  return { name: m.name, feature, value: back };
+}
+
 function wait(m, feature, value) {
   (waiting[m.id] ||= {})[feature] = value;
   saveWaiting(); keepTrying();
@@ -185,4 +245,4 @@ function wait(m, feature, value) {
   return { name: m.name, feature, value, waiting: true };
 }
 
-module.exports = { start(nat, dir, applied) { native = nat; backupDir = dir; if (applied) onApplied = applied; keepTrying(); }, list, set, FEATURES, _test: { vcpList } };
+module.exports = { start(nat, dir, applied) { native = nat; backupDir = dir; if (applied) onApplied = applied; keepTrying(); }, list, set, FEATURES, _test: { vcpList, supportsList } };

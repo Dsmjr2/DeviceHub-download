@@ -47,6 +47,15 @@ let dogTimer = null, restarts = [];
 const waiters = new Map();          // `${chan} ${seq}` -> resolve
 const eventHandlers = new Map();    // chan -> fn(id, value)
 const exitHandlers = new Set();
+// problems for the automatic problem reports (helpers/auto-report.mjs, 22 Oct 2026): the build failed, the helper could
+// not start, or it stopped by itself 3 times in an hour. Kept until server.js listens (the first build runs before it).
+const problemHandlers = new Set(), problemsSoFar = [];
+let exits = [];
+function problem(code, text) {
+  if (problemsSoFar.length < 10) problemsSoFar.push([code, text]);
+  for (const fn of problemHandlers) { try { fn(code, text); } catch {} }
+}
+const onProblem = (fn) => { problemHandlers.add(fn); for (const [c, t] of problemsSoFar) { try { fn(c, t); } catch {} } };
 
 // a build that failed (no C# compiler, a compile error, antivirus) is tried again at most every 10 minutes; until
 // then an older helper, if there is one, runs, and without one every request answers GONE (20 Oct 2026: the throw
@@ -55,7 +64,7 @@ let buildFailedAt = 0;
 function start() {
   if (proc) return;
   if (Date.now() - buildFailedAt > 600000) {
-    try { build(); buildFailedAt = 0; } catch (e) { buildFailedAt = Date.now(); console.log(e.fallback ? `[helper] ${e.message}` : `[helper] could not be built: ${String(e.message).split('\n')[0]}`); }
+    try { build(); buildFailedAt = 0; } catch (e) { buildFailedAt = Date.now(); console.log(e.fallback ? `[helper] ${e.message}` : `[helper] could not be built: ${String(e.message).split('\n')[0]}`); problem('helper-build', e.fallback ? e.message : `could not be built: ${String(e.message).split('\n')[0]}`); }
   }
   if (!fs.existsSync(EXE)) return;
   const p = spawn(EXE, CUE_DLL ? [CUE_DLL] : [], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
@@ -64,7 +73,7 @@ function start() {
   // 2026, 20:26). The helper's exit is handled below (waiters answered "GONE", the next request starts a new one).
   p.stdin.on('error', () => {});
   // the helper could not start (not built: no C# compiler on this PC): DeviceHub keeps running without it
-  p.on('error', (e) => { console.log(`[helper] could not start: ${e.message}`); if (proc === p) { proc = null; for (const w of waiters.values()) w('GONE'); waiters.clear(); } });
+  p.on('error', (e) => { console.log(`[helper] could not start: ${e.message}`); problem('helper-start', `could not start: ${e.message}`); if (proc === p) { proc = null; for (const w of waiters.values()) w('GONE'); waiters.clear(); } });
   p.stdout.setEncoding('utf8');
   p.stdout.on('data', (d) => {
     if (proc !== p) return;
@@ -80,9 +89,12 @@ function start() {
       if (w) { waiters.delete(`${chan} ${tag}`); w(rest); }
     }
   });
-  p.on('exit', () => {
+  p.on('exit', (code) => {
     if (proc !== p) return;
     proc = null;
+    // stopped by itself (or by the watchdog), not by stop(): the third time in an hour is a problem report
+    exits = exits.filter((t) => Date.now() - t < 3600000); exits.push(Date.now());
+    if (exits.length === 3) problem('helper-restarts', `the helper stopped ${exits.length} times in the last hour (last exit code ${code})`);
     for (const w of waiters.values()) w('GONE');
     waiters.clear();
     for (const fn of exitHandlers) { try { fn(); } catch {} }
@@ -148,4 +160,4 @@ const onEvent = (chan, fn) => { if (fn) eventHandlers.set(chan, fn); else eventH
 const onExit = (fn) => exitHandlers.add(fn);
 function stop() { const p = proc; proc = null; if (p) p.stdin.end(); }
 
-module.exports = { request, onEvent, onExit, stop, start, watchdogState, heartbeat, callCounts, buildHelper: build };
+module.exports = { request, onEvent, onExit, onProblem, stop, start, watchdogState, heartbeat, callCounts, buildHelper: build };

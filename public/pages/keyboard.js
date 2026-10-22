@@ -177,14 +177,21 @@ function knobPanel(s) {
 function macroPanel(s) {
   const m = s.macros;
   const used = m.raw?.length ? m.raw.reduce((n, x) => n + x.length + 1, 0) : null;
-  const help = 'Type text, plus {Enter}, {Tab}, {F5}, {Ctrl+Shift+Esc}, {Win+R} or {wait 200}. Use {{ and }} for braces. Put a macro on a key with the key picker’s Macros group.';
+  // in plain steps (22 Oct 2026, Shawn: "make this description make more sense and easier to understand")
+  const help = h('div', { class: 'macro-help' },
+    h('p', {}, 'A macro types something for you when you press one key.'),
+    h('ol', {},
+      h('li', {}, 'Type what it should type in a box below, then press Save.'),
+      h('li', {}, 'In Key mapping above, click a key and pick the macro from the Macros group.')),
+    h('p', { class: 'faint' }, 'For special keys, use curly braces: ', h('code', {}, '{Enter}'), ', ', h('code', {}, '{Tab}'), ', ', h('code', {}, '{Ctrl+C}'), '. ',
+      h('code', {}, '{wait 200}'), ' pauses for 200 ms. Example: ', h('code', {}, 'gg{Enter}'), ' types gg, then presses Enter. To type a curly brace itself, write it twice: ', h('code', {}, '{{'), '.'));
   // the slots in use, plus the first empty one to add a macro (or all of them)
   const firstEmpty = m.list.slice(0, m.mi.count).findIndex((t) => !t);
   const show = m.list.slice(0, m.mi.count).map((text, i) => [text, i]).filter(([text, i]) => ui.allMacros || text || i === firstEmpty);
-  return card([h('h2', {}, 'Macros'), h('span', { class: 'spacer' })], h('p', { class: 'faint', style: { margin: '0 0 10px' } }, help),
+  return card([h('h2', {}, 'Macros'), h('span', { class: 'spacer' })], help,
     ...show.map(([text, i]) => {
       const locked = m.editable && !m.editable[i] && !!text;
-      const input = h('input', { class: 'text mono', value: text, placeholder: text ? '' : 'New macro: type its text', 'aria-label': `macro ${i}`, disabled: locked, title: locked ? 'Made in another app with steps DeviceHub cannot show exactly; edit it there' : null });
+      const input = h('input', { class: 'text mono', value: text, placeholder: text ? '' : 'e.g. gg{Enter}', 'aria-label': `macro ${i}`, disabled: locked, title: locked ? 'Made in another app with steps DeviceHub cannot show exactly; edit it there' : null });
       const save = button('Save', () => write('keyboard', `macro:${i}`, input.value, { label: `Macro ${i}`, display: input.value ? `"${input.value}"` : 'empty' }).catch(() => {}), { kind: 'ghost small' });
       save.disabled = true;
       input.addEventListener('input', () => { save.disabled = input.value === text; });
