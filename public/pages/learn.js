@@ -26,7 +26,13 @@ const st = { step: 'pick', devices: null, usbpcap: null, error: null, why: null,
   form: newForm(), third: '', found: null, range: { min: '', max: '', step: '' },
   save: { title: '', kind: 'Device' }, heard: null, want: null, link: 'cable',
   // no typing: the plan (maker's app + tick-list), the ticked settings being learned, what happened to each
-  plan: null, queue: null, qi: 0, log: [], change: null, drive: null, putBack: [], autoPicked: false };
+  plan: null, queue: null, qi: 0, log: [], change: null, drive: null, putBack: [], autoPicked: false,
+  // "Is this a mouse or a keyboard?" answered per device ('VID:PID' -> 'mouse' | 'keyboard'), asked once on its row
+  kindFor: {},
+  // "I have its app open" for a device whose app DeviceHub does not know ('VID:PID' -> true)
+  appOpen: {} };
+// nothing to listen to: no app DeviceHub knows and the person has not said one is open, or the known app not installed
+const noApp = (m, d) => (!m?.known ? !st.appOpen[`${d?.vid}:${d?.pid}`] : !m.web && !m.installed && !m.running);
 let redrawPage = () => {};
 
 // Lighting > This PC's "Learn it": that device goes first on the Pick step, as the one to learn. start: Learn it for me
@@ -51,7 +57,7 @@ async function autoApi(step = '', body) {
 }
 async function startAuto(d) {
   st.error = null; st.why = null; auto.finish = null;
-  const r = await autoApi('', { vid: d.vid, pid: d.pid });
+  const r = await autoApi('', { vid: d.vid, pid: d.pid, ...(st.kindFor[`${d.vid}:${d.pid}`] ? { kind: st.kindFor[`${d.vid}:${d.pid}`] } : {}) });
   if (r.ok === false) { st.error = r.error; redrawPage(); return; }
   auto.s = r; auto.dev = d; st.step = 'auto'; redrawPage(); pollAuto();
 }
@@ -150,7 +156,8 @@ function pickStep() {
   const wanted = st.want ? st.devices.find((d) => idOf(d) === st.want) : null;
   const list = wanted ? [wanted, ...st.devices.filter((d) => d !== wanted)] : st.devices;
   const primary = (d) => (wanted ? d === wanted : !d.library);
-  const pick = (d) => run('begin', { vid: d.vid, pid: d.pid }, () => { Object.assign(st, { step: 'plan', plan: null, queue: null, log: [], putBack: [], want: null }); st.save.title = d.name; });
+  const kindOf = (d) => st.kindFor[`${d.vid}:${d.pid}`] || null;
+  const pick = (d) => run('begin', { vid: d.vid, pid: d.pid, ...(kindOf(d) ? { kind: kindOf(d) } : {}) }, () => { Object.assign(st, { step: 'plan', plan: null, queue: null, log: [], putBack: [], want: null }); st.save.title = d.name; });
   // only one device can be learned (or This PC sent one that can): it is picked by itself, once
   const pickable = list.filter((d) => !d.refused);
   const only = wanted && !wanted.refused ? wanted : pickable.length === 1 ? pickable[0] : null;
@@ -158,8 +165,11 @@ function pickStep() {
   return card([h('h2', {}, 'Pick the device'), h('span', { class: 'spacer' }), stepNo('pick')],
     p('These are plugged in and DeviceHub does not run them yet. Learn it for me does the rest: it opens the maker\'s app, changes each setting there and listens, and asks you only for what it cannot change itself.'),
     st.want && !wanted ? faint(`USB ${st.want.toLowerCase()} is not in this list: DeviceHub may run it already, or it has nothing DeviceHub can learn.`) : null,
-    list.length ? list.map((d) => row(d.name, [d === wanted ? 'the one you picked on This PC' : null, `USB ${d.vid}:${d.pid}`, d.vendor ? 'has a settings channel' : 'no maker settings channel seen', d.library && !d.note ? 'a shared driver exists for it: install it from Set up on the Overview' : null, genericDongle({ ...d, name: /^USB device /.test(d.name) ? null : d.name })?.line || d.refused || d.note || null].filter(Boolean).join(' · '),
-      d.refused ? (genericDongle({ ...d, name: /^USB device /.test(d.name) ? null : d.name }) ? getHelp(`request:${d.vid.toLowerCase()}:${d.pid.toLowerCase()}`, null, { label: 'Request support', request: { vid: d.vid, pid: d.pid, name: '' }, kind: 'ghost small' }) : null)
+    list.length ? list.map((d) => row(d.title || d.name, [d === wanted ? 'the one you picked on This PC' : null, `USB ${d.vid}:${d.pid}`, d.seems ? `its USB interfaces say: ${d.seems}` : null, kindOf(d) ? `you said: a ${kindOf(d)}` : null, d.vendor ? 'has a settings channel' : 'no maker settings channel seen', d.library && !d.note ? 'a shared driver exists for it: install it from Set up on the Overview' : null, genericDongle({ ...d, name: /^USB device /.test(d.name) ? null : d.name })?.line || d.refused || d.note || null].filter(Boolean).join(' · '),
+      // its USB interfaces say both a keyboard and a mouse: asked once, before anything is learned
+      !d.refused && d.askKind && !kindOf(d) ? h('span', { class: 'actions', style: { margin: 0 } }, h('span', { class: 'muted' }, d.askKind.line),
+        ...d.askKind.options.map((o) => button(o.label, () => { st.kindFor[`${d.vid}:${d.pid}`] = o.value; redrawPage(); }, { kind: 'ghost small' })))
+      : d.refused ? (genericDongle({ ...d, name: /^USB device /.test(d.name) ? null : d.name }) ? getHelp(`request:${d.vid.toLowerCase()}:${d.pid.toLowerCase()}`, null, { label: 'Request support', request: { vid: d.vid, pid: d.pid, name: '' }, kind: 'ghost small' }) : null)
         : h('span', { class: 'actions', style: { margin: 0 } },
           button('Learn it for me', () => startAuto(d), { kind: primary(d) || d === only ? 'primary small' : 'ghost small', ic: 'plug' }),
           button('Choose the settings', () => pick(d), { kind: 'ghost small' }))))
@@ -277,9 +287,10 @@ async function loadPlan(again) {
 
 // one line about the maker's app
 function makerLine(m) {
-  if (!m?.known) return p('DeviceHub does not know this maker\'s app. When DeviceHub asks, change each setting in it yourself.');
+  // 23 Oct 2026 (Dsmjr2/DeviceHub-support#11): said up front, so nobody records into nothing
+  if (!m?.known) return p('DeviceHub does not know which app sets this device. Learning listens to that app while you change a setting in it, so without one there is nothing to record. If you have an app for it, open it, then press I have its app open.');
   if (m.web) return p(['Its app, ', m.name, ', is a web page: ', link(m.page), '. Open it, and change each setting there when DeviceHub asks.']);
-  if (!m.installed) return p(['Its app, ', m.name, ', is not installed: ', link(m.page)]);
+  if (!m.installed) return p(['Its app, ', m.name, ', is not installed, so there is nothing to listen to yet. Get it from its maker: ', link(m.page), '. Then press Look again.']);
   if (!m.running) return p(`${m.name} is installed but not open. Open it, then press Look again. If it stays closed, DeviceHub asks you to change each setting in it yourself.`);
   return p(`${m.name} is open. DeviceHub changes each ticked setting in it, listens, and puts it back as it was.`);
 }
@@ -299,15 +310,21 @@ function planStep() {
   const d = device();
   if (!st.plan) {
     if (!st.planLoading) setTimeout(() => loadPlan(), 0);
-    return card([h('h2', {}, `Learn the ${d?.name || 'device'}`), h('span', { class: 'spacer' }), stepNo('plan')], faint('Looking for its maker\'s app and its settings…'));
+    return card([h('h2', {}, `Learn the ${d?.title || d?.name || 'device'}`), h('span', { class: 'spacer' }), stepNo('plan')], faint('Looking for its maker\'s app and its settings…'));
   }
   const pl = st.plan, m = pl.maker || {};
+  if (pl.ask) {
+    const answer = async (v) => { st.kindFor[`${d.vid}:${d.pid}`] = v; st.planLoading = true; const r = await api('plan', { kind: v }); st.planLoading = false; st.plan = null; if (r.ok !== false) { st.plan = { ...r, items: (r.items || []).map((it) => ({ ...it, values: (it.values || []).map((x) => (typeof x === 'boolean' ? x : String(x))), percent: '' })) }; st.save.kind = KIND_FOR_SAVE[r.kind] || st.save.kind; } else { st.error = r.error || null; st.plan = { maker: { known: false }, kind: 'device', items: [] }; } redrawPage(); };
+    return card([h('h2', {}, `Learn the ${d?.title || d?.name || 'device'}`), h('span', { class: 'spacer' }), stepNo('plan')],
+      p(`${pl.ask.line} Its USB interfaces say it can be both, so DeviceHub asks once and offers that kind's settings.`),
+      h('div', { class: 'actions' }, ...pl.ask.options.map((o) => button(o.label, () => answer(o.value), { kind: 'ghost small' }))));
+  }
   const items = pl.items || [];
   const ticked = items.filter((i) => i.ticked);
   const box = (it) => { const el = h('input', { type: 'checkbox', 'aria-label': it.label }); el.checked = !!it.ticked; el.addEventListener('change', () => { it.ticked = el.checked; redrawPage(); }); return el; };
   const from = pl.from === 'files' ? `These are the settings ${m.name || 'the maker\'s app'} keeps for it.` : pl.from === 'brand' ? 'These are the settings this maker\'s devices usually have.' : `These are the usual settings for a ${pl.kind === 'device' ? 'device like this' : pl.kind}.`;
   return h('div', {},
-    card([h('h2', {}, `Learn the ${d?.name || 'device'}`), h('span', { class: 'spacer' }), stepNo('plan')],
+    card([h('h2', {}, `Learn the ${d?.title || d?.name || 'device'}`), h('span', { class: 'spacer' }), stepNo('plan')],
       makerLine(m),
       st.usbpcap === false ? [p('To listen, DeviceHub needs USBPcap, a small free tool. It only listens; it never sends anything. Install it, then restart the PC once.'),
         h('div', { class: 'actions', style: { marginBottom: '12px' } }, installerButton('usbpcap', { onDone: () => { st.devices = null; loadDevices(); }, redraw: redrawPage }))] : null,
@@ -319,11 +336,14 @@ function planStep() {
         : faint('No settings are known for it. Use Other setting below.'),
       problems(),
       h('div', { class: 'actions', style: { marginTop: '12px' } },
-        button(st.busy ? 'Starting…' : ticked.length > 1 ? `Learn these (${ticked.length})` : 'Learn these', startQueue, { kind: 'primary', ic: 'plug', disabled: st.busy || !ticked.length || st.usbpcap === false }),
+        // nothing to listen to (no app DeviceHub knows and none said to be open, or the maker's app not installed): no recording
+        !m.known && !st.appOpen[`${d?.vid}:${d?.pid}`] ? button('I have its app open', () => { st.appOpen[`${d?.vid}:${d?.pid}`] = true; redrawPage(); }, { kind: 'ghost small' }) : null,
+        button(st.busy ? 'Starting…' : ticked.length > 1 ? `Learn these (${ticked.length})` : 'Learn these', startQueue, { kind: 'primary', ic: 'plug', disabled: st.busy || !ticked.length || st.usbpcap === false || noApp(m, d) }),
+        m.known && !m.web && !m.installed ? button('Look again', () => { st.plan = null; loadPlan(true); }, { kind: 'ghost small', ic: 'refresh' }) : null,
         m.known && !m.web && m.installed && !m.running ? button('Look again', () => { st.plan = null; loadPlan(true); }, { kind: 'ghost small', ic: 'refresh' }) : null,
         button('Pick another device', () => { st.step = 'pick'; redrawPage(); }, { kind: 'ghost small' })),
       faint('Firmware, update, reset and pairing controls are never touched.')),
-    st.usbpcap === false ? null : h('details', { class: 'learn-other', open: st.otherOpen || null, ontoggle: (e) => { st.otherOpen = e.target.open; } },
+    st.usbpcap === false || noApp(m, d) ? null : h('details', { class: 'learn-other', open: st.otherOpen || null, ontoggle: (e) => { st.otherOpen = e.target.open; } },
       h('summary', {}, 'Other setting'), readyStep()));
 }
 

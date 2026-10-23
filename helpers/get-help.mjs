@@ -267,7 +267,8 @@ async function bluetoothNames(deps) {
 // shownDevices: seen on this PC before, or connected or asleep now), plus any added driver (a library or learned driver
 // is installed only for a USB id this PC has, so its state always matters). DeviceHub's own slots for the Pulsar, the
 // HS80 and the P75 are left out on a PC that has never had them, instead of showing "missing".
-export const shownInReport = (x) => !!x && (x.seen === true || ['connected', 'asleep', 'connecting'].includes(x.status) || !!x.adapter?.plugin);
+// never an added driver that found nothing of its own here (x.absent, helpers/my-devices.mjs isAbsent)
+export const shownInReport = (x) => !!x && !x.absent && (x.seen === true || ['connected', 'asleep', 'connecting'].includes(x.status) || !!x.adapter?.plugin);
 // gather(id, deps, { area, context }): a device's facts (area '' or 'device'), the Lighting page's ('lights'), or an
 // area's (AREAS), plus what the page itself showed (context, pageContext below)
 export async function gather(id, deps = {}, { area = '', context = null } = {}) {
@@ -463,7 +464,12 @@ export const AREAS = {
       lines.push(`- USBPcap: ${s.usbpcap ? 'installed' : 'not installed'}`);
       if (!s.active) { lines.push('- No learning session is open'); return { short: 'no session', lines, findings: [] }; }
       const d = s.device || {};
-      lines.push(`- Device: ${d.name || 'no name'} (USB ${d.vid}:${d.pid})${s.addsTo ? `; adds to the driver ${s.addsTo.name}` : ''}`);
+      const id = `${d.vid}:${d.pid}`;
+      lines.push(`- Device: ${d.name || 'no name'}${String(d.name || '').toUpperCase().includes(id.toUpperCase()) ? '' : ` (USB ${id})`}${s.addsTo ? `; adds to the driver ${s.addsTo.name}` : ''}`);
+      // what the device itself says (23 Oct 2026): its own product string, its HID usages, and the kind it is learned as
+      if (d.product && d.product !== d.name) lines.push(`- Its own name: ${d.product}`);
+      if (d.seems) lines.push(`- Its USB interfaces say: ${d.seems}`);
+      if (d.kind) lines.push(`- Learned as: ${d.kind === 'mixed' ? 'not answered yet (mouse or keyboard?)' : d.kind}`);
       if (s.maker) lines.push(`- Maker's app: ${s.maker.name || 'not known'}${s.maker.known ? `, ${s.maker.installed ? 'installed' : 'not installed'}${s.maker.running ? ', open' : ''}` : ''}`);
       lines.push(`- Listening: ${s.listener}${s.listenerError ? `: ${s.listenerError}` : ''}${s.recording ? '; recording now' : ''}`);
       if (s.setting) lines.push(`- Setting being learned: ${s.setting.label || '?'} (${s.setting.kind || '?'}${s.setting.role ? `, ${s.setting.role}` : ''})`);

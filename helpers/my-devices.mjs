@@ -604,6 +604,15 @@ export function guard(a, folder, mark, deps = null) {
   return a;
 }
 
+// absent: an added driver that found nothing of its own on this PC (23 Oct 2026, a friend's PC: the Logitech keyboard
+// driver on a LIGHTSPEED receiver that holds only a mouse showed a keyboard that does not exist). It stepped aside
+// (notMine), or it shows only once found (adapter.onlyIfFound: a shared receiver) and never was. Not connected or asleep
+// now. Such a device gets no tile, sidebar entry, Setup row, Turn on settings or report line (public/core/devices.js
+// shownDevices, public/core/setup-list.js, helpers/auto-setup.mjs summary, helpers/get-help.mjs, helpers/turn-on-all.mjs).
+export function isAbsent(a, status, wasSeen) {
+  if (!a?.plugin || ['connected', 'asleep'].includes(status)) return false;
+  return !!a.notMine || (!!a.onlyIfFound && !wasSeen);
+}
 // "not this driver's device" (see the header): connect() and read() errors with notMine become a quiet "not connected".
 // Returns the adapter (the same object). The rest stops the driver asking a device that is not its own every 20 s.
 export const NOT_MINE_REST_MS = 10 * 60 * 1000;

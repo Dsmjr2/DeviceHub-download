@@ -53,7 +53,9 @@ function withMakerApp(row, f) {
 }
 
 // summary: GET /api/setup (helpers/auto-setup.mjs summary), or null when it did not answer
-// live: { [id]: { title, kind, status, seen, plugin, library, learned, turnOn, works } } from the window's devices
+// live: { [id]: { title, kind, status, seen, absent, plugin, library, learned, turnOn, works } } from the window's devices
+//   (absent: an added driver that found nothing of its own on this PC, helpers/my-devices.mjs isAbsent: no row at all,
+//   also when the summary, kept a minute by the server, still lists it)
 // diag: { [id]: finding } the maker's-app finding for a device that is not connected
 // layouts: { 'vid:pid': { source, have } } GET /api/via-fetch for a VIA keyboard nothing runs yet
 // isVia(usb, title): is that USB device a VIA keyboard (brand guide)
@@ -67,6 +69,7 @@ export function deviceRows(summary, { live = {}, diag = {}, layouts = {}, isVia 
       rows.push(withMakerApp({ key: i.what, id: i.what, title: live[i.what]?.title || i.name || i.what, driver: 'builtin', device: true, kind: i.what, status: 'done', line: 'Ready.', action: { kind: 'open', page: i.page || i.what } }, diag[i.what]));
     } else if (i.what === 'library') {
       seen.add(i.page);
+      if (live[i.page]?.absent) continue;
       rows.push(withMakerApp(driverRow(i.page, i, live[i.page]), diag[i.page]));
     } else if (i.what === 'via') rows.push({ key: `via:${i.name}`, title: i.name, device: true, kind: 'keyboard', status: 'done', line: 'Ready.', action: { kind: 'open', page: 'keyboard' } });
     else if (i.what === 'monitors') rows.push({ key: 'monitors', title: i.name, device: true, kind: 'monitor', status: 'done', line: 'Ready.', action: { kind: 'open', page: 'monitors' } });
@@ -88,11 +91,11 @@ export function deviceRows(summary, { live = {}, diag = {}, layouts = {}, isVia 
   }
   for (const i of s.optional || []) {
     if (i.what === 'library-extra') rows.push({ key: `install:${i.name}`, title: i.title, kind: 'keyboard', status: 'optional', line: 'Works now. A driver adds more settings.', ...(i.action ? { action: { kind: 'install', name: i.action.name } } : {}) });
-    else if (i.what === 'unknown-vendor') rows.push({ key: 'unknown', title: i.title, status: 'optional', line: 'Learn a device can try them.', action: { kind: 'learn' } });
+    else if (i.what === 'unknown-vendor') rows.push({ key: 'unknown', title: i.title, status: 'optional', line: [].concat(i.usb || []).length === 1 ? 'Learn a device can try it.' : 'Learn a device can try them.', action: { kind: 'learn' } });
   }
   // devices the summary did not list (it did not answer, or a driver written on this PC): from the window's own list
   for (const [id, d] of Object.entries(live)) {
-    if (seen.has(id)) continue;
+    if (seen.has(id) || d.absent) continue;
     if (BUILTIN.includes(id)) {
       if (summary || !(d.seen || ['connected', 'asleep'].includes(d.status))) continue;
       rows.unshift(withMakerApp({ key: id, id, title: d.title || id, driver: 'builtin', device: true, kind: id, status: 'done', line: d.status === 'connected' ? 'Ready.' : `Ready (${d.status} now).`, action: { kind: 'open', page: id } }, diag[id]));

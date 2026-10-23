@@ -514,5 +514,54 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
   await selfChecked(d, kb.state);
 }
 
+// ---- 9. a C54D that holds only a mouse (23 Oct 2026, a friend's PC: a PRO X2 SUPERSTRIKE alone on its LIGHTSPEED
+// receiver showed a "Logitech keyboard" that does not exist). The keyboard driver looks (ping, getFeature, the kind read
+// only), steps aside without closing the shared handle, and from then on nothing shows a keyboard: no tile or sidebar
+// entry (shownDevices), no Setup row, no Turn on settings, no plug-in note, no report line ----
+{
+  const { SLOT_OWNERS } = await import('../device-library/logitech-hidpp-keyboard/device.mjs');
+  const { stepAside, isAbsent } = await import('../helpers/my-devices.mjs');
+  const { deviceRows, countNeeds } = await import('../public/core/setup-list.js');
+  const { shownInReport } = await import('../helpers/get-help.mjs');
+  const { waitingForTurnOn } = await import('../helpers/turn-on-all.mjs');
+  const { describe, metaOnlyIfFound } = await import('../helpers/plug-watch.mjs');
+  SLOT_OWNERS.clear();
+  const meta = JSON.parse(fs.readFileSync(path.join(ROOT, 'device-library', 'logitech-hidpp-keyboard', 'device.json'), 'utf8'));
+  check(meta.onlyIfFound?.slice().sort().join() === Object.keys(SHARED).map((p) => Number(p).toString(16)).sort().join(), `device.json onlyIfFound names the shared receivers (${meta.onlyIfFound})`);
+  // the SUPERSTRIKE's shape: 0x2202 (no 0x2201), DEVICE_NAME kind 3 (mouse), battery; slot 1, nothing else paired
+  const superstrike = simKeyboard({ pid: 0xc54d, slot: 1, swid: 0x0c, kind: 3, features: { [F.DEVICE_NAME]: 3, [F.UNIFIED_BATTERY]: 6, [F.EXT_ADJUSTABLE_DPI]: 9 }, state: {}, rateMask: 0, profiles: 0, disableMask: 0, bright: {} });
+  const rx = Object.assign(superstrike, { closed: 0, close() { this.closed++; } });
+  const d = make(rx);
+  d.plugin = 'logitech-hidpp-keyboard';
+  check(d.onlyIfFound === true && isAbsent(d, 'idle', false), 'before its first look the keyboard driver is not shown (onlyIfFound)');
+  const said = [];
+  stepAside(d, { log: (t) => said.push(t) });
+  check((await d.connect(false)) === false && /mouse/.test(d.notMine?.why || '') && rx.closed === 0 && said.length === 1, `C54D with only the SUPERSTRIKE: not connected, no error, the shared handle not closed (${d.notMine?.why})`);
+  check(superstrike.bad.length === 0 && rx.sent.every((b) => b[1] === 0 && [0x00, 0x10].includes(b[2] & 0xf0) || (b[2] & 0xf0) === 0x20), 'it sent only ping, getFeature and the kind read, with software id 0x0C');
+  check(isAbsent(d, 'missing', false) && isAbsent(d, 'missing', true) && !isAbsent(d, 'connected', false), 'stepped aside: absent while not connected, even if it was seen before');
+  // the window's list and the server's snapshot as the agent sends them (helpers/agent.mjs snapshot absent)
+  const snap = { id: d.id, status: 'missing', seen: false, absent: true, adapter: { plugin: d.plugin, title: d.title, kind: d.kind, library: { turnOn: true }, notMine: d.notMine.why } };
+  const live = { [d.id]: { title: d.title, kind: d.kind, status: 'missing', seen: false, absent: true, plugin: true, library: true, turnOn: true } };
+  const item = { what: 'library', name: 'logitech-hidpp-keyboard', title: d.title, page: d.id, state: 'one-click' };
+  const rows = deviceRows({ works: [item] }, { live });
+  check(!rows.length && countNeeds(rows) === 0, `no Setup row and nothing "needs you" for it, even from a summary that still lists it (${JSON.stringify(rows)})`);
+  check(deviceRows({ works: [item] }, { live: { [d.id]: { ...live[d.id], absent: false } } }).length === 1, 'sanity: the same driver with a keyboard found gets its row');
+  check(!shownInReport(snap) && shownInReport({ ...snap, absent: false }), 'no line in a Get help report');
+  check(!waitingForTurnOn(snap) && waitingForTurnOn({ ...snap, absent: false }), 'not in Turn on settings for all');
+  // plugged in while DeviceHub runs: both Logitech drivers installed for C54D; only the mouse driver is announced
+  const os = await import('node:os');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-c54d-'));
+  for (const n of ['logitech-hidpp-keyboard', 'logitech-hidpp-mouse']) { fs.mkdirSync(path.join(root, 'my-devices', n), { recursive: true }); fs.copyFileSync(path.join(ROOT, 'device-library', n, 'device.json'), path.join(root, 'my-devices', n, 'device.json')); }
+  const usb = [{ vid: '046D', pid: 'C54D', name: 'LIGHTSPEED Receiver' }];
+  const inst = (names) => ({ lastRun: { installed: names.map((name) => ({ name, product: name, usb: ['046d:c54d'] })) } });
+  const opts = { usb, brands: { '046d': { name: 'Logitech', kinds: ['mouse', 'keyboard'] } }, onlyIfFound: metaOnlyIfFound(root) };
+  let out = describe(['046D:C54D'], { ...opts, rec: inst(['logitech-hidpp-keyboard', 'logitech-hidpp-mouse']) });
+  check(out.length === 1 && out[0].installed?.name === 'logitech-hidpp-mouse', `plug-in note: the mouse driver, never "Logitech keyboard" (${JSON.stringify(out)})`);
+  out = describe(['046D:C54D'], { ...opts, rec: inst(['logitech-hidpp-keyboard']) });
+  check(out.length === 0, `plug-in note: nothing when only the keyboard driver went in (${JSON.stringify(out)})`);
+  fs.rmSync(root, { recursive: true, force: true });
+  SLOT_OWNERS.clear();
+}
+
 console.log(fails.length ? `sim-logitech-keyboard: FAILED: ${fails.join('; ')}` : 'sim-logitech-keyboard (Logitech HID++ keyboard driver, simulated): all good');
 process.exit(fails.length ? 1 : 0);

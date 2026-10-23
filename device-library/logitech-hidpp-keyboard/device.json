@@ -65,7 +65,13 @@
     "a G813 (C232) whose PC shows only its typing interface (usage page 0001 usage 0006, no interface 1 with page FF43): there is nothing to send settings to, for DeviceHub, OpenRGB or G HUB alike; plug it straight into the PC (no KVM switch, hub or monitor USB) and check Windows lists a second HID entry for it",
     "PRO X TKL and G915 X on their cable, and their own receiver ids: no product id in any source read (on a shared LIGHTSPEED receiver C539 / C53F / C54D they are found by their kind)",
     "the G915 and other models on Bluetooth: no source read gives their Bluetooth product ids",
+    "23 Oct 2026: on a shared LIGHTSPEED receiver (onlyIfFound: C539 / C53F / C54D) that holds only a mouse, nothing about a keyboard is shown (no tile, sidebar entry, Setup row, plug-in note or report line) until a real paired keyboard answers with its DEVICE_NAME kind (a friend's PRO X2 SUPERSTRIKE alone on C54D showed a keyboard that does not exist)",
     "a keyboard asleep on a shared LIGHTSPEED receiver is found when it is plugged in, on a Connect click or after the 10-minute rest, not within 30 s (the driver steps aside there instead of waiting asleep, so a mouse-only receiver shows no keyboard)"
+  ],
+  "onlyIfFound": [
+    "c539",
+    "c53f",
+    "c54d"
   ],
   "status": "untested",
   "updated": "2026-10-23T12:00:00Z",

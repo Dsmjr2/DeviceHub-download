@@ -19,7 +19,8 @@ export function lineFor(title, r) {
 }
 
 // waiting for Turn on settings: a library or learned driver (adapter.library) that says so (library.turnOn)
-export const waitingForTurnOn = (d) => !!d?.adapter?.plugin && !!d.adapter.library && d.adapter.library.turnOn === true;
+// (never one that found nothing of its own on this PC: d.absent, helpers/my-devices.mjs isAbsent)
+export const waitingForTurnOn = (d) => !!d?.adapter?.plugin && !d.absent && !!d.adapter.library && d.adapter.library.turnOn === true;
 
 export async function turnOnAll({ port = PORT, fetch: get = fetch, timeoutMs = 120000 } = {}) {
   const base = `http://127.0.0.1:${port}`;

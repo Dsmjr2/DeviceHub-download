@@ -696,6 +696,38 @@ driver.vendorApp = async () => null;
   const dS = driver.settings.find((s) => s.key === 'dpi'), rS = driver.settings.find((s) => s.key === 'reportRate');
   check(dS.type === 'slider' && dS.min === 100 && dS.max === 25600 && rS.type === 'choice' && driver.settings.find((s) => s.key === 'profile').type === 'choice' && !driver.settings.some((s) => HITS[s.key]), `the next mouse gets its own settings back (${dS.type}, ${rS.type}, ${driver.settings.map((s) => s.key)})`);
   check((await driver.write('dpi', 1600)) === 1600 && (await driver.write('dpi', 800)) === 800, 'and its DPI writes as before');
+
+  // ---- 11. a C54D that holds only the SUPERSTRIKE, with the keyboard driver on the same handle (23 Oct 2026, a friend's
+  // PC showed a "Logitech keyboard" that does not exist). Either order: the keyboard driver looks and steps aside without
+  // closing the handle, is absent (no tile, row or report), and the mouse driver keeps running the mouse ----
+  {
+    const { createLogitechKeyboard, SLOT_OWNERS: KB_SLOTS } = await import('../device-library/logitech-hidpp-keyboard/device.mjs');
+    const { stepAside: myStepAside, isAbsent } = await import('../helpers/my-devices.mjs');
+    const fresh = await import('../device-library/logitech-hidpp-mouse/device.mjs?c54d-mouse-only');
+    const mouse = fresh.default;
+    mouse.vendorApp = async () => null; mouse.pingMs = 150; mouse.plugin = 'logitech-hidpp-mouse';
+    for (const order of ['keyboard first', 'mouse first']) {
+      KB_SLOTS.clear();
+      const ss = superstrike(0xc54d, 1, 0x7f);
+      const rx = { opened: false, productId: 0xc54d, sent: [], closed: 0, async open() { this.opened = true; }, close() { this.closed++; },
+        addEventListener: (t, f) => ss.addEventListener(t, f), removeEventListener: (t, f) => ss.removeEventListener(t, f),
+        async sendReport(id, data) { this.sent.push({ reportId: id, b: Array.from(data) }); if (data[0] === 1) return ss.sendReport(id, data); } };
+      fresh.useDevice(rx);
+      const kb = Object.assign(createLogitechKeyboard({ open: async (p) => (p === 0xc54d ? rx : null), vendorApp: async () => null }), { pingMs: 150, plugin: 'logitech-hidpp-keyboard' });
+      myStepAside(kb, { log: () => {} });
+      if (order === 'mouse first') check(await mouse.connect(false) && mouse.index === 1, `${order}: the mouse driver takes slot 1`);
+      const n0 = rx.sent.length;
+      check((await kb.connect(false)) === false && kb.notMine && rx.closed === 0 && isAbsent(kb, 'missing', false), `${order}: the keyboard driver steps aside, the handle stays open, absent (${kb.notMine?.why})`);
+      const kbSent = rx.sent.slice(n0).filter((s) => (s.b[2] & 0x0f) === 0x0c);
+      check(kbSent.every((s) => (s.b[1] === 0 && [0x00, 0x10].includes(s.b[2] & 0xf0)) || (s.b[2] & 0xf0) === 0x20), `${order}: the keyboard driver sent only ping, getFeature and the kind read`);
+      check(order === 'keyboard first' || !kbSent.some((s) => s.b[0] === 1), `${order}: the mouse's slot was never asked by the keyboard driver once the mouse driver held it`);
+      if (order === 'keyboard first') check(await mouse.connect(false) && mouse.index === 1, `${order}: the mouse driver then takes slot 1`);
+      const v = await mouse.read();
+      check(v.dpi === 800 && v.actuationLeft === 3 && !isAbsent(mouse, 'connected', true), `${order}: the mouse reads as before on the same receiver (${JSON.stringify({ dpi: v.dpi, act: v.actuationLeft })})`);
+      check((await mouse.write('hapticsLeft', 2)) === 2 && (await mouse.write('hapticsLeft', 5)) === 5, `${order}: and writes with read-back, put back`);
+    }
+    KB_SLOTS.clear();
+  }
 }
 
 console.log(fails.length ? `sim-logitech: FAILED: ${fails.join('; ')}` : 'sim-logitech (Logitech HID++ mouse driver, simulated): all good');

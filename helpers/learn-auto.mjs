@@ -87,10 +87,10 @@ export function novel(base, msgs) {
 }
 
 // ---------------------------------------------------------------- the session
-export async function start({ vid, pid } = {}) {
+export async function start({ vid, pid, kind = null } = {}) {
   if (run && !['done', 'stopped', 'failed'].includes(run.phase)) return { ok: false, error: 'DeviceHub is already learning a device. Stop it first, or wait until it is done.' };
   if (lw.current()?.listening) return { ok: false, error: 'A learning session is open on Learn a device. Stop it first (Stop learning), then try again.' };
-  run = { phase: 'start', device: { vid: String(vid || '').toUpperCase(), pid: String(pid || '').toUpperCase(), name: null }, app: null, steps: [], items: [], ask: null, result: null, error: null, stop: false, done: false, skip: false };
+  run = { phase: 'start', kind: ['mouse', 'keyboard'].includes(kind) ? kind : null, device: { vid: String(vid || '').toUpperCase(), pid: String(pid || '').toUpperCase(), name: null }, app: null, steps: [], items: [], ask: null, result: null, error: null, stop: false, done: false, skip: false };
   const r = run;
   session(r).catch((e) => { if (run === r) { r.phase = 'failed'; r.error = { text: `Something went wrong: ${e.message}`, next: 'Press Learn it for me again; Get help (top right) tells Shawn if it happens again.' }; } });
   return { ok: true, ...view(r) };
@@ -107,17 +107,19 @@ async function session(r) {
   try { devices = await lw.refreshDevices(); } catch (e) { return fail(r, e.message, 'Press Learn it for me again.'); }
   const dev = devices.find((x) => x.vid === r.device.vid && x.pid === r.device.pid);
   if (!dev) return fail(r, `USB ${r.device.vid}:${r.device.pid} is not plugged in, or DeviceHub runs it already.`, 'Plug it in (a port on the PC itself, not a hub), then press Learn it for me again.');
-  r.device.name = dev.name;
+  r.device.name = dev.title || dev.name;
   if (dev.refused) return fail(r, dev.refused, 'Request support (on the device\'s row) sends Shawn its details instead.');
-  const b = await lw.act('begin', { vid: dev.vid, pid: dev.pid });
+  // kind: the answer to "Is this a mouse or a keyboard?" for a device whose USB interfaces say both (asked on its row)
+  const b = await lw.act('begin', { vid: dev.vid, pid: dev.pid, ...(r.kind ? { kind: r.kind } : {}) });
   if (b.ok === false) return fail(r, b.error || [].concat(b.why || []).join(' '), 'Press Learn it for me again.');
-  say(r, `Found the ${dev.name}.`);
+  say(r, `Found the ${dev.title || dev.name}.`);
   if (stopped(r)) return quit(r);
 
   // 2. its maker's app and settings
   r.phase = 'plan';
   const plan = await lw.act('plan', {});
   if (plan.ok === false) return fail(r, plan.error || 'Its settings could not be listed.', 'Press Learn it for me again.');
+  if (plan.ask) return fail(r, plan.ask.line, 'Go Back, answer it on the device row, then press Learn it for me again.');
   let m = plan.maker || {};
   r.app = m.known ? { name: m.name, page: m.page || null, web: !!m.web } : null;
   const items = (plan.items || []).filter((i) => i.kind !== 'reading' && i.ticked).slice(0, LIMITS.items);
@@ -149,7 +151,10 @@ async function session(r) {
   } else if (m.known && !m.installed && !m.running) {
     return fail(r, `${m.name} is not installed. DeviceHub learns a device by listening to its maker's app.`, `Install ${m.name}${m.page ? ` from ${m.page}` : ' from its maker\'s site'}, then press Learn it for me again.`);
   }
-  if (!m.known) say(r, 'DeviceHub does not know this maker\'s app: it asks you to change each setting there.', false);
+  // no app DeviceHub knows (23 Oct 2026, Dsmjr2/DeviceHub-support#11: a recording that heard nothing): learning listens to
+  // the app, so without one there is nothing to record. Never started into nothing; the person can still say they
+  // have an app open and choose the settings themselves.
+  if (!m.known) return fail(r, `DeviceHub does not know which app sets the ${dev.title || dev.name}. It learns a device by listening to that app, so without one there is nothing to record.`, 'If you have an app for it, open it, then use Choose the settings myself (below) and press I have its app open.');
 
   // 4. listening: Windows' one prompt
   r.phase = 'listen';

@@ -295,9 +295,10 @@ function adapterMeta(d) {
   return meta;
 }
 
+// absent: an added driver that found nothing of its own on this PC (helpers/my-devices.mjs isAbsent)
 export function snapshot(id) {
   const d = core.devices[id];
-  return { id, status: d.status, info: d.info, battery: d.battery, values: d.values, error: d.error, readAt: d.readAt, adapter: adapterMeta(d), seen: seen.has(id), waiting: d.waiting || [], undo: d.undo || null };
+  return { id, status: d.status, info: d.info, battery: d.battery, values: d.values, error: d.error, readAt: d.readAt, adapter: adapterMeta(d), seen: seen.has(id), absent: myDevices.isAbsent(d.adapter, d.status, seen.has(id)), waiting: d.waiting || [], undo: d.undo || null };
 }
 
 export function state() {

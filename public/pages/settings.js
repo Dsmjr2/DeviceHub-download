@@ -414,6 +414,7 @@ async function selfTest() {
   results = [];
   for (const d of Object.values(devices)) {
     const a = d.adapter;
+    if (d.absent) continue;   // found nothing of its own on this PC (helpers/my-devices.mjs isAbsent)
     if (d.status !== 'connected') { results.push([a.title, 'skip', `not connected (${d.status})`]); continue; }
     try {
       const one = await readNow(d.id);

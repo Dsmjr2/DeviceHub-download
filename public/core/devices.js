@@ -89,7 +89,7 @@ function applyRemote(snap) {
     if (lastSnap[s.id] === text && devices[s.id]) continue;
     lastSnap[s.id] = text;
     const cur = devices[s.id] || (devices[s.id] = { id: s.id });
-    Object.assign(cur, { status: s.status, info: s.info, battery: s.battery, values: s.values, error: s.error, readAt: s.readAt, adapter: proxyAdapter(s.adapter), seen: s.seen, waiting: s.waiting || [], undo: s.undo || null });
+    Object.assign(cur, { status: s.status, info: s.info, battery: s.battery, values: s.values, error: s.error, readAt: s.readAt, adapter: proxyAdapter(s.adapter), seen: s.seen, absent: !!s.absent, waiting: s.waiting || [], undo: s.undo || null });
     emit(s.id);
   }
   if (snap.auto) { remoteAuto = snap.auto; env.onRemoteAuto?.(snap.auto); emit('auto'); }
@@ -551,7 +551,8 @@ const openedAt = Date.now();
 export function shownDevices() {
   const all = Object.values(devices);
   if (demo || !remote) return all;
-  return all.filter((d) => d.seen || ['connected', 'asleep'].includes(d.status));
+  // absent: an added driver that found nothing of its own here (helpers/my-devices.mjs isAbsent): never shown
+  return all.filter((d) => !d.absent && (d.seen || ['connected', 'asleep'].includes(d.status)));
 }
 // none of the supported devices found on this PC (yet)
 export const noDevicesYet = () => !demo && remote && shownDevices().length === 0;

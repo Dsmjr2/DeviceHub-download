@@ -107,17 +107,30 @@ export async function findMaker(vid, { env = process.env, list = tasklist, names
 
 // ---------------------------------------------------------------- the kind of device
 // 'mouse' | 'keyboard' | 'headset' | 'device', from its name, then its collections (generic desktop mouse / keyboard)
-export function deviceKind(dev) {
+// 'mixed' (23 Oct 2026, Dsmjr2/DeviceHub-support#10 and #11: an unknown 2.4G receiver, 25A7:FA70, was offered DPI): a
+// device whose name says nothing and whose HID interfaces show both a mouse (page 0001 usage 0002) and a keyboard
+// (0001 / 0006). Many 2.4G receivers carry both, so the person is asked once, "Is this a mouse or a keyboard?"; pick is
+// that answer. A receiver with keyboard usage and no mouse usage is a keyboard, and gets keyboard settings, never DPI.
+export function usageKinds(dev) {
+  const cols = Array.isArray(dev?.collections) ? dev.collections : [];
+  const has = (u) => cols.some((c) => up4(c.page) === '0001' && up4(c.usage) === u);
+  return { mouse: has('0002'), keyboard: has('0006'), telephony: cols.some((c) => up4(c.page) === '000B') };
+}
+export function deviceKind(dev, pick = null) {
   const n = String(dev?.name || '');
   if (/headset|headphone|earbud|arctis|\bnova\b|cloud|virtuoso|\bhs\d|kraken|barracuda|blackshark|stealth|\bvoid\b|astro/i.test(n)) return 'headset';
   if (/keyboard|\bkb\b|keypad|\bkeys\b/i.test(n)) return 'keyboard';
   if (/mouse|\bmice\b/i.test(n)) return 'mouse';
-  const cols = dev?.collections || [];
-  const has = (u) => cols.some((c) => up4(c.page) === '0001' && up4(c.usage) === u);
-  if (has('0002')) return 'mouse';
-  if (has('0006')) return 'keyboard';
+  const u = usageKinds(dev);
+  if (u.mouse && u.keyboard) return pick === 'mouse' || pick === 'keyboard' ? pick : 'mixed';
+  if (u.mouse) return 'mouse';
+  if (u.keyboard) return 'keyboard';
+  // a telephony collection (page 000B: the mic-mute and call buttons of a headset) and no mouse or keyboard: a headset
+  if (u.telephony) return 'headset';
   return 'device';
 }
+// the one question for a mixed device, and its answers (the page draws them as two buttons)
+export const KIND_QUESTION = { line: 'Is this a mouse or a keyboard?', options: [{ value: 'mouse', label: 'A mouse' }, { value: 'keyboard', label: 'A keyboard' }] };
 
 // ---------------------------------------------------------------- the usual settings and values
 // The values are what a maker's app usually shows, two far apart; the person can change them before Learn these.
@@ -264,10 +277,12 @@ export function planItems({ files = [], brand = [], kind = 'device' }) {
   return out;
 }
 
-// { maker, kind, items, from: 'files' | 'brand' | 'usual' } for one listed device
-export async function plan(dev, { root = ROOT, maker = findMaker, scan = (vid) => vendorScan({ vid }) } = {}) {
-  const kind = deviceKind(dev);
+// { maker, kind, items, from: 'files' | 'brand' | 'usual' } for one listed device; kind: the person's answer to "Is
+// this a mouse or a keyboard?" for a mixed device. Without one, a mixed device gets { kind: 'mixed', ask, items: [] }.
+export async function plan(dev, { root = ROOT, maker = findMaker, scan = (vid) => vendorScan({ vid }), kind: pick = null } = {}) {
+  const kind = deviceKind(dev, pick);
   const m = await maker(dev.vid);
+  if (kind === 'mixed') return { maker: m, kind, ask: KIND_QUESTION, items: [], from: 'usual' };
   let files = [];
   if (m.known && !m.web) { try { files = fileItems(await scan(dev.vid), dev, kind); } catch {} }
   const brand = brandItems(brandSheet(dev.vid, root), kind);

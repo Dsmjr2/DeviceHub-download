@@ -41,7 +41,8 @@ import { readPcapBuffer } from './pcap-read.mjs';
 import { validate, fromJson, forPid } from './declarative-driver.mjs';
 import { ROOT, devicehubVersion, match as libraryMatch, list as libraryList, installFromLibrary, loadDriver, driverFileOf } from './device-library.mjs';
 import { writable, libraryMark, LIBRARY_FILE } from './my-devices.mjs';
-import { plan as makePlan, runAppUi, parseInfo, valueOf, uiText, valuesIn, FORBIDDEN } from './learn-apps.mjs';
+import { plan as makePlan, runAppUi, parseInfo, valueOf, uiText, valuesIn, FORBIDDEN, deviceKind, usageKinds, KIND_QUESTION } from './learn-apps.mjs';
+import { plainName, seemsFrom } from '../public/core/device-name.js';
 
 const require = createRequire(import.meta.url);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -1201,7 +1202,7 @@ export const deps = {
   sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
   async loadNew(root) { try { return await (await import('./my-devices.mjs')).loadNew(root); } catch { return null; } },
   // the maker's app and the tick-list for a listed device (helpers/learn-apps.mjs; read-only)
-  plan: (dev, root) => makePlan(dev, { root }),
+  plan: (dev, root, kind = null) => makePlan(dev, { root, kind }),
   // helpers/app-ui.ps1 with these arguments: { code, out } (only get and set are ever asked for, on the ticked setting)
   appUi: (args) => runAppUi(args),
 };
@@ -1242,6 +1243,15 @@ async function listDevices() {
       d.refused = d.refused || coverageRefusal(d.driver);
     }
     d.note = coverageNote(d);
+    // 23 Oct 2026: a device no brand owns is shown by its own ids (title: "Unknown 2.4G receiver (25A7:FA70)"; name stays
+    // its own product string, which a saved driver keeps), what its HID usages say it is (seems), and "Is this a mouse or
+    // a keyboard?" when they say both (learn-apps deviceKind; public/core/device-name.js)
+    const usages = usageKinds(d);
+    const pn = plainName({ vid: d.vid, pid: d.pid, name: d.name, usages });
+    d.title = pn ? pn.title : d.name;
+    d.unknown = !!pn;
+    d.seems = seemsFrom(usages);
+    d.askKind = deviceKind(d) === 'mixed' ? KIND_QUESTION : null;
   }
   return listed;
 }
@@ -1267,7 +1277,7 @@ function summary() {
   const sec = session.second;
   return {
     active: true,
-    device: { vid: session.device.vid, pid: session.device.pid, name: session.device.name },
+    device: { vid: session.device.vid, pid: session.device.pid, name: session.device.title || session.device.name, product: session.device.name || null, seems: session.device.seems || null, kind: session.kindPick || session.plan?.kind || null },
     addsTo: session.base ? { name: session.base.name, where: session.base.where, note: 'already has a driver; Learn adds settings it lacks' } : null,
     listener: !session.listening ? 'off' : !st ? 'waiting' : st.status,
     listenerError: st?.error || null,
@@ -1329,7 +1339,8 @@ export async function act(name, b = {}) {
     const id = `${new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14)}-${dev.vid}-${dev.pid}`.toLowerCase();
     const dir = path.join(root, 'learn', 'wizard', id);
     fs.mkdirSync(dir, { recursive: true });
-    session = { id, dir, device: dev, base, second, setting: null, takes: [], learned: [], listening: false, seq: 0 };
+    const kindPick = ['mouse', 'keyboard'].includes(b.kind) ? b.kind : null;
+    session = { id, dir, device: dev, base, second, setting: null, takes: [], learned: [], listening: false, seq: 0, kindPick };
     return { ok: true, ...summary() };
   }
   if (!session) return { ok: false, error: 'Pick a device first.' };
@@ -1383,7 +1394,9 @@ export async function act(name, b = {}) {
   }
   if (name === 'plan') {
     // the maker's app (installed, running) and the tick-list of settings to learn, once per session
-    if (!session.plan || b.again) session.plan = await d.plan(session.device, root);
+    // a mixed device: the answer to "Is this a mouse or a keyboard?" (b.kind), asked once; then the plan for that kind
+    if (['mouse', 'keyboard'].includes(b.kind) && b.kind !== session.kindPick) { session.kindPick = b.kind; session.plan = null; }
+    if (!session.plan || b.again) session.plan = await d.plan(session.device, root, session.kindPick);
     return { ok: true, ...session.plan, ...summary() };
   }
   if (name === 'drive') return drive();
@@ -1482,6 +1495,16 @@ export async function act(name, b = {}) {
   return { ok: false, error: 'no such step' };
 }
 
+// "Nothing went to or from" a device whose maker's app DeviceHub does not know (23 Oct 2026, Dsmjr2/DeviceHub-support#11:
+// an unknown 2.4G receiver, 25A7:FA70): the device may have no settings software, or its app talks to it another way;
+// for a keyboard, its cable. '' when the maker's app is known.
+export function quietHint(s) {
+  if (!s || s.plan?.maker?.known) return '';
+  const kind = s.plan?.kind && s.plan.kind !== 'mixed' ? s.plan.kind : deviceKind(s.device, s.kindPick);
+  const cable = kind === 'keyboard' || kind === 'mixed' ? ' For a keyboard, try its USB cable: plug it in with the cable, then pick it again in the list.' : '';
+  return ` If nothing is heard again: DeviceHub does not know this maker's app, so the device may have no settings software, or its app talks to it another way.${cable}`;
+}
+
 // one recording of one value: start it ({ ok } or { ok: false, error }), then stop it and keep its messages
 async function startTake(value) {
   if (session.takes.some((t) => same(t.value, value))) return { ok: false, error: session.setting.role === 'battery' ? 'That percent is recorded already. Wait until the maker\'s app shows another one.' : 'That value is recorded already: pick another.' };
@@ -1501,7 +1524,7 @@ async function stopTake() {
   const dev = session.device;
   const { found, messages } = takeMessages(d.readTake(session.dir, rec.take), { vid: dev.vid, pid: dev.pid, idsOut: usesIds(dev, 'outIds'), idsIn: usesIds(dev, 'inIds') });
   if (!found) return { ok: false, error: `DeviceHub did not find the ${dev.name} in the recording. Unplug it, plug it back in, and record that value again.` };
-  if (!messages.length) return { ok: false, error: `Nothing went to or from the ${dev.name} while recording. Was ${session.setting.label} changed in the maker's app? Record that value again.` };
+  if (!messages.length) return { ok: false, error: `Nothing went to or from the ${dev.title || dev.name} while recording. Was ${session.setting.label} changed in the maker's app? Record that value again.${quietHint(session)}` };
   session.takes.push({ value: rec.value, messages });
   return { ok: true, heard: messages.length };
 }

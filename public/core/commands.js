@@ -129,6 +129,7 @@ export function commands(q, { go, pages }) {
     if (v['mute:recording'] != null) out.push({ group: 'Headset', icon: 'mic', label: v['mute:recording'] ? 'Unmute mic (Windows)' : 'Mute mic (Windows)', keywords: 'microphone', run: () => write('headset', 'mute:recording', !v['mute:recording'], { label: 'Mic (Windows)', display: v['mute:recording'] ? 'on' : 'muted' }).catch(() => {}) });
   }
   for (const d of Object.values(devices)) {
+    if (d.absent) continue;   // an added driver that found nothing of its own here (helpers/my-devices.mjs isAbsent)
     if (d.status === 'connected') out.push({ group: 'Safety', icon: 'backups', label: `Back up ${d.adapter.title} now`, keywords: 'backup save', run: async () => toast('Backup saved', 'good', { detail: await backupNow(d.id) }) });
     else out.push({ group: 'Device', icon: 'plug', label: `Connect ${d.adapter.title}`, keywords: 'connect pair', run: () => connect(d.id, d.id !== 'headset') });
   }

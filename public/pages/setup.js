@@ -87,19 +87,19 @@ function liveDevices() {
   for (const d of Object.values(devices)) {
     const a = d.adapter;
     if (!a) continue;
-    out[d.id] = { title: a.title, kind: a.kind, status: d.status, seen: !!d.seen, plugin: !!a.plugin, library: !!a.library, learned: !!a.library?.learned, turnOn: a.library?.turnOn === true, works: offersWorks(d) };
+    out[d.id] = { title: a.title, kind: a.kind, status: d.status, seen: !!d.seen, absent: !!d.absent, plugin: !!a.plugin, library: !!a.library, learned: !!a.library?.learned, turnOn: a.library?.turnOn === true, works: offersWorks(d) };
   }
   return out;
 }
 // a status signature: a change redraws the page, any other reading does not
-const liveSig = () => JSON.stringify(Object.entries(liveDevices()).map(([id, d]) => [id, d.status, d.turnOn, d.works]));
+const liveSig = () => JSON.stringify(Object.entries(liveDevices()).map(([id, d]) => [id, d.status, d.turnOn, d.works, d.absent]));
 
 // the maker's app holding a device that is not connected (diagnose's own finding and close action), asked once per
 // device and state
 function askDiagnose(live) {
   if (isDemo()) { for (const [id, f] of Object.entries(DEMO_DIAG)) if (!st.over[id]) st.diag[id] = f; else delete st.diag[id]; return; }
   for (const [id, d] of Object.entries(live)) {
-    const away = !['connected', 'connecting'].includes(d.status) && (d.seen || d.plugin);
+    const away = !['connected', 'connecting'].includes(d.status) && (d.seen || d.plugin) && !d.absent;
     if (!away) { delete st.diag[id]; delete st.diagKey[id]; continue; }
     if (st.diagKey[id] === d.status) continue;
     st.diagKey[id] = d.status;

@@ -180,6 +180,11 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
     unsupported: ['editing onboard profiles (keys, macros, lights)', 'lighting colours and effects (no read-back)', 'G-key and M-key remaps', 'game mode beyond the key locks', 'firmware updates', 'pairing'],
     dev: null, chan: null, index: DEV_WIRED, features: {}, caps: {}, asleep: false, usbId: null, shared: false, swid: SW_ID,
     pingMs: 2600,   // how long a slot's ping waits (tests shorten it)
+    // Shown only once it found a keyboard (23 Oct 2026, a friend's PC: a PRO X2 SUPERSTRIKE alone on C54D
+    // showed a "Logitech keyboard" that does not exist). Before its first look, and on a SHARED receiver (most hold only
+    // a mouse), helpers/agent.mjs snapshot marks it absent until it is connected or asleep: no tile, no sidebar entry, no
+    // Setup row, no report. A keyboard found once is remembered (seen-devices.json) and shown from then on.
+    get onlyIfFound() { return this.pid == null || !!SHARED[this.pid]; },
 
     get settings() {
       const c = this.caps, out = [];

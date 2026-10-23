@@ -26,6 +26,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { match, installFromLibrary, ROOT, hex4, devicehubVersion } from './device-library.mjs';
 import { genericDongle } from '../public/core/generic-dongle.js';
+import { plainName } from '../public/core/device-name.js';
 import { libraryMark, readVerified, loadNew, ownClash, hasRealRecord, provenCopy, needsTurnOn, writable, TURN_ON_LINE } from './my-devices.mjs';
 
 export const SETUP_FILE = 'setup.json';
@@ -180,6 +181,9 @@ export function summary({ root = ROOT, sources = {} } = {}) {
   const setup = readSetup(root);
   const devs = sources.agent?.devices || [];
   const adapters = Object.fromEntries(devs.map((d) => [d.id, { ...(d.adapter || {}), status: d.status }]));
+  // an added driver that found nothing of its own on this PC (the snapshot's absent, helpers/my-devices.mjs isAbsent:
+  // the Logitech keyboard driver on a receiver that holds only a mouse) is not a device here: no line, no attention
+  const absent = new Set(devs.filter((d) => d.absent).map((d) => d.id));
   const works = [], optional = [], learn = [], installed = [], attention = [];
   // built-in slots: only the ones this PC has
   for (const d of devs.filter((x) => ['mouse', 'headset', 'keyboard'].includes(x.id))) {
@@ -201,7 +205,10 @@ export function summary({ root = ROOT, sources = {} } = {}) {
   // Windows Dynamic Lighting: any light that speaks the standard works in Windows Settings with no driver at all
   if (lamps.length) works.push({ what: 'lamparrays', state: 'ready', name: lamps.length === 1 ? (lamps[0].name || lamps[0].product || 'Dynamic Lighting device') : plural(lamps.length, 'Dynamic Lighting device'), short: `${lamps.length === 1 ? 'Its lights work' : `${lamps.map((l) => l.name || l.product || 'light').join(', ')}: their lights work`} in Windows Settings, no driver needed.`, line: `${plural(lamps.length, 'Windows Dynamic Lighting device')}: ${lamps.map((l) => l.name || l.product || 'light').join(', ')} (one color, then handed back to Windows)`, action: { kind: 'settings', page: 'lighting', label: 'Open Dynamic Lighting' } });
   // library drivers
-  for (const l of libraryDrivers(root, adapters)) {
+  const drivers = libraryDrivers(root, adapters);
+  const absentFolders = new Set(drivers.filter((l) => absent.has(l.id)).map((l) => l.name));
+  for (const l of drivers) {
+    if (absent.has(l.id)) continue;
     const ro = [...l.failed.map((f) => `${f.label} (${f.why})`), ...(l.status === 'tested' ? [] : l.unchecked)];
     const wait = l.waiting.map((w) => `${w.label} (${w.why})`);
     const connected = l.deviceStatus === 'connected';
@@ -222,7 +229,7 @@ export function summary({ root = ROOT, sources = {} } = {}) {
     if (l.turnOn || !l.checkedAt || l.failed.length || l.waiting.length || (l.status !== 'tested' && l.unchecked.length)) attention.push(item.line);
   }
   // what auto setup installed (until dismissed)
-  for (const x of setup.installed || []) installed.push({ what: 'installed', name: x.name, title: x.product, line: `${x.product}: installed from the device library on ${String(x.at).slice(0, 10)} (${x.status})` });
+  for (const x of setup.installed || []) if (!absentFolders.has(x.name) && !absent.has(x.id)) installed.push({ what: 'installed', name: x.name, title: x.product, line: `${x.product}: installed from the device library on ${String(x.at).slice(0, 10)} (${x.status})` });
   if (installed.length) attention.push(...installed.map((x) => x.line));
   // library entries for this PC's devices that did not install by themselves ("untested", or one removed by the
   // person): each with an Install button (the person's click installs it; what happens next: installNote)
@@ -277,8 +284,9 @@ export function summary({ root = ROOT, sources = {} } = {}) {
       short: big ? 'Not supported yet: it talks in messages too big for DeviceHub.' : "No driver yet. Learn a device makes one while you use the maker's app.", line }); attention.push(line);
   }
   if (unknown.length) {
-    const named = unknown.slice(0, 6).map((u) => `${u.name ? `${u.name} ` : ''}${idOf(u)}`);
-    optional.push({ what: 'unknown-vendor', usb: unknown.map(idOf), title: plural(unknown.length, 'other USB device'), state: 'optional', short: `${named.join(', ')}${unknown.length > 6 ? ', …' : ''}: Learn a device can try.`, line: `${plural(unknown.length, 'other USB device')} from makers DeviceHub has no notes on (${named.join(', ')}${unknown.length > 6 ? `, and ${unknown.length - 6} more` : ''}): Learn a device can make a driver for one; it needs the maker's app to learn from` });
+    // named by their own ids only (public/core/device-name.js): "Unknown 2.4G receiver (25A7:FA70), a keyboard and a mouse"
+    const named = unknown.slice(0, 6).map((u) => { const pn = plainName(u); return pn ? `${pn.title}${pn.seems ? `, ${pn.seems}` : ''}` : `${u.name ? `${u.name} ` : ''}${idOf(u)}`; });
+    optional.push({ what: 'unknown-vendor', usb: unknown.map(idOf), title: unknown.length === 1 ? named[0] : plural(unknown.length, 'other USB device'), state: 'optional', short: `${named.join(', ')}${unknown.length > 6 ? ', …' : ''}: Learn a device can try.`, line: `${plural(unknown.length, 'other USB device')} from makers DeviceHub has no notes on (${named.join(', ')}${unknown.length > 6 ? `, and ${unknown.length - 6} more` : ''}): Learn a device can make a driver for one; it needs the maker's app to learn from` });
   }
   // optional extras
   if (sources.eqapo === false) optional.push({ what: 'eqapo', title: 'Headset EQ', state: 'optional', short: 'EQ, mic boost and mic filters for any headset. Equalizer APO comes inside DeviceHub: Install, then Windows asks once.', page: 'settings', line: 'Equalizer APO: needed for the headset EQ, mic boost and mic filters (the Headset page has the button; ask before installing)' });

@@ -326,6 +326,15 @@ check(!summary({ root, sources: { agent, usb, eqapo: false } }).show || summary(
 check(!summary({ root, sources: { agent, usb, via: [{ vid: '342D', pid: 'E479', name: 'P75' }], eqapo: false } }).show, 'dismissed: the card stays hidden while nothing new is said');
 s = summary({ root, sources: { agent, usb: [...usb, { vid: '1532', pid: '0099', name: 'Razer thing' }], via: [{ vid: '342D', pid: 'E479', name: 'P75' }] } });
 check(s.show, 'something new shows it again');
+// an added driver that found nothing of its own on this PC (the snapshot's absent: the Logitech keyboard driver on a
+// LIGHTSPEED receiver that holds only a mouse, 23 Oct 2026): no line, no "installed" note, nothing to look at
+{
+  const agentAbsent = { devices: agent.devices.map((d) => (d.id === 'acme-reader' ? { ...d, status: 'missing', absent: true } : d)) };
+  const had = summary({ root, sources: { agent, usb } });
+  const sa = summary({ root, sources: { agent: agentAbsent, usb } });
+  check(had.works.some((x) => x.name === 'acme-reader') && had.installed.some((x) => x.name === 'acme-reader'), 'sanity: the driver is listed while it is a device here');
+  check(!sa.works.some((x) => x.name === 'acme-reader' || x.page === 'acme-reader') && !sa.installed.some((x) => x.name === 'acme-reader') && !/acme-reader/i.test(asText(sa)), `an absent driver gets no line in the summary (${sa.works.filter((x) => x.what === 'library').map((x) => x.name)})`);
+}
 // an untested entry: an Install button the Set up card shows (never a POST for the person to type)
 const s1 = summary({ root, sources: { agent, usb } });
 const un = s1.learn.find((x) => x.name === 'acme-untested');
@@ -367,7 +376,7 @@ check(!r.lastRun.installed.length, 'auto setup still never installs an untested 
   fs.copyFileSync(path.join(REAL, 'docs', 'brands', 'corsair.md'), path.join(root, 'docs', 'brands', 'corsair.md'));
   const s3 = summary({ root, sources: { usb: [{ vid: 'abcd', pid: '0001', name: 'Mystery pad' }, { vid: 'abce', pid: '0002', name: null }, { vid: '1b1c', pid: '1bc4', name: 'CORSAIR K70 RGB PRO' }, { vid: '1b1c', pid: '1b7c', name: 'K100' }, { vid: '1b1c', pid: '0a69', name: 'HS80 cable' }] } });
   const unk = s3.optional.find((x) => x.what === 'unknown-vendor');
-  check(unk && /2 other USB devices/.test(unk.line) && /Mystery pad abcd:0001/.test(unk.line) && /Learn a device/.test(unk.line) && /needs the maker's app to learn from/.test(unk.line), `unknown makers: one line pointing to Learn a device (${unk?.line})`);
+  check(unk && /2 other USB devices/.test(unk.line) && unk.line.includes('Mystery pad (ABCD:0001, maker not known)') && unk.line.includes('Unknown USB device (ABCE:0002)') && /Learn a device/.test(unk.line) && /needs the maker's app to learn from/.test(unk.line), `unknown makers: one line pointing to Learn a device (${unk?.line})`);
   const k70 = s3.learn.find((x) => x.usb === '1b1c:1bc4'), k100 = s3.learn.find((x) => x.usb === '1b1c:1b7c');
   check(k70?.what === 'packet-size' && /128-byte packets/.test(k70.line) && k100?.what === 'packet-size' && /1024-byte/.test(k100.line), `a device left out for its packet size says so (${k70?.line} | ${k100?.line})`);
   check(!s3.learn.some((x) => x.usb === '1b1c:0a69') && !s3.optional.some((x) => (x.usb || []).includes?.('1b1c:0a69')), 'the HS80 on its cable is DeviceHub\'s own: never a "still to do"');
