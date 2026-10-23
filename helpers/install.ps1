@@ -5,6 +5,7 @@
 #  4. makes Desktop and Start menu shortcuts, then starts DeviceHub
 param([string]$Source = (Split-Path $PSScriptRoot -Parent), [switch]$NoLaunch, [switch]$NoShortcuts, [string]$Target = (Join-Path $env:USERPROFILE 'DeviceHub'), [string]$AppsKey = 'DeviceHub', [switch]$Overwrite)
 $ErrorActionPreference = 'Stop'
+$hadWindow = $false   # a DeviceHub window was open when this install quit DeviceHub (see "quitting it first")
 function Step($t) { Write-Host ""; Write-Host "== $t" -ForegroundColor Cyan }
 
 # What DeviceHub needs from this PC (20 Oct 2026), said in plain words before anything is copied. None of them stops
@@ -89,6 +90,10 @@ if ($same) { Write-Host '   already in place' } else {
   if ((& $mine).Count) {
     Write-Host '   DeviceHub is running from there: quitting it first'
     $port = Get-NetTCPConnection -LocalPort 5577 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+    # a DeviceHub window open now (Settings > Update is pressed in one) stays open and reloads itself when DeviceHub
+    # is back, so the start at the end must not open a second one (23 Oct 2026, a friend's PC: two windows after
+    # every update). DeviceHub.vbs /afterupdate waits for it to come back instead.
+    try { $hadWindow = [int]((Invoke-RestMethod http://127.0.0.1:5577/api/windows -TimeoutSec 2).open) -gt 0 } catch {}
     if ($port -and ((& $mine).ProcessId -contains $port.OwningProcess)) { try { Invoke-RestMethod http://127.0.0.1:5577/api/quit -Method Post -TimeoutSec 5 | Out-Null } catch {} }
     for ($i = 0; $i -lt 20 -and (& $mine).Count; $i++) { Start-Sleep -Milliseconds 500 }
     # what did not quit: the launcher loop first (it would start the server again), then the rest
@@ -232,4 +237,4 @@ if ($rel.appCommit -and (Get-Command git -ErrorAction SilentlyContinue)) {
 
 Step 'Done'
 Write-Host '   Open DeviceHub from the Desktop or Start. Plug in your devices; they are found by themselves.'
-if (-not $NoLaunch) { Start-Process "$env:WINDIR\System32\wscript.exe" -ArgumentList ('"' + (Join-Path $Target 'DeviceHub.vbs') + '"') }
+if (-not $NoLaunch) { Start-Process "$env:WINDIR\System32\wscript.exe" -ArgumentList (@('"' + (Join-Path $Target 'DeviceHub.vbs') + '"') + $(if ($hadWindow) { @('/afterupdate') } else { @() })) }

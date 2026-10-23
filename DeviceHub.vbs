@@ -4,15 +4,46 @@
 ' With /serve (started by this launcher itself) it runs the server and keeps it running: if the server crashes it is
 ' started again after 3 s, at most 5 times in 10 minutes (19 Oct 2026). A normal Quit, or a server that finds
 ' DeviceHub already running, exits with code 0 and is not restarted.
+' With /afterupdate (helpers/install.ps1, when a DeviceHub window was open before it quit DeviceHub to update it) it
+' opens a window only if the one that was open does not come back by itself (23 Oct 2026).
 Set sh = CreateObject("WScript.Shell")
 Set fs = CreateObject("Scripting.FileSystemObject")
 dir = fs.GetParentFolderName(WScript.ScriptFullName)
 background = False
 serve = False
+afterUpdate = False
 For Each a In WScript.Arguments
   If LCase(a) = "/background" Then background = True
   If LCase(a) = "/serve" Then serve = True
+  If LCase(a) = "/afterupdate" Then afterUpdate = True
 Next
+Set penv = sh.Environment("Process")
+' the port (DEVICEHUB_PORT, as the server reads it), so a test can run this beside the real copy
+port = "5577"
+If penv("DEVICEHUB_PORT") <> "" Then port = penv("DEVICEHUB_PORT")
+' how long after an update to wait for the open window to come back (seconds)
+windowWait = 15
+If penv("DEVICEHUB_WINDOW_WAIT") <> "" Then windowWait = CInt(penv("DEVICEHUB_WINDOW_WAIT"))
+' a test (tests/update-window.mjs) sets DEVICEHUB_LAUNCH_LOG: what would be started is written there instead
+launchLog = penv("DEVICEHUB_LAUNCH_LOG")
+Sub Launch(cmd, style)
+  If launchLog <> "" Then
+    Set lf = fs.OpenTextFile(launchLog, 8, True)
+    lf.WriteLine cmd
+    lf.Close
+  Else
+    sh.Run cmd, style, False
+  End If
+End Sub
+' brings the DeviceHub window to the front (a test only notes it, so it never moves the real window)
+Function Activate()
+  If launchLog <> "" Then
+    Launch "activate DeviceHub", 0
+    Activate = True
+  Else
+    Activate = sh.AppActivate("DeviceHub")
+  End If
+End Function
 
 ' Is DeviceHub already answering on its port? (then a second watchdog has nothing to do)
 Function Running()
@@ -20,7 +51,7 @@ Function Running()
   Running = False
   Set x = CreateObject("MSXML2.ServerXMLHTTP.6.0")
   x.setTimeouts 1000, 1000, 1000, 1000
-  x.Open "GET", "http://127.0.0.1:5577/api/version", False
+  x.Open "GET", "http://127.0.0.1:" & port & "/api/version", False
   x.Send
   If Err.Number = 0 Then
     ' DeviceHub itself answers (another program on the port would answer differently)
@@ -31,11 +62,13 @@ End Function
 
 ' How many DeviceHub windows are open (0 when DeviceHub is not running yet)
 Function WindowsOpen()
+  ' its own variables: without Dim it used the script's i, and ended the wait loop below that counts with i
+  Dim x, p, n, i
   On Error Resume Next
   WindowsOpen = 0
   Set x = CreateObject("MSXML2.ServerXMLHTTP.6.0")
   x.setTimeouts 1000, 1000, 1000, 1000
-  x.Open "GET", "http://127.0.0.1:5577/api/windows", False
+  x.Open "GET", "http://127.0.0.1:" & port & "/api/windows", False
   x.Send
   If Err.Number = 0 Then
     If x.Status = 200 Then
@@ -60,17 +93,17 @@ If fs.FileExists(dir & "\runtime\node.exe") Then nodeExe = """" & dir & "\runtim
 ' ~25 MB). /serve, from older shortcuts, starts it the same way.
 keep = "cmd /c """"" & dir & "\helpers\keep-running.bat"""""
 If serve Then
-  sh.Run keep, 0, False
+  Launch keep, 0
   WScript.Quit
 End If
 
-sh.Run keep, 0, False
+Launch keep, 0
 If background Then WScript.Quit
 
 ' A DeviceHub window already open (it keeps a live-update stream to the server): bring it to the front instead of
 ' opening a second one (20 Oct 2026: six restarts had left six windows, ~440 MB)
 If WindowsOpen() > 0 Then
-  If sh.AppActivate("DeviceHub") Then WScript.Quit
+  If Activate() Then WScript.Quit
 End If
 
 ' Wait for DeviceHub to answer (its first start builds its helper: a few seconds). If it does not within 20 s, say
@@ -85,7 +118,8 @@ If Not Running() Then
   reason = "It did not start within 20 seconds."
   logFile = dir & "\server.log"
   ' only this start's lines: a log written in the last minute
-  If fs.FileExists(logFile) Then If DateDiff("s", fs.GetFile(logFile).DateLastModified, Now) > 60 Then logFile = ""
+  If Not fs.FileExists(logFile) Then logFile = ""
+  If logFile <> "" Then If DateDiff("s", fs.GetFile(logFile).DateLastModified, Now) > 60 Then logFile = ""
   If logFile <> "" Then
     Set lf = fs.OpenTextFile(logFile, 1)
     Do While Not lf.AtEndOfStream
@@ -94,8 +128,28 @@ If Not Running() Then
     Loop
     lf.Close
   End If
+  If launchLog <> "" Then
+    Launch "could not start", 0
+    WScript.Quit
+  End If
   MsgBox "DeviceHub could not start." & vbCrLf & vbCrLf & reason & vbCrLf & vbCrLf & "Details: " & dir & "\server.log", vbExclamation, "DeviceHub"
   WScript.Quit
+End If
+' Just updated: the window that was open reloads itself once DeviceHub answers again, and its live stream (counted by
+' /api/windows) comes back within a few seconds. Wait for it instead of opening a second window (23 Oct 2026, a
+' friend's PC: two windows after every update, because the check above ran while DeviceHub was still starting).
+If afterUpdate Then
+  For w = 1 To windowWait
+    If WindowsOpen() > 0 Then
+      Activate
+      WScript.Quit
+    End If
+    WScript.Sleep 1000
+  Next
+End If
+' a window that came back while DeviceHub started
+If WindowsOpen() > 0 Then
+  If Activate() Then WScript.Quit
 End If
 chrome =sh.ExpandEnvironmentStrings("%ProgramFiles%") & "\Google\Chrome\Application\chrome.exe"
 If Not fs.FileExists(chrome) Then chrome = sh.ExpandEnvironmentStrings("%LocalAppData%") & "\Google\Chrome\Application\chrome.exe"
@@ -127,13 +181,13 @@ If Not lightSet Then
   On Error GoTo 0
 End If
 If light Then
-  sh.Run """" & chrome & """" & " --app=http://localhost:5577/ --start-maximized", 1, False
+  Launch """" & chrome & """" & " --app=http://localhost:" & port & "/ --start-maximized", 1
   WScript.Quit
 End If
 profile = dir & "\window-profile"
 appId = "gbcckkpijkfkcllfaiefimkinkmpohlk"
 If fs.FolderExists(profile & "\Default\Web Applications\Manifest Resources\" & appId) Then
-  sh.Run """" & chrome & """" & " --user-data-dir=""" & profile & """ --no-first-run --no-default-browser-check --hide-crash-restore-bubble --disable-extensions --disable-component-update --start-maximized --app-id=" & appId, 1, False
+  Launch """" & chrome & """" & " --user-data-dir=""" & profile & """ --no-first-run --no-default-browser-check --hide-crash-restore-bubble --disable-extensions --disable-component-update --start-maximized --app-id=" & appId, 1
 Else
-  sh.Run """" & chrome & """" & " --user-data-dir=""" & profile & """ --no-first-run --no-default-browser-check --hide-crash-restore-bubble --disable-extensions --disable-component-update --app=http://localhost:5577/ --start-maximized", 1, False
+  Launch """" & chrome & """" & " --user-data-dir=""" & profile & """ --no-first-run --no-default-browser-check --hide-crash-restore-bubble --disable-extensions --disable-component-update --app=http://localhost:" & port & "/ --start-maximized", 1
 End If
