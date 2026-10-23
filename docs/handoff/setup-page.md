@@ -1,5 +1,8 @@
 # Setup page (22 Oct 2026)
 
+Made simpler later the same day (one status line, only what needs you, device tiles, the rest folded): see
+`docs/handoff/setup-simpler.md`. The Help section and Reset sound to normal described below are no longer on Setup.
+
 Shawn: "I want the setup to all be on one page". `#/setup`, in the sidebar right under Overview. The first-run screen
 (Open Setup) and the Overview's Set up card (now one line: "3 things need you", Open Setup, Hide) link to it.
 

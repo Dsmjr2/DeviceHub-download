@@ -139,11 +139,12 @@ function setupCard(redraw) {
   const s = setupInfo;
   if (!s?.show) return null;
   const n = countNeeds(deviceRows(s));
+  if (!n) return null;   // all set: no card (22 Oct 2026, docs/handoff/setup-simpler.md)
   const dismiss = () => { setupHidden = true; redraw(); fetch('/api/setup/dismiss', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ signature: s.signature }) }).catch(() => {}); };
   return h('div', { class: 'panel setup-card short' },
-    h('div', { class: 'su-top' }, icon(n ? 'plug' : 'check', 'ic'), h('h2', {}, `${summaryLine(n)}${n ? '' : '.'}`),
+    h('div', { class: 'su-top' }, icon('plug', 'ic'), h('h2', {}, summaryLine(n)),
       h('span', { class: 'spacer' }),
-      button('Open Setup', () => { location.hash = '#/setup'; }, { kind: n ? 'primary small' : 'small' }),
+      button('Open Setup', () => { location.hash = '#/setup'; }, { kind: 'primary small' }),
       button('Hide', dismiss, { kind: 'ghost small' })));
 }
 

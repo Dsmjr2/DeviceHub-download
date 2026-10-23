@@ -717,7 +717,8 @@ export function vendorRefusal(vid) {
   const v = up4(vid);
   if (SHARED_CHIPS[v]) return `USB vendor ${v} is the ${SHARED_CHIPS[v]} chip maker's id, which many brands share. A wrong write to a device on it has bricked mice and keyboards, so DeviceHub never learns one. Use the maker's app for its settings.`;
   const r = refusedVendors().find((x) => up4(x.vid) === v);
-  if (r) return `${r.brand} devices cannot be learned: their settings are reached through numbers the device hands out while it runs, so a recorded message cannot be proven safe. ${r.brand} drivers are written as code instead.`;
+  // plain words first: what to do instead (22 Oct 2026, a friend's Logitech mouse was refused at its first step)
+  if (r) return `No learning needed for ${r.brand}: DeviceHub has a ready-made ${r.brand} driver. Update DeviceHub, close ${r.brand === 'Logitech' ? 'G HUB' : `the ${r.brand} app`}, then open the device's page (or Setup) and press Turn on settings. (${r.brand} settings can't be learned from a recording, so the driver is written by hand.)`;
   return null;
 }
 

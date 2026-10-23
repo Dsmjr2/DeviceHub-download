@@ -1,7 +1,8 @@
 // Settings: start with Windows, self-test (read-only), where files live, and what DeviceHub will never do.
 import { h, icon } from '../ui/dom.js';
 import { card, row, toggle, button, pill } from '../ui/controls.js';
-import { devices, isDemo, readNow } from '../core/devices.js';
+import { devices, isDemo, readNow, shownDevices } from '../core/devices.js';
+import { firmwareParts } from '../core/firmware-parts.js';
 import { auto } from '../core/autoswitch.js';
 import { topbar } from './common.js';
 import { toast, modal } from '../ui/overlay.js';
@@ -19,7 +20,7 @@ async function uninstall() {
   } catch { toast('DeviceHub is not running', 'bad'); }
 }
 import { env } from '../core/env.js';
-import { ART_STYLES, saveArtStyle, THEME_ACCENTS, THEME_BGS, currentTheme, saveTheme, hasPicture, removePicture } from '../core/theme.js';
+import { ART_STYLES, saveArtStyle, THEME_ACCENTS, THEME_BGS, SKIN_SILVER_NAME, currentTheme, saveTheme, hasPicture, removePicture } from '../core/theme.js';
 import { artFor } from '../ui/art.js';
 import { copyDownloadLink, copyShortReport } from '../core/share.js';
 import { installerButton, installerStatus, installing } from '../ui/installer-button.js';
@@ -225,8 +226,12 @@ const GUIDES = {
   pulsar: { app: 'the Pulsar app', steps: ['Plug the mouse into the PC with its USB cable and leave it plugged in until the update finishes.', 'Click the gear at the top right, then Check Update next to Version: Mouse.', 'If it offers one, update the dongle first, then the mouse, as Pulsar says.', 'Come back here and press Done: DeviceHub closes the app and reads the new version.'] },
   icue: { app: 'iCUE', steps: ['Plug the headset into the PC with its USB cable.', 'In iCUE open Settings, then Device Settings, then HS80.', 'Press Check for Updates (and the same for the HS80 Wireless Receiver).', 'Come back here and press Done: DeviceHub closes iCUE and takes the headset back.'] },
 };
-// device firmware: a row of the Startup card with its button, and once checked, a row per device under it
+// device firmware: a row of the Startup card with its button, and once checked, a row per device under it; only the
+// devices this PC has (core/firmware-parts.js, 22 Oct 2026: no Pulsar app, iCUE or Epomaker row without that device),
+// and no Device firmware row at all when it has none of them
 function updatesRows() {
+  const parts = firmwareParts(shownDevices());
+  if (!parts.length) return [];
   const mi = devices.mouse?.info || {}, hi = devices.headset?.info || {};
   const u = upd, web = u?.online || {}, apps = u?.apps || {};
   const head = row('Device firmware', !u ? 'Looks for newer firmware. Nothing is installed.' : u.error ? `Could not check: ${u.error}` : 'Checked; each device below.',
@@ -234,14 +239,14 @@ function updatesRows() {
   if (!u || u.error) return [head];
   const g = guide && GUIDES[guide];
   return [head,
-    row('Mouse and dongle', `Mouse ${mi['Mouse firmware'] || '—'} · dongle ${mi['Dongle firmware'] || '—'} · Pulsar app ${apps.pulsar || 'not installed'}. `,
+    !parts.includes('mouse') ? null : row('Mouse and dongle', `Mouse ${mi['Mouse firmware'] || '—'} · dongle ${mi['Dongle firmware'] || '—'} · Pulsar app ${apps.pulsar || 'not installed'}. `,
       h('span', { class: 'actions', style: { alignItems: 'center' } },
         u.pulsarAppNewer ? pill(`app ${web.pulsar.app} out`, 'warn') : web.pulsar ? pill('app up to date', 'good') : pill(web.errors?.pulsar ? 'could not check' : '—', ''),
         u.pulsarAppNewer ? button(`Get ${web.pulsar.app}`, () => openPage('pulsarDownload'), { kind: 'ghost small', ic: 'external' }) : null,
         button('Check in Pulsar app', async () => { guide = 'pulsar'; rerender(); await post('/api/updates/open', { app: 'pulsar' }); }, { kind: 'small' }))),
-    row('Headset', `Firmware ${hi.Firmware || '—'} · iCUE ${apps.icue || 'not installed'}`,
+    !parts.includes('headset') ? null : row('Headset', `Firmware ${hi.Firmware || '—'} · iCUE ${apps.icue || 'not installed'}`,
       button('Check in iCUE', async () => { guide = 'icue'; rerender(); await post('/api/updates/open', { app: 'icue' }); }, { kind: 'small' })),
-    row('Keyboard', `Epomaker posts P75 firmware ${web.epomaker ? `V${web.epomaker.firmware}` : '—'}. Flashing erases the key map: back it up first.`,
+    !parts.includes('keyboard') ? null : row('Keyboard', `Epomaker posts P75 firmware ${web.epomaker ? `V${web.epomaker.firmware}` : '—'}. Flashing erases the key map: back it up first.`,
       button('Epomaker page', () => openPage('epomakerFirmware'), { kind: 'ghost small', ic: 'external' })),
     g ? h('div', { class: 'banner', style: { marginTop: '12px' } }, h('div', { class: 'grow' },
       h('b', {}, `Updating in ${g.app}`),
@@ -300,11 +305,12 @@ function healthCard() {
 // full; a filled-in GitHub issue opens only on the person's click, and they press Submit there. Its own card under
 // Startup since 22 Oct 2026 (it was in Health, and the third column no longer fitted one screen at 1650 x 910)
 let helpFor = '';
+// the only place for Get help and the reports switch since 22 Oct 2026 (Setup no longer has them); shown in demo mode
+// too, where Get help says it works in the installed app and the switch changes nothing
 function helpCard() {
-  if (isDemo()) return null;
   const pick = h('select', { class: 'text gh-pick', 'aria-label': 'What the report is about', onchange: (e) => { helpFor = e.target.value; } },
     h('option', { value: '' }, 'DeviceHub in general'),
-    ...Object.values(devices).filter((d) => d?.adapter).map((d) => h('option', { value: d.id, selected: d.id === helpFor }, d.adapter.title || d.id)));
+    ...shownDevices().filter((d) => d?.adapter).map((d) => h('option', { value: d.id, selected: d.id === helpFor }, d.adapter.title || d.id)));
   // compact (Settings must fit one screen at 1650 x 910): the picker in the heading, the button under it; the report
   // opens in place below the button only when asked for
   const box = getHelp('health', () => helpFor);
@@ -317,10 +323,11 @@ function helpCard() {
 // own PC, or no relay set up), so it never promises something this copy does not do
 let autoSt = null, autoAsked = false;
 function autoReportSwitch() {
+  if (!autoAsked && isDemo()) { autoAsked = true; autoSt = { configured: true, on: true }; }
   if (!autoAsked) { autoAsked = true; fetch('/api/auto-report').then((r) => (r.ok ? r.json() : null)).then((j) => { autoSt = j; rerender(); }).catch(() => {}); }
   if (!autoSt || autoSt.owner || !autoSt.configured) return null;
   return h('label', { class: 'ar-toggle' }, h('span', {}, 'Send problem reports to Shawn'),
-    toggle({ value: autoSt.on !== false, label: 'Send problem reports to Shawn', onCommit: async (on) => { await env.api('/api/settings', { autoReport: on }); autoSt = { ...autoSt, on }; } }));
+    toggle({ value: autoSt.on !== false, label: 'Send problem reports to Shawn', onCommit: async (on) => { if (!isDemo()) await env.api('/api/settings', { autoReport: on }); autoSt = { ...autoSt, on }; } }));
 }
 
 // Appearance: how the device drawings look, picked from a live preview of each style.
@@ -340,11 +347,11 @@ const inkOn = (hex) => { const [R, G, B] = [1, 3, 5].map((i) => parseInt(hex.sli
 function themeControls() {
   const t = currentTheme();
   const pickAccent = async (hex, name) => { await saveTheme({ themeAccent: hex }); toast(`Accent: ${name}`, 'good', { ms: 1400 }); rerender(); };
-  // Old School shows the silver accent as the game's gold, Verde as verde green, and each says so
-  const accentName = t.bg === 'old-school' && t.accent === THEME_ACCENTS[0][0] ? 'Gold' : t.bg === 'verde' && t.accent === THEME_ACCENTS[0][0] ? 'Verde' : THEME_ACCENTS.find(([x]) => x === t.accent)?.[1] || 'Custom';
+  // a whole look shows the silver accent in its own color (Old School gold, Verde green, Milk sky blue, Coral Reef coral) and says so
+  const accentName = (t.accent === THEME_ACCENTS[0][0] && SKIN_SILVER_NAME[THEME_BGS.find(([k]) => k === t.bg)?.[4]]) || THEME_ACCENTS.find(([x]) => x === t.accent)?.[1] || 'Custom';
   // backdrops as small previews of the app: the page color, a card, and the accent (22 Oct 2026, Shawn: "make this
   // area better looking and more options")
-  const tile = ([key, name, bg, pool]) => h('button', { class: `theme-tile${t.bg === key ? ' sel' : ''}`, 'aria-label': `${name} backdrop`, 'aria-pressed': String(t.bg === key),
+  const tile = ([key, name, bg, pool]) => h('button', { class: `theme-tile${t.bg === key ? ' sel' : ''}`, dataset: { bg: key }, 'aria-label': `${name} backdrop`, 'aria-pressed': String(t.bg === key),
     onclick: async () => { await saveTheme({ themeBg: key }); rerender(); } },
     h('span', { class: 'theme-mini', style: { '--b': bg, '--p': pool } }, h('i', { class: 'mini-card' }), h('i', { class: 'mini-dot' })),
     h('span', { class: 'theme-tile-name' }, name));

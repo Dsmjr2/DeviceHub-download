@@ -1571,8 +1571,14 @@ html[data-skin="old-school"] .toast .ic { color: #6b0000; }
 /* wide stone scrollbars (the page sets scrollbar-color, so Chrome draws its own bar in these colors) */
 html[data-skin="old-school"] * { scrollbar-width: auto; scrollbar-color: #6a5a42 #231c13; }
 
-/* the backdrops: six fixed columns, so picking one (its name turns bold) never moves another to a new row */
-.theme-tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px 6px; }
+/* the backdrops: fixed columns, so picking one (its name turns bold) never moves another to a new row; seven since Milk
+   and Coral Reef came (22 Oct 2026), all on one row so Settings still fits one screen at 1650x910 */
+.theme-tiles { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px 4px; }
+.theme-tiles { container-type: inline-size; }
+.theme-tiles .theme-tile { font-size: 10.5px; }
+/* a narrower row (Settings at mid widths, a phone): smaller names, so "Espresso" still fits its tile */
+@container (max-width: 325px) { .theme-tiles .theme-tile { font-size: 9.5px; letter-spacing: -.01em; } }
+@container (max-width: 300px) { .theme-tiles .theme-tile { font-size: 9px; letter-spacing: -.02em; } }
 .theme-tile { min-width: 0; }
 .theme-mini { width: 100%; height: auto; aspect-ratio: 48 / 34; }
 .theme-tile-name { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1882,3 +1888,381 @@ html[data-skin="verde"] .su-num { color: #eef7dc; }
 html[data-skin="verde"] :is(.su-doall, .inst-inline) { border-radius: var(--r-sm); border: 1.5px solid rgba(170, 220, 100, .32); background: rgba(14, 20, 3, .45); }
 html[data-skin="verde"] .su-st.warn { color: #ffe7b8; }
 @media (min-width: 641px) { .su-section .su-ctl:not(:has(.inst-inline, .gh-card, .gh-note, .works-invite, .su-confirm, .loadbar-wrap)) { min-width: 172px; } }
+
+/* ---------- Milk (22 Oct 2026, Shawn: "Can you make a milk theme and a coral reef theme now") ----------
+   html[data-skin="milk"], set by core/theme.js for that backdrop: the one light look, with the same coverage as Old
+   School and Verde. A glass of milk: every pane is glossy milk-white glass with a soft splash of highlight in its top
+   corner and a few faint ripple rings, on a creamy page with a gentle droplet pattern and a blue-white glow. A pale
+   sky-blue accent (as on a milk carton) for the open page, switches, sliders and bars; the words are a soft grey-blue
+   that stays at 4.5:1 or better on every pane (body text 9:1). The dark-only bits (white words on tiles, glows, the
+   drawings' dark shadows, the dark tooltips) are redrawn for a light page. CSS only, static (no animation). */
+html[data-skin="milk"] {
+  --milk: #fdfcf8; --milk-2: #f5f3ec; --milk-3: #eceae2;
+  --sky: #8cc4ec; --sky-hi: #b9dcf5; --sky-lo: #5fa3d8; --sky-ink: #24557f; --sky-wash: rgba(140, 196, 236, .2);
+  --ink: #2a3d52; --ink-2: #1d2f43;
+  --panel: rgba(255, 255, 255, .62); --panel-2: rgba(255, 255, 255, .82); --panel-solid: #ffffff;
+  --raise: rgba(60, 110, 160, .08); --sunk: rgba(60, 100, 150, .07);
+  --line: rgba(50, 90, 140, .15); --line2: rgba(50, 90, 140, .28);
+  --text: var(--ink); --muted: #45596e; --faint: #56687c;
+  --good: #23824f; --warn: #946a00; --bad: #c0392b;
+  --c-keyboard: #357a45;
+  --glass: linear-gradient(165deg, rgba(255, 255, 255, .96), rgba(251, 250, 245, .9) 45%, rgba(241, 246, 251, .92));
+  --rim: inset 0 1px 0 #ffffff, inset 0 -1px 0 rgba(50, 90, 140, .07);
+  --lift: 0 1px 2px rgba(40, 70, 110, .08), 0 16px 32px -20px rgba(40, 70, 110, .38);
+  --cutout: rgba(255, 255, 255, .7);
+  --card: rgba(255, 255, 255, .9); --card-solid-a: #ffffff; --card-solid-b: var(--milk-2);
+  --dialog-a: rgba(255, 255, 255, .97); --dialog-b: rgba(246, 248, 251, .96);
+  /* the splash: a soft bright highlight in the top corner, as light on the side of a glass of milk */
+  --splash: radial-gradient(90% 70% at 0% 0%, rgba(255, 255, 255, .95), rgba(255, 255, 255, .4) 38%, transparent 62%);
+  /* ripples: a few faint rings out from the far corner */
+  --ripple: repeating-radial-gradient(circle at 100% 0%, transparent 0 26px, rgba(140, 190, 230, .1) 26px 27px, transparent 27px 44px);
+  /* the droplets on the page: small soft beads of milk, tile sizes that never line up */
+  --droplets:
+    radial-gradient(circle at 30% 40%, rgba(255, 255, 255, .95) 0 1.6px, rgba(150, 185, 225, .22) 2.4px, transparent 3.4px) 0 0 / 47px 53px,
+    radial-gradient(circle at 70% 20%, rgba(255, 255, 255, .9) 0 1px, rgba(150, 185, 225, .2) 1.8px, transparent 2.6px) 0 0 / 71px 61px,
+    radial-gradient(circle at 50% 70%, rgba(255, 255, 255, .9) 0 2.4px, rgba(150, 185, 225, .18) 3.4px, transparent 4.6px) 0 0 / 113px 97px;
+  /* buttons: a milk-white bead; the main one a sky-blue cap */
+  --bead: linear-gradient(180deg, #ffffff, #f1f4f8);
+  --bead-hover: linear-gradient(180deg, #ffffff, #e5eff8);
+  --carton: linear-gradient(180deg, var(--sky-hi), var(--sky) 55%, #7ab7e4);
+  --pour-sky: linear-gradient(180deg, rgba(255, 255, 255, .55) 0 22%, transparent 40%), linear-gradient(90deg, #a6d1f1, var(--sky-lo));
+  color-scheme: light;
+}
+/* the page: cream milk with a blue-white glow at the top, a soft pool below, droplets over it */
+html[data-skin="milk"] body::before {
+  background:
+    var(--droplets),
+    radial-gradient(70% 55% at 22% 0%, rgba(205, 228, 248, .75), transparent 70%),
+    radial-gradient(60% 50% at 90% 18%, rgba(255, 255, 255, .9), transparent 72%),
+    radial-gradient(90% 60% at 50% 110%, rgba(190, 215, 240, .45), transparent 75%),
+    linear-gradient(180deg, #f7f6f1, #f2f0e9 60%, #eeece4); }
+html[data-skin="milk"] body::after { opacity: 0; }
+html[data-skin="milk"][data-picture] body::before {
+  background: radial-gradient(120% 100% at 50% 40%, rgba(250, 249, 244, .6), rgba(244, 242, 236, .86)), var(--picture) center / cover no-repeat; }
+/* every pane: glossy milk glass, the splash and the ripples, a pale blue rim */
+html[data-skin="milk"] :is(.rail, .panel, .bay, .hero, .profile, .toast, .modal, .palette),
+html[data-skin="milk"] #main :is(.panel, .bay, .hero, .profile) {
+  background: var(--splash), var(--ripple), var(--glass);
+  border: 1px solid rgba(120, 165, 210, .34); box-shadow: var(--rim), var(--lift); }
+html[data-saving][data-skin="milk"] :is(.rail, .panel, .bay, .hero, .profile, .toast, .modal, .palette) { background: var(--splash), linear-gradient(165deg, #ffffff, var(--milk-2)); }
+html[data-skin="milk"] :is(.bay:hover, .profile:hover) { background: var(--splash), var(--ripple), var(--glass); border-color: rgba(95, 163, 216, .6); }
+html[data-skin="milk"] :is(.modal-back, .palette-back) { background: rgba(200, 214, 230, .45); }
+/* dialogs, the Ctrl+K list and messages sit on solid milk, so nothing behind shows through their words */
+html[data-skin="milk"] :is(.modal, .palette, .toast) { background: var(--splash), var(--ripple), linear-gradient(165deg, #ffffff, #f6f8fb); }
+html[data-skin="milk"] .swatch { outline-color: rgba(40, 70, 110, .22); }
+/* words: grey-blue; headings a deeper ink with a sky-blue cast; names darkest; values in the carton's deep blue */
+html[data-skin="milk"] :is(h1, h2, h3, .panel-head h2, .su-head h3, .modal h2) { color: #1f3f62; }
+html[data-skin="milk"] :is(.theme-label, .prof-label, .nav-label, .bay-kind) { color: var(--sky-ink); }
+html[data-skin="milk"] :is(.bay-head h3, .bay-name, .prof-head h3, .su-text b, .wp-name) { color: var(--ink-2); }
+html[data-skin="milk"] :is(.gauge-text b, .slider output, .bcell-text b, .ov-bat b, .prof-line b, .kv b) { color: var(--sky-ink); }
+html[data-skin="milk"] :is(.prof-now, .diff b, .pk.cur) { color: #8a4b1c; }
+html[data-skin="milk"] :focus-visible { outline-color: var(--sky-ink); }
+/* the side list: hover a sky-blue wash; the open page a sky-blue pane with a darker edge */
+html[data-skin="milk"] .nav:hover { background: var(--sky-wash); color: var(--ink-2); }
+html[data-skin="milk"] .nav.active { color: #163a5c; font-weight: 600; background: linear-gradient(180deg, #e6f2fb, #d4e9f8);
+  box-shadow: inset 0 1px 0 #fff, inset 0 0 0 1px rgba(95, 163, 216, .45), 0 2px 6px -3px rgba(40, 90, 140, .35); }
+html[data-skin="milk"] .nav.active .ic { color: var(--sky-ink); }
+/* buttons: milk beads with a pale blue edge; pressed sinks in; the main one is the sky-blue cap */
+html[data-skin="milk"] .btn { background: var(--bead); border: 1px solid rgba(60, 100, 150, .26); color: var(--ink-2);
+  box-shadow: inset 0 1px 0 #fff, 0 1px 2px rgba(40, 70, 110, .12); }
+html[data-skin="milk"] .btn:hover { background: var(--bead-hover); border-color: rgba(60, 120, 180, .42); }
+html[data-skin="milk"] .btn:active { background: #e6edf4; box-shadow: inset 0 2px 3px rgba(40, 70, 110, .18); }
+html[data-skin="milk"] :is(.btn.primary, button.primary) { background: var(--carton); border-color: rgba(50, 110, 170, .5); color: #0f2d4a; font-weight: 600;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7), 0 4px 12px -6px rgba(60, 130, 200, .7); }
+html[data-skin="milk"] :is(.btn.primary, button.primary):hover { background: linear-gradient(180deg, #cbe5f8, #a2d0f1 55%, #86bfe8); }
+html[data-skin="milk"] .btn.ghost { background: none; border-color: transparent; box-shadow: none; color: var(--ink); }
+html[data-skin="milk"] .btn.ghost:hover { background: var(--sky-wash); border-color: rgba(95, 163, 216, .4); }
+html[data-skin="milk"] .icon-btn:hover { background: var(--sky-wash); }
+/* boxes and choices: white wells with a pale blue edge */
+html[data-skin="milk"] :is(.text, select.text, .seg, .cmd-hint) { background-color: #ffffff; border: 1px solid rgba(60, 100, 150, .28); box-shadow: inset 0 1px 2px rgba(40, 70, 110, .1); }
+html[data-skin="milk"] :is(.text, select.text):focus { border-color: var(--sky-lo); }
+html[data-skin="milk"] .cmd-hint:hover { border-color: var(--sky-lo); }
+html[data-skin="milk"] .seg-thumb { background: var(--carton); border: 1px solid rgba(50, 110, 170, .45); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7); }
+html[data-skin="milk"] .seg button.sel { color: #0f2d4a; font-weight: 600; }
+html[data-skin="milk"] .combo-keys .pk { background: #fff; }
+/* pills: a sky wash with dark words */
+html[data-skin="milk"] .pill { background: rgba(140, 196, 236, .16); border-color: rgba(60, 110, 160, .26); color: var(--muted); box-shadow: none; }
+html[data-skin="milk"] :is(.pill.good, .pill.warn) { background: rgba(255, 255, 255, .7); color: var(--ink-2); border-color: rgba(60, 110, 160, .26); }
+html[data-skin="milk"] .pill.bad { color: #8e1f14; background: rgba(192, 57, 43, .1); border-color: rgba(192, 57, 43, .38); }
+html[data-skin="milk"] .pill.accent { color: #163a5c; background: rgba(140, 196, 236, .3); border-color: rgba(60, 120, 180, .45); }
+html[data-skin="milk"] .bay-top .pill { backdrop-filter: none; }
+html[data-skin="milk"] .bay-top .pill.good { color: #15613a; background: rgba(35, 130, 79, .1); border-color: rgba(35, 130, 79, .38); }
+html[data-skin="milk"] .bay-top .pill.good::before { background: var(--good); box-shadow: 0 0 0 2px rgba(35, 130, 79, .18); }
+html[data-skin="milk"] .bay-top .pill.warn { color: #6e4f00; background: rgba(200, 150, 20, .12); border-color: rgba(160, 115, 0, .4); }
+html[data-skin="milk"] .bay-top .pill.warn::before { background: #c8960f; box-shadow: none; }
+html[data-skin="milk"] .bay-top .pill.off { color: var(--muted); background: rgba(255, 255, 255, .7); border-color: rgba(60, 100, 150, .26); }
+html[data-skin="milk"] .bay-top .pill:not(.good):not(.warn):not(.off):not(.accent):not(.bad) { border-color: rgba(60, 100, 150, .32); }
+html[data-skin="milk"] .ghost-pill { border-color: rgba(60, 100, 150, .26); }
+/* the Connected line on each tile: deeper colors, so its words read on milk */
+html[data-skin="milk"] .link { --lc: #1f9a62; color: color-mix(in srgb, var(--lc) 62%, #0a2418); }
+html[data-skin="milk"] .link.asleep { --lc: #b07a00; }
+html[data-skin="milk"] :is(.link.off, .link.none) { --lc: #c0392b; }
+html[data-skin="milk"] .link.none { color: var(--muted); }
+/* switches: a pale blue well that fills sky blue when on; a white knob */
+html[data-skin="milk"] .switch { background: rgba(60, 100, 150, .2); box-shadow: inset 0 1px 2px rgba(40, 70, 110, .22); }
+html[data-skin="milk"] .switch .knob { background: #ffffff; box-shadow: 0 1px 3px rgba(40, 70, 110, .35), inset 0 -1px 0 rgba(60, 100, 150, .12); }
+html[data-skin="milk"] .switch.on { background: var(--pour-sky); box-shadow: inset 0 0 0 1px rgba(50, 110, 170, .45); }
+html[data-skin="milk"] .switch.on .knob { background: #ffffff; }
+/* sliders: the track fills sky blue; a white handle with a blue ring */
+html[data-skin="milk"] .slider input { height: 6px; background: linear-gradient(90deg, #a6d1f1, var(--sky-lo) var(--p), rgba(60, 100, 150, .16) var(--p)); box-shadow: inset 0 1px 1px rgba(40, 70, 110, .15); }
+html[data-skin="milk"] .slider input::-webkit-slider-thumb { background: #ffffff; box-shadow: 0 0 0 1.5px var(--sky-lo), 0 2px 5px rgba(40, 70, 110, .3); }
+/* gauges and loading bars: a pale track filling with sky blue */
+html[data-skin="milk"] :is(.gauge-bar, .loadbar, .mt-bar, .splash-bar, .skel i, .skel-ctl) { background: rgba(60, 100, 150, .13); }
+html[data-skin="milk"] :is(.gauge-bar i, .gauge-dots i.on, .gauge-signal i.on, .loadbar span, .loadbar-fill, .mt-fill) { background: var(--pour-sky); }
+html[data-skin="milk"] :is(.gauge-dots i, .gauge-signal i) { background: rgba(60, 100, 150, .18); }
+html[data-skin="milk"] .bcell-body { border-color: rgba(60, 100, 150, .45); }
+html[data-skin="milk"] .bcell-nub { background: rgba(60, 100, 150, .45); }
+html[data-skin="milk"] .ov-bat { background: rgba(255, 255, 255, .8); }
+/* the Overview's small battery: a deeper blue fill so the cut-out digits read, and its outline and the digits over the
+   empty part in grey-blue instead of white */
+html[data-skin="milk"] .bcell { --signal: #2f6fa5; }
+html[data-skin="milk"] .bcell-svg > rect:nth-of-type(1) { stroke: rgba(40, 70, 110, .42); }
+html[data-skin="milk"] .bcell-svg > rect:nth-of-type(2) { fill: rgba(40, 70, 110, .42); }
+html[data-skin="milk"] .bcell-svg > g text { fill: var(--muted); }
+/* the battery chart: dark lines on light, a light tooltip */
+html[data-skin="milk"] .bc-grid { stroke: rgba(50, 90, 140, .12); }
+html[data-skin="milk"] .bc-cross { stroke: rgba(50, 90, 140, .4); }
+html[data-skin="milk"] .bc-dot { stroke: #ffffff; }
+html[data-skin="milk"] .bc-tip { background: rgba(255, 255, 255, .97); border-color: rgba(60, 100, 150, .28); box-shadow: 0 6px 16px -8px rgba(40, 70, 110, .4); }
+/* the status dot and the connected pill */
+html[data-skin="milk"] .pill.good::before { background: var(--good); }
+html[data-skin="milk"] .dot { background: rgba(60, 100, 150, .3); }
+html[data-skin="milk"] .dot.connected { background: var(--good); }
+html[data-skin="milk"] .dot.asleep { background: #c8960f; }
+html[data-skin="milk"] :is(.dot.error, .dot.missing, .dot.idle, .dot.off) { background: var(--bad); }
+html[data-skin="milk"] .dot.connecting { background: var(--sky-lo); }
+/* the banner: a milk strip with a pale edge, tinted by its kind */
+html[data-skin="milk"] .banner { background: color-mix(in srgb, #e9b52a 12%, #fffdf6); border-color: rgba(160, 115, 0, .32); }
+html[data-skin="milk"] .banner.bad { background: color-mix(in srgb, var(--bad) 8%, #fffaf8); border-color: rgba(192, 57, 43, .32); }
+html[data-skin="milk"] .banner.info { background: var(--splash), var(--glass); border-color: rgba(120, 165, 210, .4); }
+/* messages and the Ctrl+K list */
+html[data-skin="milk"] .toast { color: var(--ink); box-shadow: var(--rim), 0 14px 30px -14px rgba(40, 70, 110, .45); }
+html[data-skin="milk"] .toast.bad { border-color: rgba(192, 57, 43, .45); }
+html[data-skin="milk"] .palette-item.sel { background: var(--sky-wash); color: var(--ink-2); box-shadow: inset 0 0 0 1px rgba(95, 163, 216, .4); }
+html[data-skin="milk"] .palette-item.sel .ic { color: var(--sky-ink); }
+/* wallpapers: white-rimmed tiles with a soft shadow, light buttons, a milk veil for the question */
+html[data-skin="milk"] .wp-thumb { border: 2px solid #ffffff; box-shadow: 0 0 0 1px rgba(60, 100, 150, .22), 0 8px 18px -12px rgba(40, 70, 110, .5); background: var(--milk-3); }
+html[data-skin="milk"] .wp-thumb:hover { box-shadow: 0 0 0 1px var(--sky-lo), 0 8px 18px -12px rgba(40, 70, 110, .5); }
+html[data-skin="milk"] .wp-del { background: rgba(255, 255, 255, .92); border-color: rgba(60, 100, 150, .3); color: var(--ink-2); }
+html[data-skin="milk"] .wp-del:hover { background: #c0392b; color: #fff; }
+html[data-skin="milk"] .wp-tile-ask { background: rgba(253, 252, 248, .94); color: var(--ink-2); }
+html[data-skin="milk"] .wp-quick-btn { background: var(--bead); border-color: rgba(60, 100, 150, .26); color: var(--ink-2); }
+html[data-skin="milk"] .wp-quick-btn:hover { background: var(--bead-hover); border-color: var(--sky-lo); }
+html[data-skin="milk"] .wp-low { box-shadow: 0 1px 3px rgba(40, 70, 110, .3); }
+/* the Appearance tiles: the Milk preview's card is milk white */
+html[data-skin="milk"] .mini-card, .theme-tile[data-bg="milk"] .mini-card { background: #ffffff; border-color: rgba(60, 100, 150, .22); }
+.theme-tile[data-bg="milk"] .mini-dot { background: #8cc4ec; }
+html[data-skin="milk"] .theme-mini { box-shadow: inset 0 0 0 1px rgba(60, 100, 150, .2); }
+html[data-skin="milk"] :is(.theme-swatch, .theme-bg i, .gauge-swatch, .kind-color .hexdot) { box-shadow: inset 0 0 0 1px rgba(40, 70, 110, .25); }
+html[data-skin="milk"] .art-style { background-color: rgba(60, 100, 150, .05); }
+/* the Keyboard page's key map: milk-white keys on a pale plate, so the dark words on them read */
+html[data-skin="milk"] .kb { background: rgba(60, 100, 150, .08); border-color: rgba(60, 100, 150, .2); }
+html[data-skin="milk"] :is(.key .cap, .picker-cur .bigcap) { background: linear-gradient(180deg, #ffffff, #f3f6f9); border-bottom-color: #c9d4e0; box-shadow: inset 0 0 0 1px rgba(60, 100, 150, .16); }
+html[data-skin="milk"] .key:hover .cap { background: #eaf3fb; }
+html[data-skin="milk"] .key.special .cap { background: linear-gradient(180deg, #f4f7fa, #e8edf3); }
+html[data-skin="milk"] .key.trans .cap { background: #eef1f5; }
+html[data-skin="milk"] .key.knob .cap { background: radial-gradient(circle at 40% 35%, #ffffff, #e4eaf1); box-shadow: inset 0 -3px 0 #c9d4e0, inset 0 0 0 1px rgba(60, 100, 150, .16); }
+html[data-skin="milk"] .key.sel .cap { background: var(--carton); border-bottom-color: #5a93c4; }
+html[data-skin="milk"] .key.sel .lbl { color: #0f2d4a; }
+html[data-skin="milk"] .key.down .cap { background: var(--c-keyboard); color: #ffffff; }
+html[data-skin="milk"] .key.down .lbl { color: #ffffff; }
+html[data-skin="milk"] .mini-legend span:first-child i { background: #ffffff !important; box-shadow: inset 0 0 0 1px rgba(60, 100, 150, .35); }
+html[data-skin="milk"] .mini-legend span:nth-child(2) i { background: #e3eaf2 !important; box-shadow: inset 0 0 0 1px rgba(60, 100, 150, .35); }
+html[data-skin="milk"] .key.tested .cap { box-shadow: inset 0 0 0 1.5px rgba(35, 130, 79, .6); }
+/* Setup */
+html[data-skin="milk"] :is(.su-doall, .inst-inline) { background: rgba(255, 255, 255, .7); border-color: rgba(60, 100, 150, .22); }
+html[data-skin="milk"] .su-st.warn { color: #6e4f00; }
+/* scrollbars and selection */
+html[data-skin="milk"] * { scrollbar-color: rgba(60, 100, 150, .32) transparent; }
+html[data-skin="milk"] ::selection { background: rgba(140, 196, 236, .45); }
+/* the drawings on a light page: a gentle milky wash (lighter, a little less color) and a soft blue shadow in place of
+   the dark one; not in Live battery, whose colors show the battery level (that look gets a soft blue-grey dish behind
+   it instead, so its light lines show on milk) */
+html[data-skin="milk"]:not([data-art="live"]) .art.mark { filter: saturate(.8) brightness(1.04) drop-shadow(0 10px 14px rgba(40, 70, 110, .24)); }
+html[data-skin="milk"] .art.mark .floor { fill: rgba(40, 70, 110, .22); }
+html[data-skin="milk"][data-art="live"] :is(.bay-art, .hero-art) { border-radius: var(--r-sm); background: radial-gradient(ellipse 80% 70% at 50% 30%, #42566e, #2c3c50 70%, #26344a);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18), inset 0 0 0 1px rgba(20, 40, 70, .35), 0 6px 14px -8px rgba(40, 70, 110, .5); }
+html[data-skin="milk"] .art-preview[data-art-preview="live"] { border-radius: 10px; background: radial-gradient(ellipse 70% 70% at 50% 50%, #3a4d63, #2a3a4e 70%, rgba(42, 58, 78, .4)); }
+
+/* ---------- Coral Reef (22 Oct 2026, Shawn: "Can you make a milk theme and a coral reef theme now") ----------
+   html[data-skin="coral-reef"]: a whole look under the sea, the same coverage as Old School and Verde. Deep teal-blue
+   water with faint light rays from the surface and a sandy glow at the floor; every pane is clear sea glass (a teal
+   tint with a lit edge) with tiny bubbles and sand specks; coral pinks and oranges for headings, buttons, switches,
+   sliders and bars (bars and switches drawn like a coral branch: a warm gradient dotted with polyps), turquoise and
+   sand for the rest. Body text 9:1, small text at 5:1 or better. CSS only, static (no animation). */
+html[data-skin="coral-reef"] {
+  --coral: #ff7f6a; --coral-pink: #ff8fa3; --coral-orange: #ffa552; --coral-hi: #ffb3a3; --coral-ink: #3b0d06;
+  --turq: #4fdccb; --turq-soft: rgba(79, 220, 203, .16); --sand: #f0dcae;
+  --panel: rgba(4, 40, 50, .35); --panel-2: rgba(4, 40, 50, .48); --panel-solid: #0a3440;
+  --raise: rgba(120, 230, 220, .09); --sunk: rgba(1, 20, 26, .45);
+  --line: rgba(120, 230, 220, .18); --line2: rgba(120, 230, 220, .32);
+  --text: #effbf9; --muted: rgba(226, 246, 243, .84); --faint: rgba(214, 240, 236, .72);
+  --good: #5fe3b0; --warn: #ffd36b; --bad: #ff8080;
+  --glass: linear-gradient(160deg, rgba(140, 240, 225, .13), rgba(20, 100, 115, .1) 45%, rgba(60, 190, 190, .09));
+  --rim: inset 0 1px 0 rgba(200, 255, 248, .26), inset 0 -1px 0 rgba(0, 0, 0, .2);
+  --lift: 0 18px 40px -20px rgba(0, 10, 16, .9);
+  --cutout: rgba(2, 24, 30, .6);
+  --card: rgba(8, 52, 64, .82); --card-solid-a: #0c3d4a; --card-solid-b: #072a34;
+  --dialog-a: rgba(12, 66, 80, .96); --dialog-b: rgba(6, 40, 50, .96);
+  /* the water inside each pane, under its glass */
+  --sea: linear-gradient(170deg, rgba(10, 74, 88, .78), rgba(6, 46, 58, .78) 55%, rgba(5, 38, 50, .82));
+  /* tiny bubbles (pale rings and dots) and sand specks; tile sizes that never line up */
+  --bubbles:
+    radial-gradient(circle at 30% 40%, transparent 0 1.4px, rgba(210, 255, 250, .2) 1.7px 2.2px, transparent 2.6px) 0 0 / 97px 113px,
+    radial-gradient(circle at 70% 20%, rgba(210, 255, 250, .12) 0 1px, transparent 1.5px) 0 0 / 71px 83px,
+    radial-gradient(circle at 50% 70%, transparent 0 2.4px, rgba(210, 255, 250, .16) 2.7px 3.2px, transparent 3.6px) 0 0 / 173px 191px;
+  --specks:
+    radial-gradient(circle at 40% 60%, rgba(240, 220, 174, .22) 0 .7px, transparent 1.2px) 0 0 / 41px 53px,
+    radial-gradient(circle at 80% 30%, rgba(240, 220, 174, .16) 0 .6px, transparent 1.1px) 0 0 / 67px 43px,
+    radial-gradient(circle at 20% 80%, rgba(255, 143, 163, .22) 0 .8px, transparent 1.3px) 0 0 / 89px 97px;
+  /* coral: pink into orange, dotted with polyps */
+  --polyps: radial-gradient(circle, rgba(255, 235, 225, .55) 0 1px, transparent 1.6px) 0 0 / 6px 6px;
+  --coral-fill: linear-gradient(180deg, rgba(255, 240, 230, .35) 0 20%, transparent 42%), linear-gradient(90deg, var(--coral-pink), var(--coral) 55%, var(--coral-orange));
+  --coral-btn: linear-gradient(180deg, #ffa894, #ff8670 55%, #f06d58);
+  --coral-btn-hover: linear-gradient(180deg, #ffb8a7, #ff957f 55%, #f67b66);
+  --reef-glass-btn: linear-gradient(180deg, rgba(255, 143, 120, .22), rgba(255, 127, 106, .1));
+}
+/* the water: deep teal-blue, lighter at the surface, faint rays of light from the top, a sandy glow at the floor,
+   bubbles over it */
+html[data-skin="coral-reef"] body::before {
+  background:
+    var(--bubbles),
+    radial-gradient(120% 34% at 50% 108%, rgba(240, 220, 174, .14), transparent 72%),
+    linear-gradient(180deg, transparent 0 28%, rgba(3, 32, 42, .6) 70%, rgba(2, 24, 32, .92)),
+    conic-gradient(from 150deg at 42% -12%, transparent 0deg, rgba(160, 245, 235, .12) 5deg, transparent 10deg, transparent 17deg, rgba(160, 245, 235, .09) 21deg,
+      transparent 27deg, rgba(160, 245, 235, .11) 34deg, transparent 39deg, transparent 47deg, rgba(160, 245, 235, .08) 52deg, transparent 58deg, transparent 360deg),
+    radial-gradient(70% 45% at 45% 0%, rgba(60, 190, 200, .28), transparent 75%),
+    linear-gradient(180deg, #0a4656, #063241 35%, #04232e 70%, #031a22); }
+html[data-skin="coral-reef"][data-picture] body::before {
+  background: radial-gradient(120% 100% at 50% 40%, rgba(3, 32, 42, .45), rgba(3, 26, 34, .78)), var(--picture) center / cover no-repeat; }
+/* every pane: clear sea glass over the water, bubbles and specks suspended, a lit turquoise edge */
+html[data-skin="coral-reef"] :is(.rail, .panel, .bay, .hero, .profile, .toast, .modal, .palette),
+html[data-skin="coral-reef"] #main :is(.panel, .bay, .hero, .profile) {
+  background: var(--bubbles), var(--specks), var(--glass), var(--sea);
+  border: 1px solid rgba(120, 230, 220, .26); box-shadow: var(--rim), var(--lift); }
+html[data-skin="coral-reef"] :is(.bay:hover, .profile:hover) { background: var(--bubbles), var(--specks), var(--glass), var(--sea); border-color: rgba(255, 143, 120, .55); }
+html[data-skin="coral-reef"] :is(.modal-back, .palette-back) { background: rgba(1, 16, 22, .55); }
+html[data-skin="coral-reef"] :is(.modal, .palette) { background: var(--bubbles), var(--glass), linear-gradient(170deg, #0d4756, #07303c 55%, #062833); }
+/* headings coral; labels turquoise; names white; values sand */
+html[data-skin="coral-reef"] :is(h1, h2, .panel-head h2, .su-head h3, .modal h2) { color: var(--coral-hi); }
+html[data-skin="coral-reef"] h1 { color: #ff9c87; text-shadow: 0 2px 14px rgba(255, 127, 106, .25); }
+html[data-skin="coral-reef"] :is(.theme-label, .prof-label, .nav-label, .bay-kind) { color: var(--turq); }
+html[data-skin="coral-reef"] :is(.bay-head h3, .bay-name, .prof-head h3, .su-text b, .wp-name) { color: #ffffff; }
+html[data-skin="coral-reef"] :is(.gauge-text b, .slider output, .bcell-text b, .ov-bat b, .prof-line b, .kv b) { color: var(--sand); }
+html[data-skin="coral-reef"] .panel-head > .ic { color: var(--coral-pink); }
+/* the side list: hover a turquoise wash; the open page a coral glow with a coral edge */
+html[data-skin="coral-reef"] .nav:hover { background: var(--turq-soft); color: #fff; }
+html[data-skin="coral-reef"] .nav.active { color: #fff; font-weight: 600; background: linear-gradient(90deg, rgba(255, 127, 106, .34), rgba(255, 143, 163, .12));
+  box-shadow: inset 3px 0 0 var(--coral), inset 0 0 0 1px rgba(255, 143, 120, .32); }
+html[data-skin="coral-reef"] .nav.active .ic { color: var(--coral-hi); opacity: 1; }
+/* buttons: coral glass with a coral edge; the main one solid coral with dark words; pressed sinks in */
+html[data-skin="coral-reef"] .btn { background: var(--reef-glass-btn); border: 1px solid rgba(255, 150, 128, .5); color: #ffe6df;
+  box-shadow: inset 0 1px 0 rgba(255, 220, 210, .22); }
+html[data-skin="coral-reef"] .btn:hover { background: linear-gradient(180deg, rgba(255, 143, 120, .34), rgba(255, 127, 106, .18)); border-color: var(--coral-hi); color: #fff; }
+html[data-skin="coral-reef"] .btn:active { box-shadow: inset 0 2px 4px rgba(0, 0, 0, .35); }
+html[data-skin="coral-reef"] :is(.btn.primary, button.primary) { background: var(--coral-btn); border-color: #c8513f; color: var(--coral-ink); font-weight: 600;
+  box-shadow: inset 0 1px 0 rgba(255, 235, 225, .6), 0 6px 16px -8px rgba(255, 110, 90, .7); }
+html[data-skin="coral-reef"] :is(.btn.primary, button.primary):hover { background: var(--coral-btn-hover); color: var(--coral-ink); }
+html[data-skin="coral-reef"] .btn.primary .ic { color: var(--coral-ink); }
+html[data-skin="coral-reef"] .btn.ghost { background: none; border-color: transparent; box-shadow: none; color: var(--text); }
+html[data-skin="coral-reef"] .btn.ghost:hover { background: var(--turq-soft); border-color: rgba(79, 220, 203, .36); }
+html[data-skin="coral-reef"] .icon-btn:hover { background: var(--turq-soft); color: #fff; }
+/* boxes and choices: deep water wells with a turquoise edge */
+html[data-skin="coral-reef"] :is(.text, select.text, .seg, .cmd-hint) { background-color: rgba(1, 22, 28, .55); border: 1px solid rgba(120, 230, 220, .3); box-shadow: inset 0 2px 3px rgba(0, 0, 0, .3); }
+html[data-skin="coral-reef"] :is(.text, select.text):focus, html[data-skin="coral-reef"] .cmd-hint:hover { border-color: var(--turq); }
+html[data-skin="coral-reef"] .seg-thumb { background: var(--coral-btn); border: 1px solid #c8513f; box-shadow: inset 0 1px 0 rgba(255, 235, 225, .55); }
+html[data-skin="coral-reef"] .seg button.sel { color: var(--coral-ink); font-weight: 600; }
+/* pills: water with a turquoise edge; connected in turquoise */
+html[data-skin="coral-reef"] .pill { background: rgba(1, 22, 28, .45); border-color: rgba(120, 230, 220, .26); box-shadow: none; }
+html[data-skin="coral-reef"] .pill.good { color: #c9fbf2; }
+html[data-skin="coral-reef"] .pill.accent { color: #ffe2da; }
+html[data-skin="coral-reef"] .bay-top .pill.good { color: #c9fbf2; background: rgba(79, 220, 203, .14); border-color: rgba(79, 220, 203, .42); }
+html[data-skin="coral-reef"] .bay-top .pill.good::before { background: var(--turq); box-shadow: 0 0 6px rgba(79, 220, 203, .8), 0 0 0 2px rgba(79, 220, 203, .2); }
+/* the Connected line on each tile in turquoise */
+html[data-skin="coral-reef"] .link:not(.asleep):not(.off):not(.none) { --lc: #4fdccb; }
+/* switches: a dark well that grows coral when on; a sand knob like a shell */
+html[data-skin="coral-reef"] .switch { background: rgba(1, 22, 28, .65); border: 1px solid rgba(120, 230, 220, .28); box-shadow: inset 0 2px 3px rgba(0, 0, 0, .45); }
+html[data-skin="coral-reef"] .switch .knob { background: radial-gradient(circle at 35% 30%, #fff6e2, var(--sand) 60%, #cdb27c); box-shadow: 0 1px 3px rgba(0, 0, 0, .5); }
+html[data-skin="coral-reef"] .switch.on { background: var(--polyps), var(--coral-fill); border-color: #c8513f; }
+html[data-skin="coral-reef"] .switch.on .knob { background: radial-gradient(circle at 35% 30%, #ffffff, #fbeacb 60%, #e2c890); }
+/* sliders: the track grows coral; a sand shell handle */
+html[data-skin="coral-reef"] .slider input { height: 6px; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .45);
+  background: linear-gradient(90deg, var(--coral-pink), var(--coral-orange) var(--p), rgba(1, 22, 28, .7) var(--p)); }
+html[data-skin="coral-reef"] .slider input::-webkit-slider-thumb { background: radial-gradient(circle at 35% 30%, #fff6e2, var(--sand) 60%, #cdb27c); box-shadow: 0 0 0 1.5px var(--coral), 0 2px 5px rgba(0, 0, 0, .5); }
+/* gauges and loading bars: a dark tube filling with coral and its polyps */
+html[data-skin="coral-reef"] :is(.gauge-bar, .loadbar, .mt-bar, .splash-bar) { background: rgba(1, 22, 28, .65); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .45); }
+html[data-skin="coral-reef"] :is(.gauge-bar i, .gauge-dots i.on, .gauge-signal i.on, .loadbar span, .loadbar-fill, .mt-fill) { background: var(--polyps), var(--coral-fill); }
+html[data-skin="coral-reef"] :is(.gauge-dots i, .gauge-signal i) { background: rgba(120, 230, 220, .16); }
+/* the status dot and the connected pill: turquoise */
+html[data-skin="coral-reef"] :is(.pill.good::before, .dot.connected) { background: var(--turq); }
+/* the banner: sea glass with a sand, coral or turquoise edge */
+html[data-skin="coral-reef"] .banner { border-radius: var(--r-sm); border: 1px solid rgba(255, 211, 107, .42); background: color-mix(in srgb, var(--warn) 12%, rgba(6, 46, 58, .85)); }
+html[data-skin="coral-reef"] .banner.bad { border-color: rgba(255, 128, 128, .45); background: color-mix(in srgb, var(--bad) 14%, rgba(6, 46, 58, .85)); }
+html[data-skin="coral-reef"] .banner.info { border-color: rgba(120, 230, 220, .32); background: var(--bubbles), var(--glass), var(--sea); }
+/* messages: sea glass with a coral band along the top */
+html[data-skin="coral-reef"] .toast { background: linear-gradient(180deg, var(--coral) 0 3px, transparent 3px), var(--bubbles), var(--glass), var(--sea); color: var(--text); }
+html[data-skin="coral-reef"] .toast :is(b, strong, .toast-msg) { color: #fff; }
+/* the Ctrl+K list */
+html[data-skin="coral-reef"] .palette-item.sel { background: var(--turq-soft); color: #fff; box-shadow: inset 0 0 0 1px rgba(79, 220, 203, .34); }
+html[data-skin="coral-reef"] .palette-item.sel .ic { color: var(--coral-hi); }
+/* the battery chart's tooltip in deep water */
+html[data-skin="coral-reef"] .bc-tip { background: rgba(3, 30, 38, .95); border-color: rgba(120, 230, 220, .3); }
+/* wallpapers: turquoise-rimmed tiles, coral buttons */
+html[data-skin="coral-reef"] .wp-thumb { border: 1px solid rgba(120, 230, 220, .35); box-shadow: 0 8px 18px -12px rgba(0, 0, 0, .8); }
+html[data-skin="coral-reef"] .wp-thumb:hover { border-color: var(--coral-hi); }
+html[data-skin="coral-reef"] .wp-del { background: rgba(3, 30, 38, .85); border-color: rgba(120, 230, 220, .35); color: #fff; }
+html[data-skin="coral-reef"] .wp-del:hover { background: rgba(200, 60, 50, .92); }
+html[data-skin="coral-reef"] .wp-tile-ask { background: rgba(3, 30, 38, .9); color: var(--text); }
+html[data-skin="coral-reef"] .wp-quick-btn { background: var(--reef-glass-btn); border-color: rgba(255, 150, 128, .5); color: #ffe6df; }
+html[data-skin="coral-reef"] .wp-quick-btn:hover { border-color: var(--coral-hi); color: #fff; }
+html[data-skin="coral-reef"] .wp-low { background: var(--sand); color: #3a2a08; }
+/* the Appearance tile's card: sea glass with a coral line */
+.theme-tile[data-bg="coral-reef"] .mini-card { background: rgba(79, 220, 203, .14); border-color: rgba(120, 230, 220, .3); }
+.theme-tile[data-bg="coral-reef"] .mini-dot { background: #ff7f6a; }
+/* Setup */
+html[data-skin="coral-reef"] .su-num { color: var(--turq); }
+html[data-skin="coral-reef"] :is(.su-doall, .inst-inline) { background: rgba(1, 22, 28, .4); border-color: rgba(120, 230, 220, .26); }
+/* scrollbars and selection */
+html[data-skin="coral-reef"] * { scrollbar-color: rgba(79, 220, 203, .35) transparent; }
+html[data-skin="coral-reef"] ::selection { background: rgba(255, 127, 106, .4); }
+/* the drawings take a little of the reef: warmer, a coral cast, a deep shadow under them; not in Live battery, whose
+   colors show the battery level */
+html[data-skin="coral-reef"]:not([data-art="live"]) .art.mark { filter: sepia(.22) saturate(1.25) hue-rotate(-12deg) drop-shadow(0 14px 22px rgba(0, 12, 18, .65)); }
+
+/* ---------- Setup, simpler (22 Oct 2026, pages/setup.js, docs/handoff/setup-simpler.md): one status line, the rows
+   that need you, devices as small tiles, the rest folded. Colors and corners come from the theme's own tokens, so
+   every skin picks it up. */
+.su-status { margin-bottom: 16px; padding-top: 16px; padding-bottom: 16px; }
+.su-status-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.su-status-top > .ic { width: 22px; height: 22px; flex: none; color: var(--muted); }
+.su-status.all-set .su-status-top > .ic { color: var(--good); }
+.su-status .su-text { flex: 1 1 260px; }
+.su-status h2 { margin: 0; font-size: 18px; }
+.su-status .su-lines { margin: 10px 0 0 36px; }
+.su-todo { padding-top: 8px; padding-bottom: 8px; }
+.su-tiles { display: flex; flex-wrap: wrap; gap: 8px; }
+.su-tile { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 7px 12px; border-radius: var(--r-sm); border: 1px solid var(--line); background: var(--sunk); color: var(--text); font: 500 13px var(--ui); cursor: pointer; }
+.su-tile:hover { border-color: var(--line2); }
+.su-tile > .ic { width: 16px; height: 16px; flex: none; color: var(--muted); }
+.su-tile > .su-tick { width: 14px; height: 14px; color: var(--good); }
+.su-tile-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.su-tile-st { font-size: 12px; color: var(--muted); }
+.su-tile-st::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--warn); margin-right: 6px; vertical-align: middle; }
+.su-tile.needs { border-color: color-mix(in srgb, var(--warn) 50%, var(--line)); }
+.su-tile.open { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 50%, transparent); }
+.su-tile-open { margin-top: 8px; }
+.su-tile-open .su-item { border-top: 0; }
+.su-fold { margin-bottom: 12px; padding-top: 14px; padding-bottom: 14px; }
+.su-fold > summary { cursor: pointer; font: 600 14px var(--ui); color: var(--muted); list-style: none; display: flex; align-items: center; gap: 10px; }
+.su-fold > summary::-webkit-details-marker { display: none; }
+.su-fold > summary::before { content: ""; width: 6px; height: 6px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform .12s; }
+.su-fold[open] > summary::before { transform: rotate(45deg); }
+.su-fold > summary:hover { color: var(--text); }
+.su-fold .su-list { margin-top: 8px; }
+.su-item.su-done .su-text b::before, .su-item.su-optional .su-text b::before { display: none; }
+@media (max-width: 640px) {
+  .su-status .su-lines { margin-left: 0; }
+  .su-tile { flex: 1 1 calc(50% - 8px); }
+}
+html[data-skin="old-school"] .su-fold > summary { color: var(--osrs-orange); }
+html[data-skin="verde"] .su-fold > summary { font-family: var(--chunky); color: #ffffff; }

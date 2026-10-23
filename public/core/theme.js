@@ -66,7 +66,7 @@ export const THEME_ACCENTS = [[SILVER, 'Silver'], ['#d9c4a0', 'Sand'], ['#c9a27e
 // pink or green backdrop. Make it more minimal"), and so did the light Cream and Paper the same day ("no light mode");
 // a saved one shows as the nearest that is left. Slate (too close to Graphite) became Ocean, a deep teal.
 export const THEME_BGS = [['graphite', 'Graphite', '#050507', '110, 120, 145'], ['black', 'Black', '#000000', '55, 55, 62'],
-  ['ocean', 'Ocean', '#010a0d', '35, 150, 175'], ['midnight', 'Midnight', '#03060e', '60, 95, 170'],
+  // Ocean and Midnight went (22 Oct 2026, Shawn: "remove the ocean and midnight theme"); a saved one shows as Graphite
   ['espresso', 'Espresso', '#0a0806', '150, 122, 96'],
   // a whole look, not only a color (22 Oct 2026, Shawn: "make an old school runescape theme"): stone panels, orange
   // headings, square buttons, black text shadows (html[data-skin="old-school"], style.css end). Drawn in CSS only.
@@ -74,9 +74,17 @@ export const THEME_BGS = [['graphite', 'Graphite', '#050507', '110, 120, 145'], 
   // a whole look on a bottle of green verde sauce (22 Oct 2026, Shawn: everything green, built around the bottle, like
   // Old School and not only a color): olive glass panels, lime neck-band heads, white headings, round cap buttons
   // (html[data-skin="verde"], style.css end). Colors only, drawn in CSS. The purple backdrop added the same day was removed (Shawn); a saved one shows as Verde.
-  ['verde', 'Verde', '#0b0e04', '125, 139, 42', 'verde']];
-const OLD_BGS = { plum: 'midnight', forest: 'graphite', cream: 'espresso', paper: 'graphite', slate: 'graphite', 'taco-night': 'verde' };
+  ['verde', 'Verde', '#0b0e04', '125, 139, 42', 'verde'],
+  // two more whole looks (22 Oct 2026, Shawn: "Can you make a milk theme and a coral reef theme now"): Milk, the one
+  // light look (glossy milk-white glass, a pale sky-blue accent, grey-blue words), and Coral Reef (deep teal water,
+  // sea-glass panes, coral headings, buttons and bars). html[data-skin="milk"] / ["coral-reef"], style.css end. CSS only.
+  ['milk', 'Milk', '#f4f2ec', '140, 180, 220', 'milk'],
+  ['coral-reef', 'Coral Reef', '#03202a', '30, 150, 160', 'coral-reef']];
+const OLD_BGS = { plum: 'graphite', ocean: 'graphite', midnight: 'graphite', forest: 'graphite', cream: 'espresso', paper: 'graphite', slate: 'graphite', 'taco-night': 'verde' };
 const theme = { accent: SILVER, bg: 'graphite' };
+// what the silver accent becomes on each whole look, and its name in Settings
+export const SKIN_SILVER = { 'old-school': '#ffb83f', verde: '#8cc63f', milk: '#8cc4ec', 'coral-reef': '#ff7f6a' };
+export const SKIN_SILVER_NAME = { 'old-school': 'Gold', verde: 'Verde', milk: 'Sky blue', 'coral-reef': 'Coral' };
 export const currentTheme = () => ({ ...theme });
 export function applyTheme(s = {}) {
   if (/^#[0-9a-f]{6}$/i.test(s.themeAccent || '')) theme.accent = s.themeAccent.toLowerCase();
@@ -84,8 +92,9 @@ export function applyTheme(s = {}) {
   if (THEME_BGS.some(([k]) => k === bgKey)) theme.bg = bgKey;
   const bg = THEME_BGS.find(([k]) => k === theme.bg);
   if (bg[4]) document.documentElement.dataset.skin = bg[4]; else delete document.documentElement.dataset.skin;
-  // on Old School the silver accent is the game's gold; on Verde it is the verde green
-  const r = document.documentElement.style, a = theme.accent === SILVER && bg[4] === 'old-school' ? '#ffb83f' : theme.accent === SILVER && bg[4] === 'verde' ? '#8cc63f' : theme.accent, silver = a === SILVER;
+  // on Old School the silver accent is the game's gold, on Verde the verde green, on Milk a milk-carton sky blue, on
+  // Coral Reef coral
+  const r = document.documentElement.style, a = (theme.accent === SILVER && SKIN_SILVER[bg[4]]) || theme.accent, silver = a === SILVER;
   // text on the accent: dark on a light color, white on a dark one
   const [R, G, B] = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16) / 255);
   const lum = 0.2126 * R + 0.7152 * G + 0.0722 * B;
