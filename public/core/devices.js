@@ -526,6 +526,20 @@ export function startPolling() {
   }, 5000);
 }
 
+// A driver's error that reached no caller (an unhandled rejection or a throw from its own timer; helpers/driver-guard.js
+// catches it so DeviceHub keeps running, 22 Oct 2026): the device is marked asleep for a "no reply" (its next look asks
+// again) or in error otherwise (retried every 30 s by the agent), and one Activity line says so.
+export function driverFault(id, err) {
+  const d = devices[id];
+  if (remote || !d) return;
+  const msg = String(err?.message || err || 'unknown error').split(/\r?\n/)[0].slice(0, 200);
+  if (err?.gone) { markMissing(id); return; }
+  if (isAsleep({ message: msg })) { if (d.status !== 'asleep') set(id, { status: 'asleep', error: msg }); return; }
+  const was = d.status;
+  set(id, { status: 'error', error: msg });
+  if (env.agent && was !== 'error') log(`${d.adapter.title}: its driver hit an error (${msg}); DeviceHub kept running and tries it again`, 'bad', id);
+}
+
 export function markMissing(id) { delete rawCache[id]; if (!remote && devices[id] && devices[id].status !== 'missing') { set(id, { status: 'missing', error: null }); if (env.agent) log(`${devices[id].adapter.title} unplugged`, 'info', id); } }
 
 // The devices to show: those this PC has had (the agent's seen-devices.json) or has connected now; every device in

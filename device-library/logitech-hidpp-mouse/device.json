@@ -40,12 +40,14 @@
     "c09a",
     "c09b",
     "c09d",
+    "c0a8",
     "c332",
     "b01c",
     "b024",
     "b02e"
   ],
   "models": [
+    "PRO X2 SUPERSTRIKE",
     "PRO X SUPERLIGHT 2",
     "PRO X SUPERLIGHT",
     "PRO 2 LIGHTSPEED",
@@ -89,7 +91,9 @@
     "never looked up or sent: DFU, reset, OOB state, force pairing, and since 22 Oct 2026 BLE pre-pairing 0x1816 and Lightspeed pairing 0x0309 (Solaar hidpp20_constants.py)",
     "every write read back; DPI, report rate and lift-off written only in host mode; every write refused while G HUB (lghub*.exe) runs",
     "22 Oct 2026: models covered by their libratbag ids alone (data/devices @ 8235b5bb): USB ids in WIRED, Bluetooth ids G603 b01c, G604 b024, G705 b02e; every feature is still found at connect, so a setting appears only if the mouse answers it. G502 HERO, G502 Proteus Spectrum and G604 read their profile 1-based (libratbag INDEX_OFFSET)",
-    "22 Oct 2026 (problem report DeviceHub-support#2): on a receiver every slot 1-6 is asked read-only (ping, getFeature 0x2201, the kind from DEVICE_NAME 0x0005 fn 0x20 per Solaar hidpp20.py get_kind) and only a slot whose device has 0x2201 is run; a keyboard or other device there is left alone with no error (the driver lets go of the receiver), nothing answering is the normal asleep state, and one driver owns each slot when several Logitech drivers share a receiver"
+    "22 Oct 2026 (problem report DeviceHub-support#2): on a receiver every slot 1-6 is asked read-only (ping, getFeature 0x2201, the kind from DEVICE_NAME 0x0005 fn 0x20 per Solaar hidpp20.py get_kind) and only a slot whose device has 0x2201 is run; a keyboard or other device there is left alone with no error (the driver lets go of the receiver), nothing answering is the normal asleep state, and one driver owns each slot when several Logitech drivers share a receiver",
+    "22 Oct 2026 (docs/handoff/superstrike.md): PRO X2 SUPERSTRIKE on its receiver C54D (WPID 40BD, Solaar docs/devices) or its cable C0A8 (xatuke superstrike controller @ c3ad5366): battery 0x1004, DPI stage and onboard / host mode written; HITS buttons (0x1B0C ANALOG_BUTTONS) per button: actuation point 1-10, rapid trigger 1-5, click haptics 0-5, each written as the record read with only its byte changed (value << 2, the rapid-trigger flag bit kept) and read back byte for byte (kazehana @ 1b599dd0, oddvalue linux-superstrike @ 42588e73, xatuke @ c3ad5366, Solaar AnalogButtonTuning @ e7304c4c); DPI (0x2202 fn 0x50), report rate (0x8061, up to 8000 Hz on the receiver, 1000 on the cable) and the active profile shown",
+    "a mouse with 0x2202 and no 0x2201 is run (it used to be stepped aside): its DPI shown from 0x2202 fn 0x50"
   ],
   "doesNotWork": [
     "mouse name and firmware version (0x0005 / 0x0003 function codes not in the sheet)",
@@ -100,11 +104,13 @@
     "lighting: 0x8071 has no read-back; 0x8070 effect parameter layouts are not in the sheet",
     "button remapping: 0x1B04 remap targets and its read reply layout are not in the sheet",
     "angle snapping and surface tuning: no documented bytes (0x2240 is an id only)",
-    "mice with only 0x2202 and no 0x2201 (DPI is read through 0x2201)",
     "Bluetooth: only G603 (b01c), G604 (b024) and G705 (b02e) have a documented Bluetooth id (libratbag @ 8235b5bb); no other covered mouse has one in any source read. On Bluetooth the report rate is not looked up, read or written",
-    "G602: its own receiver (C537) is not one this driver opens, and libratbag reads its DPI list differently (HIDPP20_QUIRK_G602)"
+    "G602: its own receiver (C537) is not one this driver opens, and libratbag reads its DPI list differently (HIDPP20_QUIRK_G602)",
+    "PRO X2 SUPERSTRIKE: DPI, report rate and lift-off are shown, not written (two sources measured its DPI and rate getters returning stale values after a write, so a read-back cannot prove a change; the LOD values disagree between sources); the profile is shown, not written (a select reloads the profile, resetting DPI stage and HITS); the rapid-trigger on/off flag is kept as read (sources disagree whether the host may change it); gaming surface mode 0x8090 and bunny-hop 0x80E0 are not offered (one source only; 0x80E0 fn 0x20 is a write that looks like a read)",
+    "mice with only 0x2202: DPI is shown, not written (the paged 0x2202 DPI list is not read)"
   ],
   "status": "read-only",
+  "updated": "2026-10-22T23:50:00Z",
   "tested": [
     {
       "by": "DeviceHub (simulation only)",

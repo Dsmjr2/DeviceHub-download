@@ -27,15 +27,20 @@ const DEMO_ORGB = () => ({ running: true, protocol: 3, controllers: [
   { index: 0, name: 'B450 AORUS PRO WIFI-CF', vendor: 'Gigabyte', type: 'motherboard', zones: [{ name: 'Motherboard', leds: 5 }, { name: 'D_LED1 header', leds: 30 }], leds: 35, mode: 'Static', color: '#ff6a1a', same: true },
   { index: 1, name: 'Trident Z RGB', vendor: 'G.Skill', type: 'ram', zones: [{ name: 'DRAM', leds: 8 }], leds: 8, mode: 'Rainbow', color: '#ff0000', same: false }] });
 const DEMO_BT = [{ name: 'Xbox Wireless Controller', le: true, connected: true, battery: 80 }, { name: 'AirPods Pro', le: false, connected: false, battery: null }];
-const st = { bt: null, pc: null, orgb: null, loading: false, error: null, include: true };
+// demo: why fans may be missing (helpers/lights-diagnose.js answers the real one)
+const DEMO_DIAG = { board: 'Gigabyte B450 AORUS PRO WIFI-CF', openrgb: { state: 'running', usbOnly: false }, found: [], verdict: { kind: 'usb', line: 'reachable over USB: should show after Find lights' },
+  seen: [{ id: '048d:8297', name: 'Gigabyte RGB Fusion 2 USB', kind: 'board', found: true }], problems: [] };
+const st = { bt: null, pc: null, orgb: null, diag: null, loading: false, error: null, include: true };
 let redraw = () => {};
 
 export async function loadPc(fresh = false, after) {
-  if (isDemo()) { const first = !st.pc; st.pc = DEMO_PC; if (!st.orgb) st.orgb = DEMO_ORGB(); st.bt = DEMO_BT; if (first) redraw(); return; }
+  if (isDemo()) { const first = !st.pc; st.pc = DEMO_PC; if (!st.orgb) st.orgb = DEMO_ORGB(); st.diag = DEMO_DIAG; st.bt = DEMO_BT; if (first) redraw(); return; }
   if (st.loading) return; st.loading = true;
   try {
     const [pc, orgb] = await Promise.all([env.api(`/api/pc${fresh ? '?fresh=1' : ''}`), env.api(`/api/openrgb${fresh ? '?fresh=1' : ''}`)]);
     st.pc = pc; st.orgb = orgb; st.error = null;
+    // why fans may be missing: the board, the lighting controllers on USB and what Find lights said (read-only)
+    env.api('/api/lights/diagnose').then((d) => { st.diag = d; redraw(); }).catch(() => {});
     env.api(`/api/bluetooth${fresh ? '?fresh=1' : ''}`).then((bt) => { st.bt = bt; redraw(); }).catch(() => {});
   } catch (e) { st.error = e.message; }
   finally { st.loading = false; redraw(); if (after) after(); }
@@ -137,6 +142,23 @@ function boardGuide(open = false, again = 'Look again') {
     h('p', { class: 'faint', style: { fontSize: '12px', margin: '8px 0 0' } }, 'DeviceHub never writes to the board or RAM itself: everything goes through OpenRGB.'));
 }
 
+// What was found and why fan lights may be missing (helpers/lights-diagnose.js), in place: no pop-ups or tooltips.
+// Get help for lights sends Shawn the same facts in one click (helpers/get-help.mjs, area "lights").
+function fanHelp() {
+  const d = st.diag;
+  if (!d || d.isolated) return null;
+  const row = (label, what, how) => h('div', { class: 'pc-part' }, h('div', { class: 'pc-part-head' }, h('span', { class: 'muted' }, label), h('b', {}, what)), how ? h('small', { class: 'faint' }, how) : null);
+  const seenHow = (c) => (c.found === true ? 'OpenRGB found it.' : c.found === false ? 'Plugged in, but OpenRGB did not list it (see below).' : 'Reachable over USB: should show after Find lights.');
+  return h('div', { class: 'pc-guide' },
+    h('h3', {}, 'Fan lights'),
+    h('div', { class: 'pc-parts' },
+      row('Board', d.board || 'not read', null),
+      ...(d.seen || []).map((c) => row(c.kind === 'hub' ? 'Fan hub' : 'Lighting chip', `${c.name} (USB ${c.id})`, seenHow(c))),
+      d.verdict && d.verdict.kind !== 'usb' ? row('So', d.verdict.kind === 'smbus' ? "on the board's SMBus" : 'no lighting controller found', d.verdict.line[0].toUpperCase() + d.verdict.line.slice(1) + '.') : null),
+    ...(d.problems || []).map((p) => h('div', { class: 'gh-note', style: { margin: '8px 0 0' } }, h('b', {}, `${p.problem}. `), `${p.why} `, h('span', {}, `Fix: ${p.fix}`))),
+    getHelp('lights', () => 'lights'));
+}
+
 function pcLights() {
   const o = st.orgb;
   const head = [h('h2', {}, 'PC lights')];
@@ -147,8 +169,9 @@ function pcLights() {
     return card(head,
       b?.canStart ? h('p', { class: 'faint' }, `DeviceHub carries OpenRGB ${b.version} for USB lights (no drivers, so not the board, RAM or graphics card). Find lights starts it hidden; it stops when DeviceHub quits.`)
         : h('p', { class: 'faint' }, 'Board, fan and RAM lights work through OpenRGB 1.1 or newer, a free app (openrgb.org). Open it and turn on its SDK server; the lights then show here and in Apply to all.'),
-      o.reason && o.reason !== 'not running' ? h('p', { class: 'faint', style: { fontSize: '12.5px' } }, o.reason) : null,
+      o.reason && o.reason !== 'not running' && !st.diag?.problems?.length ? h('p', { class: 'faint', style: { fontSize: '12.5px' } }, o.reason) : null,
       h('div', { class: 'actions' }, button(b?.canStart ? 'Find lights' : 'Look again', () => loadPc(true), { kind: 'small', ic: 'refresh' })),
+      fanHelp(),
       boardGuide(!b?.canStart, b?.canStart ? 'Find lights' : 'Look again'));
   }
   return card([...head, h('span', { class: 'spacer' }), pill(`${o.controllers.length} found`, 'good')],
@@ -162,6 +185,7 @@ function pcLights() {
       button('Undo', async () => { if (isDemo()) { st.orgb = DEMO_ORGB(); redraw(); toast('PC lights undone', 'good'); return; } try { await env.api('/api/openrgb/restore', {}); toast('PC lights undone', 'good'); } catch (e) { toast('Nothing to undo', 'bad', { detail: e.message }); } loadPc(true); }, { kind: 'small', ic: 'undo' }),
       button('Look again', () => loadPc(true), { kind: 'ghost small', ic: 'refresh' })),
     // the built-in OpenRGB reaches USB lights only: the way to the board and RAM stays one click away
+    fanHelp(),
     o.bundled ? boardGuide() : null);
 }
 

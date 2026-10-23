@@ -18,7 +18,7 @@ const app = fs.readFileSync(path.join(ROOT, 'public/app.js'), 'utf8');
 const pages = [];
 for (const n of (/const PAGES = \[([^\]]+)\]/.exec(app) || [])[1].split(',').map((s) => s.trim())) {
   const f = new RegExp(`import ${n} from '\\./(pages/[\\w-]+\\.js)'`).exec(app)[1];
-  pages.push(/\bid: '([\w-]+)'/.exec(fs.readFileSync(path.join(ROOT, 'public', f), 'utf8'))[1]);
+  { const src = fs.readFileSync(path.join(ROOT, 'public', f), 'utf8'); pages.push((/export default \{[\s\S]*?\bid: '([\w-]+)'/.exec(src) || /\bid: '([\w-]+)'/.exec(src))[1]); }  // the page's own id, not a demo row's
 }
 
 const chromes = ['C:/Program Files/Google/Chrome/Application/chrome.exe', path.join(process.env.LOCALAPPDATA || '', 'Google/Chrome/Application/chrome.exe'), 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'];

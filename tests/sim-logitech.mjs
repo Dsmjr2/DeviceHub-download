@@ -17,13 +17,16 @@ const h = (a) => Array.from(a, (b) => b.toString(16).padStart(2, '0')).join(' ')
 // profiles: { count, oneBasedRead, profile (1-based), slot (0-4) }; ext: { caps (0x2202 b2), lod, y }
 // replyIndex: the device index the mouse puts in its replies (a Bluetooth device answers 0xFF with 0x00, Solaar base.py)
 // kind: what DEVICE_NAME fn 0x20 answers (Solaar hidpp20_constants.py DEVICE_KIND: 0 keyboard, 3 mouse), when 0x0005 is in features
-function simMouse({ pid, slot, features, dpiList, rateExt, rateMask, battery, mode, profiles, ext, replyIndex, kind }) {
+// hits: the HITS feature 0x1B0C (22 Oct 2026, docs/handoff/superstrike.md): { caps: [6 bytes], recs: { btn: [act, rt, hap] raw } };
+// fn 0x00 caps, fn 0x20 [btn] read, fn 0x10 [btn, act, rt, hap] write, refusing what the sources say the mouse refuses
+// (K PROTOCOL.md: out of range -> 0x02 invalid argument; S: a reserved low bit set -> INVALID_ARGUMENT; X: index 2 answers nothing)
+function simMouse({ pid, slot, features, dpiList, rateExt, rateMask, battery, mode, profiles, ext, replyIndex, kind, hits }) {
   const state = { dpi: 800, defaultDpi: 800, rateIndex: 3, rateMs: 1, mode, ...battery, ...(profiles || {}), lod: ext?.lod ?? 0, y: ext?.y ?? 0 };
   const byIndex = Object.fromEntries(Object.entries(features).map(([id, i]) => [i, Number(id)]));
   const sent = [];
   const listeners = new Set();
   const dev = {
-    opened: false, productId: pid, sent, state, failNext: null, eventFirst: false,
+    opened: false, productId: pid, sent, state, hits, failNext: null, eventFirst: false,
     async open() { this.opened = true; },
     addEventListener(t, fn) { if (t === 'inputreport') listeners.add(fn); },
     removeEventListener(t, fn) { listeners.delete(fn); },
@@ -68,6 +71,14 @@ function simMouse({ pid, slot, features, dpiList, rateExt, rateMask, battery, mo
       else if (id === F.EXT_ADJUSTABLE_DPI && fn === 0x60 && ext) { if (p[0] !== 0 || p[5] > 2) return emit(err(0x02)); state.dpi = (p[1] << 8) | p[2]; state.y = (p[3] << 8) | p[4]; state.lod = p[5]; out = []; }
       else if (id === F.ONBOARD_PROFILES && fn === 0x10) { if (![1, 2].includes(p[0])) return emit(err(0x02)); state.mode = p[0]; out = []; }
       else if (id === F.DEVICE_NAME && fn === 0x20) out = [kind ?? 3];
+      else if (id === F.ANALOG_BUTTONS && hits && fn === 0x00) out = hits.caps;
+      else if (id === F.ANALOG_BUTTONS && hits && fn === 0x20) { if (!(p[0] in hits.recs)) return emit(err(0x02)); out = [p[0], ...hits.recs[p[0]]]; }
+      else if (id === F.ANALOG_BUTTONS && hits && fn === 0x10) {
+        const [bt, a, r, hp] = p;
+        if (!(bt in hits.recs) || (a & 3) || a < 0x04 || a > 0x28 || (r & 2) || (r >> 2) < 1 || (r >> 2) > 5 || (hp & 3) || hp > 0x14) return emit(err(0x02));
+        if (!hits.ignoreWrites) hits.recs[bt] = [a, r, hp];   // ignoreWrites: acks but keeps the old record
+        out = [bt, a, r, hp];
+      }
       else return emit(err(0x07));                                                             // invalid function
       emit(reply(out));
     },
@@ -496,16 +507,167 @@ driver.vendorApp = async () => null;
   SLOT_OWNERS.delete('C539:1');
   check(await driver.connect(false) && driver.index === 1 && SLOT_OWNERS.get('C539:1') === 'logitech-hidpp-mouse' && !SLOT_OWNERS.has('C539:2'), 'freed: the next connect takes slot 1 and lets slot 2 go');
 
-  // f) a mouse whose kind is mouse but which has no 0x2201 (0x2202 only): stepped aside, said plainly, no error
-  const onlyExt = simMouse({ pid: 0xc539, slot: 1, kind: 3, features: { [F.DEVICE_NAME]: 2, [F.EXT_ADJUSTABLE_DPI]: 3 }, dpiList: [], rateMask: 0, battery: {}, mode: 0 });
+  // f) a mouse with 0x2202 and no 0x2201 (22 Oct 2026, the PRO X2 SUPERSTRIKE's shape): run now, its DPI shown from
+  // 0x2202 fn 0x50 and never written; a device with neither DPI feature is still stepped aside, plainly
+  const onlyExt = simMouse({ pid: 0xc539, slot: 1, kind: 3, features: { [F.DEVICE_NAME]: 2, [F.EXT_ADJUSTABLE_DPI]: 3 }, dpiList: [], rateMask: 0, battery: {}, mode: 0, ext: { caps: 0x00 } });
   useDevice(simReceiver(0xc539, { 1: onlyExt }));
+  check(await driver.connect(false) && driver.index === 1 && !driver.superstrike, 'a 0x2202-only mouse is run (slot 1)');
+  check((await driver.read()).dpi === 800 && has(onlyExt, [0x01, 3, 0x5b, 0x00]) && driver.settings.find((s) => s.key === 'dpi').type === 'display', 'its DPI is read through 0x2202 fn 0x50 and shown only');
+  e = await refusal(() => driver.write('dpi', 1600));
+  check(/shown only|a reading/.test(e?.message || '') && !onlyExt.sent.some((s) => s.b[1] === 3 && (s.b[2] & 0xf0) === 0x60), `a 0x2202-only DPI write is refused unsent (${e?.message})`);
+  const neither = simMouse({ pid: 0xc539, slot: 1, kind: 3, features: { [F.DEVICE_NAME]: 2, [F.UNIFIED_BATTERY]: 3 }, dpiList: [], rateMask: 0, battery: {}, mode: 0 });
+  useDevice(simReceiver(0xc539, { 1: neither }));
   e = await refusal(() => driver.connect(false));
-  check(e?.notMine && /a mouse without the DPI feature 0x2201/.test(e.message) && NOT_A_FAULT.test(e.message), `a 0x2202-only mouse: stepped aside, plainly (${e?.message})`);
+  check(e?.notMine && /a mouse without a DPI feature \(0x2201 or 0x2202\)/.test(e.message) && NOT_A_FAULT.test(e.message), `a mouse with no DPI feature at all: stepped aside, plainly (${e?.message})`);
   // g) Bolt with the keyboard in slot 1 and the mouse in slot 3
   rx = simReceiver(0xc548, { 1: keyboard(0xc548, 1), 3: mouse(0xc548, 3) });
   useDevice(rx);
   check(await driver.connect(false) && driver.index === 3 && /Bolt/.test((await driver.info()).Connection), 'Bolt: keyboard in 1, slot 2 empty, mouse in 3 run');
   SLOT_OWNERS.clear();
+}
+
+// ---- 10. PRO X2 SUPERSTRIKE (22 Oct 2026, docs/handoff/superstrike.md): on its receiver C54D and its cable C0A8, with the
+// feature table K feature-table.txt @ 1b599dd0 lists (indexes as there; the driver looks them up anyway): no 0x2201, no
+// 0x8060; HITS 0x1B0C with the caps K, X and S read (00 03 28 14 14 01); the records X and the G HUB capture show ----
+{
+  const { SUPERSTRIKE, HITS, hitsLevels } = await import('../device-library/logitech-hidpp-mouse/device.mjs');
+  const fsm = await import('node:fs');
+  const meta = JSON.parse(fsm.readFileSync(new URL('../device-library/logitech-hidpp-mouse/device.json', import.meta.url), 'utf8'));
+  check(RECEIVERS.includes(0xc54d) && WIRED[0xc0a8] === 'PRO X2 SUPERSTRIKE' && WPIDS[0x40bd] === 'PRO X2 SUPERSTRIKE' && SUPERSTRIKE.cable === 0xc0a8, 'SUPERSTRIKE ids: receiver C54D, cable C0A8, WPID 40BD');
+  check(meta.pids.includes('c54d') && meta.pids.includes('c0a8') && meta.models.includes('PRO X2 SUPERSTRIKE'), 'device.json names the SUPERSTRIKE and both its ids');
+  check([0x1500, 0x1802, 0x1805, 0x1817, 0x9403, 0x1801, 0x1803, 0x1890, 0x1e00].every((id) => NEVER.includes(id)), 'its pairing, reset, OOB, manufacturing, RF test, hidden and flash-update(?) features are on the never list');
+  const table = { [F.FEATURE_SET]: 1, 0x0003: 2, [F.DEVICE_NAME]: 3, 0x1d4b: 4, 0x0020: 5, [F.UNIFIED_BATTERY]: 6, 0x2250: 7, 0x2251: 8, [F.EXT_ADJUSTABLE_DPI]: 9, 0x8090: 0x0a, 0x80e0: 0x0b,
+    [F.ANALOG_BUTTONS]: 0x0c, [F.EXT_REPORT_RATE]: 0x0d, [F.ONBOARD_PROFILES]: 0x0e, 0x8110: 0x0f, 0x1500: 0x10, 0x1801: 0x11, 0x1802: 0x12, 0x1803: 0x13, 0x1806: 0x14, 0x1817: 0x15, 0x1805: 0x16, 0x9403: 0x19, 0x1e00: 0x1d };
+  const superstrike = (pid, slot, rateMask) => simMouse({ pid, slot, kind: 3, features: table, dpiList: [], rateExt: true, rateMask, battery: { percent: 29, charge: 0, external: 0 }, mode: 1,
+    profiles: { count: 5, oneBasedRead: true, profile: 1, slot: 2 }, ext: { caps: 0x03, lod: 2, y: 800 },
+    hits: { caps: [0x00, 0x03, 0x28, 0x14, 0x14, 0x01], recs: { 0: [0x0c, 0x09, 0x14], 1: [0x08, 0x08, 0x0c] } } });
+  const ssBytes = (m) => JSON.stringify(m.hits?.recs);
+  const run = async (m, idx, rx) => {
+    const tag = idx === 0xff ? 'cable' : 'receiver';
+    const frm = () => (rx || m).sent.map((s) => s.b);
+    const hitsFrames = (fn) => frm().filter((b) => b[1] === 0x0c && (b[2] & 0xf0) === fn);
+    check(await driver.connect(false) && driver.superstrike && driver.index === idx, `${tag}: the SUPERSTRIKE connects at index ${idx.toString(16)}`);
+    check(!frm().some((b) => b[1] === 0 && (b[2] & 0xf0) === 0 && NEVER.includes((b[3] << 8) | b[4])), `${tag}: none of its never-list features is looked up, though the mouse has them`);
+    check(frm().some((b) => h(b.slice(0, 5)) === `${idx.toString(16).padStart(2, '0')} 00 0b 1b 0c`) && hitsFrames(0x00).length === 1, `${tag}: getFeature 0x1B0C and HITS caps fn 0x00`);
+    check(frm().every((b) => b[1] !== 0x0c || [0x00, 0x10, 0x20].includes(b[2] & 0xf0)), `${tag}: only HITS fn 0x00 / 0x10 / 0x20 are ever sent`);
+    const keys = driver.settings.map((s) => s.key);
+    check(Object.keys(HITS).every((k) => keys.includes(k)), `${tag}: the six HITS settings are listed (${keys})`);
+    const rng = (k) => { const s = driver.settings.find((x) => x.key === k); return `${s.type} ${s.min}-${s.max}/${s.step}`; };
+    check(rng('actuationLeft') === 'slider 1-10/1' && rng('rapidTriggerRight') === 'slider 1-5/1' && rng('hapticsLeft') === 'slider 0-5/1', `${tag}: ranges from its caps: ${rng('actuationLeft')}, ${rng('rapidTriggerRight')}, ${rng('hapticsLeft')}`);
+    check(['dpi', 'reportRate', 'profile'].every((k) => driver.settings.find((x) => x.key === k).type === 'display'), `${tag}: DPI, report rate and profile are shown only`);
+    let v = await driver.read();
+    check(v.actuationLeft === 3 && v.rapidTriggerLeft === 2 && v.hapticsLeft === 5 && v.actuationRight === 2 && v.rapidTriggerRight === 2 && v.hapticsRight === 3, `${tag}: HITS read (${JSON.stringify(v)})`);
+    check(v.dpi === 800 && v.profile === 1 && v.dpiStage === 3 && v.mode === 'onboard' && v.liftOff === undefined, `${tag}: DPI 800 from 0x2202 fn 0x50, profile 1 (sector 1), stage 3, onboard, no lift-off (${JSON.stringify(v)})`);
+    check(v.reportRate === 1000 && driver.caps.rate.hz.join() === (idx === 0xff ? '125,250,500,1000' : '125,250,500,1000,2000,4000,8000'), `${tag}: rate 1000 Hz, listed ${driver.caps.rate.hz}`);
+    check(frm().some((b) => h(b.slice(0, 4)) === `${idx.toString(16).padStart(2, '0')} 0c 2b 00`) && frm().some((b) => h(b.slice(0, 4)) === `${idx.toString(16).padStart(2, '0')} 0c 2b 01`), `${tag}: HITS read = 0x1B0C fn 0x20 [00] and [01]`);
+    const start = ssBytes(m);
+    // a changed value: only its byte moves; the rapid-trigger flag (bit 0 of 09) is kept
+    let n = frm().length;
+    check((await driver.write('hapticsLeft', 2)) === 2, `${tag}: left haptics 2 written and read back`);
+    check(hitsFrames(0x10).slice(-1).map((b) => h(b.slice(0, 7)))[0] === `${idx.toString(16).padStart(2, '0')} 0c 1b 00 0c 09 08`, `${tag}: left haptics 2 = 0C 1B 00 0C 09 08 (act and rt as read)`);
+    check((await driver.write('rapidTriggerLeft', 4)) === 4 && h(m.hits.recs[0]) === '0c 11 08', `${tag}: rapid trigger 4 with its flag kept = 0x11 (${h(m.hits.recs[0])})`);
+    check((await driver.write('actuationRight', 10)) === 10 && h(m.hits.recs[1]) === '28 08 0c', `${tag}: right actuation 10 = 0x28`);
+    // exact restore: the values read at the start go back and the raw bytes are what they were
+    for (const [k, val] of [['hapticsLeft', 5], ['rapidTriggerLeft', 2], ['actuationRight', 2]]) await driver.write(k, val);
+    check(ssBytes(m) === start, `${tag}: restored to the exact raw records (${ssBytes(m)} vs ${start})`);
+    // an unchanged write is sent, with exactly the raw bytes read
+    n = hitsFrames(0x10).length;
+    check((await driver.write('hapticsLeft', 5)) === 5 && hitsFrames(0x10).length === n + 1 && h(hitsFrames(0x10).slice(-1)[0].slice(3, 7)) === '00 0c 09 14', `${tag}: the same value is still sent, as the raw record 00 0C 09 14`);
+    // out of range or not a whole number: refused, nothing sent
+    n = hitsFrames(0x10).length;
+    for (const [k, val] of [['actuationLeft', 0], ['actuationLeft', 11], ['rapidTriggerRight', 0], ['rapidTriggerRight', 6], ['hapticsRight', 6], ['hapticsRight', -1], ['hapticsLeft', 2.5], ['actuationLeft', '3']]) {
+      e = await refusal(() => driver.write(k, val));
+      check(/whole number/.test(e?.message || ''), `${tag}: ${k} = ${JSON.stringify(val)} refused (${e?.message})`);
+    }
+    check(hitsFrames(0x10).length === n && ssBytes(m) === start, `${tag}: nothing sent for the refused values`);
+    // shown-only settings are refused before anything is sent
+    const before = frm().length;
+    for (const [k, val] of [['dpi', 1600], ['reportRate', 8000], ['profile', 2], ['liftOff', 'high']]) {
+      e = await refusal(() => driver.write(k, val));
+      check(/shown only|a reading|read-only/.test(e?.message || ''), `${tag}: ${k} write refused (${e?.message})`);
+    }
+    check(frm().length === before, `${tag}: no DPI, rate, profile or lift-off write was sent`);
+    // what still writes as on other mice: DPI stage (0x8100 fn 0xC0) and the settings source
+    check((await driver.write('dpiStage', 4)) === 4 && m.state.slot === 3 && (await driver.write('dpiStage', 3)) === 3 && m.state.slot === 2, `${tag}: DPI stage written, read back, put back`);
+    // a write the mouse acknowledges but does not keep: the byte-for-byte read-back reports it as failed
+    m.hits.ignoreWrites = true;
+    e = await refusal(() => driver.write('hapticsLeft', 1));
+    check(/reads back/.test(e?.message || '') && ssBytes(m) === start, `${tag}: an acknowledged write that did not change the mouse is reported as failed (${e?.message})`);
+    m.hits.ignoreWrites = false;
+    // G HUB running: refused, nothing sent
+    driver.vendorApp = async () => 'lghub_agent.exe';
+    n = frm().length;
+    e = await refusal(() => driver.write('hapticsRight', 3));
+    check(/G HUB/.test(e?.message || '') && frm().length === n, `${tag}: HITS write refused while G HUB runs, nothing sent (${e?.message})`);
+    driver.vendorApp = async () => null;
+    // a byte off the documented grid reads as unknown, so it is never written back
+    m.hits.recs[1] = [0x09, 0x0a, 0x0e];
+    v = await driver.read();
+    check(v.actuationRight === undefined && v.rapidTriggerRight === undefined && v.hapticsRight === undefined && v.actuationLeft === 3, `${tag}: reserved low bits set: the right button reads as unknown (${JSON.stringify(v)})`);
+    m.hits.recs[1] = [0x08, 0x08, 0x0c];
+    const info = await driver.info();
+    check(/SUPERSTRIKE/.test(info.Model) && /actuation 1-10, rapid trigger 1-5, haptics 0-5/.test(info['HITS buttons']) && /DPI/.test(info['Shown only']), `${tag}: info (${JSON.stringify(info)})`);
+    const raw = await driver.rawBackup();
+    check(raw.hits?.join('|') === '00 0c 09 14|01 08 08 0c', `${tag}: rawBackup holds the raw HITS records (${raw.hits})`);
+    check(ssBytes(m) === start && m.state.mode === 1 && m.state.dpi === 800 && m.state.rateIndex === 3 && m.state.profile === 1, `${tag}: the mouse ends exactly as it started`);
+  };
+  // receiver C54D, slot 1 (K: "device index 1"); slot 2 empty
+  const ssRx = superstrike(0xc54d, 1, 0x7f);
+  const rxS = { opened: false, productId: 0xc54d, sent: [], async open() { this.opened = true; }, close() {}, addEventListener: (t, f) => ssRx.addEventListener(t, f), removeEventListener: (t, f) => ssRx.removeEventListener(t, f),
+    async sendReport(id, data) { this.sent.push({ reportId: id, b: Array.from(data) }); if (data[0] === 1) return ssRx.sendReport(id, data); } };
+  useDevice(rxS);
+  await run(ssRx, 1, rxS);
+  check(/receiver C54D \(slot 1\)/.test((await driver.info()).Model), 'the receiver model line names C54D and the slot');
+  // cable C0A8: index 0xFF, the cable lists 125-1000 Hz (X: "The cable supports a maximum of 1000 Hz"; fn 0x10 mask 0x000f)
+  const ssCable = superstrike(0xc0a8, 0xff, 0x0f);
+  useDevice(ssCable);
+  await run(ssCable, 0xff);
+  check((await driver.info()).Model === 'Logitech PRO X2 SUPERSTRIKE' && (await driver.info()).Connection === 'USB cable', 'the cable is named from its id');
+  check(hitsLevels([0, 0x0c, 0x09, 0x14], 0, { act: 10, rt: 5, hap: 5 }).act === 3 && hitsLevels([1, 0x0c, 0x09, 0x14], 0, { act: 10, rt: 5, hap: 5 }).act === undefined, 'a record for another button is not read as this one');
+
+  // the library self-check after Turn on settings: each HITS value written back as the exact raw record read; DPI, rate
+  // and profile (shown only) are never written; the mouse ends byte for byte as it started
+  {
+    const fs = fsm, os = await import('node:os'), path = await import('node:path');
+    const { guard, readVerified } = await import('../helpers/my-devices.mjs');
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-logi-ss-'));
+    const m = superstrike(0xc0a8, 0xff, 0x0f);
+    // a fresh, unguarded copy of the driver module (the one above is already guarded by section 6)
+    const fresh = await import('../device-library/logitech-hidpp-mouse/device.mjs?superstrike-selfcheck');
+    const d2 = fresh.default;
+    d2.vendorApp = async () => null; d2.pingMs = 150;
+    fresh.useDevice(m);
+    // the driver's own refusal, before DeviceHub's guard is laid over it
+    check(await d2.connect(false) && d2.superstrike, 'fresh driver copy: SUPERSTRIKE connects');
+    for (const [k, val] of [['dpi', 1600], ['reportRate', 8000], ['profile', 2], ['liftOff', 'high']]) {
+      const r = await refusal(() => d2.write(k, val));
+      check(/shown only on this mouse/.test(r?.message || ''), `the driver itself refuses ${k} (${r?.message})`);
+    }
+    check(!m.sent.some((s) => (s.b[1] === 0x09 && (s.b[2] & 0xf0) === 0x60) || (s.b[1] === 0x0d && (s.b[2] & 0xf0) === 0x30) || (s.b[1] === 0x0e && (s.b[2] & 0xf0) === 0x30)), 'nothing was sent for them');
+    m.sent.length = 0;
+    const backups = [], logs = [];
+    guard(d2, folder, { status: 'read-only', source: 'device-library/logitech-hidpp-mouse' }, { backup: async (b) => backups.push(b), log: (t) => logs.push(t), now: () => new Date('2026-10-22T18:00:00Z'), version: 'v1' });
+    check(await d2.connect(false), 'guarded SUPERSTRIKE connects');
+    const writes = () => m.sent.filter((s) => (s.b[1] === 0x0c && (s.b[2] & 0xf0) === 0x10) || (s.b[1] === 0x0e && [0x10, 0x30, 0xc0].includes(s.b[2] & 0xf0)) || (s.b[1] === 0x09 && (s.b[2] & 0xf0) === 0x60) || (s.b[1] === 0x0d && (s.b[2] & 0xf0) === 0x30));
+    check(writes().length === 0 && d2.library.turnOn, 'before Turn on settings nothing is written');
+    const start = ssBytes(m);
+    const on = await d2.turnOn();
+    const vf = readVerified(folder);
+    check(on.on && Object.keys(HITS).every((k) => vf.keys[k]?.ok === true), `after Turn on settings every HITS setting passes (${JSON.stringify(Object.fromEntries(Object.keys(HITS).map((k) => [k, vf.keys[k]])))})`);
+    const hw = m.sent.filter((s) => s.b[1] === 0x0c && (s.b[2] & 0xf0) === 0x10).map((s) => h(s.b.slice(3, 7)));
+    check(hw.length === 6 && hw.filter((x) => x === '00 0c 09 14').length === 3 && hw.filter((x) => x === '01 08 08 0c').length === 3, `the self-check sent each record exactly as read (${hw.join(' | ')})`);
+    check(ssBytes(m) === start && backups.length === 1, 'the self-check left the raw records as they were, after one backup');
+    check(!m.sent.some((s) => (s.b[1] === 0x09 && (s.b[2] & 0xf0) === 0x60) || (s.b[1] === 0x0d && (s.b[2] & 0xf0) === 0x30) || (s.b[1] === 0x0e && (s.b[2] & 0xf0) === 0x30)), 'no DPI, rate or profile write was sent by the self-check');
+    check(vf.keys.dpi === undefined && vf.keys.reportRate === undefined && vf.keys.profile === undefined && vf.keys.dpiStage?.ok && vf.keys.mode?.ok && m.state.mode === 1, 'shown-only settings are not checked; DPI stage and mode pass with their own value');
+    fs.rmSync(folder, { recursive: true, force: true });
+  }
+  // the next mouse is not a SUPERSTRIKE: everything back as before (DPI slider, rate choice, no HITS settings)
+  const after = simMouse({ pid: 0xc094, slot: 0xff, features: { [F.ADJUSTABLE_DPI]: 5, [F.REPORT_RATE]: 6 }, dpiList: [100, 0xe000 | 50, 25600], rateMask: 0x8b, battery: {}, mode: 0 });
+  useDevice(after);
+  check(await driver.connect(false) && !driver.superstrike, 'another mouse after it connects');
+  const dS = driver.settings.find((s) => s.key === 'dpi'), rS = driver.settings.find((s) => s.key === 'reportRate');
+  check(dS.type === 'slider' && dS.min === 100 && dS.max === 25600 && rS.type === 'choice' && driver.settings.find((s) => s.key === 'profile').type === 'choice' && !driver.settings.some((s) => HITS[s.key]), `the next mouse gets its own settings back (${dS.type}, ${rS.type}, ${driver.settings.map((s) => s.key)})`);
+  check((await driver.write('dpi', 1600)) === 1600 && (await driver.write('dpi', 800)) === 800, 'and its DPI writes as before');
 }
 
 console.log(fails.length ? `sim-logitech: FAILED: ${fails.join('; ')}` : 'sim-logitech (Logitech HID++ mouse driver, simulated): all good');

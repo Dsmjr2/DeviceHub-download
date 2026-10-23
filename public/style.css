@@ -1835,3 +1835,50 @@ html[data-skin="verde"] #main :is(.bay, .profile) .btn:not(.ghost) { text-shadow
 /* the device drawings take the theme's color too (Shawn: "everything green"), except in Live battery, whose colors
    show the battery level */
 html[data-skin="verde"]:not([data-art="live"]) .art.mark { filter: hue-rotate(-115deg) saturate(1.1); }
+
+/* ---------- Setup (22 Oct 2026, pages/setup.js): every setup step on one page, one row each ----------
+   Built on the Set up card's rows (.su-list, .su-item, .su-text) so both skins pick it up; one column, read top to
+   bottom; at phone width each row's button drops under its text. */
+.setup-page { max-width: 1080px; }
+.setup-page .su-lede { margin: -4px 0 14px; font-size: 14px; }
+.setup-page > .su-fine { margin: -8px 0 14px; }
+.su-section { margin-bottom: 16px; }
+.su-section .panel-head { margin-bottom: 6px; }
+.su-num { color: var(--faint); font-variant-numeric: tabular-nums; }
+.su-section .su-item { flex-wrap: wrap; row-gap: 8px; }
+.su-section .su-text { flex: 1 1 320px; }
+.su-driver { color: var(--faint) !important; font-size: 12px !important; }
+.su-st { flex: none; min-width: 84px; justify-content: center; }
+.pill.none { color: var(--faint); background: transparent; border: 1px dashed var(--line2); }
+.su-ctl { flex: none; display: flex; align-items: center; justify-content: flex-end; min-width: 0; }
+.su-ctl:empty { display: none; }
+.su-ctl .get-help, .su-ctl .works-report { margin-top: 0 !important; }
+/* an answer that opens in place (an install's plan, a Get help report, a close to confirm) takes the whole row */
+.su-ctl:has(.inst-inline, .gh-card, .gh-note, .works-invite, .su-confirm, .loadbar-wrap) { flex: 1 1 100%; justify-content: flex-start; }
+.su-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.su-confirm small { color: var(--text); font-size: 13px; }
+.inst-inline { display: grid; gap: 8px; width: 100%; max-width: 620px; padding: 12px 14px; border-radius: 14px; background: var(--sunk); border: 1px solid var(--line); font-size: 13px; }
+.inst-inline .actions { margin: 4px 0 0; justify-content: flex-start; }
+.su-doall { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 14px; margin: 0 0 8px; border-radius: 14px; background: var(--sunk); border: 1px solid var(--line); }
+.su-doall .su-text { display: grid; gap: 2px; flex: 1 1 320px; min-width: 0; }
+.su-doall .su-text small { color: var(--muted); font-size: 12.5px; }
+.su-lines { display: grid; gap: 2px; margin-top: 4px; }
+.su-lines small { color: var(--text) !important; }
+.su-item.su-needs .su-text b::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--signal, var(--accent)); margin-right: 8px; vertical-align: middle; }
+.setup-card.short { gap: 0; padding-top: 14px; padding-bottom: 14px; }
+.setup-card.short .su-top h2 { font-size: 15px; }
+.setup-card.short .su-top > .ic { width: 18px; height: 18px; color: var(--muted); }
+@media (max-width: 640px) {
+  .su-section .su-text { flex-basis: 100%; }
+  .su-st { min-width: 0; }
+  .su-ctl { flex: 1 1 auto; justify-content: flex-start; }
+  .setup-card.short .su-top { flex-wrap: wrap; }
+}
+html[data-skin="old-school"] :is(.su-num, .su-doall .su-text b) { color: var(--osrs-orange); }
+html[data-skin="old-school"] :is(.su-doall, .inst-inline) { border-radius: 4px; border: 1px solid var(--edge); background: rgba(0, 0, 0, .25); box-shadow: inset 1px 1px 0 rgba(0, 0, 0, .5); }
+html[data-skin="old-school"] .su-lines small { color: var(--osrs-yellow) !important; }
+html[data-skin="old-school"] .pill.none { border-style: dashed; border-color: var(--line2); }
+html[data-skin="verde"] .su-num { color: #eef7dc; }
+html[data-skin="verde"] :is(.su-doall, .inst-inline) { border-radius: var(--r-sm); border: 1.5px solid rgba(170, 220, 100, .32); background: rgba(14, 20, 3, .45); }
+html[data-skin="verde"] .su-st.warn { color: #ffe7b8; }
+@media (min-width: 641px) { .su-section .su-ctl:not(:has(.inst-inline, .gh-card, .gh-note, .works-invite, .su-confirm, .loadbar-wrap)) { min-width: 172px; } }

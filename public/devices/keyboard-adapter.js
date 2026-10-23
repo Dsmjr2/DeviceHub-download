@@ -53,7 +53,13 @@ function index(parts, limits, what) {
 
 const adapter = {
   id: 'keyboard',
-  get title() { return layout.name; },
+  // the connected keyboard's own USB name when it differs from the layout's (22 Oct 2026, support issue 3: the slot is
+  // named after the keyboard found, never only after the layout it uses); the layout's name otherwise (the P75 says
+  // "EPOMAKER P75", shown as "Epomaker P75" as before)
+  get title() {
+    const own = String(base?.info?.name || '').trim();
+    return own && own.toLowerCase() !== String(layout.name).toLowerCase() ? own.slice(0, 60) : layout.name;
+  },
   kind: 'Keyboard',
   get vendor() { return layout === P75 ? { label: 'Epomaker driver', app: 'epomaker' } : { label: 'VIA', app: 'via' }; },
   get unsupported() { return layout === P75 ? ['per-key colors', 'battery level', 'sleep timer', 'wireless pairing setup'] : ['per-key colors', 'battery level', 'firmware updates']; },

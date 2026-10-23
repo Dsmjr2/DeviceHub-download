@@ -4,7 +4,7 @@
 // any path the driver has, and no write while NGENUITY runs. Run: node tests/sim-hyperx.mjs (no hardware)
 import fs from 'node:fs';
 import { setDeviceProvider } from '../public/devices/hid.js';
-import { problem } from '../helpers/my-devices.mjs';
+import { problem, selfCheck } from '../helpers/my-devices.mjs';
 import { validateMeta } from '../helpers/device-library.mjs';
 import driver, { Link, MODELS, NEVER, FAMILIES, checkFrame, modelFor } from '../device-library/hyperx-cloud/device.mjs';
 
@@ -163,6 +163,39 @@ check(modelFor('05B7')?.readOnlyWhy && modelFor('1743')?.readOnlyWhy && !modelFo
   check(v2.autoOff === 20 && s.feature.length >= 1 && hex(s.feature[0].slice(0, 4)) === '06 ff bb 06', 'Cloud II Wireless: falls back to a feature report when the output write is refused');
   s.refuseOutput = false;
   check(!cmdsSent(s).includes(0x01) && s.harm.length === 0, `Cloud II Wireless: the wireless-status get 01 was never sent (${s.harm})`);
+
+  // support issue 4 (22 Oct 2026): a real Cloud II Wireless failed 5 of 8 settings with "the device did not report its
+  // value". It reports only mic mute, sidetone on/off and auto-off, so only those are offered, and all three pass.
+  check(JSON.stringify(driver.settings.map((x) => x.key)) === JSON.stringify(['sidetone', 'micMute', 'autoOff']), `Cloud II Wireless: offers only sidetone, mic mute and auto-off (${driver.settings.map((x) => x.key)})`);
+  const inf = await driver.info();
+  check(!('Sidetone level (raw)' in inf) && inf['Boom mic'] === 'attached', `Cloud II Wireless: the raw sidetone byte 0B (no documented scale) is not in info (${JSON.stringify(inf)})`);
+  check(/^no reply/.test((await driver.rawBackup()).replies.sidetoneLevelRaw) === false, 'Cloud II Wireless: the raw sidetone byte stays in the raw backup');
+  const r = await selfCheck(driver, driver.write, { backup: async () => true });
+  check(r.ran && r.counts.checked === 3 && r.counts.passed === 3 && r.counts.failed === 0, `Cloud II Wireless: the self-check checks 3 settings and all pass (${JSON.stringify(r.counts)}: ${JSON.stringify(r.keys)})`);
+  check(s.state.sidetone === 1 && s.state.micMute === 0 && s.state.autoOff === 20, 'Cloud II Wireless: the self-check left every value as it was');
+
+  // support issues 3 and 5: a write slower than the reply wait must not reject a promise nobody waits on (it stopped
+  // DeviceHub with "no reply to 06 ff bb 08"). The wait starts after the write; a reply that never comes is an
+  // ordinary, handled error.
+  const stray = [];
+  const onStray = (e) => stray.push(String(e?.message || e));
+  process.on('unhandledRejection', onStray);
+  const slow = hp();
+  const realSend = slow.sendReport.bind(slow);
+  slow.sendReport = async (id, data) => { await new Promise((ok) => setTimeout(ok, 60)); return realSend(id, data); };
+  const slowLink = new Link(slow, MODELS[0], { timeoutMs: 30 });
+  let got = null;
+  try { got = await slowLink.get('micAttached'); } catch (e) { got = e.message; }
+  check(got === true, `Cloud II Wireless: a write slower than the reply wait still gets its reply (${got})`);
+  slow.getMap = {};   // the headset stops answering (asleep)
+  let err = null;
+  try { await slowLink.get('micAttached'); } catch (e) { err = e.message; }
+  // the caller gives up early, as the agent's own time limits do; the driver's timer fires after that
+  const gaveUp = await Promise.race([slowLink.get('autoOff').then(() => 'answered', () => 'failed'), new Promise((ok) => setTimeout(() => ok('gave up'), 5))]);
+  await new Promise((ok) => setTimeout(ok, 400));
+  process.off('unhandledRejection', onStray);
+  check(/^no reply to 06 ff bb 08/.test(err || ''), `Cloud II Wireless: no reply is an ordinary error to its caller (${err})`);
+  check(gaveUp === 'gave up' && stray.length === 0, `Cloud II Wireless: no unhandled rejection when the caller stopped waiting (${stray.join('; ')})`);
 }
 
 // ---- Cloud Alpha Wireless ----
@@ -231,7 +264,8 @@ check(modelFor('05B7')?.readOnlyWhy && modelFor('1743')?.readOnlyWhy && !modelFo
   check(b.percent === null, 'Cloud III Wireless: battery ignored when bytes 2 and 3 are zero');
   const inf = await driver.info();
   check(inf.Connected === 'yes' && /unconfirmed/.test(Object.keys(inf).join()) && /read-only|none/.test(inf.Changes), `Cloud III Wireless: info ${JSON.stringify(inf)}`);
-  check(inf['Sidetone level (raw)'] === '3' && inf['Product color code (mapping unconfirmed)'] === '2', 'Cloud III Wireless: raw sidetone level 88 and product color 8F in info');
+  check(!('Sidetone level (raw)' in inf) && inf['Product color code (mapping unconfirmed)'] === '2', 'Cloud III Wireless: product color 8F in info; the raw sidetone byte (no documented scale) is not shown');
+  check(JSON.stringify(driver.settings.map((x) => x.key)) === JSON.stringify(['sidetone', 'micMute', 'autoOff', 'silentMode']), `Cloud III Wireless: offers only its own settings (${driver.settings.map((x) => x.key)})`);
   check(!('sidetoneLevel' in v) && !('sidetoneStep' in v), 'Cloud III Wireless: its raw sidetone byte is not shown on a ranged slider');
   for (const [k, val] of [['sidetone', false], ['micMute', false], ['autoOff', 20], ['silentMode', true]]) await refused(k, val, `Cloud III Wireless: ${k} (ids "possible")`, s);
   check(!cmdsSent(s).some((c) => c < 0x80) && s.harm.length === 0, `Cloud III Wireless: only 0x8x gets were sent, never 1E or 83 (${s.harm})`);

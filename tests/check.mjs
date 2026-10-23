@@ -64,7 +64,7 @@ for (const n of names) {
   const imp = new RegExp(`import ${n} from '\\./(pages/[\\w-]+\\.js)'`).exec(app);
   if (!imp) { problems.push(`public/app.js: page ${n} has no import`); continue; }
   const src = fs.readFileSync(path.join(ROOT, 'public', imp[1]), 'utf8');
-  const id = (/\bid: '([\w-]+)'/.exec(src) || [])[1];
+  const id = (/export default \{[\s\S]*?\bid: '([\w-]+)'/.exec(src) || /\bid: '([\w-]+)'/.exec(src) || [])[1];  // the page's own id
   if (!id) problems.push(`${imp[1]}: no page id`); else ids.push(id);
 }
 const dup = ids.filter((x, i) => ids.indexOf(x) !== i);

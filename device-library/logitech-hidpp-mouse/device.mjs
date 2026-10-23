@@ -37,6 +37,28 @@
 // and DPI slot (0x8100 fn 0xC0), and lift-off (0x2202 fn 0x60, DPI rewritten as read), each read back. Writes are refused
 // while G HUB runs (vendorApp()). DPI, rate and lift-off are
 // only written in host mode (the sheet lists them as easy to undo "in host mode"); a mouse in onboard mode says so.
+//
+// PRO X2 SUPERSTRIKE (22 Oct 2026, docs/handoff/superstrike.md): receiver 046d:c54d (WPID 40BD) or its cable 046d:c0a8.
+// Sources, read-only, by commit:
+//   K = kazehana99k/Logitech-PRO-X2-SUPERSTRIKE-Linux-haptics-actuation-control- PROTOCOL.md, feature-table.txt @ 1b599dd0
+//   O = oddvalue/linux-superstrike REVERSE_ENGINEERING.md, internal/hidpp/analog.go @ 42588e73
+//   X = xatuke/logitech-superstrike-pro-x2-controller docs/PROTOCOL.md, src/ss2k.c, udev/99-superstrike.rules @ c3ad5366
+//   S = pwr-Solaar/Solaar settings_templates.py AnalogButtonTuning, docs/devices/PRO X 2 Superstrike 40BD.txt,
+//       docs/PRO_X2_SUPERSTRIKE_CLI.md @ e7304c4c
+//   - It has NO 0x2201 and NO 0x8060 (O, X, S feature tables): DPI is 0x2202 (read fn 0x50) and the rate 0x8061. A mouse
+//     with 0x2202 and no 0x2201 is now run (it used to be stepped aside), its DPI shown from 0x2202 fn 0x50.
+//   - HITS buttons, feature 0x1B0C ANALOG_BUTTONS (K, O, X, S agree byte for byte): caps fn 0x00 -> [flags, buttons,
+//     act<<2, rt<<2, hap<<2]; read fn 0x20 [btn] -> [btn, act<<2, (rt<<2)|flag, hap<<2]; write fn 0x10 [btn, act, rt, hap]
+//     with the whole record; byte 2 bit 0 is a flag kept as read (S, O: "must be preserved"; X: a rapid-trigger on/off the
+//     sources disagree about, so it is never changed here); other low bits reserved (S). Left = 0, right = 1 (all four).
+//     Each value is one setting: the write sends the record read just before with only that byte changed, so writing the
+//     value read sends back exactly the raw bytes read; read back byte for byte (K and X: read-back verified on the mouse).
+//   - Its DPI (0x2202 fn 0x50) and report-rate (0x8061 fn 0x20) getters lag behind a write (O: "several of this device's
+//     'get' registers return stale/cached values"; X: "fn2 -> current idx ... STALE after writes", "Stale getters are
+//     systemic (DPI, rate ...)"), so a read-back cannot prove those writes: on this mouse DPI, report rate and lift-off
+//     are shown, not written. A profile select reloads the profile (O), which resets the live DPI stage and HITS values,
+//     so the self-check's same-value write would change the mouse: the profile is shown, not written. DPI stage (0x8100
+//     fn 0xB0 / 0xC0, X: fn11 / fn12) and the onboard / host switch are written as on other mice.
 import { HidChannel, getDevice, hex } from '../../public/devices/hid.js';
 
 const VID = 0x046d;
@@ -68,6 +90,9 @@ export const WIRED = {
   0xc081: 'G900',                                                         // logitech-g900.device
   0xc086: 'G903',                                                         // logitech-g903.device
   0xc08e: 'MX518',                                                        // logitech-MX518.device
+  // 22 Oct 2026: its cable, X README.md / udev/99-superstrike.rules @ c3ad5366 ("Mouse, with the USB cable 046d:c0a8"),
+  // matching S docs/devices/PRO X 2 Superstrike 40BD.txt @ e7304c4c (Model ID 40BDC0A80000, usbid C0A8)
+  0xc0a8: 'PRO X2 SUPERSTRIKE',
 };
 // The id libratbag gives a mouse behind a receiver (`usb:046d:40xx` in the same files: the child device Linux's
 // hid-logitech-dj makes). Windows has no such device: the mouse is reached through RECEIVERS at its pairing slot, so
@@ -76,7 +101,12 @@ export const WPIDS = {
   0x4079: 'G PRO Wireless', 0x4093: 'PRO X SUPERLIGHT', 0x4074: 'G305', 0x405d: 'G403 Wireless', 0x407f: 'G502 LIGHTSPEED',
   0x4099: 'G502 X PLUS', 0x409f: 'G502 X LIGHTSPEED', 0x406c: 'G603', 0x4085: 'G604', 0x4070: 'G703', 0x4086: 'G703 HERO',
   0x409d: 'G705', 0x4053: 'G900', 0x4067: 'G903', 0x4087: 'G903 HERO',
+  // S docs/devices/PRO X 2 Superstrike 40BD.txt and docs/PRO_X2_SUPERSTRIKE_CLI.md @ e7304c4c (WPID 40BD, HID++ 4.2);
+  // reached through receiver C54D (K PROTOCOL.md, X docs/PROTOCOL.md section 1)
+  0x40bd: 'PRO X2 SUPERSTRIKE',
 };
+// the SUPERSTRIKE's receiver and cable (K, X); C54D is also in RECEIVERS
+export const SUPERSTRIKE = { receiver: 0xc54d, cable: 0xc0a8, wpid: 0x40bd };
 // Bluetooth (22 Oct 2026, docs/handoff/logitech-ble.md): a mouse on Bluetooth is its own HID device with its BLE product
 // id, HID++ 2.0 straight to it at device index 0xFF. The only G mice with a documented Bluetooth id are these three, from
 // libratbag data/devices @ 8235b5bb (`bluetooth:046d:...`); no other source read lists one (Solaar descriptors.py @
@@ -99,7 +129,8 @@ const SLOTS = [1, 2, 3, 4, 5, 6];             // 0x01-0x06 = paired devices (Bol
 
 // feature ids (sheet section 3 settings map; section 2 for 0x0000 / 0x0001; 0x0005 DEVICE_NAME from Solaar
 // hidpp20_constants.py SupportedFeature @ e7304c4c451cc9bb4f206a914844525e67856a28)
-export const F = { ROOT: 0x0000, FEATURE_SET: 0x0001, DEVICE_NAME: 0x0005, BATTERY_STATUS: 0x1000, BATTERY_VOLTAGE: 0x1001, UNIFIED_BATTERY: 0x1004, ADJUSTABLE_DPI: 0x2201, EXT_ADJUSTABLE_DPI: 0x2202, REPORT_RATE: 0x8060, EXT_REPORT_RATE: 0x8061, ONBOARD_PROFILES: 0x8100 };
+// + 0x1B0C ANALOG_BUTTONS (S hidpp20_constants.py @ e7304c4c: "Analog button tuning (actuation point, rapid trigger, haptics)")
+export const F = { ROOT: 0x0000, FEATURE_SET: 0x0001, DEVICE_NAME: 0x0005, BATTERY_STATUS: 0x1000, BATTERY_VOLTAGE: 0x1001, UNIFIED_BATTERY: 0x1004, ANALOG_BUTTONS: 0x1b0c, ADJUSTABLE_DPI: 0x2201, EXT_ADJUSTABLE_DPI: 0x2202, REPORT_RATE: 0x8060, EXT_REPORT_RATE: 0x8061, ONBOARD_PROFILES: 0x8100 };
 // the only (feature, function) pairs call() will send. Function = byte 3's high nibble, written as fn << 4.
 export const ALLOWED = {
   [F.ROOT]: [0x00, 0x10],                     // getFeature, ping (section 2 "Feature lookup")
@@ -121,6 +152,8 @@ export const ALLOWED = {
   // (0xC0 set / 0xB0 get), and the info read 0x00 (section 4 "Safe reads": "0x8100 info (fn 0x00)"; layout from libratbag
   // hidpp20.h struct hidpp20_onboard_profiles_info). NEVER the memory functions 0x50 / 0x60 / 0x70 / 0x80 (flash).
   [F.ONBOARD_PROFILES]: [0x00, 0x10, 0x20, 0x30, 0x40, 0xb0, 0xc0],
+  // HITS (header, sources K O X S): caps 0x00, write 0x10, read 0x20. Never fn 0x30 / 0x40 (K: "other (not investigated)").
+  [F.ANALOG_BUTTONS]: [0x00, 0x10, 0x20],
 };
 // the memory functions of 0x8100 (sheet section 4 "Risky writes": they rewrite flash); call() refuses them even if they
 // were ever added to ALLOWED by mistake
@@ -128,7 +161,10 @@ export const NEVER_FN = { [F.ONBOARD_PROFILES]: [0x50, 0x60, 0x70, 0x80] };
 // sheet section 4 "Never touch": refused even if someone adds them to ALLOWED by mistake
 // + Solaar hidpp20_constants.py BLE_PRO_PRE_PAIRING 0x1816 and LIGHTSPEED_PAIRING 0x0309 (as the keyboard and headset
 // drivers; added 22 Oct 2026 with Bluetooth, where 0x1816 is reachable on the device itself)
-export const NEVER = [0x00c0, 0x00c1, 0x00c2, 0x00c3, 0x00d0, 0x010a, 0x1802, 0x1805, 0x1500, 0x1816, 0x0309];
+// + 22 Oct 2026, the SUPERSTRIKE's own table (O internal/hidpp/features.go @ 42588e73 names; S 40BD.txt lists them
+// "internal, hidden"): 0x1817 LightspeedPrepairing (pairing), 0x9403 "FlashUpdate?" (O; S calls it a hidden bunny-hop
+// feature: unknown, so never), 0x1801 ManufacturingMode, 0x1803 GPIOAccess, 0x1890 RFTest, 0x1E00 EnableHiddenFeatures
+export const NEVER = [0x00c0, 0x00c1, 0x00c2, 0x00c3, 0x00d0, 0x010a, 0x1802, 0x1805, 0x1500, 0x1816, 0x0309, 0x1817, 0x9403, 0x1801, 0x1803, 0x1890, 0x1e00];
 
 // sheet section 2 "Errors", HID++ 2.0 codes
 const ERRORS = { 1: 'unknown', 2: 'invalid argument', 3: 'out of range', 4: 'hardware error', 5: 'not allowed', 6: 'invalid feature index', 7: 'invalid function', 8: 'busy', 9: 'unsupported' };
@@ -180,7 +216,28 @@ export const PROFILE_READ_1BASED = [0xc098, 0xc095, 0xc099, 0xc08b, 0xc332, 0xb0
 // G HUB (sheet section 5 "Windows note": lghub_agent.exe holds the same HID++ collection; writing beside it fights)
 export const VENDOR_APPS = /^lghub(_agent|_system_tray|_updater)?\.exe$/i;
 
-const settings = [
+// HITS (0x1B0C) settings: key -> [button, field]. field: act = actuation point (record byte 1), rt = rapid trigger
+// (byte 2, bit 0 kept), hap = click haptics (byte 3). The documented ranges (S AnalogButtonTuning RangeValidator
+// min_value 1 / 1 / 0; X ss2k_hits_set clampi 1-10, 1-5, 0-5; the maxima are the mouse's own caps >> 2, documented as
+// 0x28 / 0x14 / 0x14 = 10 / 5 / 5 by K feature-table.txt, X section 4 and S 40BD.txt). Only shown when the mouse has
+// 0x1B0C and its caps read as documented.
+export const HITS = {
+  actuationLeft: [0, 'act'], rapidTriggerLeft: [0, 'rt'], hapticsLeft: [0, 'hap'],
+  actuationRight: [1, 'act'], rapidTriggerRight: [1, 'rt'], hapticsRight: [1, 'hap'],
+};
+export const HITS_DOC = { act: { min: 1, max: 10, byte: 1 }, rt: { min: 1, max: 5, byte: 2 }, hap: { min: 0, max: 5, byte: 3 } };
+const HITS_HINT = 'HITS button setting (0x1B0C), applied live; the mouse may load its stored profile value again when it restarts or a profile is selected.';
+const hitsSetting = (key) => {
+  const [b, f] = HITS[key];
+  const side = b === 0 ? 'Left' : 'Right';
+  const what = { act: 'actuation point', rt: 'rapid trigger', hap: 'click haptics' }[f];
+  const more = { act: '1 = shallowest, 10 = deepest.', rt: '1 = most sensitive.', hap: '0 = off.' }[f];
+  return { key, label: `${side} button ${what}`, type: 'slider', min: HITS_DOC[f].min, max: HITS_DOC[f].max, step: 1, hint: `${more} ${HITS_HINT}` };
+};
+
+// every setting this driver knows; `settings` (what the page shows) is this list minus the HITS ones a mouse lacks,
+// rebuilt at each connect (readCaps)
+const ALL = [
   // range and step are replaced by the mouse's own list at connect (0x2201 fn 0x10); these only satisfy the loader
   { key: 'dpi', label: 'DPI', type: 'slider', min: 100, max: 25600, step: 50, unit: 'DPI', hint: 'Range from the mouse itself.' },
   { key: 'reportRate', label: 'Report rate', type: 'choice', options: [{ value: 1000, label: '1000 Hz' }], hint: 'Only the rates the mouse lists.' },
@@ -199,7 +256,30 @@ const settings = [
   // in profile memory and is not read or written here.
   { key: 'dpiStage', label: 'DPI stage', type: 'choice', hint: 'One of the 5 DPI slots of the active onboard profile.',
     options: Array.from({ length: DPI_SLOTS }, (_, i) => ({ value: i + 1, label: `Stage ${i + 1}` })) },
+  ...Object.keys(HITS).map(hitsSetting),
 ];
+const settings = [...ALL];
+const byKey = (k) => ALL.find((s) => s.key === k);
+// the fields readCaps changes per mouse, as the module starts, so each connect starts from them
+const SHAPE_FIELDS = ['type', 'min', 'max', 'step', 'unit', 'options', 'hint'];
+const START = Object.fromEntries(ALL.map((s) => [s.key, JSON.parse(JSON.stringify(Object.fromEntries(SHAPE_FIELDS.filter((f) => f in s).map((f) => [f, s[f]]))))]));
+function resetShapes() {
+  for (const s of ALL) { for (const f of SHAPE_FIELDS) delete s[f]; Object.assign(s, JSON.parse(JSON.stringify(START[s.key]))); }
+}
+// shown only (a reading): DeviceHub never writes a 'display' setting and the self-check skips it (helpers/my-devices.mjs)
+function showOnly(key, hint, unit) { const s = byKey(key); for (const f of ['min', 'max', 'step', 'options']) delete s[f]; Object.assign(s, { type: 'display', hint }, unit ? { unit } : {}); }
+
+// a HITS record (0x1B0C fn 0x20 reply, 4 bytes) -> { act, rt, hap } levels; a byte that is not on the documented grid
+// (reserved low bits set, or outside the mouse's range) reads as undefined, so it is never written back
+export function hitsLevels(rec, btn, caps) {
+  const out = { act: undefined, rt: undefined, hap: undefined };
+  if (!rec || rec[0] !== btn || !caps) return out;
+  const lv = (raw, mask, f) => ((raw & mask) === 0 && (raw >> 2) >= HITS_DOC[f].min && (raw >> 2) <= caps[f] ? raw >> 2 : undefined);
+  out.act = lv(rec[1], 0x03, 'act');
+  out.rt = lv(rec[2], 0x02, 'rt');          // bit 0 is the flag kept as read; bit 1 reserved (S)
+  out.hap = lv(rec[3], 0x03, 'hap');
+  return out;
+}
 
 let injected = null;
 // tests (tests/sim-logitech.mjs): hand the driver a device object instead of opening one
@@ -217,7 +297,8 @@ const adapter = {
     // Bluetooth ids choose their collection by report length (BLE_HID); every USB id's channel is as before
     byPid: Object.fromEntries(Object.keys(BLE).map((p) => [hex4(Number(p)), { ...BLE_HID }])) },
   settings,
-  unsupported: ['editing onboard profiles (buttons, the DPI of each slot, sleep timer, lights)', 'lighting', 'button remapping', 'angle snapping', 'surface tuning', 'firmware updates', 'pairing'],
+  unsupported: ['editing onboard profiles (buttons, the DPI of each slot, sleep timer, lights)', 'lighting', 'button remapping', 'angle snapping', 'surface tuning', 'firmware updates', 'pairing',
+    'PRO X2 SUPERSTRIKE: writing DPI, report rate, lift-off and the profile (shown only: see docs/handoff/superstrike.md), the rapid-trigger on/off flag, gaming surface mode (0x8090) and the bunny-hop filter (0x80E0)'],
 
   // the vendor-app check (replaceable in tests): resolves with the running G HUB process name, or null
   async vendorApp() {
@@ -233,7 +314,7 @@ const adapter = {
 
   async connect(prompt) {
     releaseSlots(this.id);
-    this.dev = null; this.chan = null; this.features = {}; this.caps = {}; this.profileReadBase = undefined; this.asleep = false; this.usbId = null; this.wokeAt = 0; this.pendingNotMine = null;
+    this.dev = null; this.chan = null; this.features = {}; this.caps = {}; this.profileReadBase = undefined; this.asleep = false; this.usbId = null; this.wokeAt = 0; this.pendingNotMine = null; this.superstrike = false; this.shownOnly = new Set();
     let dev = injected;
     if (!dev) {
       for (const pid of [...RECEIVERS, ...Object.keys(WIRED).map(Number)]) {
@@ -288,6 +369,8 @@ const adapter = {
       this.features = {};
       let dpi;
       try { dpi = await this.getFeature(F.ADJUSTABLE_DPI); } catch (e) { if (!(e instanceof HidppError)) continue; dpi = null; }   // gone quiet again: treated as asleep
+      // a mouse with 0x2202 and no 0x2201 (the PRO X2 SUPERSTRIKE: O, X, S feature tables) is a mouse too
+      if (!dpi) { try { dpi = await this.getFeature(F.EXT_ADJUSTABLE_DPI); } catch (e) { if (!(e instanceof HidppError)) continue; dpi = null; } }
       if (dpi) { this.protocol = ver; SLOT_OWNERS.set(slotKey(this.pid, slot), this.id); return { mouse: slot, others }; }
       others.push({ slot, kind: await this.deviceKind() });
     }
@@ -306,7 +389,7 @@ const adapter = {
   },
   notMineText(others) {
     const o = others[0];
-    const what = o.kind && o.kind !== 'mouse' ? `a ${o.kind}` : o.kind === 'mouse' ? 'a mouse without the DPI feature 0x2201 this driver reads' : 'a device without the DPI feature 0x2201';
+    const what = o.kind && o.kind !== 'mouse' ? `a ${o.kind}` : o.kind === 'mouse' ? 'a mouse without a DPI feature (0x2201 or 0x2202) this driver reads' : 'a device without a DPI feature (0x2201 or 0x2202)';
     return `the Logitech device on receiver ${hex4(this.pid)} (slot ${o.slot}) is ${what}, not a mouse this driver runs: the mouse driver leaves it alone`;
   },
   // let go of the receiver, so another driver can open it
@@ -342,12 +425,17 @@ const adapter = {
     // Bluetooth: the report rate is the USB / Lightspeed polling rate; over Bluetooth the link sets it and no source
     // documents 0x8060 / 0x8061 there, so it is not looked up (and so not read, offered or written)
     const rateIds = this.ble ? [] : [F.EXT_REPORT_RATE, F.REPORT_RATE];
-    for (const id of [F.FEATURE_SET, F.UNIFIED_BATTERY, F.BATTERY_STATUS, F.BATTERY_VOLTAGE, F.ADJUSTABLE_DPI, F.EXT_ADJUSTABLE_DPI, ...rateIds, F.ONBOARD_PROFILES]) {
+    for (const id of [F.FEATURE_SET, F.UNIFIED_BATTERY, F.BATTERY_STATUS, F.BATTERY_VOLTAGE, F.ADJUSTABLE_DPI, F.EXT_ADJUSTABLE_DPI, ...rateIds, F.ONBOARD_PROFILES, F.ANALOG_BUTTONS]) {
       const f = await this.getFeature(id);
       if (f) this.features[id] = f;
     }
-    // only reached for a slot whose device answered 0x2201, or a wired / Bluetooth mouse; one without it is stepped aside from
-    if (!this.features[F.ADJUSTABLE_DPI]) { this.stepAside(); throw notMine(`this Logitech device (${hex4(this.pid)}) has no DPI feature (0x2201): it is not a mouse this driver runs, so the mouse driver leaves it alone`); }
+    // only reached for a slot whose device answered 0x2201 / 0x2202, or a wired / Bluetooth mouse; one without either is
+    // stepped aside from
+    if (!this.features[F.ADJUSTABLE_DPI] && !this.features[F.EXT_ADJUSTABLE_DPI]) { this.stepAside(); throw notMine(`this Logitech device (${hex4(this.pid)}) has no DPI feature (0x2201 or 0x2202): it is not a mouse this driver runs, so the mouse driver leaves it alone`); }
+    // the PRO X2 SUPERSTRIKE: its cable id, or (on a receiver, where the wpid is not read) its HITS feature 0x1B0C, which
+    // S 40BD.txt lists on this model and K PROTOCOL.md calls "a brand-new vendor feature ID"; no source names another
+    // mouse with it. Its stale getters (header) make DPI, rate, lift-off and profile shown-only.
+    this.superstrike = this.pid === SUPERSTRIKE.cable || !!this.features[F.ANALOG_BUTTONS];
     await this.readCaps();
     return true;
   },
@@ -383,6 +471,22 @@ const adapter = {
 
   // what the mouse can do: DPI list/range, rate list, battery caps; fills the settings list from it
   async readCaps() {
+    resetShapes();
+    this.shownOnly = new Set();
+    if (this.features[F.ADJUSTABLE_DPI]) await this.readDpiCaps();
+    else {
+      // 0x2202 only (the SUPERSTRIKE): the current DPI from fn 0x50 (S ExtendedAdjustableDpi read_fnid 0x50; X fn5
+      // [sensor] -> [echo][curX]...). Writing needs its paged DPI list (fn 0x20) and, on the SUPERSTRIKE, a getter that
+      // does not lag: shown only.
+      this.caps.dpi = { ext: true };
+      showOnly('dpi', this.superstrike
+        ? 'Shown only: this mouse reads back a stale DPI after a change (linux-superstrike, superstrike controller), so DeviceHub cannot prove a DPI write. Change DPI with DPI stage.'
+        : 'Shown only: this mouse has only the 0x2202 DPI feature, whose DPI list DeviceHub does not read yet.', 'DPI');
+      this.shownOnly.add('dpi');
+    }
+    await this.readOtherCaps();
+  },
+  async readDpiCaps() {
     // "DPI list" row: 0x2201 fn 0x10 [sensor]; 2-byte entries from b1 until 0x0000; >= 0xE000 = range, step = v & 0x1FFF,
     // next entry = max (the entry before it = min)
     const p = await this.call(F.ADJUSTABLE_DPI, 0x10, [0]);
@@ -396,10 +500,11 @@ const adapter = {
     }
     if (!list.length || (range && !(range.min > 0 && range.step > 0 && range.max > range.min))) throw new Error(`the mouse's DPI list did not read cleanly (${hex(p)})`);
     this.caps.dpi = range ? { ...range } : { list };
-    const s = settings.find((x) => x.key === 'dpi');
+    const s = byKey('dpi');
     if (range) Object.assign(s, { type: 'slider', min: range.min, max: range.max, step: range.step }), delete s.options;
     else Object.assign(s, { type: 'choice', options: list.map((v) => ({ value: v, label: `${v} DPI` })) });
-
+  },
+  async readOtherCaps() {
     // report rate: 0x8061 when present (8K mice), else 0x8060
     if (this.features[F.EXT_REPORT_RATE]) {
       // "Report rate (8K)" row: list fn 0x10, bits 0-6 of 2 bytes (big-endian, section 2), bit i = index i
@@ -412,7 +517,13 @@ const adapter = {
       const ms = [0, 1, 2, 3, 4, 5, 6, 7].filter((i) => q[0] & (1 << i)).map((i) => i + 1);
       this.caps.rate = { ext: false, ms, hz: ms.map(hzOfMs) };
     }
-    if (this.caps.rate) settings.find((x) => x.key === 'reportRate').options = [...this.caps.rate.hz].sort((a, b) => a - b).map((hz) => ({ value: hz, label: `${hz} Hz` }));
+    if (this.caps.rate) byKey('reportRate').options = [...this.caps.rate.hz].sort((a, b) => a - b).map((hz) => ({ value: hz, label: `${hz} Hz` }));
+    // SUPERSTRIKE: 0x8061 fn 0x20 "STALE after writes" (X section 5; O "Stale in some states"), so a rate write cannot be
+    // read back: shown only. Its list (fn 0x10) is still read: the cable lists up to 1000 Hz, the receiver 8000 (X).
+    if (this.caps.rate && this.superstrike) {
+      showOnly('reportRate', `Shown only: this mouse reads back the old rate after a change (superstrike controller, linux-superstrike), so DeviceHub cannot prove a rate write. It lists ${this.caps.rate.hz.join(', ')} Hz on this connection.`, 'Hz');
+      this.shownOnly.add('reportRate');
+    }
 
     // "Battery (unified)" row: caps fn 0x00, b1 bit1 = reports a percentage
     if (this.features[F.UNIFIED_BATTERY]) { const c = await this.call(F.UNIFIED_BATTERY, 0x00); this.caps.batteryPercent = !!(c[1] & 0x02); }
@@ -430,10 +541,56 @@ const adapter = {
       const c = (await this.call(F.ONBOARD_PROFILES, 0x00).catch((e) => { if (e instanceof HidppError) return null; throw e; })) || [];
       if (c[3] >= 1 && c[3] <= 16) {
         this.caps.profiles = c[3];
-        settings.find((x) => x.key === 'profile').options = Array.from({ length: c[3] }, (_, i) => ({ value: i + 1, label: `Profile ${i + 1}` }));
+        byKey('profile').options = Array.from({ length: c[3] }, (_, i) => ({ value: i + 1, label: `Profile ${i + 1}` }));
       }
       if (PROFILE_READ_1BASED.includes(this.pid)) this.profileReadBase = 1;
+      // SUPERSTRIKE: fn 0x40 returns the active profile's SECTOR (X section 6 "fn4 get -> sector u16 (live: 0x0001)";
+      // O "fn4 (0x40) getCurrent"), and both units map slot n to sector n (O control sector; X RAM directory), so the
+      // reading is 1-based. Shown only: a select reloads the profile (O), see the header.
+      if (this.superstrike) {
+        this.profileReadBase = 1;
+        showOnly('profile', 'Shown only: selecting a profile on this mouse reloads it (linux-superstrike), which resets the live DPI stage and HITS button settings, so DeviceHub does not write it.');
+        this.shownOnly.add('profile');
+      }
     }
+    // SUPERSTRIKE lift-off: the LOD byte's meaning differs between sources (S: 0 low / 1 medium / 2 high and the CLI doc
+    // offers LOW / HIGH; X: G HUB sends LOD 1 / 2 / 3), and it is written with the 0x2202 DPI write: not offered.
+    if (this.superstrike) this.shownOnly.add('liftOff');
+
+    // HITS (0x1B0C) caps fn 0x00 -> [flags, buttons, act<<2, rt<<2, hap<<2, ...] (S AnalogButtonTuning.build, O
+    // AnalogCaps, X ss2k_hits_caps). Offered only when every maximum is on the << 2 grid and within the documented range.
+    this.caps.hits = null;
+    if (this.features[F.ANALOG_BUTTONS]) {
+      const c = await this.call(F.ANALOG_BUTTONS, 0x00).catch((e) => { if (e instanceof HidppError) return null; throw e; });
+      const grid = (b) => (b & 0x03) === 0;
+      if (c && grid(c[2]) && grid(c[3]) && grid(c[4])) {
+        const m = { act: c[2] >> 2, rt: c[3] >> 2, hap: c[4] >> 2 };
+        const ok = Object.entries(m).every(([f, v]) => v >= Math.max(1, HITS_DOC[f].min) && v <= HITS_DOC[f].max);
+        // the firmware reports 3 buttons; only 0 (left) and 1 (right) answer (S min(caps[1], 2); O; X)
+        const buttons = Math.min(c[1], 2);
+        if (ok && buttons >= 1) {
+          this.caps.hits = { ...m, buttons, raw: Array.from(c.slice(0, 6)) };
+          for (const [k, [b, f]] of Object.entries(HITS)) if (b < buttons) byKey(k).max = m[f];
+        }
+      }
+    }
+    // the page's list: every setting except HITS ones this mouse does not have
+    settings.splice(0, settings.length, ...ALL.filter((s) => !HITS[s.key] || (this.caps.hits && HITS[s.key][0] < this.caps.hits.buttons)));
+  },
+
+  // 0x1B0C fn 0x20 [btn] -> the 4-byte record [btn, act<<2, (rt<<2)|flag, hap<<2] (header)
+  async readHitsRaw(btn) {
+    const p = await this.call(F.ANALOG_BUTTONS, 0x20, [btn]);
+    return Array.from(p.slice(0, 4));
+  },
+  async readHits() {
+    const out = {};
+    if (!this.caps.hits) return out;
+    for (let b = 0; b < this.caps.hits.buttons; b++) {
+      const lv = hitsLevels(await this.readHitsRaw(b), b, this.caps.hits);
+      for (const [k, [kb, f]] of Object.entries(HITS)) if (kb === b && lv[f] !== undefined) out[k] = lv[f];
+    }
+    return out;
   },
 
   // 0x2202 fn 0x50 [00] -> b1-2 X, b5-6 Y, b9 LOD (Solaar ExtendedAdjustableDpi validate_read)
@@ -442,7 +599,7 @@ const adapter = {
     return { x: (p[1] << 8) | p[2], y: (p[5] << 8) | p[6], lod: p[9] };
   },
   async readLiftOff() {
-    if (!this.caps.ext?.lod) return undefined;
+    if (!this.caps.ext?.lod || this.superstrike) return undefined;
     return LOD[(await this.readExt()).lod];
   },
   // "Active profile" row: 0x8100 fn 0x40 -> 2 bytes; libratbag get_current_profile takes b1. What the number means depends
@@ -467,6 +624,8 @@ const adapter = {
   },
 
   async readDpi() {
+    // 0x2202 only: fn 0x50 [00] -> b1-2 current X, b3-4 default X (X fn5 [echo][curX][defX][curY][defY][lod])
+    if (!this.features[F.ADJUSTABLE_DPI]) { const p = await this.call(F.EXT_ADJUSTABLE_DPI, 0x50, [0]); return { dpi: (p[1] << 8) | p[2], defaultDpi: (p[3] << 8) | p[4] }; }
     // "DPI" row: 0x2201 fn 0x20 [sensor] -> b1-2 current DPI, b3-4 default DPI
     const p = await this.call(F.ADJUSTABLE_DPI, 0x20, [0]);
     return { dpi: (p[1] << 8) | p[2], defaultDpi: (p[3] << 8) | p[4] };
@@ -490,7 +649,7 @@ const adapter = {
     const bat = this.features[F.UNIFIED_BATTERY] ? '0x1004 unified' : this.features[F.BATTERY_STATUS] ? '0x1000 status' : this.features[F.BATTERY_VOLTAGE] ? '0x1001 voltage' : 'none reported';
     const mode = await this.readMode().catch(() => undefined);
     const out = {
-      Model: this.receiver ? `Logitech mouse on receiver ${hex4(this.pid)} (slot ${this.index})` : (WIRED[this.pid] || BLE[this.pid] ? `Logitech ${WIRED[this.pid] || BLE[this.pid]}` : `Logitech mouse ${hex4(this.pid)}`),
+      Model: this.receiver ? `Logitech ${this.superstrike ? 'PRO X2 SUPERSTRIKE (by its HITS feature 0x1B0C)' : 'mouse'} on receiver ${hex4(this.pid)} (slot ${this.index})` : (WIRED[this.pid] || BLE[this.pid] ? `Logitech ${WIRED[this.pid] || BLE[this.pid]}` : `Logitech mouse ${hex4(this.pid)}`),
       Connection: this.receiver ? (this.pid === 0xc548 ? 'Bolt receiver' : 'Lightspeed receiver') : this.ble ? 'Bluetooth' : 'USB cable',
       'HID++': this.protocol,
       Battery: bat,
@@ -499,7 +658,10 @@ const adapter = {
     if (mode) out['Settings source'] = mode === 'onboard' ? 'onboard profiles (DPI and rate changes need host mode)' : mode;
     if (this.caps.profiles) out['Onboard profiles'] = String(this.caps.profiles);
     if (this.caps.ext) out['Lift-off'] = this.caps.ext.lod ? 'low / medium / high (0x2202)' : 'not adjustable';
-    if (this.caps.dpi) out['DPI range'] = this.caps.dpi.list ? this.caps.dpi.list.join(', ') : `${this.caps.dpi.min}-${this.caps.dpi.max} in steps of ${this.caps.dpi.step}`;
+    if (this.caps.dpi) out['DPI range'] = this.caps.dpi.ext ? 'read through 0x2202 (not listed)' : this.caps.dpi.list ? this.caps.dpi.list.join(', ') : `${this.caps.dpi.min}-${this.caps.dpi.max} in steps of ${this.caps.dpi.step}`;
+    if (this.caps.hits) out['HITS buttons'] = `${this.caps.hits.buttons} (actuation 1-${this.caps.hits.act}, rapid trigger 1-${this.caps.hits.rt}, haptics 0-${this.caps.hits.hap}; 0x1B0C)`;
+    else if (this.features[F.ANALOG_BUTTONS]) out['HITS buttons'] = 'present (0x1B0C), but its capabilities did not read as documented, so not offered';
+    if (this.shownOnly?.size) out['Shown only'] = [...this.shownOnly].map((k) => byKey(k).label).join(', ');
     return out;
   },
 
@@ -517,6 +679,7 @@ const adapter = {
     if (prof !== undefined) v.profile = prof;
     const stage = await this.readDpiStage();
     if (stage !== undefined) v.dpiStage = stage;
+    Object.assign(v, await this.readHits());
     return v;
   },
 
@@ -524,7 +687,9 @@ const adapter = {
   async write(key, value) {
     if (!this.chan) throw new Error('the mouse is not connected');
     if (this.asleep) throw Object.assign(asleepError(this.pid), { waiting: true });
-    if (!settings.some((s) => s.key === key)) throw new Error(`${key} is not a setting`);
+    if (!settings.some((s) => s.key === key)) throw new Error(HITS[key] ? `${key}: this mouse has no HITS buttons (0x1B0C) DeviceHub can read` : `${key} is not a setting`);
+    // shown-only settings on this mouse (the SUPERSTRIKE's stale getters, header): refused before anything is sent
+    if (this.shownOnly?.has(key)) throw new Error(`${byKey(key).label} is shown only on this mouse: ${key === 'liftOff' ? 'the sources disagree on its lift-off values' : 'its read-back cannot prove a write'} (docs/handoff/superstrike.md)`);
     // waiting: true = refused only because of how things are right now (helpers/my-devices.mjs isWaiting): the library
     // self-check records it as waiting and tries again later, instead of failing it
     const app = await this.vendorApp();
@@ -579,6 +744,22 @@ const adapter = {
       // "DPI slot in profile" row: write 0x8100 fn 0xC0 [index 0-4] (libratbag set_current_dpi_index: parameters[0] = index)
       await this.call(F.ONBOARD_PROFILES, 0xc0, [value - 1], { retry: false });
       back = await this.readDpiStage();
+    } else if (HITS[key]) {
+      const [btn, f] = HITS[key];
+      const c = this.caps.hits;
+      if (!Number.isInteger(value) || value < HITS_DOC[f].min || value > c[f]) throw new Error(`${byKey(key).label} must be a whole number ${HITS_DOC[f].min}-${c[f]}`);
+      // the record read just before, with only this setting's byte changed (header): value << 2, and for the rapid
+      // trigger byte 2's bit 0 kept as read (S _AnalogButtonRapidTriggerRW.write, O writeAnalog, X ss2k_hits_set).
+      // Writing the value read sends back exactly the raw bytes read. Always sent, then read back byte for byte.
+      const cur = await this.readHitsRaw(btn);
+      if (cur[0] !== btn) throw new Error(`${byKey(key).label}: the mouse answered for button ${cur[0]}, not ${btn}, so nothing was written`);
+      const i = HITS_DOC[f].byte;
+      const out = [...cur];
+      out[i] = f === 'rt' ? (value << 2) | (cur[2] & 0x01) : value << 2;
+      await this.call(F.ANALOG_BUTTONS, 0x10, out, { retry: false });
+      const after = await this.readHitsRaw(btn);
+      if (after.some((b, j) => b !== out[j])) throw new Error(`${key}: sent ${hex(out)} but the mouse reads back ${hex(after)}`);
+      back = hitsLevels(after, btn, c)[f];
     }
     if (back !== value) throw new Error(`${key}: wrote ${value} but the mouse reads back ${back}`);
     return back;
@@ -616,6 +797,8 @@ const adapter = {
       features: Object.fromEntries(Object.entries(this.features).map(([id, f]) => [`0x${hex4(Number(id))}`, f])),
       caps: this.caps, ...dpi, reportRate: await this.readRate(), mode: await this.readMode(),
       ext: this.caps.ext ? await this.readExt() : undefined, profile: await this.readProfile(), dpiStage: await this.readDpiStage(),
+      // the HITS records as raw bytes, exactly as read
+      hits: this.caps.hits ? await (async () => { const r = []; for (let b = 0; b < this.caps.hits.buttons; b++) r.push(hex(await this.readHitsRaw(b))); return r; })() : undefined,
     };
   },
 };

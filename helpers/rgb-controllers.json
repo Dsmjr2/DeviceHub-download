@@ -1,0 +1,1506 @@
+{
+ "about": "USB lighting controllers for motherboard RGB headers and fan hubs, from OpenRGB's own detectors (its supported devices list). Made by a one-off script from the OpenRGB source; each entry names the file and line. Read-only: DeviceHub only compares these ids with the PC's USB list.",
+ "source": {
+  "repo": "https://codeberg.org/OpenRGB/OpenRGB",
+  "commit": "bbc77470a7cba56af60989e54ba910d5ac66a3ac",
+  "read": "2026-10-22"
+ },
+ "controllers": [
+  {
+   "id": "0414:a100",
+   "name": "Gigabyte RGB Fusion 2 USB",
+   "kind": "board",
+   "source": "Controllers/GigabyteRGBFusion2USBController/GigabyteRGBFusion2USBControllerDetect.cpp#L51"
+  },
+  {
+   "id": "0416:7371",
+   "name": "Lian Li GA II Trinity Performance",
+   "kind": "hub",
+   "source": "Controllers/LianLiController/LianLiControllerDetect.cpp#L338"
+  },
+  {
+   "id": "0416:7373",
+   "name": "Lian Li GA II Trinity",
+   "kind": "hub",
+   "source": "Controllers/LianLiController/LianLiControllerDetect.cpp#L337"
+  },
+  {
+   "id": "048d:5702",
+   "name": "Gigabyte RGB Fusion 2 USB",
+   "kind": "board",
+   "source": "Controllers/GigabyteRGBFusion2USBController/GigabyteRGBFusion2USBControllerDetect.cpp#L49"
+  },
+  {
+   "id": "048d:5711",
+   "name": "Gigabyte RGB Fusion 2 USB",
+   "kind": "board",
+   "source": "Controllers/GigabyteRGBFusion2USBController/GigabyteRGBFusion2USBControllerDetect.cpp#L50"
+  },
+  {
+   "id": "048d:8297",
+   "name": "Gigabyte RGB Fusion 2 USB",
+   "kind": "board",
+   "source": "Controllers/GigabyteRGBFusion2USBController/GigabyteRGBFusion2USBControllerDetect.cpp#L47"
+  },
+  {
+   "id": "048d:8950",
+   "name": "Gigabyte RGB Fusion 2 USB",
+   "kind": "board",
+   "source": "Controllers/GigabyteRGBFusion2USBController/GigabyteRGBFusion2USBControllerDetect.cpp#L48"
+  },
+  {
+   "id": "0b05:1867",
+   "name": "ASUS Aura Addressable",
+   "kind": "board",
+   "source": "Controllers/AsusAuraUSBController/AsusAuraUSBControllerDetect.cpp#L447"
+  },
+  {
+   "id": "0b05:1872",
+   "name": "ASUS Aura Addressable",
+   "kind": "board",
+   "source": "Controllers/AsusAuraUSBController/AsusAuraUSBControllerDetect.cpp#L448"
+  },
+  {
+   "id": "0b05:18a3",
+   "name": "ASUS Aura Addressable",
+   "kind": "board",
+   "source": "Controllers/AsusAuraUSBController/AsusAuraUSBControllerDetect.cpp#L449"
+  },
+  {
+   "id": "0b05:18a5",
+   "name": "ASUS Aura Addressable",
+   "kind": "board",
+   "source": "Controllers/AsusAuraUSBController/AsusAuraUSBControllerDetect.cpp#L450"
+  },
+  {
+   "id": "0b05:18f3",
+   "name": "ASUS Aura Motherboard",
+   "kind": "board",
+   "source": "Controllers/AsusAuraUSBController/AsusAuraUSBControllerDetect.cpp#L452"
+  },
+  {
+   "id": "0b05:1939",
+   "name": "ASUS Aura Motherboard",
+   "kind": "board",
+   "source": "Controllers/AsusAuraUSBController/AsusAuraUSBControllerDetect.cpp#L453"
+  },
+  {
+   "id": "0b05:19af",
+   "name": "ASUS Aura Motherboard",
+   "kind": "board",
+   "source": "Controllers/AsusAuraUSBController/AsusAuraUSBControllerDetect.cpp#L454"
+  },
+  {
+   "id": "0b05:1aa6",
+   "name": "ASUS Aura Motherboard",
+   "kind": "board",
+   "source": "Controllers/AsusAuraUSBController/AsusAuraUSBControllerDetect.cpp#L455"
+  },
+  {
+   "id": "0b05:1b29",
+   "name": "ASUS ROG Strix LC III",
+   "kind": "board",
+   "source": "Controllers/AsusAuraUSBController/AsusAuraUSBControllerDetect.cpp#L451"
+  },
+  {
+   "id": "0b05:1bed",
+   "name": "ASUS Aura Motherboard",
+   "kind": "board",
+   "source": "Controllers/AsusAuraUSBController/AsusAuraUSBControllerDetect.cpp#L456"
+  },
+  {
+   "id": "0b05:879e",
+   "name": "ASUS ROG Strix LC",
+   "kind": "board",
+   "source": "Controllers/AsusAuraUSBController/AsusAuraUSBControllerDetect.cpp#L561"
+  },
+  {
+   "id": "0cf2:7750",
+   "name": "Lian Li Uni Hub",
+   "kind": "hub",
+   "source": "Controllers/LianLiController/LianLiControllerDetect.cpp#L103"
+  },
+  {
+   "id": "0cf2:a100",
+   "name": "Lian Li Uni Hub - SL",
+   "kind": "hub",
+   "source": "Controllers/LianLiController/LianLiControllerDetect.cpp#L330"
+  },
+  {
+   "id": "0cf2:a101",
+   "name": "Lian Li Uni Hub - AL",
+   "kind": "hub",
+   "source": "Controllers/LianLiController/LianLiControllerDetect.cpp#L331"
+  },
+  {
+   "id": "0cf2:a102",
+   "name": "Lian Li Uni Hub - SL Infinity",
+   "kind": "hub",
+   "source": "Controllers/LianLiController/LianLiControllerDetect.cpp#L335"
+  },
+  {
+   "id": "0cf2:a103",
+   "name": "Lian Li Uni Hub - SL V2",
+   "kind": "hub",
+   "source": "Controllers/LianLiController/LianLiControllerDetect.cpp#L332"
+  },
+  {
+   "id": "0cf2:a104",
+   "name": "Lian Li Uni Hub - AL V2",
+   "kind": "hub",
+   "source": "Controllers/LianLiController/LianLiControllerDetect.cpp#L333"
+  },
+  {
+   "id": "0cf2:a105",
+   "name": "Lian Li Uni Hub - SL V2 v0.5",
+   "kind": "hub",
+   "source": "Controllers/LianLiController/LianLiControllerDetect.cpp#L334"
+  },
+  {
+   "id": "0cf2:a200",
+   "name": "Lian Li Strimer L Connect",
+   "kind": "hub",
+   "source": "Controllers/LianLiController/LianLiControllerDetect.cpp#L336"
+  },
+  {
+   "id": "0db0:0076",
+   "name": "MSI Mystic Light Common",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L243"
+  },
+  {
+   "id": "1462:1720",
+   "name": "MSI Mystic Light MS_1720",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L132"
+  },
+  {
+   "id": "1462:3ea4",
+   "name": "MSI Mystic Light MS_3EA4",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L254"
+  },
+  {
+   "id": "1462:4459",
+   "name": "MSI Mystic Light MS_4459",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L255"
+  },
+  {
+   "id": "1462:7b10",
+   "name": "MSI Mystic Light MS_7B10",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L256"
+  },
+  {
+   "id": "1462:7b12",
+   "name": "MSI Mystic Light MS_7B12",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L133"
+  },
+  {
+   "id": "1462:7b16",
+   "name": "MSI Mystic Light MS_7B16",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L134"
+  },
+  {
+   "id": "1462:7b17",
+   "name": "MSI Mystic Light MS_7B17",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L135"
+  },
+  {
+   "id": "1462:7b18",
+   "name": "MSI Mystic Light MS_7B18",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L136"
+  },
+  {
+   "id": "1462:7b50",
+   "name": "MSI Mystic Light MS_7B50",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L137"
+  },
+  {
+   "id": "1462:7b85",
+   "name": "MSI Mystic Light MS_7B85",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L138"
+  },
+  {
+   "id": "1462:7b92",
+   "name": "MSI Mystic Light MS_7B92",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L139"
+  },
+  {
+   "id": "1462:7b93",
+   "name": "MSI Mystic Light MS_7B93",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L140"
+  },
+  {
+   "id": "1462:7b94",
+   "name": "MSI Mystic Light MS_7B94",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L257"
+  },
+  {
+   "id": "1462:7b96",
+   "name": "MSI Mystic Light MS_7B96",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L258"
+  },
+  {
+   "id": "1462:7c02",
+   "name": "MSI Mystic Light MS_7C02",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L141"
+  },
+  {
+   "id": "1462:7c34",
+   "name": "MSI Mystic Light MS_7C34",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L142"
+  },
+  {
+   "id": "1462:7c35",
+   "name": "MSI Mystic Light MS_7C35",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L143"
+  },
+  {
+   "id": "1462:7c36",
+   "name": "MSI Mystic Light MS_7C36",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L144"
+  },
+  {
+   "id": "1462:7c37",
+   "name": "MSI Mystic Light MS_7C37",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L145"
+  },
+  {
+   "id": "1462:7c42",
+   "name": "MSI Mystic Light MS_7C42",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L259"
+  },
+  {
+   "id": "1462:7c56",
+   "name": "MSI Mystic Light MS_7C56",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L146"
+  },
+  {
+   "id": "1462:7c59",
+   "name": "MSI Mystic Light MS_7C59",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L147"
+  },
+  {
+   "id": "1462:7c60",
+   "name": "MSI Mystic Light MS_7C60",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L148"
+  },
+  {
+   "id": "1462:7c67",
+   "name": "MSI Mystic Light MS_7C67",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L149"
+  },
+  {
+   "id": "1462:7c70",
+   "name": "MSI Mystic Light MS_7C70",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L260"
+  },
+  {
+   "id": "1462:7c71",
+   "name": "MSI Mystic Light MS_7C71",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L150"
+  },
+  {
+   "id": "1462:7c73",
+   "name": "MSI Mystic Light MS_7C73",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L151"
+  },
+  {
+   "id": "1462:7c75",
+   "name": "MSI Mystic Light MS_7C75",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L152"
+  },
+  {
+   "id": "1462:7c76",
+   "name": "MSI Mystic Light MS_7C76",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L153"
+  },
+  {
+   "id": "1462:7c77",
+   "name": "MSI Mystic Light MS_7C77",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L154"
+  },
+  {
+   "id": "1462:7c79",
+   "name": "MSI Mystic Light MS_7C79",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L155"
+  },
+  {
+   "id": "1462:7c80",
+   "name": "MSI Mystic Light MS_7C80",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L156"
+  },
+  {
+   "id": "1462:7c81",
+   "name": "MSI Mystic Light MS_7C81",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L157"
+  },
+  {
+   "id": "1462:7c82",
+   "name": "MSI Mystic Light MS_7C82",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L158"
+  },
+  {
+   "id": "1462:7c83",
+   "name": "MSI Mystic Light MS_7C83",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L159"
+  },
+  {
+   "id": "1462:7c84",
+   "name": "MSI Mystic Light MS_7C84",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L160"
+  },
+  {
+   "id": "1462:7c85",
+   "name": "MSI Mystic Light MS_7C85",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L261"
+  },
+  {
+   "id": "1462:7c86",
+   "name": "MSI Mystic Light MS_7C86",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L161"
+  },
+  {
+   "id": "1462:7c87",
+   "name": "MSI Mystic Light MS_7C87",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L162"
+  },
+  {
+   "id": "1462:7c88",
+   "name": "MSI Mystic Light MS_7C88",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L262"
+  },
+  {
+   "id": "1462:7c89",
+   "name": "MSI Mystic Light MS_7C89",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L263"
+  },
+  {
+   "id": "1462:7c90",
+   "name": "MSI Mystic Light MS_7C90",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L163"
+  },
+  {
+   "id": "1462:7c91",
+   "name": "MSI Mystic Light MS_7C91",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L164"
+  },
+  {
+   "id": "1462:7c92",
+   "name": "MSI Mystic Light MS_7C92",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L165"
+  },
+  {
+   "id": "1462:7c94",
+   "name": "MSI Mystic Light MS_7C94",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L166"
+  },
+  {
+   "id": "1462:7c95",
+   "name": "MSI Mystic Light MS_7C95",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L167"
+  },
+  {
+   "id": "1462:7c96",
+   "name": "MSI Mystic Light MS_7C96",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L264"
+  },
+  {
+   "id": "1462:7c98",
+   "name": "MSI Mystic Light MS_7C98",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L168"
+  },
+  {
+   "id": "1462:7c99",
+   "name": "MSI Mystic Light MS_7C99",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L265"
+  },
+  {
+   "id": "1462:7d03",
+   "name": "MSI Mystic Light MS_7D03",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L169"
+  },
+  {
+   "id": "1462:7d04",
+   "name": "MSI Mystic Light MS_7D04",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L170"
+  },
+  {
+   "id": "1462:7d06",
+   "name": "MSI Mystic Light MS_7D06",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L171"
+  },
+  {
+   "id": "1462:7d07",
+   "name": "MSI Mystic Light MS_7D07",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L172"
+  },
+  {
+   "id": "1462:7d08",
+   "name": "MSI Mystic Light MS_7D08",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L173"
+  },
+  {
+   "id": "1462:7d09",
+   "name": "MSI Mystic Light MS_7D09",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L174"
+  },
+  {
+   "id": "1462:7d13",
+   "name": "MSI Mystic Light MS_7D13",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L175"
+  },
+  {
+   "id": "1462:7d14",
+   "name": "MSI Mystic Light MS_7D14",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L176"
+  },
+  {
+   "id": "1462:7d15",
+   "name": "MSI Mystic Light MS_7D15",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L177"
+  },
+  {
+   "id": "1462:7d17",
+   "name": "MSI Mystic Light MS_7D17",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L178"
+  },
+  {
+   "id": "1462:7d18",
+   "name": "MSI Mystic Light MS_7D18",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L179"
+  },
+  {
+   "id": "1462:7d19",
+   "name": "MSI Mystic Light MS_7D19",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L180"
+  },
+  {
+   "id": "1462:7d20",
+   "name": "MSI Mystic Light MS_7D20",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L181"
+  },
+  {
+   "id": "1462:7d25",
+   "name": "MSI Mystic Light MS_7D25",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L182"
+  },
+  {
+   "id": "1462:7d27",
+   "name": "MSI Mystic Light MS_7D27",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L183"
+  },
+  {
+   "id": "1462:7d28",
+   "name": "MSI Mystic Light MS_7D28",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L184"
+  },
+  {
+   "id": "1462:7d29",
+   "name": "MSI Mystic Light MS_7D29",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L185"
+  },
+  {
+   "id": "1462:7d30",
+   "name": "MSI Mystic Light MS_7D30",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L186"
+  },
+  {
+   "id": "1462:7d31",
+   "name": "MSI Mystic Light MS_7D31",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L187"
+  },
+  {
+   "id": "1462:7d32",
+   "name": "MSI Mystic Light MS_7D32",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L188"
+  },
+  {
+   "id": "1462:7d33",
+   "name": "MSI Mystic Light MS_7D33",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L189"
+  },
+  {
+   "id": "1462:7d36",
+   "name": "MSI Mystic Light MS_7D36",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L190"
+  },
+  {
+   "id": "1462:7d37",
+   "name": "MSI Mystic Light MS_7D37",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L191"
+  },
+  {
+   "id": "1462:7d38",
+   "name": "MSI Mystic Light MS_7D38",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L192"
+  },
+  {
+   "id": "1462:7d40",
+   "name": "MSI Mystic Light MS_7D40",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L193"
+  },
+  {
+   "id": "1462:7d41",
+   "name": "MSI Mystic Light MS_7D41",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L194"
+  },
+  {
+   "id": "1462:7d42",
+   "name": "MSI Mystic Light MS_7D42",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L195"
+  },
+  {
+   "id": "1462:7d43",
+   "name": "MSI Mystic Light MS_7D43",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L196"
+  },
+  {
+   "id": "1462:7d46",
+   "name": "MSI Mystic Light MS_7D46",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L197"
+  },
+  {
+   "id": "1462:7d50",
+   "name": "MSI Mystic Light MS_7D50",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L198"
+  },
+  {
+   "id": "1462:7d51",
+   "name": "MSI Mystic Light MS_7D51",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L199"
+  },
+  {
+   "id": "1462:7d52",
+   "name": "MSI Mystic Light MS_7D52",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L200"
+  },
+  {
+   "id": "1462:7d53",
+   "name": "MSI Mystic Light MS_7D53",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L201"
+  },
+  {
+   "id": "1462:7d54",
+   "name": "MSI Mystic Light MS_7D54",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L202"
+  },
+  {
+   "id": "1462:7d59",
+   "name": "MSI Mystic Light MS_7D59",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L203"
+  },
+  {
+   "id": "1462:7d67",
+   "name": "MSI Mystic Light MS_7D67",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L204"
+  },
+  {
+   "id": "1462:7d69",
+   "name": "MSI Mystic Light MS_7D69",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L205"
+  },
+  {
+   "id": "1462:7d70",
+   "name": "MSI Mystic Light MS_7D70",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L206"
+  },
+  {
+   "id": "1462:7d73",
+   "name": "MSI Mystic Light MS_7D73",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L207"
+  },
+  {
+   "id": "1462:7d74",
+   "name": "MSI Mystic Light MS_7D74",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L208"
+  },
+  {
+   "id": "1462:7d75",
+   "name": "MSI Mystic Light MS_7D75",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L209"
+  },
+  {
+   "id": "1462:7d76",
+   "name": "MSI Mystic Light MS_7D76",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L210"
+  },
+  {
+   "id": "1462:7d77",
+   "name": "MSI Mystic Light MS_7D77",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L211"
+  },
+  {
+   "id": "1462:7d78",
+   "name": "MSI Mystic Light MS_7D78",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L212"
+  },
+  {
+   "id": "1462:7d86",
+   "name": "MSI Mystic Light MS_7D86",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L213"
+  },
+  {
+   "id": "1462:7d88",
+   "name": "MSI Mystic Light MS_7D88",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L214"
+  },
+  {
+   "id": "1462:7d89",
+   "name": "MSI Mystic Light MS_7D89",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L215"
+  },
+  {
+   "id": "1462:7d90",
+   "name": "MSI Mystic Light MS_7D90",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L216"
+  },
+  {
+   "id": "1462:7d91",
+   "name": "MSI Mystic Light MS_7D91",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L217"
+  },
+  {
+   "id": "1462:7d93",
+   "name": "MSI Mystic Light MS_7D93",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L218"
+  },
+  {
+   "id": "1462:7d96",
+   "name": "MSI Mystic Light MS_7D96",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L219"
+  },
+  {
+   "id": "1462:7d97",
+   "name": "MSI Mystic Light MS_7D97",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L220"
+  },
+  {
+   "id": "1462:7d98",
+   "name": "MSI Mystic Light MS_7D98",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L221"
+  },
+  {
+   "id": "1462:7d99",
+   "name": "MSI Mystic Light MS_7D99",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L222"
+  },
+  {
+   "id": "1462:7e01",
+   "name": "MSI Mystic Light MS_7E01",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L223"
+  },
+  {
+   "id": "1462:7e03",
+   "name": "MSI Mystic Light MS_7E03",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L224"
+  },
+  {
+   "id": "1462:7e06",
+   "name": "MSI Mystic Light MS_7E06",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L225"
+  },
+  {
+   "id": "1462:7e07",
+   "name": "MSI Mystic Light MS_7E07",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L226"
+  },
+  {
+   "id": "1462:7e09",
+   "name": "MSI Mystic Light MS_7E09",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L227"
+  },
+  {
+   "id": "1462:7e10",
+   "name": "MSI Mystic Light MS_7E10",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L228"
+  },
+  {
+   "id": "1462:7e20",
+   "name": "MSI Mystic Light MS_7E20",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L229"
+  },
+  {
+   "id": "1462:7e30",
+   "name": "MSI Mystic Light MS_7E30",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L230"
+  },
+  {
+   "id": "1462:7e32",
+   "name": "MSI Mystic Light MS_7E32",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L231"
+  },
+  {
+   "id": "1462:7e34",
+   "name": "MSI Mystic Light MS_7E34",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L232"
+  },
+  {
+   "id": "1462:7e59",
+   "name": "MSI Mystic Light MS_7E59",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L233"
+  },
+  {
+   "id": "1462:7e66",
+   "name": "MSI Mystic Light MS_7E66",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L234"
+  },
+  {
+   "id": "1462:7e70",
+   "name": "MSI Mystic Light MS_7E70",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L235"
+  },
+  {
+   "id": "1462:7e76",
+   "name": "MSI Mystic Light MS_7E76",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L236"
+  },
+  {
+   "id": "1462:7e80",
+   "name": "MSI Mystic Light MS_7E80",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L237"
+  },
+  {
+   "id": "1462:7e81",
+   "name": "MSI Mystic Light MS_7E81",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L238"
+  },
+  {
+   "id": "1462:7e86",
+   "name": "MSI Mystic Light MS_7E86",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L239"
+  },
+  {
+   "id": "1462:905d",
+   "name": "MSI Mystic Light MS_905D",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L266"
+  },
+  {
+   "id": "1462:b926",
+   "name": "MSI Mystic Light MS_B926",
+   "kind": "board",
+   "source": "Controllers/MSIMotherboardController/MSIMotherboardControllerDetect.cpp#L240"
+  },
+  {
+   "id": "1b1c:0c0b",
+   "name": "Corsair Lighting Node Pro",
+   "kind": "hub",
+   "source": "Controllers/CorsairLightingNodeController/CorsairLightingNodeControllerDetect.cpp#L45"
+  },
+  {
+   "id": "1b1c:0c10",
+   "name": "Corsair Commander Pro",
+   "kind": "hub",
+   "source": "Controllers/CorsairLightingNodeController/CorsairLightingNodeControllerDetect.cpp#L46"
+  },
+  {
+   "id": "1b1c:0c1a",
+   "name": "Corsair Lighting Node Core",
+   "kind": "hub",
+   "source": "Controllers/CorsairLightingNodeController/CorsairLightingNodeControllerDetect.cpp#L44"
+  },
+  {
+   "id": "1b1c:0c1c",
+   "name": "Corsair Commander Core",
+   "kind": "hub",
+   "source": "Controllers/CorsairCommanderCoreController/CorsairCommanderCoreControllerDetect.cpp#L40"
+  },
+  {
+   "id": "1b1c:0c1d",
+   "name": "Corsair Commander Core",
+   "kind": "hub",
+   "source": "Controllers/CorsairCommanderCoreController/CorsairCommanderCoreControllerDetect.cpp#L42"
+  },
+  {
+   "id": "1b1c:0c1e",
+   "name": "Corsair LS100 Lighting Kit",
+   "kind": "hub",
+   "source": "Controllers/CorsairLightingNodeController/CorsairLightingNodeControllerDetect.cpp#L47"
+  },
+  {
+   "id": "1b1c:0c23",
+   "name": "Corsair LT100",
+   "kind": "hub",
+   "source": "Controllers/CorsairLightingNodeController/CorsairLightingNodeControllerDetect.cpp#L50"
+  },
+  {
+   "id": "1b1c:0c2a",
+   "name": "Corsair Commander Core XT",
+   "kind": "hub",
+   "source": "Controllers/CorsairCommanderCoreController/CorsairCommanderCoreControllerDetect.cpp#L46"
+  },
+  {
+   "id": "1b1c:0c32",
+   "name": "Corsair Commander Core",
+   "kind": "hub",
+   "source": "Controllers/CorsairCommanderCoreController/CorsairCommanderCoreControllerDetect.cpp#L41"
+  },
+  {
+   "id": "1b1c:0c3c",
+   "name": "Corsair Commander Core",
+   "kind": "hub",
+   "source": "Controllers/CorsairCommanderCoreController/CorsairCommanderCoreControllerDetect.cpp#L43"
+  },
+  {
+   "id": "1b1c:0c3d",
+   "name": "Corsair Commander Core",
+   "kind": "hub",
+   "source": "Controllers/CorsairCommanderCoreController/CorsairCommanderCoreControllerDetect.cpp#L44"
+  },
+  {
+   "id": "1b1c:0c3e",
+   "name": "Corsair Commander Core",
+   "kind": "hub",
+   "source": "Controllers/CorsairCommanderCoreController/CorsairCommanderCoreControllerDetect.cpp#L45"
+  },
+  {
+   "id": "1b1c:0c3f",
+   "name": "Corsair iCUE Link System Hub",
+   "kind": "hub",
+   "source": "Controllers/CorsairICueLinkController/CorsairICueLinkControllerDetect.cpp#L40"
+  },
+  {
+   "id": "1b1c:1d00",
+   "name": "Corsair 1000D Obsidian",
+   "kind": "hub",
+   "source": "Controllers/CorsairLightingNodeController/CorsairLightingNodeControllerDetect.cpp#L48"
+  },
+  {
+   "id": "1b1c:1d04",
+   "name": "Corsair SPEC OMEGA RGB",
+   "kind": "hub",
+   "source": "Controllers/CorsairLightingNodeController/CorsairLightingNodeControllerDetect.cpp#L49"
+  },
+  {
+   "id": "1e71:2001",
+   "name": "NZXT Hue 2",
+   "kind": "hub",
+   "source": "Controllers/NZXTHue2Controller/NZXTHue2ControllerDetect.cpp#L119"
+  },
+  {
+   "id": "1e71:2002",
+   "name": "NZXT Hue 2 Ambient",
+   "kind": "hub",
+   "source": "Controllers/NZXTHue2Controller/NZXTHue2ControllerDetect.cpp#L120"
+  },
+  {
+   "id": "1e71:2005",
+   "name": "NZXT Hue 2 Motherboard",
+   "kind": "hub",
+   "source": "Controllers/NZXTHue2Controller/NZXTHue2ControllerDetect.cpp#L121"
+  },
+  {
+   "id": "1e71:2006",
+   "name": "NZXT Smart Device V2",
+   "kind": "hub",
+   "source": "Controllers/NZXTHue2Controller/NZXTHue2ControllerDetect.cpp#L128"
+  },
+  {
+   "id": "1e71:2007",
+   "name": "NZXT Kraken X3 Series",
+   "kind": "hub",
+   "source": "Controllers/NZXTHue2Controller/NZXTHue2ControllerDetect.cpp#L123"
+  },
+  {
+   "id": "1e71:2009",
+   "name": "NZXT RGB & Fan Controller",
+   "kind": "hub",
+   "source": "Controllers/NZXTHue2Controller/NZXTHue2ControllerDetect.cpp#L110"
+  },
+  {
+   "id": "1e71:200b",
+   "name": "NZXT Hue 2 Motherboard",
+   "kind": "hub",
+   "source": "Controllers/NZXTHue2Controller/NZXTHue2ControllerDetect.cpp#L122"
+  },
+  {
+   "id": "1e71:200d",
+   "name": "NZXT Smart Device V2",
+   "kind": "hub",
+   "source": "Controllers/NZXTHue2Controller/NZXTHue2ControllerDetect.cpp#L129"
+  },
+  {
+   "id": "1e71:200e",
+   "name": "NZXT RGB & Fan Controller",
+   "kind": "hub",
+   "source": "Controllers/NZXTHue2Controller/NZXTHue2ControllerDetect.cpp#L112"
+  },
+  {
+   "id": "1e71:200f",
+   "name": "NZXT Smart Device V2",
+   "kind": "hub",
+   "source": "Controllers/NZXTHue2Controller/NZXTHue2ControllerDetect.cpp#L130"
+  },
+  {
+   "id": "1e71:2010",
+   "name": "NZXT RGB & Fan Controller",
+   "kind": "hub",
+   "source": "Controllers/NZXTHue2Controller/NZXTHue2ControllerDetect.cpp#L111"
+  },
+  {
+   "id": "1e71:2011",
+   "name": "NZXT RGB & Fan Controller",
+   "kind": "hub",
+   "source": "Controllers/NZXTHue2Controller/NZXTHue2ControllerDetect.cpp#L113"
+  },
+  {
+   "id": "1e71:2012",
+   "name": "NZXT RGB Controller",
+   "kind": "hub",
+   "source": "Controllers/NZXTHue2Controller/NZXTHue2ControllerDetect.cpp#L126"
+  },
+  {
+   "id": "1e71:2014",
+   "name": "NZXT Kraken X3 Series RGB",
+   "kind": "hub",
+   "source": "Controllers/NZXTHue2Controller/NZXTHue2ControllerDetect.cpp#L124"
+  },
+  {
+   "id": "1e71:2019",
+   "name": "NZXT RGB & Fan Controller",
+   "kind": "hub",
+   "source": "Controllers/NZXTHue2Controller/NZXTHue2ControllerDetect.cpp#L114"
+  },
+  {
+   "id": "1e71:201b",
+   "name": "NZXT B650E Motherboard",
+   "kind": "hub",
+   "source": "Controllers/NZXTHue2Controller/NZXTHue2ControllerDetect.cpp#L118"
+  },
+  {
+   "id": "1e71:201f",
+   "name": "NZXT RGB & Fan Controller",
+   "kind": "hub",
+   "source": "Controllers/NZXTHue2Controller/NZXTHue2ControllerDetect.cpp#L116"
+  },
+  {
+   "id": "1e71:2020",
+   "name": "NZXT RGB & Fan Controller",
+   "kind": "hub",
+   "source": "Controllers/NZXTHue2Controller/NZXTHue2ControllerDetect.cpp#L115"
+  },
+  {
+   "id": "1e71:2021",
+   "name": "NZXT RGB Controller",
+   "kind": "hub",
+   "source": "Controllers/NZXTHue2Controller/NZXTHue2ControllerDetect.cpp#L127"
+  },
+  {
+   "id": "1e71:2022",
+   "name": "NZXT RGB & Fan Controller 2024",
+   "kind": "hub",
+   "source": "Controllers/NZXTHue2Controller/NZXTHue2ControllerDetect.cpp#L117"
+  },
+  {
+   "id": "1e71:3012",
+   "name": "NZXT Kraken 2024 ELITE Series RGB",
+   "kind": "hub",
+   "source": "Controllers/NZXTHue2Controller/NZXTHue2ControllerDetect.cpp#L125"
+  },
+  {
+   "id": "2516:004f",
+   "name": "Cooler Master RGB",
+   "kind": "hub",
+   "source": "Controllers/CoolerMasterController/CoolerMasterControllerDetect.cpp#L415"
+  },
+  {
+   "id": "2516:0173",
+   "name": "Cooler Master ARGB Gen 2 A1",
+   "kind": "hub",
+   "source": "Controllers/CoolerMasterController/CoolerMasterControllerDetect.cpp#L412"
+  },
+  {
+   "id": "2516:01c9",
+   "name": "Cooler Master ARGB Gen 2 A1 V2",
+   "kind": "hub",
+   "source": "Controllers/CoolerMasterController/CoolerMasterControllerDetect.cpp#L413"
+  },
+  {
+   "id": "2516:01cb",
+   "name": "Cooler Master ARGB Gen 2 A1 Mini",
+   "kind": "hub",
+   "source": "Controllers/CoolerMasterController/CoolerMasterControllerDetect.cpp#L414"
+  },
+  {
+   "id": "2516:1000",
+   "name": "Cooler Master Small ARGB",
+   "kind": "hub",
+   "source": "Controllers/CoolerMasterController/CoolerMasterControllerDetect.cpp#L416"
+  },
+  {
+   "id": "2516:1011",
+   "name": "Cooler Master ARGB",
+   "kind": "hub",
+   "source": "Controllers/CoolerMasterController/CoolerMasterControllerDetect.cpp#L411"
+  },
+  {
+   "id": "264a:1fa5",
+   "name": "Thermaltake Riing (PID 0x1FA5)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L81"
+  },
+  {
+   "id": "264a:1fa6",
+   "name": "Thermaltake Riing (PID 0x1FA6)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L82"
+  },
+  {
+   "id": "264a:1fa7",
+   "name": "Thermaltake Riing (PID 0x1FA7)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L83"
+  },
+  {
+   "id": "264a:1fa8",
+   "name": "Thermaltake Riing (PID 0x1FA8)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L84"
+  },
+  {
+   "id": "264a:1fa9",
+   "name": "Thermaltake Riing (PID 0x1FA9)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L85"
+  },
+  {
+   "id": "264a:1faa",
+   "name": "Thermaltake Riing (PID 0x1FAA)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L86"
+  },
+  {
+   "id": "264a:1fab",
+   "name": "Thermaltake Riing (PID 0x1FAB)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L87"
+  },
+  {
+   "id": "264a:1fac",
+   "name": "Thermaltake Riing (PID 0x1FAC)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L88"
+  },
+  {
+   "id": "264a:1fad",
+   "name": "Thermaltake Riing (PID 0x1FAD)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L89"
+  },
+  {
+   "id": "264a:1fae",
+   "name": "Thermaltake Riing (PID 0x1FAE)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L90"
+  },
+  {
+   "id": "264a:1faf",
+   "name": "Thermaltake Riing (PID 0x1FAF)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L91"
+  },
+  {
+   "id": "264a:1fb0",
+   "name": "Thermaltake Riing (PID 0x1FB0)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L92"
+  },
+  {
+   "id": "264a:1fb1",
+   "name": "Thermaltake Riing (PID 0x1FB1)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L93"
+  },
+  {
+   "id": "264a:1fb2",
+   "name": "Thermaltake Riing (PID 0x1FB2)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L94"
+  },
+  {
+   "id": "264a:1fb3",
+   "name": "Thermaltake Riing (PID 0x1FB3)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L95"
+  },
+  {
+   "id": "264a:1fb4",
+   "name": "Thermaltake Riing (PID 0x1FB4)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L96"
+  },
+  {
+   "id": "264a:1fb5",
+   "name": "Thermaltake Riing (PID 0x1FB5)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L97"
+  },
+  {
+   "id": "264a:2135",
+   "name": "Thermaltake Riing Trio (PID 0x2135)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L118"
+  },
+  {
+   "id": "264a:2136",
+   "name": "Thermaltake Riing Trio (PID 0x2136)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L119"
+  },
+  {
+   "id": "264a:2137",
+   "name": "Thermaltake Riing Trio (PID 0x2137)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L120"
+  },
+  {
+   "id": "264a:2138",
+   "name": "Thermaltake Riing Trio (PID 0x2138)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L121"
+  },
+  {
+   "id": "264a:2139",
+   "name": "Thermaltake Riing Trio (PID 0x2139)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L122"
+  },
+  {
+   "id": "264a:213a",
+   "name": "Thermaltake Riing Trio (PID 0x213A)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L123"
+  },
+  {
+   "id": "264a:213b",
+   "name": "Thermaltake Riing Trio (PID 0x213B)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L124"
+  },
+  {
+   "id": "264a:213c",
+   "name": "Thermaltake Riing Trio (PID 0x213C)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L125"
+  },
+  {
+   "id": "264a:213d",
+   "name": "Thermaltake Riing Trio (PID 0x213D)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L126"
+  },
+  {
+   "id": "264a:213e",
+   "name": "Thermaltake Riing Trio (PID 0x213E)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L127"
+  },
+  {
+   "id": "264a:213f",
+   "name": "Thermaltake Riing Trio (PID 0x213F)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L128"
+  },
+  {
+   "id": "264a:2141",
+   "name": "Thermaltake Riing Trio (PID 0x2141)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L129"
+  },
+  {
+   "id": "264a:2142",
+   "name": "Thermaltake Riing Trio (PID 0x2142)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L130"
+  },
+  {
+   "id": "264a:2143",
+   "name": "Thermaltake Riing Trio (PID 0x2143)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L131"
+  },
+  {
+   "id": "264a:2144",
+   "name": "Thermaltake Riing Trio (PID 0x2144)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L132"
+  },
+  {
+   "id": "264a:2145",
+   "name": "Thermaltake Riing Trio (PID 0x2145)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L133"
+  },
+  {
+   "id": "264a:2260",
+   "name": "Thermaltake Riing Quad (PID 0x2260)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L99"
+  },
+  {
+   "id": "264a:2261",
+   "name": "Thermaltake Riing Quad (PID 0x2261)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L100"
+  },
+  {
+   "id": "264a:2262",
+   "name": "Thermaltake Riing Quad (PID 0x2262)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L101"
+  },
+  {
+   "id": "264a:2263",
+   "name": "Thermaltake Riing Quad (PID 0x2263)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L102"
+  },
+  {
+   "id": "264a:2264",
+   "name": "Thermaltake Riing Quad (PID 0x2264)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L103"
+  },
+  {
+   "id": "264a:2265",
+   "name": "Thermaltake Riing Quad (PID 0x2265)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L104"
+  },
+  {
+   "id": "264a:2266",
+   "name": "Thermaltake Riing Quad (PID 0x2266)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L105"
+  },
+  {
+   "id": "264a:2267",
+   "name": "Thermaltake Riing Quad (PID 0x2267)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L106"
+  },
+  {
+   "id": "264a:2268",
+   "name": "Thermaltake Riing Quad (PID 0x2268)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L107"
+  },
+  {
+   "id": "264a:2269",
+   "name": "Thermaltake Riing Quad (PID 0x2269)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L108"
+  },
+  {
+   "id": "264a:226a",
+   "name": "Thermaltake Riing Quad (PID 0x226A)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L109"
+  },
+  {
+   "id": "264a:226b",
+   "name": "Thermaltake Riing Quad (PID 0x226B)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L110"
+  },
+  {
+   "id": "264a:226c",
+   "name": "Thermaltake Riing Quad (PID 0x226C)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L111"
+  },
+  {
+   "id": "264a:226d",
+   "name": "Thermaltake Riing Quad (PID 0x226D)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L112"
+  },
+  {
+   "id": "264a:226e",
+   "name": "Thermaltake Riing Quad (PID 0x226E)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L113"
+  },
+  {
+   "id": "264a:226f",
+   "name": "Thermaltake Riing Quad (PID 0x226F)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L114"
+  },
+  {
+   "id": "264a:2270",
+   "name": "Thermaltake Riing Quad (PID 0x2270)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L115"
+  },
+  {
+   "id": "264a:232b",
+   "name": "Thermaltake Riing Quad (PID 0x232B)",
+   "kind": "hub",
+   "source": "Controllers/ThermaltakeRiingController/ThermaltakeRiingControllerDetect.cpp#L116"
+  },
+  {
+   "id": "26ce:01a2",
+   "name": "ASRock Polychrome USB",
+   "kind": "board",
+   "source": "Controllers/ASRockPolychromeUSBController/ASRockPolychromeUSBControllerDetect.cpp#L47"
+  },
+  {
+   "id": "26ce:01a6",
+   "name": "ASRock Deskmini Addressable LED Strip",
+   "kind": "board",
+   "source": "Controllers/ASRockPolychromeUSBController/ASRockPolychromeUSBControllerDetect.cpp#L48"
+  }
+ ],
+ "smbusBoards": [
+  {
+   "maker": "ASUS",
+   "match": "asus",
+   "source": "Controllers/ENESMBusController/ENESMBusControllerDetect.cpp#L291",
+   "detector": "ASUS Aura SMBus Motherboard"
+  },
+  {
+   "maker": "Gigabyte",
+   "match": "gigabyte",
+   "source": "Controllers/GigabyteRGBFusion2SMBusController/GigabyteRGBFusion2SMBusControllerDetect.cpp#L161 and Controllers/GigabyteRGBFusionController/GigabyteRGBFusionControllerDetect.cpp#L79",
+   "detector": "Gigabyte RGB Fusion 2 SMBus, Gigabyte RGB Fusion"
+  },
+  {
+   "maker": "ASRock",
+   "match": "asrock",
+   "source": "Controllers/ASRockSMBusController/ASRockSMBusControllerDetect.cpp#L159",
+   "detector": "ASRock Motherboard SMBus Controllers"
+  },
+  {
+   "maker": "MSI",
+   "match": "micro-star|\bmsi\b",
+   "source": "Controllers/MSIRGBController/MSIRGBControllerDetect.cpp#L126",
+   "detector": "MSI-RGB (the board's Super I/O chip, reached the same way)"
+  },
+  {
+   "maker": "EVGA",
+   "match": "evga",
+   "source": "Controllers/EVGASMBusController/EVGASMBusControllerDetect.cpp#L73",
+   "detector": "EVGA Motherboard SMBus Controllers"
+  }
+ ]
+}

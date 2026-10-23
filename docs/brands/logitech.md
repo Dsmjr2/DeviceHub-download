@@ -52,6 +52,7 @@ Solaar's list; no source ties it to a model). Solaar also accepts any unknown re
 | G915 | 0xC33E | 0xC541, 0xC547 | OpenRGB `LogitechControllerDetect.cpp` |
 | G915 TKL | 0xC343 (wpid 0x408E, Bluetooth 0xB35F) | 0xC545 | OpenRGB, Solaar, Linux |
 | G815 | 0xC33F | - | OpenRGB, Solaar |
+| G813 | 0xC232 (HID++ on interface 1, usage page 0xFF43 usage 0x0602) | - | OpenRGB `LogitechControllerDetect.cpp` @ bbc77470 (lines 58, 1531); not in Solaar, Linux or libratbag |
 | G515 LIGHTSPEED TKL | 0xC355 (wpid 0x40B4) | **unconfirmed** | OpenRGB |
 | G512 | 0xC33C | - | Solaar |
 | G213 | 0xC336 | - | OpenRGB, Solaar |
@@ -355,7 +356,7 @@ through Centurion frames (report 0x51) and the 0x0003 bridge exactly as HeadsetC
 auto sleep 0x0108 with the other timer slots sent back as read (Solaar `HeadsetSidetone`, `HeadsetAutoSleep`).
 Not covered: lights (write-only), the PRO X 2 EQ, G432 / G533 sidetone (write-only), G522, G435, ASTRO A50 / A50 X.
 
-**Keyboards** (G915 / G915 TKL / G815 / G515 TKL / G512 / G213 / PRO; receivers C541, C545): battery, report rate
+**Keyboards** (G915 / G915 TKL / G815 / G813 / G515 TKL / G512 / G213 / PRO; receivers C541, C545): battery, report rate
 0x8061 / 0x8060 (host mode only), settings source 0x8100 fn 0x20 / 0x10, onboard profile **select only** (count from fn
 0x00 byte 3, libratbag; read fn 0x40 / select fn 0x30 with the 2-byte sector, Solaar `OnboardProfiles`), key locks
 including the Windows key (0x4521, Solaar `DisableKeyboardKeys`, bits from `special_keys.DISABLE`), F-key swap 0x40A2 /
@@ -382,3 +383,26 @@ Lightspeed pairing 0x0309 and BLE pre-pairing 0x1816 are now on helpers/never-co
 - An empty slot and a sleeping device both get an HID++ 1.0 error from the receiver (short report `<slot> 8F ...`,
   0x08 unknown device / 0x09 resource error, Solaar `base.py` ping); on Windows that arrives on the short-report
   collection, so a driver reading only the long one sees no reply for both.
+
+## Covered: PRO X2 SUPERSTRIKE in device-library/logitech-hidpp-mouse (22 Oct 2026, docs/handoff/superstrike.md)
+
+- **Ids:** receiver 0xC54D (already in RECEIVERS), WPID 0x40BD (Solaar `docs/devices/PRO X 2 Superstrike 40BD.txt`,
+  `docs/PRO_X2_SUPERSTRIKE_CLI.md` @ e7304c4c, HID++ 4.2), cable 0xC0A8 (xatuke/logitech-superstrike-pro-x2-controller
+  `README.md`, `udev/99-superstrike.rules` @ c3ad5366; Solaar's Model ID 40BDC0A80000). On a receiver the model is
+  recognised by its 0x1B0C feature, since the pairing table is not read.
+- **Feature table** (kazehana99k `feature-table.txt` @ 1b599dd0; oddvalue/linux-superstrike `REVERSE_ENGINEERING.md`
+  @ 42588e73; xatuke `docs/PROTOCOL.md`): **no 0x2201 and no 0x8060**. DPI is 0x2202, the rate 0x8061, the battery 0x1004,
+  profiles 0x8100. The driver now runs a mouse with 0x2202 and no 0x2201 (DPI shown from 0x2202 fn 0x50).
+- **HITS, 0x1B0C ANALOG_BUTTONS** (all four sources agree on the bytes): caps fn 0x00 -> `[flags, buttons, act<<2,
+  rt<<2, hap<<2, ...]` (this mouse `00 03 28 14 14 01`: actuation 1-10, rapid trigger 1-5, haptics 0-5; only buttons 0
+  left and 1 right answer); read fn 0x20 `[btn]` -> `[btn, act<<2, (rt<<2)|flag, hap<<2]`; write fn 0x10 `[btn, act, rt,
+  hap]`, the whole record. Byte 2 bit 0 is kept as read (Solaar, oddvalue; xatuke treats it as a rapid-trigger on/off).
+  A reserved low bit set or a value out of range answers 0x02 invalid argument (kazehana, Solaar #3202). Covered as six
+  settings, written read-modify-write with the exact raw bytes and read back byte for byte.
+- **Not written on this mouse:** DPI (0x2202 fn 0x60) and report rate (0x8061 fn 0x30): oddvalue and xatuke measured the
+  getters (0x2202 fn 0x50, 0x8061 fn 0x20) returning stale values after a write; lift-off (LOD values disagree: Solaar
+  0/1/2 vs xatuke's G HUB 1/2/3); the profile select (it reloads the profile, oddvalue). Shown only.
+- **Never sent:** 0x1500 force pairing, 0x1802 reset, 0x1805 OOB, 0x00C2 DFU as before, and from this mouse's table 0x1817
+  (Lightspeed pre-pairing), 0x9403 (oddvalue "FlashUpdate?"), 0x1801, 0x1803, 0x1890, 0x1E00. Also not offered: 0x8090
+  surface mode and 0x80E0 bunny-hop (xatuke only; 0x80E0 fn 0x20 is a write that looks like a read), onboard-profile
+  memory (0x8100 fn 0x50-0x80).

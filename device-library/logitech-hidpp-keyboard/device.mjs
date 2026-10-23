@@ -1,5 +1,5 @@
 // Logitech G keyboards over HID++ 2.0 (22 Oct 2026): on their own cable or a Lightspeed receiver (G915 / G915 TKL /
-// G815 / G515 TKL / G512 / G213 / PRO), and the G915 TKL on Bluetooth (BLE below; docs/handoff/logitech-ble.md).
+// G815 / G813 / G515 TKL / G512 / G213 / PRO), and the G915 TKL on Bluetooth (BLE below; docs/handoff/logitech-ble.md).
 // Written only from open-source code, cited beside every command:
 //   Solaar    = github.com/pwr-Solaar/Solaar @ e7304c4c451cc9bb4f206a914844525e67856a28, lib/logitech_receiver/
 //               (hidpp20_constants.py feature ids; settings_templates.py ReportRate, ExtendedReportRate, OnboardProfiles,
@@ -29,7 +29,17 @@ const hex2 = (b) => b.toString(16).padStart(2, '0');
 // "G915 | 0xC33E | 0xC541, 0xC547"). Added 22 Oct 2026 (docs/handoff/driver-safety.md). Recent Lightspeed mice may ship
 // on it too (the sheet's open question); a mouse on it is refused by its 0x2201 feature, as on C541 / C545.
 export const RECEIVERS = { 0xc541: 'G915 receiver', 0xc547: 'G915 receiver', 0xc545: 'G915 TKL receiver' };
-export const WIRED = { 0xc33e: 'G915', 0xc343: 'G915 TKL', 0xc33f: 'G815', 0xc355: 'G515 LIGHTSPEED TKL', 0xc33c: 'G512', 0xc336: 'G213', 0xc339: 'PRO Gaming Keyboard' };
+export const WIRED = { 0xc33e: 'G915', 0xc343: 'G915 TKL', 0xc33f: 'G815', 0xc355: 'G515 LIGHTSPEED TKL', 0xc33c: 'G512', 0xc336: 'G213', 0xc339: 'PRO Gaming Keyboard', 0xc232: 'G813' };
+// The G813 (22 Oct 2026, Dsmjr2/DeviceHub-support#6; docs/handoff/friend-lights-c232.md): OpenRGB
+// Controllers/LogitechController/LogitechControllerDetect.cpp @ bbc77470a7cba56af60989e54ba910d5ac66a3ac line 58
+// "#define LOGITECH_G813_PID 0xC232" and line 1531 'REGISTER_HID_DETECTOR_IP ("Logitech G813 RGB Mechanical Gaming
+// Keyboard", DetectLogitechKeyboardG815, LOGITECH_VID, LOGITECH_G813_PID, 1, 0xFF43)': the G815's own detector, on USB
+// interface 1, usage page 0xFF43. Its comment (lines 163-166): "Usage 0x0602 for 20 byte, usage 0x0604 for 64 byte, both
+// are on usage page 0xFF43"; LogitechG815Controller.cpp sends 20-byte HID++ 2.0 long reports there (0x11, device 0xFF).
+// So it is opened on interface 1, page FF43 usage 0602 (not FF00 / 0002), with the same HID++ 2.0 feature lookup.
+// Solaar (descriptors.py), Linux hid-ids.h and libratbag do not list 0xC232 (read 22 Oct 2026).
+// A G813 whose PC shows only its typing interface (page 0001 usage 0006, no interface 1) cannot be reached by any app.
+export const FF43 = { 0xc232: { iface: 1, page: 'FF43', usage: '0602' } };
 // Bluetooth (22 Oct 2026, docs/handoff/logitech-ble.md): the keyboard is its own HID device with the keyboard's BLE
 // product id, HID++ 2.0 straight to it at device index 0xFF (no receiver, no slots).
 //   0xB35F: Linux drivers/hid/hid-logitech-hidpp.c @ 3fabd8ec206bd48a45ef77aed170d25b322ad9a2, hidpp_devices:
@@ -126,6 +136,8 @@ async function defaultVendorApp() {
 async function defaultOpen(pid) {
   // Bluetooth: no usage page in the filter (the BLE channel chooses its collection by report length, BLE_HID)
   if (BLE[pid]) return getDevice([{ vendorId: VID, productId: pid }], { prompt: false });
+  // the G813: its HID++ collection is interface 1, page 0xFF43 usage 0x0602 (FF43 above, OpenRGB)
+  if (FF43[pid]) return getDevice([{ vendorId: VID, productId: pid, usagePage: 0xff43, usage: 0x0602 }], { prompt: false });
   return getDevice([{ vendorId: VID, productId: pid, usagePage: 0xff00, usage: 0x0002 }], { prompt: false });
 }
 
@@ -138,7 +150,7 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
     // the long-report collection, usage page 0xFF00 usage 0x02 (sheet section 2, OpenRGB); raw replies (as the mouse)
     // Bluetooth ids get their own collection choice (BLE_HID); every USB id's channel is as before
     hid: { vid: '046D', pid: 'C33E', pids: PIDS.map(hex4), page: 'FF00', usage: '0002', len: LEN, reportId: REPORT_LONG, replyMs: 2000, reply: 'raw',
-      byPid: Object.fromEntries(Object.keys(BLE).map((p) => [hex4(Number(p)), { ...BLE_HID }])) },
+      byPid: Object.fromEntries([...Object.keys(BLE).map((p) => [hex4(Number(p)), { ...BLE_HID }]), ...Object.entries(FF43).map(([p, c]) => [hex4(Number(p)), { ...c }])]) },
     unsupported: ['editing onboard profiles (keys, macros, lights)', 'lighting colours and effects (no read-back)', 'G-key and M-key remaps', 'game mode beyond the key locks', 'firmware updates', 'pairing'],
     dev: null, chan: null, index: DEV_WIRED, features: {}, caps: {}, asleep: false, usbId: null,
     pingMs: 2600,   // how long a slot's ping waits (tests shorten it)

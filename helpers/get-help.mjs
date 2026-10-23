@@ -31,6 +31,7 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.DEVICEHUB_PORT) || 5577;
 export const ISSUES = `${UPSTREAM}/issues/new`;
 export { MAX_URL };
+export const LIGHTS = 'lights';   // the Lighting page's Get help: an area, not a device
 const LOG_LINES = 12;     // at most this many log lines, before trimming to fit the link
 const LINE_MAX = 200;     // each log line cut to this many characters
 
@@ -97,6 +98,9 @@ function compose(f, { logs, whyMax = 400, findingsMax = 8 }) {
     L.push(`- Driver: ${d.driver}`);
     for (const [k, v] of d.info) L.push(`- ${k}: ${v}`);
     L.push('');
+  } else if (f.lights) {
+    // Get help for PC lights (area "lights", helpers/lights-diagnose.js): OpenRGB, what it found, the board, the RGB ids
+    L.push('### PC lights', ...f.lights, '');
   } else if (f.devices?.length) {
     L.push('### Devices', ...f.devices.map((x) => `- ${x.title} (${x.id}): ${x.status}${x.error ? `, ${x.error}` : ''}`), '');
   }
@@ -133,6 +137,7 @@ export function makeIssue(f, { names = [], max = MAX_URL } = {}) {
     g.device.info = g.device.info.map(([k, v]) => [add(s(k)), add(s(v))]);
   }
   for (const x of g.devices || []) for (const k of ['title', 'status', 'error']) if (x[k]) x[k] = add(s(x[k]));
+  if (g.lights) g.lights = g.lights.map((l) => add(s(l)));
   g.version = add(s(g.version)); g.windows = add(s(g.windows));
 
   let logs = g.log.length, body = compose(g, { logs }), url = issueUrl(title, body), cut = false;
@@ -247,6 +252,11 @@ async function bluetoothNames(deps) {
 }
 
 // deps (tests and the real run): port, version, windows, state, usb, diagnose, log, specs, bluetooth (the names' list)
+// The devices a report lists (22 Oct 2026, support issue 3): the same ones the app shows (public/core/devices.js
+// shownDevices: seen on this PC before, or connected or asleep now), plus any added driver (a library or learned driver
+// is installed only for a USB id this PC has, so its state always matters). DeviceHub's own slots for the Pulsar, the
+// HS80 and the P75 are left out on a PC that has never had them, instead of showing "missing".
+export const shownInReport = (x) => !!x && (x.seen === true || ['connected', 'asleep', 'connecting'].includes(x.status) || !!x.adapter?.plugin);
 export async function gather(id, deps = {}) {
   const root = deps.root || options.root;
   const port = deps.port || PORT;
@@ -260,9 +270,19 @@ export async function gather(id, deps = {}) {
   const f = { version, windows, at: new Date().toISOString() };
   if (!id) {
     f.title = `Help: DeviceHub ${devicehubVersion(root)}`;
-    f.devices = devs.map((x) => ({ id: x.id, title: x.adapter?.title || x.id, status: x.status, error: x.error || null }));
+    f.devices = devs.filter(shownInReport).map((x) => ({ id: x.id, title: x.adapter?.title || x.id, status: x.status, error: x.error || null }));
     if (!state) f.findings = [{ problem: "DeviceHub's background part did not answer", why: 'Its device list could not be read.', fix: 'Quit DeviceHub from its tray icon and start it again.' }];
     f.log = dropBluetooth(relevantLog(deps.log ? await deps.log() : logTail(root), null), await bluetoothNames(deps));
+    return f;
+  }
+  // the Lighting page's Get help (22 Oct 2026, a friend's fans not found): OpenRGB's version and state, the lights it
+  // found, the board and every known RGB controller id plugged in, so one click tells Shawn everything
+  if (id === LIGHTS) {
+    const d = deps.lights ? await deps.lights() : await getJson(port, '/api/lights/diagnose', 60000);
+    f.title = `Help: PC lights${d?.board ? ` (${d.board})` : ''}${d?.verdict ? `, ${d.verdict.kind === 'usb' ? 'RGB controller on USB' : d.verdict.kind === 'smbus' ? 'board SMBus' : 'no RGB controller found'}` : ''}`;
+    f.lights = d?.lines?.length ? d.lines : ['- The lights check did not answer.'];
+    f.findings = (d?.problems || []).map((x) => ({ problem: x.problem, why: x.why, fix: x.fix }));
+    f.log = dropBluetooth(relevantLog(deps.log ? await deps.log() : logTail(root), { id: 'openrgb', title: 'PC lights' }), await bluetoothNames(deps));
     return f;
   }
   const snap = devs.find((x) => x.id === id);

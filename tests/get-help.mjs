@@ -68,6 +68,20 @@ try {
     bluetooth: async () => [{ name: 'Zorb Buds Pro', percent: 80 }, { name: 'X' }],
   };
   const f = await gather('acme-mouse', deps);
+  // support issue 3 (22 Oct 2026): DeviceHub's own slots for devices this PC never had are left out of a report
+  {
+    const st = { devices: [
+      { id: 'mouse', status: 'missing', seen: false, adapter: { title: 'Pulsar X-Lite CrazyLight' } },
+      { id: 'headset', status: 'missing', seen: false, adapter: { title: 'Corsair HS80' } },
+      { id: 'keyboard', status: 'connected', seen: true, adapter: { title: 'Epomaker P75' } },
+      { id: 'hyperx-cloud', status: 'error', seen: false, adapter: { title: 'HyperX Cloud headset', plugin: 'hyperx-cloud' } },
+    ] };
+    const g = await gather(null, { ...deps, state: async () => st });
+    const ids = g.devices.map((x) => x.id).join(',');
+    ok(ids === 'keyboard,hyperx-cloud', `a report lists only the devices this PC has (${ids})`);
+    const mine = await gather(null, { ...deps, state: async () => ({ devices: st.devices.map((x) => ({ ...x, seen: true })) }) });
+    ok(mine.devices.length === 4 && mine.devices.some((x) => x.id === 'mouse' && x.status === 'missing'), 'a device seen here before still shows as missing');
+  }
   ok(f.device.usb[0].id === '1234:abcd' && f.device.usb[0].name === 'Acme Glide Receiver' && f.device.usb[0].present === true, `USB id and Windows' name (${JSON.stringify(f.device.usb)})`);
   ok(/from the device library: acme-glide \(status read-only, tested 2026-10-20, settings not turned on yet\)/.test(f.device.driver), `library driver named with its status (${f.device.driver})`);
   ok(!f.device.info.some(([k]) => /serial/i.test(k)) && f.device.info.some(([k, v]) => k === 'Firmware' && v === '1.2'), 'device info without the serial number');

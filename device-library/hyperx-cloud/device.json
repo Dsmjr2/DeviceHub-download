@@ -22,7 +22,7 @@
     "HyperX Cloud II Core Wireless"
   ],
   "works": [
-    "Cloud II Wireless (03F0:0696, 018B): battery %, battery voltage, charging, sidetone on/off, raw sidetone level, auto-off minutes, mic mute, boom mic attached (read); sidetone on/off, auto-off, mic mute (write with read-back)",
+    "Cloud II Wireless (03F0:0696, 018B): battery %, battery voltage, charging, sidetone on/off, auto-off minutes, mic mute, boom mic attached (read); sidetone on/off, auto-off, mic mute (write with read-back); only these three settings are offered for it",
     "Cloud Alpha Wireless (03F0:098D): battery %, charging, sidetone on/off and level 0-128, auto-off, voice prompts, mic mute, boom mic attached (read); sidetone on/off, sidetone level 0-128 (HeadsetControl), auto-off, voice prompts, mic mute (write with read-back)",
     "Cloud Alpha Wireless (03F0:1743, 1765, ids from one source only): the same reads, no writes",
     "Cloud III Wireless (03F0:05B7, 0C9D, ids the source calls possible): battery %, connected, sidetone on/off, raw sidetone level, auto-off, mic mute, silent mode, charging raw byte, product color code (read only)",
@@ -33,7 +33,8 @@
     "firmware updates (never: they stay in HyperX NGENUITY)",
     "pairing: the Cloud III Wireless SIRK reset and read are never sent (nor on the Cloud II Core, which shares the frame)",
     "the Cloud II Wireless wireless-status get (it unmutes the headset): never sent",
-    "sidetone level changes on the Cloud II Wireless (a raw byte with no documented range)",
+    "sidetone level on the Cloud II Wireless (a raw byte with no documented range or scale: kept in the raw backup only, not shown or changed)",
+    "voice prompts, silent mode and noise gate on the Cloud II Wireless (its firmware does not report them: HH marks voice prompts \"Doesn't work\" and has no silent mode; HSC reads only battery and auto-off)",
     "Alpha Wireless connection state (the two sources disagree on its byte)",
     "Cloud III Wireless and Cloud II Core Wireless changes (ids not confirmed / one source)",
     "mic monitoring (no source documents it; HyperX calls it sidetone)",
@@ -43,6 +44,7 @@
     "running beside NGENUITY: close it first"
   ],
   "status": "untested",
+  "updated": "2026-10-23T00:30:00Z",
   "tested": [
     {
       "by": "nobody yet: simulation only",

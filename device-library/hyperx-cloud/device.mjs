@@ -208,8 +208,13 @@ export class Link {
     data.set(frame.slice(1));
     const fam = this.fam, cmd = frame[fam.cmdAt];
     const codes = [cmd, ...(fam.replyCodes[cmd] || [])];
-    let listener, timer;
+    // The listener is in place before the write (a fast reply is not missed), but the wait for the reply starts only
+    // once the write is done, and the reply promise always has a handler. 22 Oct 2026 (support issues 3-5): the timer
+    // started before the write; a write slower than timeoutMs rejected the promise before anyone awaited it, and that
+    // unhandled "no reply to 06 ff bb 08" stopped DeviceHub on a friend's PC.
+    let listener, timer, fail = null;
     const answer = reply ? new Promise((resolve, reject) => {
+      fail = reject;
       listener = (e) => {
         if (e.reportId !== reportId) return;
         const d = new Uint8Array(e.data.buffer, e.data.byteOffset, e.data.byteLength);
@@ -217,14 +222,15 @@ export class Link {
         if (!fam.header.every((x, i) => f(i) === x) || !codes.includes(f(fam.cmdAt))) return;   // a notice, or another reply
         resolve(Uint8Array.from(d));
       };
-      timer = setTimeout(() => reject(new Error(`no reply to ${hex(frame)}`)), this.timeoutMs);
       this.device.addEventListener('inputreport', listener);
     }) : null;
+    answer?.catch(() => {});   // handled here as well: a reply that comes too late is never an unhandled rejection
     try {
       await this.write(reportId, data);
       this.log.push({ t: Date.now(), out: hex([reportId, ...data]) });
       if (this.log.length > 100) this.log.splice(0, this.log.length - 100);
       if (!reply) { await sleep(50); return null; }   // HH waits 50 ms after each write before reading
+      timer = setTimeout(() => fail(new Error(`no reply to ${hex(frame)}`)), this.timeoutMs);
       return await answer;
     } finally {
       clearTimeout(timer);
@@ -282,7 +288,12 @@ export default {
   id: 'hyperx-cloud',
   title: 'HyperX Cloud headset',
   kind: 'Headset',
-  settings: SETTINGS,
+  // Only the settings the connected model really has (22 Oct 2026, support issue 4): a Cloud II Wireless reports mic
+  // mute, sidetone on/off and auto-off, and nothing else (HSC hyperx_cloud_2_wireless.hpp reads only battery and the
+  // inactive time; HH cloud_ii_wireless_dts.rs has no silent mode and marks voice prompts "Doesn't work"). Offering the
+  // others made them fail the self-check with "the device did not report its value". Before any headset was found,
+  // every setting the driver knows.
+  get settings() { const m = this.link?.model || this.lastModel; return m ? SETTINGS.filter((s) => Object.hasOwn(m.reads, s.key)) : SETTINGS; },
   // one channel per pid (HID LAYER 1, 2); refused writes are not unplugs, so Link.write's feature fallback runs (4)
   hid: { vid: '03F0', pid: '0696', page: 'FF90', usage: '0303', len: 19, reportId: 0x06, replyMs: 1000, echo: () => FAMILIES['06ffbb'].echo, productName: 'HyperX Cloud II Wireless',
     refusals: true, pids: MODELS.flatMap((m) => m.pids).map((p) => p.toUpperCase()),
@@ -293,6 +304,7 @@ export default {
     'sidetone level changes on the Cloud II Wireless (range not documented)', 'connection state on the Alpha Wireless (sources disagree)',
     'mic monitoring (no source; HyperX calls it sidetone)', 'running beside NGENUITY: close it first'],
   link: null,
+  lastModel: null,
   first: {},
   app: null,
   appAt: 0,
@@ -321,6 +333,7 @@ export default {
         if (!dev) continue;
         if (!dev.opened) await dev.open();
         this.link = new Link(dev, m);
+        this.lastModel = m;
         this.pid = pid;
         return true;
       }
@@ -336,7 +349,10 @@ export default {
       Changes: m.readOnlyWhy ? `none: ${m.readOnlyWhy}` : Object.keys(m.writes).map(labelOf).join(', ') };
     const tryGet = async (k) => (Object.hasOwn(m.reads, k) ? this.link.getRaw(k).catch(() => null) : null);
     const b = await tryGet('battery'); if (b?.value?.mV) out['Battery voltage'] = `${b.value.mV} mV`;
-    const lvl = await tryGet('sidetoneLevelRaw'); if (lvl) out['Sidetone level (raw)'] = String(lvl.value);
+    // The raw sidetone byte (Cloud II Wireless 0B, Cloud III Wireless 88) is not shown (22 Oct 2026, support issue 4: a
+    // friend's Cloud II Wireless showed "Sidetone level (raw): 231"). HH reads it as "side tone volume" and passes the
+    // byte on as it is; HSC does not read it; no source gives its range or scale, so the number means nothing to a
+    // person. It stays in the raw backup (rawBackup) for whoever maps it.
     const col = await tryGet('productColor'); if (col) out['Product color code (mapping unconfirmed)'] = String(col.value);
     const mic = await tryGet('micAttached'); if (mic && mic.value !== null) out['Boom mic'] = mic.value ? 'attached' : 'not attached';
     const con = await tryGet('connected'); if (con) out.Connected = con.value ? 'yes' : 'no';

@@ -13,6 +13,7 @@ import { demoAdapters } from './devices/demo.js';
 import { useDemoHistory } from './ui/battery-chart.js';
 import { useDemoEstimate } from './ui/controls.js';
 import overview from './pages/overview.js';
+import setupPage from './pages/setup.js';
 import mousePage from './pages/mouse.js';
 import keyboardPage from './pages/keyboard.js';
 import headsetPage from './pages/headset.js';
@@ -49,7 +50,7 @@ if (!REMOTE) adapters.forEach(register);
 // demo mode's pretend added device (?demo&added, public/devices/demo.js): its graph readings and time left are its own
 if (DEMO) for (const a of adapters) if (a.demoHistory) { useDemoHistory(a.id, a.demoHistory); if (a.demoEstimate) useDemoEstimate(a.id, a.demoEstimate); }
 
-const PAGES = [overview, mousePage, headsetPage, keyboardPage, lightingPage, monitorsPage, fansPage, wallpapersPage, profilesPage, backupsPage, settingsPage, learnPage, supportedPage];
+const PAGES = [overview, setupPage, mousePage, headsetPage, keyboardPage, lightingPage, monitorsPage, fansPage, wallpapersPage, profilesPage, backupsPage, settingsPage, learnPage, supportedPage];
 // devices added on this PC (my-devices/, 21 Oct 2026): a page each, after the built-in devices
 if (REMOTE || DEMO) for (const d of Object.values(devices)) if (d.adapter?.plugin) PAGES.splice(PAGES.indexOf(lightingPage), 0, devicePage(d.id));
 let current = null;
@@ -80,16 +81,18 @@ function buildRail() {
   rail.replaceChildren(
     h('div', { class: 'brand' }, h('img', { class: 'brand-mark', src: '/icon-64.png', alt: '' }), h('div', {}, 'DeviceHub', DEMO ? h('small', {}, 'DEMO MODE') : null)),
     navBtn(PAGES[0]),
+    // Setup, right under the Overview (22 Oct 2026, Shawn: "I want the setup to all be on one page"; pages/setup.js)
+    navBtn(setupPage),
     h('div', { class: 'nav-label' }, 'Devices'),
     ...PAGES.filter((p) => p.device).map(navBtn),
     // the rest in two groups (20 Oct 2026, seven entries were one long list): the person's setup, and the app itself.
     // "Desk" became "Setup" when Wallpapers joined it (22 Oct 2026, Shawn: "put it under the desk area and rename that to
     // make more sense"): the lights, screens, fans and wallpapers of their setup
-    h('div', { class: 'nav-label' }, 'Setup'),
+    h('div', { class: 'nav-label' }, 'Desk'),
     ...PAGES.filter((p) => SETUP.includes(p.id)).map(navBtn),
     h('div', { class: 'nav-label' }, 'App'),
     // rail: false = reached from another page only (Supported devices: Settings and Search; Learn a device is listed here too, 22 Oct 2026)
-    ...PAGES.filter((p) => !p.device && p.id !== 'overview' && p.rail !== false && !SETUP.includes(p.id)).map(navBtn),
+    ...PAGES.filter((p) => !p.device && p.id !== 'overview' && p.id !== 'setup' && p.rail !== false && !SETUP.includes(p.id)).map(navBtn),
     h('div', { class: 'rail-foot' },
       h('button', { class: 'cmd-hint', onclick: openPalette }, icon('search'), h('span', {}, 'Search'))),
   );

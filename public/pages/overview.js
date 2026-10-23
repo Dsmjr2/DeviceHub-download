@@ -5,7 +5,7 @@ import { ring, button, card, pill, batteryCell, loadBatteryEstimates, skeleton }
 import { devices, activity, connect, isDemo, isRemote, shownDevices, noDevicesYet, stillLooking } from '../core/devices.js';
 import { artOf, genericArtFor } from '../ui/art.js';
 import { prettyExe } from '../core/autoswitch.js';
-import { statusPill, checkAnswer } from './common.js';
+import { statusPill } from './common.js';
 import { loadProfiles, apply } from '../core/profiles.js';
 import { EFFECTS } from '../devices/keycodes.js';
 import { meter, micState, dots, signal, colorDot } from '../ui/gauges.js';
@@ -14,7 +14,7 @@ import { loadPc, otherDevices, pcLoaded, copyPrompt } from './pc-lights.js';
 import { learnThis } from './learn.js';
 import { getHelp } from '../ui/get-help.js';
 import { genericDongle } from '../core/generic-dongle.js';
-import { installerButton } from '../ui/installer-button.js';
+import { deviceRows, countNeeds, summaryLine } from '../core/setup-list.js';
 import { LIFT_OFF } from '../devices/pulsar.js';
 import { reviewSetup } from './backups.js';
 
@@ -93,7 +93,9 @@ function firstRun(go, redraw) {
         })) : null;
     })(),
     h('div', { class: 'actions' },
-      button('Learn a device', () => go('learn'), { kind: 'primary small', ic: 'plug' }),
+      // everything to set up, on one page (pages/setup.js)
+      button('Open Setup', () => go('setup'), { kind: 'primary small', ic: 'check' }),
+      button('Learn a device', () => go('learn'), { kind: 'ghost small', ic: 'plug' }),
       button('Monitors', () => go('monitors'), { kind: 'ghost small', ic: 'monitor' }),
       button('Open folder', () => fetch('/api/reveal', { method: 'POST' }), { kind: 'ghost small', ic: 'external' })));
 }
@@ -125,103 +127,24 @@ function oneDriveBanner(redraw, fresh) {
     h('div', { class: 'actions' }, button('Review', review, { kind: 'primary small' }), button('Not now', notNow, { kind: 'ghost small' })));
 }
 
-let setupInfo = null, setupAsked = false, setupHidden = false, reportsOn = false;
-const setupNote = {};   // an item's button: what it answered, by library entry name or device id
-const allNote = { busy: false, lines: [] };   // Turn on settings for all: its answer, one line per device
+let setupInfo = null, setupAsked = false, setupHidden = false;
+// Short since 22 Oct 2026 (Shawn: "I want the setup to all be on one page"): one line saying how many things need the
+// person, and Open Setup (pages/setup.js has every row and button). Counted the Setup page's way (core/setup-list.js).
 function setupCard(redraw) {
   if (isDemo() || setupHidden) return null;
   if (!setupAsked) {
     setupAsked = true;
     fetch('/api/setup').then((r) => (r.ok ? r.json() : null)).then((j) => { setupInfo = j; if (j?.show) redraw(); }).catch(() => {});
-    fetch('/api/auto-report').then((r) => (r.ok ? r.json() : null)).then((j) => { reportsOn = !!j?.active; if (reportsOn && setupInfo?.show) redraw(); }).catch(() => {});
   }
   const s = setupInfo;
   if (!s?.show) return null;
-  // an item's own button (helpers/auto-setup.mjs summary): install a library driver, or run its check again. The
-  // answer shows on the item's line; nothing pops up.
-  const act = async (i) => {
-    const a = i.action;
-    setupNote[a.name || a.id] = a.kind === 'library-install' ? 'Installing…' : a.kind === 'turn-on' ? 'Turning on…' : 'Checking…'; redraw();
-    try {
-      const r = a.kind === 'library-install'
-        ? await fetch('/api/library/install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: a.name }) })
-        : await fetch('/api/diagnose/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: a.kind === 'turn-on' ? 'turn-on' : 'check-again', id: a.id }) });
-      const j = await r.json().catch(() => ({}));
-      setupNote[a.name || a.id] = !r.ok || j.error ? `Not done: ${j.error || r.statusText}`
-        : a.kind === 'library-install' ? (j.loaded ? (j.note || 'Installed.') : 'Installed. Restart DeviceHub to load it.')
-        : checkAnswer(j, a.kind);
-    } catch (e) { setupNote[a.name || a.id] = `Not done: ${e.message}`; }
-    redraw();
-  };
-  // one plain line per thing found: its name, one sentence, and the one button it needs (22 Oct 2026, Shawn: "made as
-  // simple as possible for someone to download and use"). The long line (what setup-report.mjs prints) is kept for Claude.
-  const openPage = (page) => { location.hash = `#/${page}`; };
-  const buttonOf = (i) => {
-    const a = i.action, note = a ? setupNote[a.name || a.id] : null;
-    if (a?.kind === 'settings') return button(a.label || 'Open', () => fetch('/api/diagnose/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'settings', page: a.page }) }), { kind: 'ghost small', ic: 'external' });
-    if (a && ['library-install', 'check-again', 'turn-on'].includes(a.kind)) {
-      if (/^Installed/.test(note || '')) return null;
-      // settings just turned on: the next useful click is telling others it works (on the device's own page)
-      if (a.kind === 'turn-on' && /^Settings turned on/.test(note || '')) return button('Tell others it works', () => openPage(a.id), { kind: 'ghost small', ic: 'external' });
-      return button(a.kind === 'library-install' ? 'Install' : a.kind === 'turn-on' ? 'Turn on settings' : 'Check again', () => act(i), { kind: a.kind === 'check-again' ? 'ghost small' : 'primary small', ic: a.kind === 'check-again' ? 'search' : 'plug' });
-    }
-    if (i.what === 'learn' && i.usb) return button('Learn it', () => { const [vid, pid] = i.usb.split(':'); learnThis(vid, pid); openPage('learn'); }, { kind: 'ghost small', ic: 'plug' });
-    if (i.what === 'unknown-vendor') return button('Learn a device', () => openPage('learn'), { kind: 'ghost small', ic: 'plug' });
-    // Equalizer APO ships inside DeviceHub: its own Install button right here (ui/installer-button.js: the dialog says
-    // what happens, the maker's installer and Windows' own prompt follow)
-    if (i.what === 'eqapo') return installerButton('eqapo', { redraw, kind: 'primary small' });
-    if (i.page) return button('Open', () => openPage(i.page), { kind: 'ghost small' });
-    return null;
-  };
-  // a device with no driver (or a generic 2.4G receiver) also offers Request support: sent to Shawn in one click where
-  // reports go, otherwise a short request for GitHub, shown in full first (get-help.js)
-  const requestOf = (i) => {
-    if (!['learn', 'packet-size', 'generic-dongle'].includes(i.what) || !i.usb) return null;
-    const [vid, pid] = i.usb.split(':');
-    return getHelp(`request:${i.usb}`, null, { label: 'Request support', request: { vid, pid, name: i.title }, kind: 'ghost small' });
-  };
-  const itemOf = (i) => {
-    const a = i.action, note = a ? setupNote[a.name || a.id] : null;
-    return h('li', { class: `su-item ${i.state || ''}` },
-      h('div', { class: 'su-text' }, h('b', {}, i.title || i.name || i.what), h('small', {}, note || i.short || i.line)),
-      buttonOf(i), requestOf(i));
-  };
-  // Turn on settings for all (helpers/turn-on-all.mjs): every waiting, connected device in turn, the same checks as each
-  // one's own button; one plain line per device, shown here and on that device's item
-  const waiting = (s.works || []).filter((i) => i.action?.kind === 'turn-on');
-  const allOn = async () => {
-    allNote.busy = true; allNote.lines = ['Turning on settings, one device at a time…']; redraw();
-    try {
-      const r = await fetch('/api/diagnose/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'turn-on-all' }) });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || j.error) allNote.lines = [`Not done: ${j.error || r.statusText}`];
-      else {
-        allNote.lines = [j.line, ...(j.results || []).map((x) => x.line)].filter(Boolean);
-        for (const x of j.results || []) setupNote[x.id] = x.line;
-      }
-    } catch (e) { allNote.lines = [`Not done: ${e.message}`]; }
-    allNote.busy = false; redraw();
-  };
-  const all = [...(s.works || []), ...(s.learn || []), ...(s.optional || [])];
-  const by = (st) => all.filter((i) => (i.state || (s.learn?.includes(i) ? 'not-yet' : s.optional?.includes(i) ? 'optional' : 'ready')) === st);
-  const ready = by('ready'), oneClick = by('one-click'), notYet = by('not-yet'), optional = by('optional');
-  const group = (title, ic, items, extra) => (items.length ? h('div', { class: 'su-group' },
-    h('div', { class: 'su-head' }, icon(ic, 'ic'), h('h3', {}, title), h('span', { class: 'su-count' }, String(items.length)), h('span', { class: 'spacer' }), extra || null),
-    h('ul', { class: 'su-list' }, ...items.map(itemOf))) : null);
-  const allBtn = waiting.length > 1 && !allNote.busy ? button('Turn on all', allOn, { kind: 'small', ic: 'plug' }) : null;
+  const n = countNeeds(deviceRows(s));
   const dismiss = () => { setupHidden = true; redraw(); fetch('/api/setup/dismiss', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ signature: s.signature }) }).catch(() => {}); };
-  const installedNames = (s.installed || []).map((x) => x.title || x.name);
-  return h('div', { class: 'panel setup-card' },
-    h('div', { class: 'su-top' }, h('h2', {}, 'Your devices'), h('span', { class: 'spacer' }), button('Hide', dismiss, { kind: 'ghost small' })),
-    h('p', { class: 'su-lede' }, oneClick.length ? 'Almost there: the devices below need one click. Close each maker\'s app first.' : 'Here is what DeviceHub found on this PC.'),
-    installedNames.length ? h('p', { class: 'su-fine' }, `Set up by itself from the device library: ${installedNames.join(', ')}.`) : null,
-    // the automatic problem reports (helpers/auto-report.mjs), said once here: only where they can go and are on
-    reportsOn ? h('p', { class: 'su-fine' }, 'When something goes wrong, DeviceHub sends Shawn a short report (nothing personal) so he can fix it. You can turn this off in Settings.') : null,
-    group('One click to finish', 'plug', oneClick, allBtn),
-    allNote.lines.length ? h('div', { class: 'su-fine' }, ...allNote.lines.map((l) => h('div', {}, l))) : null,
-    group('Ready to use', 'check', ready),
-    group('Not supported yet', 'alert', notYet, button('Learn a device', () => openPage('learn'), { kind: 'ghost small' })),
-    optional.length ? h('details', { class: 'su-more' }, h('summary', {}, `Optional extras (${optional.length})`), h('ul', { class: 'su-list' }, ...optional.map(itemOf))) : null);
+  return h('div', { class: 'panel setup-card short' },
+    h('div', { class: 'su-top' }, icon(n ? 'plug' : 'check', 'ic'), h('h2', {}, `${summaryLine(n)}${n ? '' : '.'}`),
+      h('span', { class: 'spacer' }),
+      button('Open Setup', () => { location.hash = '#/setup'; }, { kind: n ? 'primary small' : 'small' }),
+      button('Hide', dismiss, { kind: 'ghost small' })));
 }
 
 function bay(d, go, redraw) {

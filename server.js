@@ -6,6 +6,9 @@ const fs = require('fs');
 const { writeAtomic } = require('./helpers/safe-write');  // crash-proof saving (helpers/safe-write.js)
 const path = require('path');
 const { spawn, execFile } = require('child_process');
+// a library or learned driver's stray error (an unhandled rejection, a throw from its timer) is logged and its device
+// marked failed instead of ending the server; DeviceHub's own errors still exit with code 1 (helpers/driver-guard.js)
+require('./helpers/driver-guard').install();
 
 const PORT = Number(process.env.DEVICEHUB_PORT) || 5577;  // a test copy can use another port
 // ISOLATED TEST MODE (DEVICEHUB_ISOLATED=1, 22 Oct 2026; docs/handoff/isolated-mode.md): a second copy beside the real
@@ -203,6 +206,7 @@ function isolatedApi(req, res, url) {
     '/api/battery-estimate': {}, '/api/helper-calls': { uptimeS: Math.round(process.uptime()), calls: {} },
     '/api/settings-sync': { isolated: true, on: false }, '/api/auto-report': { isolated: true, on: true, configured: false, owner: false, active: false }, '/api/self-update': { isolated: true, count: 0 }, '/api/self-update/progress': {},
     '/api/updates': { isolated: true, apps: [] }, '/api/openrgb': { running: false, isolated: true, controllers: [] },
+    '/api/lights/diagnose': { isolated: true, board: null, openrgb: { state: 'unknown' }, found: [], seen: [], verdict: null, problems: [], lines: [] },
   };
   if (req.method === 'GET' && p in demo) { send(res, 200, demo[p]); return true; }
   send(res, 503, { error: 'DeviceHub is in isolated test mode: it does not touch devices or Windows settings', isolated: true });
@@ -249,8 +253,9 @@ async function api(req, res, url) {
         if (!fs.existsSync(p)) continue;
         for (const l of fs.readFileSync(p, 'utf8').split('\n')) {
           const mm = /^\[launcher\] (.+?) server exited/.exec(l);
-          // code -1 is a process stopped from outside (a restart), not a crash
-          if (mm && !/exited with code -1;/.test(l)) {
+          // code -1 is a process stopped from outside (a restart), not a crash; nor is Windows closing DeviceHub at
+          // sign-out, shutdown or a closed console (1073807364 = 0x40010004, -1073741510 = 0xC000013A; auto-report.mjs)
+          if (mm && !/exited with code (-1|1073807364|-1073741510|3221225786);/.test(l)) {
             const at = new Date(mm[1]).getTime();
             if (at > since) crashes++;
             if (Number.isFinite(at) && (!lastCrashAt || at > lastCrashAt)) lastCrashAt = at;   // for "stable for" (Settings > Health)
@@ -275,7 +280,7 @@ async function api(req, res, url) {
     const os = require('os');
     const lines = [`DeviceHub ${appVersion()} · Windows build ${os.release()} · Node ${process.version} · ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`];
     try { const h = await (await fetch(`http://127.0.0.1:${PORT}/api/health`)).json(); lines.push(`running ${Math.round((h.uptimeS || 0) / 60)} min · ${h.serverMB + (h.helperMB || 0)} MB · crashes today: ${h.crashes24h || 0}`); } catch {}
-    if (agent) for (const d of agent.state().devices) lines.push(`${d.id}: ${d.status}${d.info?.Model ? ` (${d.info.Model})` : ''}${d.error ? ` · ${d.error}` : ''}`);
+    if (agent) for (const d of agent.state().devices.filter((x) => x.seen || ['connected', 'asleep', 'connecting'].includes(x.status) || x.adapter?.plugin)) lines.push(`${d.id}: ${d.status}${d.info?.Model ? ` (${d.info.Model})` : ''}${d.error ? ` · ${d.error}` : ''}`);
     else lines.push('devices: no background agent');
     try { const pc = await pcMap.get(); lines.push(`PC: ${pc.cpu} · ${pc.gpus.map((g) => g.name).join(', ')} · ${pc.board?.maker || ''} ${pc.board?.model || ''}`.trim());
       const other = pc.usb.filter((u) => !u.runs).map((u) => `${u.id}${u.name ? ` ${u.name}` : ''}`);
@@ -619,6 +624,10 @@ async function api(req, res, url) {
     try { return send(res, 200, await pcMap.bluetooth(url.searchParams.has('fresh'))); } catch (e) { return send(res, 500, { error: e.message }); }
   }
   if (url.pathname === '/api/openrgb') return send(res, 200, await openrgb.status(url.searchParams.has('fresh')));
+  // why fan lights may be missing, read-only (helpers/lights-diagnose.js): the cached PC map and OpenRGB state; never starts OpenRGB
+  if (url.pathname === '/api/lights/diagnose') {
+    try { const [pc, orgb] = await Promise.all([pcMap.get(false).catch(() => null), openrgb.status(false)]); return send(res, 200, require('./helpers/lights-diagnose').diagnose({ pc, orgb })); } catch (e) { return send(res, 500, { error: e.message }); }
+  }
   // Less learning for other people's devices (22 Oct 2026): the shared device library, standard batteries and
   // standard lights. Read-only, except the library install, which copies a tested driver into my-devices\ only.
   // library entries that arrive between app releases, signed (helpers/library-updates.mjs), and sharing a working driver

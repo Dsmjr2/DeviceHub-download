@@ -318,6 +318,12 @@ export const _episodes = episodes;
 // at start (server.js, about 2 minutes after): did the launcher start this run after DeviceHub stopped with an error?
 // The lines between the previous "DeviceHub on http" and this run's are this start's; a launcher line there with a
 // code other than -1 (stopped from outside) is a crash. The same line is never reported twice.
+// Not a crash either (22 Oct 2026, support issue 3): Windows closing DeviceHub's console because the PC is signing out,
+// shutting down or restarting, or its console window was closed. Node then ends with 1073807364 (0x40010004,
+// DBG_TERMINATE_PROCESS: the console's close, logoff or shutdown event) or -1073741510 (0xC000013A,
+// STATUS_CONTROL_C_EXIT: Ctrl+C or Ctrl+Break). Nothing went wrong inside DeviceHub, so no report is sent.
+export const CLOSED_BY_WINDOWS = new Set([1073807364, -1073741510, 3221225786]);
+export const closedByWindows = (code) => CLOSED_BY_WINDOWS.has(Number(code));
 export function crashBefore(lines) {
   const starts = [];
   lines.forEach((l, i) => { if (/^DeviceHub on http/.test(l)) starts.push(i); });
@@ -325,7 +331,7 @@ export function crashBefore(lines) {
   const to = starts[starts.length - 1], from = starts.length > 1 ? starts[starts.length - 2] : -1;
   for (let i = to - 1; i > from; i--) {
     const m = /^\[launcher\] .*?(?:server exited|the new version stopped) with code (-?\d+)/.exec(lines[i]);
-    if (m && m[1] !== '-1') return { line: lines[i], code: Number(m[1]) };
+    if (m && m[1] !== '-1' && !closedByWindows(m[1])) return { line: lines[i], code: Number(m[1]) };
   }
   return null;
 }

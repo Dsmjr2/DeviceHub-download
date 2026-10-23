@@ -171,6 +171,10 @@ try {
   const lines = ['DeviceHub on http://localhost:5577', 'TypeError: x is not a function', '    at C:\\Users\\zorblax\\DeviceHub\\server.js:10:5', '[launcher] 10/22/2026 14:03:11 server exited with code 1; restart 1 of 5', 'DeviceHub on http://localhost:5577'];
   ok(ar.crashBefore(lines)?.code === 1, 'a crash before this start is found');
   ok(ar.crashBefore(['DeviceHub on http://localhost:5577', '[launcher] 10/22/2026 14:03:11 server exited with code -1; restart 1 of 5', 'DeviceHub on http://localhost:5577']) === null, 'code -1 (stopped from outside) is not a crash');
+  // support issue 3 (22 Oct 2026): Windows closing DeviceHub at sign-out, shutdown or a closed console is not a crash
+  ok(ar.crashBefore(['DeviceHub on http://localhost:5577', '[launcher] 10/22/2026 19:44:45 server exited with code 1073807364; restart 1 of 5', 'DeviceHub on http://localhost:5577']) === null, 'code 1073807364 (0x40010004, Windows closed the console) is not a crash');
+  ok(ar.crashBefore(['DeviceHub on http://localhost:5577', '[launcher] 10/22/2026 19:44:45 server exited with code -1073741510; restart 1 of 5', 'DeviceHub on http://localhost:5577']) === null, 'code -1073741510 (0xC000013A, Ctrl+C) is not a crash');
+  ok(ar.crashBefore(['DeviceHub on http://localhost:5577', '[launcher] 10/22/2026 20:01:15 server exited with code 1; restart 1 of 5', 'DeviceHub on http://localhost:5577'])?.code === 1, 'code 1 still is');
   ok(ar.crashBefore(['[launcher] 10/22/2026 14:03:11 server exited with code 1; restart 1 of 5', 'DeviceHub on http://localhost:5577', 'DeviceHub on http://localhost:5577']) === null, 'an older crash (before the previous start) is not this start\'s');
   ar.checkCrash(lines);
   await ar.settle();

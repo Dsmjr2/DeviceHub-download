@@ -101,6 +101,50 @@ async function start(id, onDone, redraw) {
   onDone?.(r);
 }
 
+// The same install, confirmed in place instead of in a dialog (the Setup page, 22 Oct 2026: no pop-ups there). The
+// button opens what will happen right under it (the file, where from, size, how it is checked), with Install and
+// Cancel; then the loading bar; then one line with the answer. Kept per tool across page redraws.
+//   installerInline(id, { redraw, kind }) -> an element
+const DEMO_PLAN = {
+  eqapo: { name: 'Equalizer APO', adds: 'The EQ, Natural sound, mic boost and mic filters.', file: 'EqualizerAPO-x64-1.4.2.exe', version: '1.4.2', bundled: true, page: 'https://sourceforge.net/projects/equalizerapo/', source: 'sourceforge.net', size: 2621440, sizeExact: true, check: 'SHA-256 pinned in DeviceHub', offer: 'install', folder: 'tools\\eqapo', after: 'Windows asks once; restart the PC when it says so.' },
+  usbpcap: { name: 'USBPcap', adds: "Only for learning a device: it records what the maker's app sends.", file: 'USBPcapSetup-1.5.4.0.exe', version: '1.5.4.0', bundled: false, url: 'https://github.com/desowin/usbpcap/releases', page: 'https://desowin.org/usbpcap/', source: 'github.com/desowin', size: 1153434, sizeExact: false, check: "the maker's signature", offer: 'install', folder: 'Downloads', after: 'Windows asks once; restart the PC when it says so.' },
+};
+const inline = {};   // id -> { stage: 'closed'|'loading'|'plan'|'busy'|'done', plan, text, ok }
+export function installerInline(id, { redraw = () => {}, onDone, kind = 'primary small' } = {}) {
+  const s = inline[id] || (inline[id] = { stage: 'closed' });
+  const set = (x) => { Object.assign(s, x); redraw(); };
+  const name = (cachedStatus() || []).find((t) => t.id === id)?.name || { eqapo: 'Equalizer APO', reaplugs: 'ReaPlugs', usbpcap: 'USBPcap' }[id] || id;
+  const open = async () => {
+    set({ stage: 'loading', text: '' });
+    try { set({ stage: 'plan', plan: isDemo() ? { id, ...DEMO_PLAN[id] } : await env.api(`/api/installers/plan?tool=${encodeURIComponent(id)}`) }); }
+    catch (e) { set({ stage: 'done', ok: false, text: `Could not read the download: ${e.message}` }); }
+  };
+  const go = async () => {
+    const p = s.plan;
+    if (p.offer !== 'install') { window.open(p.page, '_blank'); set({ stage: 'done', ok: true, text: `${p.name}'s page is open in your browser. Download ${p.file} there and open it.` }); return; }
+    if (isDemo()) { set({ stage: 'done', ok: true, text: `Demo mode: nothing was installed. In the app, ${p.name}'s own installer opens here.` }); return; }
+    state[id] = { busy: true, text: 'Starting', pct: null };
+    set({ stage: 'busy' });
+    let r;
+    try { await env.api('/api/installers/install', { tool: id }); r = await follow(id, redraw); }
+    catch (e) { r = { ok: false, text: `Not installed: ${e.message}` }; }
+    delete state[id];
+    cache = null;
+    set({ stage: 'done', ok: !!r.ok, text: r.ok ? [r.text, r.verified ? `Checked: ${r.verified}.` : null, r.partial, r.restart ? 'Restart the PC to finish.' : null].filter(Boolean).join(' ') : `Not installed. ${r.text || ''}`.trim() });
+    onDone?.(r);
+  };
+  const close = () => set({ stage: 'closed', plan: null, text: '' });
+  if (s.stage === 'busy' && state[id]?.busy) return bar(id, state[id].text, state[id].pct);
+  if (s.stage === 'loading') return h('small', { class: 'faint' }, 'Reading the download…');
+  if (s.stage === 'plan') {
+    const p = s.plan;
+    return h('div', { class: 'inst-inline' }, planBody(p),
+      h('div', { class: 'actions' }, button(p.offer === 'install' ? `Install ${p.name}` : 'Open the official page', go, { kind: 'primary small', ic: p.offer === 'install' ? 'plus' : 'external' }), button('Cancel', close, { kind: 'ghost small' })));
+  }
+  if (s.stage === 'done') return h('div', { class: 'inst-inline' }, h('div', { class: `gh-note ${s.ok ? 'good' : 'bad'}` }, s.text), s.ok ? null : h('div', { class: 'actions' }, button('Try again', open, { kind: 'small' })));
+  return button(`Install ${name}`, open, { kind, ic: 'plus' });
+}
+
 // the tool being installed from this window, if any (its loading bar can take a whole line)
 export const installing = () => Object.keys(state).find((id) => state[id]?.busy) || null;
 

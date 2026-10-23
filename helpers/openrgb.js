@@ -26,7 +26,7 @@ const { writeAtomic } = require('./safe-write');
 const PORT = 6742, HOST = '127.0.0.1', WANT = 3;
 let port = PORT;   // where session() connects: OpenRGB's own default, or the bundled server's port
 const ID = { count: 0, data: 1, version: 40, name: 50, updateLeds: 1050, customMode: 1100, updateMode: 1101 };
-let backupDir = null, cache = { at: 0, value: null }, busy = Promise.resolve();
+let backupDir = null, cache = { at: 0, value: null }, busy = Promise.resolve(), lastFind = null;
 const serial = (f) => { const p = busy.then(f, f); busy = p.catch(() => {}); return p; };
 
 function header(dev, id, size) {
@@ -300,6 +300,10 @@ async function status(fresh = false) {
   } catch (e) {
     value = { running: false, reason: e.notRunning && !e.bundleWhy ? 'not running' : e.message, controllers: [] };
   }
+  // the last Find lights (a fresh read): kept so the reason it failed still shows after the 10 s cache
+  // (helpers/lights-diagnose.js, the Lighting page and Get help for lights)
+  if (fresh) lastFind = { at: new Date().toISOString(), ok: value.running, reason: value.running ? null : value.reason, found: value.controllers.length };
+  value.lastFind = lastFind;
   value.bundle = bundleInfo();
   cache = { at: Date.now(), value };
   return value;

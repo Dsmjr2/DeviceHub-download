@@ -203,8 +203,9 @@ try {
   ok(/\/api\/help\/works/.test(ui) && /\/api\/help\/open/.test(ui), 'it uses the works route and Get help\'s open route');
   const page = fs.readFileSync(path.join(REAL, 'public/pages/my-device.js'), 'utf8');
   ok(/offersWorks\(d\) \? worksReport\(d[,)]/.test(page), 'the device page offers it');
-  const ov = fs.readFileSync(path.join(REAL, 'public/pages/overview.js'), 'utf8');
-  ok(/Turn on settings for all/.test(ov) && /kind: 'turn-on-all'/.test(ov), 'the Set up card has Turn on settings for all');
+  // Turn on settings for all moved from the Overview's Set up card to the Setup page's Do all (22 Oct 2026)
+  const sp = fs.readFileSync(path.join(REAL, 'public/pages/setup.js'), 'utf8');
+  ok(/Turn on settings for all/.test(sp) && /kind: 'turn-on-all'/.test(sp), 'the Setup page has Turn on settings for all');
   const diag = fs.readFileSync(path.join(REAL, 'helpers/diagnose.mjs'), 'utf8');
   ok(/kind === 'turn-on-all'/.test(diag), 'the diagnose action routes it');
 } finally {

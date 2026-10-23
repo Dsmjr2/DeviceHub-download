@@ -38,7 +38,21 @@ const { writeAtomic } = createRequire(import.meta.url)('./safe-write.js');
 const SEEN_FILE = pathSeen.join(pathSeen.dirname(fileURLToPath(import.meta.url)), '..', 'seen-devices.json');
 let seen = new Set();
 try { seen = new Set(JSON.parse(fsSeen.readFileSync(SEEN_FILE, 'utf8'))); } catch {}
+// The headset slot is the Corsair HS80's; with no HS80 it runs another USB headset in sound-only mode (generic). That
+// other headset never counts as the HS80 being seen (22 Oct 2026, support issue 3: "Corsair HS80 (headset): missing" on
+// a PC that never had one). A copy that recorded "headset" for such a headset before this change is put right once:
+// its last saved headset (last-device-values.json) names another model, so the HS80 was never there.
+export const sawOwnHeadset = (info) => !info?.Model || /HS80/i.test(String(info.Model));
+{
+  let last = null;
+  try { last = JSON.parse(fsSeen.readFileSync(pathSeen.join(pathSeen.dirname(SEEN_FILE), 'last-device-values.json'), 'utf8')); } catch {}
+  if (seen.has('headset') && last?.headset?.info && !sawOwnHeadset(last.headset.info)) {
+    seen.delete('headset');
+    try { writeAtomic(SEEN_FILE, JSON.stringify([...seen])); } catch {}
+  }
+}
 function markSeen(id) {
+  if (id === 'headset' && core.devices.headset?.adapter?.generic) return;   // another USB headset is not the HS80
   if (seen.has(id)) return;
   seen.add(id);
   try { writeAtomic(SEEN_FILE, JSON.stringify([...seen])); } catch {}
@@ -146,6 +160,11 @@ export async function start({ port, corsairHelper }) {
   for (const r of await myDevices.load(pathSeen.dirname(SEEN_FILE), { register: core.register, addSpec, taken: (id) => !!core.devices[id] })) {
     console.log(r.error ? `[my-devices] ${r.name}: not loaded: ${r.error}` : `[my-devices] ${r.name}: ${core.devices[r.id].adapter.title} added`);
   }
+  // a library or learned driver's error that reached no caller (helpers/driver-guard.js, installed by server.js): its
+  // device is marked asleep or in error, and DeviceHub keeps running (support issues 3-5, 22 Oct 2026)
+  require('./driver-guard.js').setDriverFaultHandler((folder, err) => {
+    for (const d of Object.values(core.devices)) if (d.adapter.plugin && d.adapter.plugin.toLowerCase() === String(folder).toLowerCase()) core.driverFault(d.id, err);
+  });
   // last known settings (until the device is read) and the changes still waiting for it
   for (const [id, s] of Object.entries(readJson(LAST_FILE))) {
     const d = core.devices[id];

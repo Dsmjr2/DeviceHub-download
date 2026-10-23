@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createLogitechKeyboard, F, NEVER, PIDS, BLE, HidppError, halvingMarks } from '../device-library/logitech-hidpp-keyboard/device.mjs';
+import { createLogitechKeyboard, F, NEVER, PIDS, BLE, WIRED, RECEIVERS, HidppError, halvingMarks } from '../device-library/logitech-hidpp-keyboard/device.mjs';
 import { problem, fits, hidSpecs, ownClash } from '../helpers/my-devices.mjs';
 import { validateMeta } from '../helpers/device-library.mjs';
 
@@ -255,6 +255,23 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
   check((await d.write('lockWinKey', true)) === true && (await d.write('lockWinKey', false)) === false && kb.state.disabled === 0, 'and writes and puts back on C547');
 }
 
+// ---- 2c. the G813 on its cable (22 Oct 2026, Dsmjr2/DeviceHub-support#6): OpenRGB LogitechControllerDetect.cpp @
+// bbc77470 line 58 (0xC232) and 1531 (the G815's detector, interface 1, page 0xFF43); HID++ 2.0 at index 0xFF ----
+{
+  check(PIDS.includes(0xc232) && WIRED[0xc232] === 'G813' && !RECEIVERS[0xc232] && !BLE[0xc232], 'C232 is the wired G813');
+  const kb = simKeyboard({ pid: 0xc232, slot: 0xff, features: { [F.REPORT_RATE]: 3, [F.ONBOARD_PROFILES]: 4, [F.DISABLE_KEYS]: 5, [F.BRIGHTNESS]: 6 },
+    state: { rateMs: 1, mode: 2, sector: 1, disabled: 0x00, level: 50, on: true }, rateMask: 0x8b, profiles: 3, disableMask: 0x10, bright: { max: 100, steps: 0, onOff: false, min: 0 } });
+  const d = make(kb);
+  check(await d.connect() && d.index === 0xff && !d.receiver && !d.ble, 'a wired G813 connects at index 0xFF, no receiver slots');
+  const info = await d.info();
+  check(info.Model === 'Logitech G813' && info.Connection === 'USB cable', `G813 info: ${info.Model}, ${info.Connection}`);
+  check(d.settings.map((x) => x.key).join() === 'reportRate,mode,profile,lockWinKey,brightness', `only what the G813 answers for: ${d.settings.map((x) => x.key).join()}`);
+  check((await d.write('lockWinKey', true)) === true && (await d.write('lockWinKey', false)) === false && kb.state.disabled === 0, 'Windows-key lock written, read back and put back');
+  check(kb.sent.every((b) => b[0] === 0xff) && kb.bad.length === 0, `every request a 19-byte long report to 0xFF (${kb.bad.join('; ')})`);
+  check(!lookedUp(kb).some((id) => NEVER.includes(id)), 'no never-list feature is looked up on the G813');
+  await selfChecked(d, kb.state);
+}
+
 // ---- 3. a mouse on a keyboard receiver (slot 1 silent, slot 2 answers) is refused ----
 {
   const mouse = simKeyboard({ pid: 0xc545, slot: 2, features: { [F.ADJUSTABLE_DPI]: 3 }, state: {}, rateMask: 0, profiles: 0, disableMask: 0, bright: {} });
@@ -302,13 +319,18 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
   const specs = hidSpecs(plain);
   const bs = specs.find((s) => s.pid === 'B35F');
   check(bs && bs.page === '*' && bs.usage === '*' && bs.inputLen === 19 && bs.outputLen === 19 && bs.reportId === 0x11 && bs.reply === 'raw', `the B35F spec: any page / usage, 19-byte input and output, report 0x11, raw (${JSON.stringify(bs)})`);
-  check(specs.filter((s) => s.pid !== 'B35F').every((s) => s.page === 'FF00' && s.usage === '0002' && s.inputLen === undefined && s.outputLen === undefined), 'every USB id keeps the FF00 / 0002 spec it had');
+  check(specs.filter((s) => s.pid !== 'B35F' && s.pid !== 'C232').every((s) => s.page === 'FF00' && s.usage === '0002' && s.inputLen === undefined && s.outputLen === undefined && s.iface === undefined), 'every other USB id keeps the FF00 / 0002 spec it had');
+  const g813 = specs.find((s) => s.pid === 'C232'), g813Filter = asked.find((f) => f[0].productId === 0xc232);
+  check(g813 && g813.iface === 1 && g813.page === 'FF43' && g813.usage === '0602' && g813.reportId === 0x11 && g813.reply === 'raw', `the G813 spec: interface 1, FF43 / 0602, report 0x11, raw (${JSON.stringify(g813)})`);
+  check(g813Filter?.length === 1 && g813Filter[0].usagePage === 0xff43 && g813Filter[0].usage === 0x0602, `the G813 is asked for on FF43 / 0602 (${JSON.stringify(g813Filter)})`);
   for (const s of specs) host.addSpec(s);
   const hb = await host.provider(bleFilter);
   check(hb && lines.includes('hid:046D:B35F:*:*:19:17:il=19:ol=19:rw=1 OPEN'), `Bluetooth channel = hid:046D:B35F:*:*:19:17:il=19:ol=19:rw=1 (${lines.filter((l) => /B35F/.test(l)).join(' | ')})`);
   check(hb?.spec.never === true, 'the never list is checked on the Bluetooth channel too');
   await host.provider(usbFilter);
   check(lines.includes('hid:046D:C343:FF00:0002:19:17:rw=1 OPEN'), `the cable's channel name is unchanged (${lines.filter((l) => /C343/.test(l)).join(' | ')})`);
+  await host.provider(g813Filter);
+  check(lines.includes('hid:046D:C232:FF43:0602:19:17:if=1:rw=1 OPEN'), `the G813 channel = interface 1, FF43 / 0602 (${lines.filter((l) => /C232/.test(l)).join(' | ')})`);
   hb?.close();
 
   const feats = { [F.UNIFIED_BATTERY]: 2, [F.ONBOARD_PROFILES]: 6, [F.DISABLE_KEYS]: 8, [F.NEW_FN_INVERSION]: 9, [F.BRIGHTNESS]: 11 };
