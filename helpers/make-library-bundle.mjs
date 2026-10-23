@@ -59,6 +59,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   if (!crypto.verify(null, Buffer.from(payload(bundle)), pub, Buffer.from(bundle.signature, 'base64'))) { console.error('the library bundle\'s signature does not match the app\'s public key'); process.exit(1); }
   fs.mkdirSync(path.dirname(out), { recursive: true });
   fs.writeFileSync(out, JSON.stringify(bundle));
-  for (const s of skipped) console.log(`   ${s.included ? 'note' : 'left out'}: ${s.name}: ${s.why}`);
+  // the drivers with no "updated" date in one line, not one each (23 Oct 2026, Shawn: the Publish window was a wall of notes)
+  for (const s of skipped.filter((x) => !x.included)) console.log(`   left out: ${s.name}: ${s.why}`);
+  const undated = skipped.filter((x) => x.included).map((x) => x.name);
+  if (undated.length) console.log(`   ${undated.length} drivers have no "updated" date, so they never replace a shipped copy: ${undated.join(', ')}`);
   console.log(`   library bundle signed: ${out} (${bundle.entries.length} entries, ${bundle.builtAt}); upload it beside version.json`);
 }

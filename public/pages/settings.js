@@ -180,21 +180,29 @@ const setupFileRow = () => (isDemo() ? null : row('Move to another PC', 'Your wh
 // how many things need them (23 Oct 2026, Shawn: "put the set up area in settings when its fully set up")
 let setupWatch = null;
 // Publish to friends (23 Oct 2026): the owner's PC only (server.js /api/publish-release); how far this copy is ahead of
-// the version friends get, and one button that opens helpers/publish-release.ps1 in its own window
+// the version friends get, and one button that runs helpers/publish-release.ps1 hidden. While it runs this row shows
+// its step, then Published or what stopped it (23 Oct 2026, Shawn: "how do I know if this is done?"), in place.
 let pub = null, pubAt = 0;
 function publishRow() {
   if (isDemo()) return null;
-  if (!pub && Date.now() - pubAt > 60000) { pubAt = Date.now(); fetch('/api/publish-release').then((r) => r.json()).then((j) => { pub = j; rerender(); }).catch(() => {}); }
+  const running = pub?.run?.state === 'running';
+  if (Date.now() - pubAt > (running ? 3000 : 60000)) { pubAt = Date.now(); fetch('/api/publish-release').then((r) => r.json()).then((j) => { pub = j; if (location.hash === '#/settings') rerender(); }).catch(() => {}); }
   if (!pub?.owner) return null;
-  const when = pub.published?.builtAt ? new Date(pub.published.builtAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : null;
+  const at = (t) => new Date(t).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+  const when = pub.published?.builtAt ? at(pub.published.builtAt) : null;
+  const run = pub.run;
+  if (running) setTimeout(() => { if (location.hash === '#/settings') rerender(); }, 3100);
+  if (running) return row('Publish', `Publishing: ${run.step || 'Building'}… (${Math.max(1, Math.round((Date.now() - run.startedAt) / 60000))} min; about 3 in all)`, null);
   // no signing key on this PC: the release would stop at signing, so say where it is first
   if (pub.keyHere === false) return row('Publish', 'The signing key is not on this PC: publish from the PC that published last time, or restore the key here (node helpers/signing-key.mjs --restore).', null);
-  const text = pub.ahead > 0 ? `Friends have the version from ${when}; this PC has ${pub.ahead} newer change${pub.ahead === 1 ? '' : 's'}.` : when ? `Friends have this PC's version (${when}).` : 'Builds, signs and uploads this PC\'s version for friends.';
-  return row('Publish', text, button('Publish', async () => {
-    try { await env.api('/api/publish-release', {}); toast('Publishing in its own window', 'busy', { detail: 'Building, signing and uploading take a few minutes. Friends then see Update in Settings.', ms: 12000 }); }
-    catch (e) { toast('Not started', 'bad', { detail: e.message }); }
-    pub = null; pubAt = Date.now() + 5 * 60000;
-  }, { kind: pub.ahead > 0 ? 'primary small' : 'ghost small', ic: 'external' }));
+  const start = async () => {
+    try { const r = await env.api('/api/publish-release', {}); pub = { ...pub, run: r.run }; } catch (e) { pub = { ...pub, run: { state: 'failed', error: e.message } }; }
+    pubAt = 0; rerender();
+  };
+  const text = run?.state === 'failed' ? `Not published: ${run.error || 'it stopped'}. The full output is in logs\\publish.log.`
+    : run?.state === 'done' && pub.ahead === 0 ? `Published ${at(run.endedAt)}. Friends get it when they press Update in Settings.`
+    : pub.ahead > 0 ? `Friends have the version from ${when}; this PC has ${pub.ahead} newer change${pub.ahead === 1 ? '' : 's'}.` : when ? `Friends have this PC's version (${when}).` : 'Builds, signs and uploads this PC\'s version for friends.';
+  return row('Publish', text, button(run?.state === 'failed' ? 'Try again' : 'Publish', start, { kind: pub.ahead > 0 || run?.state === 'failed' ? 'primary small' : 'ghost small', ic: 'external' }));
 }
 function setupRow() {
   if (!setupWatch) setupWatch = watchSetup(() => { if (location.hash === '#/settings') rerender(); });

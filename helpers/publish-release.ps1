@@ -12,9 +12,7 @@ $dist = Join-Path $root 'dist'
 Write-Host 'Building the new version (code, zip, version file, library bundle; signed)...' -ForegroundColor Cyan
 & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'make-installer.ps1')
 if ($LASTEXITCODE) { throw 'make-installer.ps1 failed (see above); nothing was uploaded' }
-Write-Host 'Building DeviceHub-Setup.exe...' -ForegroundColor Cyan
-& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'make-setup-exe.ps1')
-if ($LASTEXITCODE) { throw 'make-setup-exe.ps1 failed (see above); nothing was uploaded' }
+# make-installer.ps1 builds DeviceHub-Setup.exe too (it was built twice before 23 Oct 2026)
 
 $files = 'DeviceHub-setup.zip', 'version.json', 'device-library.json', 'DeviceHub-Setup.exe' | ForEach-Object { Join-Path $dist $_ }
 $missing = $files | Where-Object { -not (Test-Path $_) }

@@ -214,6 +214,8 @@ function isolatedApi(req, res, url) {
   return true;
 }
 
+// the Publish button's run (helpers/publish-release.ps1, hidden): running / done / failed, with its step
+let publishRun = null;
 async function api(req, res, url) {
   // Only the dashboard itself may call the API: other web pages are refused by Origin, and anything that changes
   // state must be a POST (a page can make a browser send a GET, e.g. with an <img>, without an Origin header).
@@ -750,9 +752,22 @@ async function api(req, res, url) {
     const owner = await (await import('./helpers/auto-report.mjs')).isOwnerPc(ROOT).catch(() => false);
     if (!owner) return send(res, 200, { owner: false });
     if (req.method === 'POST') {
+      // no window (23 Oct 2026, Shawn: "how do I know if this is done? Can it be ... auto closed?"): it runs hidden, its
+      // output goes to logs/publish.log, and the Settings row shows the step it is on, then Published or what failed
+      if (publishRun?.state === 'running') return send(res, 200, { owner: true, started: false, run: publishRun });
       const script = path.join(ROOT, 'helpers', 'publish-release.ps1');
-      require('child_process').spawn('cmd.exe', ['/c', 'start', '"Publish DeviceHub"', 'powershell', '-NoExit', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', `"${script}"`], { cwd: ROOT, detached: true, stdio: 'ignore', windowsVerbatimArguments: true }).unref();
-      return send(res, 200, { owner: true, started: true });
+      const logFile = path.join(ROOT, 'logs', 'publish.log');
+      fs.mkdirSync(path.dirname(logFile), { recursive: true });
+      const out = fs.openSync(logFile, 'w');
+      publishRun = { state: 'running', step: 'Building', startedAt: Date.now(), log: logFile };
+      const child = require('child_process').spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script], { cwd: ROOT, windowsHide: true, stdio: ['ignore', out, out] });
+      child.on('exit', (code) => {
+        fs.closeSync(out);
+        const text = (() => { try { return fs.readFileSync(logFile, 'utf8'); } catch { return ''; } })();
+        const err = text.split(/\r?\n/).find((l) => /failed|missing from dist|not on this PC|Exception/i.test(l));
+        publishRun = { ...publishRun, state: code === 0 && /Published\./.test(text) ? 'done' : 'failed', endedAt: Date.now(), error: code === 0 ? null : (err || `stopped (code ${code})`).trim().slice(0, 300) };
+      });
+      return send(res, 200, { owner: true, started: true, run: publishRun });
     }
     let published = null, ahead = null;
     try { const v = await require('./helpers/self-update').releaseInfo(); published = { commit: v.commit, builtAt: v.builtAt }; } catch {}
@@ -762,7 +777,10 @@ async function api(req, res, url) {
     }
     let keyHere = null;
     try { keyHere = (await import('./helpers/signing-key.mjs')).keyAvailable(); } catch {}
-    return send(res, 200, { owner: true, published, ahead, keyHere });
+    if (publishRun?.state === 'running') {
+      try { const t = fs.readFileSync(publishRun.log, 'utf8'); publishRun.step = /Uploading/.test(t) ? 'Uploading' : /built .*Setup\.exe/.test(t) ? 'Uploading' : /built .*setup\.zip/.test(t) ? 'Building the installer' : /library bundle signed/.test(t) ? 'Packing the zip' : 'Building'; } catch {}
+    }
+    return send(res, 200, { owner: true, published, ahead, keyHere, run: publishRun });
   }
   if (url.pathname === '/api/self-update/progress') return send(res, 200, require('./helpers/self-update').getProgress() || {});
   if (url.pathname === '/api/self-update') {
