@@ -265,12 +265,15 @@ export function analyze(f) {
         notConnected ? retry : { kind: 'turn-on', label: 'Turn on settings' });
     } else if (ro.length) {
       const failed = ro.filter((r) => r.failed), waiting = ro.filter((r) => r.waiting);
+      // waiting on the maker's app (G HUB, Synapse ...): the fix is closing it, one click
+      const named = (why, m) => String(why).includes(m.name) || String(why).split(/[\s(),:;]+/).some((w) => m.detect.some((re) => re.test(w)));
+      const appOpen = waiting.length ? Object.entries(MAKER_APPS).map(([key, m]) => ({ key, ...m })).find((m) => waiting.some((r) => named(r.why, m))) || null : null;
       add(60, 'read-only', `${ro.length === 1 ? 'One setting is' : `${ro.length} settings are`} read-only`,
         failed.length ? `${failed.map((r) => r.label).join(', ')} did not pass DeviceHub's own check (write the same value, read it back): ${failed[0].why}.`
           : waiting.length ? `${waiting.map((r) => r.label).join(', ')} could not be checked yet: ${waiting[0].why}.`
           : `This driver came from the shared device library marked "${f.library.status}"; ${ro.map((r) => r.label).join(', ')} stay read-only until each passes DeviceHub's check, which runs when it connects.`,
-        failed.length ? "They stay read-only to keep the device safe. DeviceHub tries again once a day when it connects; press Check again to try now." : waiting.length ? 'Fix that, then press Check again. DeviceHub also tries again by itself when the device connects.' : notConnected ? 'Connect the device; the check runs by itself.' : 'Press Check again to run the check now.',
-        notConnected ? retry : again);
+        failed.length ? "They stay read-only to keep the device safe. DeviceHub tries again once a day when it connects; press Check again to try now." : waiting.length ? (appOpen ? `Close ${appOpen.name}: the check then runs when the device next connects (or press Check again).` : 'Fix that, then press Check again. DeviceHub also tries again by itself when the device connects.') : notConnected ? 'Connect the device; the check runs by itself.' : 'Press Check again to run the check now.',
+        notConnected ? retry : !failed.length && appOpen ? { kind: 'close-app', app: appOpen.key, label: `Close ${appOpen.name}`, confirm: `Close ${appOpen.name} now? DeviceHub then checks the settings.` } : again);
     }
   }
   // btn0 (left click) is never written (mouse-adapter.js), so its lock changes nothing
@@ -341,7 +344,10 @@ function libraryFacts(snap) {
     if (mark.status !== 'tested' && !(k && k.ok)) return [{ label: st.label, why: 'not checked yet' }];
     return [];
   });
-  return { status: mark.status || 'unknown', readOnly, turnOn: !!snap.adapter.library?.turnOn };
+  // the last check that did not run says why (the maker's app open, no backup ...): every "not checked yet" waits on it
+  const notRun = snap.adapter.library?.notRun;
+  const why = notRun?.why;
+  return { status: mark.status || 'unknown', readOnly: why ? readOnly.map((r) => (r.failed || r.waiting ? r : { ...r, why, waiting: true })) : readOnly, turnOn: !!snap.adapter.library?.turnOn };
 }
 async function dynamicLightingOn() {
   const out = await run('reg', ['query', 'HKCU\\Software\\Microsoft\\Lighting', '/v', 'AmbientLightingEnabled'], 5000);

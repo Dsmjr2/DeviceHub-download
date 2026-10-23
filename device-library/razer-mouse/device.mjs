@@ -2,6 +2,8 @@
 // no code copied). "razer.md §n" below names the sheet's section and row each byte comes from. Read-only first: the
 // library entry is "read-only" until every write below has been tried once on a real mouse (CLAUDE.md, step 6).
 // Simulated in tests/sim-razer.mjs; never run on a real device yet.
+// 23 Oct 2026: twelve more product ids (DeathAdder Essential / V2 families, Viper V2 Pro, Viper V3 HyperSpeed, Naga V2
+// HyperSpeed) taken from OpenRazer's own driver (cited per model in MODELS), with its per-command transaction ids.
 //
 // Coverage (22 Oct 2026, docs/handoff/driver-coverage.md): every razer.md §3 mouse row that has both a set and a get
 // is here: DPI, the DPI stage table (active stage and each stage's DPI; the stage COUNT is never changed), polling
@@ -117,8 +119,18 @@ export const VENDOR_APPS = [/^razer synapse/i, /^razerappengine\.exe$/i];
 // light: false where §3 Lighting says the model has none ("DeathAdder V3 Pro and Viper V3 Pro have no lighting") and on
 //   the dongle; every other model is asked for brightness with reads, and only zones that answer become settings.
 // dongleLed: §3 "Dongle indicator LED mode ... HyperPolling dongle".
+// Added 23 Oct 2026 from OpenRazer itself (driver/razermouse_driver.c and .h, daemon/openrazer_daemon/hardware/mouse.py at
+// commit 477f4d6; facts only, no code copied). "rmd.c:N" below is a line of razermouse_driver.c, "mouse.py:N" a line of
+// mouse.py. For these models the source gives every value, so nothing is guessed:
+// tids: { command: tid } where OpenRazer sends that command (get and set) with another transaction id than the model's
+//   firmware read; setTids: the same for the set only (Naga V2 HyperSpeed reads the low-battery threshold with 1F and
+//   writes it with FF). A command not named uses the model's tid.
+// stages: false where mouse.py lists no get_dpi_stages for the model (the stage table is then not asked at all).
+// leds: the LED ids mouse.py names for the model (logo 0x04 for get_logo_brightness, scroll wheel 0x01 for
+//   get_scroll_brightness; razercommon.h); null = the probe below asks every mouse zone (reads only).
+// dpiMax for these models is mouse.py's DPI_MAX (confirmed), not the maker's sheet.
 const W = 0.6, NEW = 31, VIPER = 59.9;
-const m = (model, link, o) => ({ model, link, tid: null, wait: W, poll: null, iface: 0, power: link === 'wired' ? null : 'rechargeable', dpiMax: DPI_MAX, wheel: false, light: true, dongleLed: false, ...o });
+const m = (model, link, o) => ({ model, link, tid: null, wait: W, poll: null, iface: 0, power: link === 'wired' ? null : 'rechargeable', dpiMax: DPI_MAX, wheel: false, light: true, dongleLed: false, tids: {}, setTids: {}, stages: true, leds: null, ...o });
 export const MODELS = {
   '00B2': m('DeathAdder V3', 'wired', { tid: 0x1f, wait: NEW, poll: 'rate2', dpiMax: 30000 }),
   '00B6': m('DeathAdder V3 Pro', 'wired', { tid: 0x1f, wait: NEW, power: 'rechargeable', dpiMax: 30000, light: false }),
@@ -150,6 +162,36 @@ export const MODELS = {
   '00A7': m('Naga V2 Pro', 'wired', { wait: NEW, power: 'rechargeable', dpiMax: 30000 }),
   '00A8': m('Naga V2 Pro', 'dongle', { wait: NEW, dpiMax: 30000 }),
   '00B3': m('HyperPolling Wireless Dongle', 'dongle', { tid: 0x1f, wait: VIPER, poll: 'rate2', secondPollTid: 0xff, light: false, dongleLed: true }),
+  // ---- added 23 Oct 2026 from OpenRazer (see "Added 23 Oct 2026" above). All poll 'classic': rmd.c read_poll_rate
+  // (1944-2082) and write_poll_rate (2159-2268) use the classic 00/85 / 00/05 for each of them, never rate2. Waits from
+  // razer_get_report (rmd.c:49-99); a model not named there gets RAZER_MOUSE_WAIT_US. ----
+  // DeathAdder Essential family: tid FF for firmware, DPI, polling (rmd.c:914-922, 2676-2684, 2860-2868, 2073-2268);
+  // brightness 0x3F (read_led_brightness rmd.c:4335-4337, write 4447-4449). No battery, no stages (mouse.py:873-903).
+  '006E': m('DeathAdder Essential', 'wired', { tid: 0xff, poll: 'classic', dpiMax: 6400, stages: false, tids: { brightness: 0x3f }, leds: [0x04, 0x01] }),
+  '0071': m('DeathAdder Essential White Edition', 'wired', { tid: 0xff, poll: 'classic', dpiMax: 6400, stages: false, tids: { brightness: 0x3f }, leds: [0x04, 0x01] }),
+  '0098': m('DeathAdder Essential (2021)', 'wired', { tid: 0xff, poll: 'classic', dpiMax: 6400, stages: false, tids: { brightness: 0x3f }, leds: [0x04] }),
+  // DeathAdder V2 / V2 Mini: tid 3F (rmd.c:875-878, 2586-2589, 2831-2834, 1944-2162); brightness 3F (4348-4351);
+  // V2 Mini's stage table FF (read 3349, write 3230); V2 has no stages in mouse.py (1226-1246).
+  '0084': m('DeathAdder V2', 'wired', { tid: 0x3f, poll: 'classic', dpiMax: 20000, stages: false, leds: [0x04, 0x01] }),
+  '008C': m('DeathAdder V2 Mini', 'wired', { tid: 0x3f, poll: 'classic', dpiMax: 8500, tids: { dpiStages: 0xff }, leds: [0x04] }),
+  // DeathAdder V2 Pro: tid 3F (firmware 876-877, DPI, polling, battery 1608-1609, charging 1728-1729, brightness
+  // 4349-4350); FF for the idle timer (3485-3486, 3593-3594), low battery (3680-3681, 3786-3787) and stages (3345-3346,
+  // 3226-3227); wait RAZER_VIPER_MOUSE_RECEIVER_WAIT_US (rmd.c:96-97).
+  '007C': m('DeathAdder V2 Pro', 'wired', { tid: 0x3f, wait: VIPER, poll: 'classic', power: 'rechargeable', dpiMax: 20000, tids: { idle: 0xff, lowBattery: 0xff, dpiStages: 0xff }, leds: [0x04] }),
+  '007D': m('DeathAdder V2 Pro', 'dongle', { tid: 0x3f, wait: VIPER, poll: 'classic', dpiMax: 20000, tids: { idle: 0xff, lowBattery: 0xff, dpiStages: 0xff }, leds: [0x04] }),
+  // DeathAdder V2 X HyperSpeed: tid 1F (818, 1624, 3423/3531, 3290/3171); low battery FF (3688, 3794); charge status
+  // answered "0" without asking (1715: AA battery); no brightness in rmd.c or mouse.py (1507-1520); wait NEW (rmd.c:49).
+  '009C': m('DeathAdder V2 X HyperSpeed', 'dongle', { tid: 0x1f, wait: NEW, poll: 'classic', power: 'aa', dpiMax: 14000, tids: { lowBattery: 0xff }, light: false }),
+  // Viper V2 Pro: tid 1F (819-820, 1625-1626, 1741-1742, 3424-3425/3532-3533, 3291-3292/3172-3173); low battery FF
+  // (3689-3690, 3795-3796); no lighting methods (mouse.py:1541-1563); wait NEW (rmd.c:50-51).
+  '00A5': m('Viper V2 Pro', 'wired', { tid: 0x1f, wait: NEW, poll: 'classic', power: 'rechargeable', dpiMax: 30000, tids: { lowBattery: 0xff }, light: false }),
+  '00A6': m('Viper V2 Pro', 'dongle', { tid: 0x1f, wait: NEW, poll: 'classic', dpiMax: 30000, tids: { lowBattery: 0xff }, light: false }),
+  // Viper V3 HyperSpeed: tid 1F for every command used here (847, 1651, 3449/3557, 3637/3743, 3318/3199); charge status
+  // "0" without asking (1717: AA battery); no lighting (mouse.py:1966-1980); wait VIPER (rmd.c:99).
+  '00B8': m('Viper V3 HyperSpeed', 'dongle', { tid: 0x1f, wait: VIPER, poll: 'classic', power: 'aa', dpiMax: 30000, light: false }),
+  // Naga V2 HyperSpeed receiver: tid 1F (846, 1650, 3448/3556, 3317/3198); low battery read 1F (3636) but written with FF
+  // (3803); charge status "0" without asking (1716: AA battery); no lighting (mouse.py:1948-1963); wait NEW (rmd.c:71).
+  '00B4': m('Naga V2 HyperSpeed', 'dongle', { tid: 0x1f, wait: NEW, poll: 'classic', power: 'aa', dpiMax: 30000, setTids: { lowBattery: 0xff }, light: false }),
 };
 export const PIDS = Object.keys(MODELS);
 
@@ -252,8 +294,16 @@ export function createRazerMouse({ sleep = sleepReal, open = defaultOpen, vendor
       this.q = p.catch(() => {});
       return p;
     },
-    get(name, args = [], tid = this.tid, rawKey = name) { const c = CMD[name]; return this.request(tid, c, c.get, args).then((r) => { this.raw[rawKey] = hexs(r.args.slice(0, c.size)); return r.args; }); },
-    set(name, args, tid = this.tid) { const c = CMD[name]; if (c.set == null) throw new Error(`${name} is read-only`); return this.request(tid, c, c.set, args); },
+    // the transaction id for one command: the model's own per-command id (OpenRazer), the §2 0xFF low-battery row, else the model's
+    tidFor(name, dir) {
+      const mo = this.model;
+      if (dir === 'set' && mo.setTids?.[name] != null) return mo.setTids[name];
+      if (mo.tids?.[name] != null) return mo.tids[name];
+      if (name === 'lowBattery' && mo.lowBatTid != null) return mo.lowBatTid;
+      return this.tid;
+    },
+    get(name, args = [], tid = this.tidFor(name, 'get'), rawKey = name) { const c = CMD[name]; return this.request(tid, c, c.get, args).then((r) => { this.raw[rawKey] = hexs(r.args.slice(0, c.size)); return r.args; }); },
+    set(name, args, tid = this.tidFor(name, 'set')) { const c = CMD[name]; if (c.set == null) throw new Error(`${name} is read-only`); return this.request(tid, c, c.set, args); },
 
     // §3 DPI stages: the table's 38 argument bytes as the mouse sent them, and what they say
     async stageTable() {
@@ -289,11 +339,11 @@ export function createRazerMouse({ sleep = sleepReal, open = defaultOpen, vendor
       if (this.pollKind) has.add('pollingRate');
       if (this.model.power) {
         if (await tries(() => this.get('idle', [0x00, 0x00]))) has.add('idle');
-        if (await tries(() => this.get('lowBattery', [0x00], this.model.lowBatTid ?? this.tid))) has.add('lowBattery');
+        if (await tries(() => this.get('lowBattery', [0x00]))) has.add('lowBattery');
       }
       // DPI stage table: written only when it fits the documented size (1-5 stages); the count is never changed
       let table = null;
-      if (await tries(async () => { table = await this.stageTable(); }) && table.count >= 1 && table.count <= STAGES_MAX && table.active >= 1 && table.active <= table.count) {
+      if (this.model.stages && await tries(async () => { table = await this.stageTable(); }) && table.count >= 1 && table.count <= STAGES_MAX && table.active >= 1 && table.active <= table.count) {
         this.stageCount = table.count;
         if (table.count >= 2) has.add('dpiStage');
         for (let i = 1; i <= table.count; i++) has.add(stageKey(i));
@@ -310,8 +360,9 @@ export function createRazerMouse({ sleep = sleepReal, open = defaultOpen, vendor
       }
       if (this.model.light) {
         const leds = [];
-        for (const l of LEDS) if (await tries(() => this.get('brightness', [VARSTORE, l.id], this.tid, `brightness_${hex2(l.id)}`))) leds.push(l);
-        if (!leds.length && (await tries(() => this.get('brightness', [VARSTORE, LED_ALL.id], this.tid, `brightness_${hex2(LED_ALL.id)}`)))) leds.push(LED_ALL);
+        const ask = this.model.leds ? LEDS.filter((l) => this.model.leds.includes(l.id)) : LEDS;
+        for (const l of ask) if (await tries(() => this.get('brightness', [VARSTORE, l.id], undefined, `brightness_${hex2(l.id)}`))) leds.push(l);
+        if (!leds.length && !this.model.leds && (await tries(() => this.get('brightness', [VARSTORE, LED_ALL.id], undefined, `brightness_${hex2(LED_ALL.id)}`)))) leds.push(LED_ALL);
         this.leds = leds;
         for (const l of leds) has.add(l.key);
       }
@@ -342,7 +393,7 @@ export function createRazerMouse({ sleep = sleepReal, open = defaultOpen, vendor
         v.pollingRate = this.pollKind === 'rate2' ? codeToHz(POLL_RATE2, (await this.get('poll2', [0x00, 0x00]))[1]) : codeToHz(POLL_CLASSIC, (await this.get('poll', [0x00]))[0]);
       }
       if (this.has.has('idle')) { const a = await this.get('idle', [0x00, 0x00]); v.idle = (a[0] << 8) | a[1]; }
-      if (this.has.has('lowBattery')) v.lowBattery = (await this.get('lowBattery', [0x00], this.model.lowBatTid ?? this.tid))[0];
+      if (this.has.has('lowBattery')) v.lowBattery = (await this.get('lowBattery', [0x00]))[0];
       if (this.stageCount) {
         const t = await this.stageTable();
         if (t.count !== this.stageCount) throw new Error(`the mouse now has ${t.count} DPI stages, not ${this.stageCount}: look again`);
@@ -354,7 +405,7 @@ export function createRazerMouse({ sleep = sleepReal, open = defaultOpen, vendor
       if (this.has.has('scrollAccel')) v.scrollAccel = bit((await this.get('scrollAccel', [VARSTORE]))[1]);
       if (this.has.has('smartReel')) v.smartReel = bit((await this.get('smartReel', [VARSTORE]))[1]);
       if (this.has.has('dongleLed')) v.dongleLed = (await this.get('dongleLed', [0x00]))[0];
-      for (const l of this.leds) v[l.key] = (await this.get('brightness', [VARSTORE, l.id], this.tid, `brightness_${hex2(l.id)}`))[2];
+      for (const l of this.leds) v[l.key] = (await this.get('brightness', [VARSTORE, l.id], undefined, `brightness_${hex2(l.id)}`))[2];
       return v;
     },
 
@@ -420,7 +471,7 @@ export function createRazerMouse({ sleep = sleepReal, open = defaultOpen, vendor
       } else if (key === 'idle') {
         await this.set('idle', [n >> 8, n & 0xff]);
       } else if (key === 'lowBattery') {
-        await this.set('lowBattery', [n], this.model.lowBatTid ?? this.tid);
+        await this.set('lowBattery', [n]);
       } else if (key === 'dpiStage' || stage) {
         // §3 DPI stages set 0x04/0x06, size 0x26: the table just read, sent back with [0] = VARSTORE and only the one
         // field changed (the active stage byte, or one stage's X and Y). The count and every other byte stay as read.

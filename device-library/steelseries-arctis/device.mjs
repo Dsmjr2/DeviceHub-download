@@ -38,6 +38,21 @@
 //  - Nova Pro ChatMix, ANC / transparency, the base screen: not in any source (sheet s6).
 //  - Arctis 7+ status read is "assumed to share the Nova 00 B0 status read; not confirmed" (s6): it is a read, so it
 //    is used, and nothing is written on its strength.
+//
+// Added 23 Oct 2026 straight from HeadsetControl (github.com/Sapd/HeadsetControl @ a8120a6, lib/devices/*.hpp, cited
+// "HC <file>"; no code copied):
+//  - Arctis Nova 7P 220A / 2298 / 22A7 (HC steelseries_arctis_nova_7p.hpp): the Nova 7 status read 00 B0 and its
+//    battery parse (HC steelseries_arctis_nova_7.hpp getBattery: byte 3 00 = offline, 01 / 02 = charging; byte 2 =
+//    0-4 steps on 220A, percent on 2298 / 22A7). No ChatMix ("chatmix always returns 64") and no sidetone.
+//  - Arctis Nova 3P / 3X Wireless 2269 / 226D (HC steelseries_arctis_nova_3p_wireless.hpp): interface 3, FFC0 / 1;
+//    status 00 B0 (HC protocols/steelseries_protocol.hpp readDeviceStatus, read 128): byte 1 02 = offline, byte 3 =
+//    percent, byte 4 01 = charging. Its sidetone, mic volume, auto-off and EQ are writes with no read: not sent.
+//  - Arctis 1 / 1 Xbox / 7X / 7P Wireless 12B3 / 12B6 / 12D7 / 12D5 (HC steelseries_arctis_1.hpp, a
+//    SteelSeriesLegacyDevice): interface 3, usage page FF43, usage 0202; battery write 06 12, read 8: byte 3 = percent,
+//    byte 2 01 = offline, no charging flag (HC passes 0xFF as "no charging for this device"). Sidetone 06 35 and auto-off
+//    06 53 are writes with a save (06 09) and no read: not sent.
+//  - Arctis Nova 3 12EC (HC steelseries_arctis_nova_3.hpp): interface 4, FFC0 / 1. HC has no read for it at all (only
+//    feature-report writes 06 39 / 06 37 / 06 AE / 06 33, each with a save 06 09), so it is named only: nothing is sent.
 import { getDevice } from '../../public/devices/hid.js';
 
 const VID = 0x1038;
@@ -49,6 +64,12 @@ export const FAMILIES = {
   arctis9: { name: 'Legacy, Arctis 9', reportId: 0x00, len: 30, iface: 0, usagePage: null, usage: null, shift: 0 },
   // sheet s1 "Arctis 7 / 7 2019 / Pro 2019 / Pro GameDAC (older) ... iface 5"; s2 "Legacy with 0x06 ... Arctis 7 (2017-19)", 31 bytes
   legacy7: { name: 'Legacy (06 <cmd>), Arctis 7 2017-19', reportId: 0x06, len: 30, iface: 5, usagePage: null, usage: null, shift: 1 },
+  // HC steelseries_arctis_1.hpp getCapabilityDetail: usage page 0xff43, usage 0x202, interface 3; a SteelSeriesLegacyDevice
+  // (PACKET_SIZE_31 for its writes; the battery request itself is 2 bytes): len 30 UNCONFIRMED, as for the other 06 families
+  legacy1: { name: 'Legacy (06 <cmd>), Arctis 1 / 7X / 7P Wireless', reportId: 0x06, len: 30, iface: 3, usagePage: 0xff43, usage: 0x0202, shift: 1 },
+  // HC steelseries_arctis_nova_3.hpp: every capability on interface 4, usage page 0xffc0, usage 1 (feature reports,
+  // report id 06, MSG_SIZE 64). Opened only to name the headset; nothing is ever sent on it.
+  nova3: { name: 'Nova 3 (06 <cmd> feature reports; nothing sent)', reportId: 0x06, len: 63, iface: 4, usagePage: 0xffc0, usage: 0x01, shift: 1 },
 };
 
 // what each line of models can do (sheet s3); status: its status read (STATUS below), or null
@@ -59,6 +80,10 @@ export const LINES = {
   pro: { family: 'legacy06', status: 'pro' },
   a9: { family: 'arctis9', status: 'a9' },
   a7old: { family: 'legacy7', status: 'a7old' },
+  nova7p: { family: 'nova', status: 'nova7' },   // HC steelseries_arctis_nova_7p.hpp: the Nova 7 status read, no ChatMix
+  nova3p: { family: 'nova', status: 'nova3p' },
+  a1: { family: 'legacy1', status: 'a1' },
+  nova3: { family: 'nova3', status: null },
 };
 
 // the per-model table (sheet s1). steps: battery reported as 0-4 steps (sheet s3 battery / Nova 7, second row).
@@ -91,6 +116,17 @@ export const MODELS = [
   { pid: 0x12ad, name: 'Arctis 7 (2019)', line: 'a7old' },
   { pid: 0x1252, name: 'Arctis Pro (2019)', line: 'a7old', noBattery: true },
   { pid: 0x1280, name: 'Arctis Pro GameDAC', line: 'a7old', noBattery: true },
+  // added 23 Oct 2026 (see the top). noChat: HC "chatmix always returns 64" on the Nova 7P, so it is not shown
+  { pid: 0x220a, name: 'Arctis Nova 7P', line: 'nova7p', steps: true, noChat: true },   // HC: "discrete battery: 0-4"
+  { pid: 0x2298, name: 'Arctis Nova 7P V2', line: 'nova7p', noChat: true },             // "percentage battery: 0-100"
+  { pid: 0x22a7, name: 'Arctis Nova 7P V2', line: 'nova7p', noChat: true },             // "percentage battery: 0-100"
+  { pid: 0x2269, name: 'Arctis Nova 3P Wireless', line: 'nova3p' },
+  { pid: 0x226d, name: 'Arctis Nova 3X Wireless', line: 'nova3p' },
+  { pid: 0x12b3, name: 'Arctis 1 Wireless', line: 'a1' },
+  { pid: 0x12b6, name: 'Arctis 1 Wireless Xbox', line: 'a1' },
+  { pid: 0x12d7, name: 'Arctis 7X Wireless', line: 'a1' },
+  { pid: 0x12d5, name: 'Arctis 7P Wireless', line: 'a1' },
+  { pid: 0x12ec, name: 'Arctis Nova 3', line: 'nova3' },
 ];
 
 const READ_ONLY = 'The ChatMix dial on the headset. DeviceHub reads it; only the dial changes it.';
@@ -144,8 +180,19 @@ const STATUS = {
   a7p: { reqs: [[0xb0]], parse([r]) {
     return { online: r[1] !== 0x01, charging: r[3] === 0x01, percent: Math.min(r[2], 4) * 25, chat: { game: Math.min(r[4], 100), chat: Math.min(r[5], 100) } };
   } },
+  // HC steelseries_arctis_nova_3p_wireless.hpp getBattery: write 00 B0, read: byte 1 02 = offline, byte 3 = percent
+  // ("Already in percentage"), byte 4 01 = charging. No ChatMix.
+  nova3p: { reqs: [[0xb0]], chat: false, parse([r]) {
+    return { online: r[1] !== 0x02, charging: r[4] === 0x01, percent: Math.min(r[3], 100), chat: null };
+  } },
+  // HC steelseries_arctis_1.hpp getBattery: write 06 12, read 8: battery byte 3 (0-100), status byte 2 (01 = offline),
+  // no charging value; HC's bytes count hidapi's report id byte, so here byte N = data[N - 1]
+  a1: { reqs: [[0x12]], chat: false, parse([r], m, f) {
+    const at = (n) => r[n - f.shift];
+    return { online: at(2) !== 0x01, charging: null, percent: Math.min(at(3), 100), chat: null };
+  } },
   // write 06 B0, read: byte 6 = 0-8, byte 15 = 01 offline / 02 charging (sheet bytes count the report id: data[N-1])
-  pro: { reqs: [[0xb0]], parse([r], m, f) {
+  pro: { reqs: [[0xb0]], chat: false, parse([r], m, f) {
     const at = (n) => r[n - f.shift];
     return { online: at(15) !== 0x01, charging: at(15) === 0x02, percent: Math.round((Math.min(at(6), 8) / 8) * 100), chat: null };
   } },
@@ -169,6 +216,8 @@ const SENDABLE = {
   legacy06: new Set([0xb0]),          // Nova Pro status
   arctis9: new Set([0x20]),           // Arctis 9 status
   legacy7: new Set([0x18, 0x24]),     // older Arctis 7 battery and ChatMix
+  legacy1: new Set([0x12]),           // Arctis 1 / 7X / 7P Wireless battery (HC steelseries_arctis_1.hpp)
+  nova3: new Set(),                   // Arctis Nova 3: no read in any source, so nothing at all
 };
 
 // SteelSeries' own apps (SteelSeries GG and the older SteelSeries Engine): while one runs, DeviceHub does not write
@@ -260,7 +309,7 @@ export default {
   keys() {
     const k = [];
     if (this.model?.sidetoneRead) k.push('sidetone');
-    if (this.line?.status && STATUS[this.line.status] && this.line.status !== 'pro') k.push('chatGame', 'chatChat');
+    if (this.line?.status && STATUS[this.line.status] && STATUS[this.line.status].chat !== false && !this.model.noChat) k.push('chatGame', 'chatChat');
     return k;
   },
 
@@ -285,12 +334,14 @@ export default {
     const m = this.model;
     const out = { Model: m.name, 'USB id': `1038:${h4(m.pid)}`, Protocol: this.fam.name, Driver: 'read-only (from the SteelSeries sheet; writes not yet tried on a real headset)' };
     const st = this.line.status ? await this.readStatus().catch(() => null) : null;
-    if (!this.line.status) out.Status = 'not read (the sheet does not give this model\'s status request)';
+    if (this.model.line === 'nova3') out.Status = 'not read (no source has a read for the Nova 3; nothing is sent)';
+    else if (!this.line.status) out.Status = 'not read (the sheet does not give this model\'s status request)';
     else if (!st) out.Status = 'no reply';
     else {
       out.Headset = st.online ? 'on' : 'off or out of range (the base answered)';
-      if (st.online && st.chat) out.ChatMix = `game ${st.chat.game}%, chat ${st.chat.chat}%`;
+      if (st.online && st.chat && !this.model.noChat) out.ChatMix = `game ${st.chat.game}%, chat ${st.chat.chat}%`;
       else if (this.model.line === 'pro') out.ChatMix = 'not readable on this model (not in the sheet)';
+      else if (this.model.noChat) out.ChatMix = 'not on this model (its dial is not ChatMix)';
     }
     return out;
   },

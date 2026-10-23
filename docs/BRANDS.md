@@ -22,7 +22,7 @@ maker, not the brand; check the product id and name too.
 | Corsair | `1b1c` | iCUE | USB (vendor messages) | HeadsetControl, OpenLinkHub | unconfirmed | low: vendor HID |
 | Turtle Beach (incl. ROCCAT) | `10f5` `1e7d` | Swarm II | USB (vendor messages), Bluetooth | HeadsetControl, OpenRGB | unconfirmed | low: vendor HID |
 | Sony INZONE | `054c` | INZONE Hub | USB (vendor messages), Bluetooth | HeadsetControl | no | low: no lighting; settings only |
-| Audeze | not confirmed | Audeze HQ | USB (vendor messages), Bluetooth | HeadsetControl | no | medium: vendor app also updates firmware; never trigger it |
+| Audeze | `3329` | Audeze HQ | USB (vendor messages), Bluetooth | HeadsetControl | no | medium: vendor app also updates firmware; never trigger it |
 | EPOS / Sennheiser | `1395` `1377` | EPOS Gaming Suite | USB (vendor messages), Bluetooth | nothing open | no | low: no lighting; mostly standard USB audio |
 | JBL Quantum | not confirmed | JBL QuantumENGINE | USB (vendor messages), Bluetooth | nothing open | unconfirmed | medium: undocumented protocol |
 
@@ -33,7 +33,7 @@ maker, not the brand; check the product id and name too.
 - **Corsair**: No official Corsair Dynamic Lighting announcement found.
 - **Turtle Beach (incl. ROCCAT)**: 1e7d is ROCCAT, now a Turtle Beach brand.
 - **Sony INZONE**: 054c is Sony's main ID, shared with PlayStation gear.
-- **Audeze**: Vendor ID not in usb.ids (unconfirmed); read it from HeadsetControl's source before relying on it.
+- **Audeze**: Vendor ID 3329 from HeadsetControl (lib/device.hpp; Maxwell 4B19/4B18, Maxwell 2 4B29/4B28); not in usb.ids. device-library/audeze-maxwell (23 Oct 2026).
 - **EPOS / Sennheiser**: 1395 is DSEA A/S (EPOS), 1377 is Sennheiser. No open project control found.
 - **JBL Quantum**: Harman vendor ID not confirmed from a reliable list. No open project support found.
 

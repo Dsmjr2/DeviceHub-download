@@ -50,7 +50,10 @@ Changed:
 - `helpers/share-route.mjs`: the Share button accepts a driver.json folder (link and attachment name it).
 - `helpers/my-devices.mjs` `guard()`: a driver.json driver builds its settings list fresh on every read, so the
   read-only marks (hint, readOnly) were lost; they are now laid over each list. Writes were refused before too.
-- `helpers/pcap-read.mjs`: `readPcapBuffer(buf)` exported; each record also has `ts` (absolute time).
+- `helpers/pcap-read.mjs`: `readPcapBuffer(buf)` exported; each record also has `ts` (absolute time). It reads pcap
+  (micro- or nanosecond, either byte order) and pcapng (Wireshark's default), with USBPcap's link type 249 or Linux
+  usbmon's 189 / 220, all as USBPcap-shaped records (23 Oct 2026: 58 published captures of gaming devices, 52 of them
+  pcapng and one usbmon, all read).
 - `public/app.js`: `learnPage` in PAGES (last, so Alt+1..8 are unchanged), `rail: false` keeps it out of the sidebar.
 - `public/pages/overview.js`: Set up card's Still to do gets a "Learn a device" button.
 - `public/pages/pc-lights.js`: This PC's "Other devices plugged in" gets "Learn it".
@@ -88,3 +91,63 @@ below for what the wizard refuses." And in the Map:
 
 Since then (22 Oct 2026, docs/handoff/learn-readings.md): readings (battery, charging, ChatMix, a sensor) are learned
 too, and after a save the same device can be learned on its other USB id (cable and receiver) into the same driver.
+
+## The test bench and what it fixed (23 Oct 2026)
+
+`tests/learn-bench.mjs` (in npm test): pretend devices modelled on real protocol styles, each with a pretend maker's app
+that changes one setting while it is recorded; every style goes through the whole wizard (takeMessages, analyze,
+withRange, buildDriver, validate, verifySeen) and then the learned driver drives the SAME pretend device through
+declarative-driver's real connect/read/write: the device must hold the new value, with its other settings untouched.
+It started at 4 of 12 styles; these were fixed, each in helpers/learn-wizard.mjs (and the format where said):
+
+- **Replies matched by the bytes they repeat** (`echoAt`): the places among the first 8 where the request's byte is not
+  0 and the reply carries it. Razer's status 00 -> 02 and Corsair Bragi's 08 -> 00 broke the old "leading bytes" rule.
+  Feature reports may repeat none (the get answers the set; validate allows `replies.echo: []` for feature only).
+- **A value in several places of one message** (`explainCopies`; Razer DPI X and Y, a left and a right level): every
+  copy is a placeholder; a reply reporting it in several places, alike in every take, is read from the first.
+- **A save after the write** (`write.then`): the next message after the write's reply, the same in every take, never sent
+  before the write, answered by the device; the driver sends it once the new value reads back. Unanswered: not sent, and
+  the evidence says the setting may not last.
+- **A value in byte 0** (a report id names the command): the grouping is tried again without "the same first byte".
+- **A rolling message number** (`findCounter`, format `transport.counter: { at, step }`): one of the first 8 bytes rises
+  by the same step (1-16) on every message, never repeating; only tried when the recordings do not learn without it
+  (an app reading addresses 10, 11, 12 looks the same). Templates leave that byte 00; the never lists treat it as any
+  value (checked in the bench).
+- **A settings block written back** (`blockOf`): when a write cannot be explained and it equals the block the app just
+  read, apart from the value, those bytes become `bytes` fields of that read, so the driver copies them from a FRESH read
+  and never puts other settings back as they were when recorded. When the app does not read again after writing, the
+  device's answer to the write (the updated block) must show the new value at the value's place in every take; then the
+  block read is the setting's read.
+
+Still untested on hardware: everything above ran against pretend devices only.
+
+## Test my learning setup (23 Oct 2026)
+
+The first step's **Test my learning setup** button (`POST /api/learn/check {vid?, pid?}`, `checkSetup` in
+helpers/learn-wizard.mjs) tries everything a learning session needs before one starts, and sends nothing to any device:
+USBPcap installed, Windows' prompt answered Yes, the listener ready (and on how many USB hubs), a 3 s recording started,
+stopped, read back, and the USB devices it names (with vid/pid: that device found, and how many messages it sent). It
+stops at the first step that fails and that step says what to do (install USBPcap, press Yes, restart the PC once,
+replug the device). Its folder (`learn\wizard\check-*`) is removed after. It refuses while a session is listening.
+tests/learn-check.mjs runs it against a pretend listener: everything passing, and 11 failures, each with its fix.
+
+Every refusal in the wizard names a next step (tests/learn-next-steps.mjs reads them all from the source).
+
+## Real captures (23 Oct 2026)
+
+58 published USB captures of gaming mice, keyboards and headsets (OpenRGB's issue uploads, OpenMouse, driver repos;
+kept out of git, they are other people's files) were run through the reader and `analyze`:
+- every one reads now (before: only the 6 plain pcap files);
+- a checksum in front of what it covers (Sharkoon SGK3, Sonix-style: byte 0 = the sum of every byte after it) was
+  not found; `findChecksum` now tries it, `template()` leaves that byte 00 and the driver format accepts a front
+  checksum whose byte the templates leave 00 (anything else there is still refused);
+- most captures change a setting without the app ever reading it back, so the wizard finds the write and says the
+  setting needs a read (record while opening the app): the safety rule working, not a gap;
+- colours: the wizard learns them now (kind `color`, Colour on the page, two colour pickers): red, green and blue side
+  by side, once or several times in the message (Corsair Dark Core sends each twice), read back as a 3-byte `bytes`
+  field and written as `{value:rgb}` (only that order; another order is refused). The maker's app is never driven for
+  a colour: the person picks it there;
+- an app that sends the value in two messages the same way (Keychron K3: a short one, then a longer one that also sets
+  other things): the shortest is used and the evidence says so; the read after every write checks it took.
+The bench gained `checksum-first` and the same devices recorded as pcapng and usbmon (tests/lib/usb-recording.mjs
+`pcapng()`, `usbmon()`), colour, colour-twice and two-messages: 25 of 25.

@@ -21,7 +21,13 @@ const s = { step: 'idle', index: null, name: '', zones: [], seen: {}, names: {},
 let draw = () => {};
 const go = (patch) => { Object.assign(s, patch); draw(); };
 
-export const shownZones = (c) => c.zones.map((z, i) => [z, i]).filter(([z]) => s.showAll || !z.hidden);
+// the zones worth a row (23 Oct 2026, Shawn on a friend's B450: "His motherboard doesnt need this many options", and its
+// "Top logo" did not even move the logo): the ones the person named with Find my lights, and the ones fans plug into
+// (ARGB / D_LED headers). OpenRGB's own guesses ("Top logo", "Unnamed 6") stay out until Find my lights names them;
+// All still covers every zone.
+const FAN_ZONE = /argb|d[_ -]?led|header|fan/i;
+export const shownZones = (c) => c.zones.map((z, i) => [z, i]).filter(([z]) => s.showAll || (!z.hidden && (z.named || FAN_ZONE.test(z.name || ''))));
+export const hiddenZoneCount = (c) => c.zones.length - shownZones(c).length;
 
 const lights = (o) => (o.controllers || []).filter((c) => c.zones?.length && c.leds > 0);
 const say = (e) => String(e?.message || e || '').replace(/^Error: /, '');

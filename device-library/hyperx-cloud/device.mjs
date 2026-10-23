@@ -1,5 +1,6 @@
 // HyperX Cloud wireless headsets (HP-era dongles, vendor 03F0): Cloud II Wireless, Cloud Alpha Wireless, Cloud III
-// Wireless. Written 22 Oct 2026 from docs/brands/hyperx.md only (its sources: HeadsetControl = HSC, HyperHeadset = HH);
+// Wireless, Cloud II Core Wireless, Cloud III S Wireless and Cloud Flight Wireless (03F0:0E90; the Kingston 0951 ids are
+// in device-library/hyperx-kingston, because a library entry declares one vendor id). Written 22 Oct 2026 from docs/brands/hyperx.md only (its sources: HeadsetControl = HSC, HyperHeadset = HH);
 // no code copied, never run on a real headset. Read-only first: every value is read before it is written, one setting
 // is written at a time and read back, and a mismatch is put back and reported as failed.
 //
@@ -42,6 +43,13 @@ export const FAMILIES = {
   '06ffbb': { name: '06 FF BB', header: [0x06, 0xff, 0xbb], cmdAt: 3, valueAt: 4, echo: 3, replyCodes: {} },
   '21bb': { name: '21 BB', header: [0x21, 0xbb], cmdAt: 2, valueAt: 3, echo: 1, replyCodes: { 0x0b: [0x25], 0x0c: [0x26] } },
   '66': { name: '66', header: [0x66], cmdAt: 1, valueAt: 2, echo: 1, replyCodes: {} },
+  // Cloud Flight (23 Oct 2026): get 21 FF 05, reply 21 FF 05 <HI> <LO> (HSC hyperx_cloud_flight.hpp, HH cloud_flight_wireless.rs)
+  '21ff': { name: '21 FF', header: [0x21, 0xff], cmdAt: 2, valueAt: 3, echo: 2, replyCodes: {} },
+  // Cloud III S Wireless (23 Oct 2026, HH cloud_iii_s_wireless.rs): a get is 0C 02 03 01 00 <cmd> (byte 3 = 01 get, 00 set,
+  // so a set can never pass this header), sent as a FEATURE report; the reply is input report 0C with the command at
+  // byte 5 and the value at byte 6 (HH parse_response reads response[5] and response[6]). Report 0D (notices) and 05
+  // (mic state) are not replies. reply: the reply's own leading bytes and command position, when they differ.
+  '0c': { name: '0C', header: [0x0c, 0x02, 0x03, 0x01, 0x00], cmdAt: 5, valueAt: 6, echo: 1, replyCodes: {}, reply: { header: [0x0c], cmdAt: 5 } },
 };
 
 // Commands that look like reads or are listed beside them, and change state. Never sent, on any model, by any path.
@@ -100,6 +108,35 @@ const ALPHA_WRITES = {
   // "correct?" (section 6), so it is only ever written after a read of 06 and judged by reading 06 back.
   sidetoneLevel: { cmd: 0x11, kind: 'level', min: 0, max: 128 },
 };
+// Cloud Flight battery (HH cloud_flight_wireless.rs THRESHOLDS / PERCENTAGES): the percent of the highest listed
+// millivolt step at or below the reading (below the first step: 5). Charging when HI = 0x10 and LO >= 0x14, or HI >= 0x11
+// (HH), i.e. 4116 mV and up; HSC says charging above 0x100B (4107 mV), so between the two the charging state is unknown.
+// The percent is HH's estimate from the voltage (HSC uses another curve; sheet section 6 "pick one and label it").
+const FLIGHT_STEPS = [[3328, 5], [3584, 10], [3674, 15], [3704, 20], [3732, 25], [3744, 30], [3754, 35], [3764, 40], [3774, 45], [3784, 50],
+  [3794, 55], [3804, 60], [3824, 65], [3840, 70], [3860, 75], [3890, 80], [3910, 85], [3940, 90], [3960, 95], [3970, 100]];
+export function flightBattery(mV) {
+  if (!Number.isInteger(mV) || mV <= 0) return { percent: null, mV: mV || null, charging: null };   // no reading
+  const charging = mV >= 0x1014 ? true : mV > 0x100b ? null : false;
+  if (charging === true) return { percent: null, mV, charging };   // neither source gives a level while charging
+  let percent = FLIGHT_STEPS[0][1];
+  for (const [at, p] of FLIGHT_STEPS) if (mV >= at) percent = p;
+  return { percent, mV, charging, estimate: true };
+}
+const FLIGHT_READS = {
+  battery: { cmd: 0x05, parse: (f) => flightBattery((f(3) << 8) | f(4)) },                   // "Battery voltage 21 FF 05: bytes 3-4 mV BE"
+};
+// Cloud III S Wireless (HH cloud_iii_s_wireless.rs): value at byte 6, FF = no value (HH parse_response returns nothing)
+const v6 = (f) => (f(6) === 0xff ? null : f(6));
+const IIIS_READS = {
+  connected: { cmd: 0x02, parse: (f) => (v6(f) === null ? null : f(6) === 2) },              // "DONGLE_CONNECTED 02: byte 6 = 2"
+  micMute: { cmd: 0x04, parse: (f) => bool(v6(f)) },                                          // "GET_MIC_MUTE 04: byte 6 = 1 muted"
+  battery: { cmd: 0x06, parse: (f) => ({ percent: pct(v6(f)) }) },                           // "BATTERY 06: byte 6"
+  voicePrompts: { cmd: 0x14, parse: (f) => bool(v6(f)) },                                     // "GET_VOICE_PROMPT 14: byte 6 = 1"
+  sidetone: { cmd: 0x16, parse: (f) => bool(v6(f)) },                                         // "GET_SIDE_TONE 16: byte 6 = 1" (sheet: format unconfirmed)
+  charging: { cmd: 0x48, parse: () => null, raw: (f) => f(6) },                              // "CHARGE_STATE 48: byte 6"; meanings unconfirmed (sheet)
+  autoOffRaw: { cmd: 0x4b, parse: (f) => (v6(f) === null ? null : (f(6) << 8) | f(7)) },     // "GET_AUTO_POWER_OFF 4B: bytes 6-7"; seconds in the code, presets in its comment: backup only
+  productColor: { cmd: 0x4d, parse: (f) => f(6) },                                            // "COLOR 4D: byte 6"; mapping unconfirmed (info only)
+};
 const III_READS = {
   connected: { cmd: 0x82, parse: (f) => f(2) === 1 },                                        // "Connected 82: byte 2 = 1"
   sidetone: { cmd: 0x84, parse: (f) => bool(f(2)) },                                         // "Sidetone on/off 01 set, 84 get"
@@ -145,7 +182,23 @@ export const MODELS = [
       { cmd: 0x03, why: 'mic mute set' }, { cmd: 0x04, why: 'silent mode set' }, { cmd: 0x0f, why: 'noise gate set' }],
     lenNote: '64 (HH)', source: 'HH cloud_ii_core_wireless.rs',
     readOnlyWhy: 'its ids and commands come from HH alone (section 5 step 6: "medium (single source, HH)"); read-only until a read on the headset confirms it' },
+  // 23 Oct 2026: Cloud III S Wireless. Every write is a feature report (HH write_hid_report: send_feature_report), so
+  // feature: true from the start, and its replies are input reports read on a raw channel (pollReplies).
+  { key: 'cloud-iii-s-wireless', name: 'HyperX Cloud III S Wireless', pids: ['06be', '02cc'], family: '0c',
+    len: 64, page: null, usage: null, feature: true, pollReplies: true, reads: IIIS_READS, writes: {}, held: [
+      { cmd: 0x01, why: 'mic mute set' }, { cmd: 0x0d, why: 'sidetone set' }, { cmd: 0x0b, why: 'voice prompts set' },
+      { cmd: 0x4a, why: 'auto-off set (seconds in the code, presets in its comment: they disagree)' }, { cmd: 0x5f, why: 'equalizer band set (write-only)' }],
+    lenNote: '64 (HH), feature report', source: 'HH cloud_iii_s_wireless.rs',
+    readOnlyWhy: 'its commands come from HH alone (section 5 step 6: single source); read-only until a read on the headset confirms it' },
+  // 23 Oct 2026: Cloud Flight Wireless on its HP id. Battery voltage only: no source reads or changes anything else.
+  { key: 'cloud-flight-wireless', name: 'HyperX Cloud Flight Wireless', pids: ['0e90'], family: '21ff',
+    len: 20, page: null, usage: null, reads: FLIGHT_READS, writes: {}, held: [],
+    lenNote: 'HSC 20, HH 64: 20 here (HSC, the source that names the frame for every Flight id; unconfirmed which Windows wants)',
+    source: 'HH cloud_flight_wireless.rs (the 03F0:0E90 id and the % table), HSC hyperx_cloud_flight.hpp (the frame)',
+    readOnlyWhy: 'HH alone lists 03F0:0E90 as a Cloud Flight; it has nothing to change anyway (battery only)' },
 ];
+// 23 Oct 2026: the Cloud III S (HH parse_response reads the command at byte 5) and the Cloud Flight (HH's % table) are now
+// in; the Kingston 0951 Cloud II Wireless and Cloud Flight ids are in device-library/hyperx-kingston.
 // Left out, with the sheet's reason: 03F0:0D93 (HH lists it for the Cloud II Wireless, section 6 names it as a likely
 // Cloud Stinger 2 Wireless id); the Kingston 0951 Cloud II Wireless (other vendor id, needs the "prepare" read: HID LAYER 5;
 // its sidetone is write-only with no read-back); the wired Cloud III (feature report 20 86, write-only, no read-back);
@@ -189,7 +242,7 @@ export function checkFrame(model, frame) {
 // One request at a time over a HIDDevice (WebHID, or helpers/hid-host.mjs HostDevice under the agent).
 export class Link {
   constructor(device, model, { timeoutMs = 1500 } = {}) {
-    Object.assign(this, { device, model, fam: FAMILIES[model.family], timeoutMs, q: Promise.resolve(), feature: false, log: [] });
+    Object.assign(this, { device, model, fam: FAMILIES[model.family], timeoutMs, q: Promise.resolve(), feature: model.feature === true, log: [] });
   }
 
   // checked synchronously, before it is queued: a refused frame never reaches the device
@@ -208,18 +261,20 @@ export class Link {
     data.set(frame.slice(1));
     const fam = this.fam, cmd = frame[fam.cmdAt];
     const codes = [cmd, ...(fam.replyCodes[cmd] || [])];
+    const rh = fam.reply?.header || fam.header, rc = fam.reply?.cmdAt ?? fam.cmdAt;   // the reply's own framing
     // The listener is in place before the write (a fast reply is not missed), but the wait for the reply starts only
     // once the write is done, and the reply promise always has a handler. 22 Oct 2026 (support issues 3-5): the timer
     // started before the write; a write slower than timeoutMs rejected the promise before anyone awaited it, and that
     // unhandled "no reply to 06 ff bb 08" stopped DeviceHub on a friend's PC.
-    let listener, timer, fail = null;
+    let listener, timer, fail = null, done = false;
     const answer = reply ? new Promise((resolve, reject) => {
       fail = reject;
       listener = (e) => {
-        if (e.reportId !== reportId) return;
+        if (e.reportId !== rh[0]) return;
         const d = new Uint8Array(e.data.buffer, e.data.byteOffset, e.data.byteLength);
-        const f = (n) => (n === 0 ? reportId : d[n - 1]);
-        if (!fam.header.every((x, i) => f(i) === x) || !codes.includes(f(fam.cmdAt))) return;   // a notice, or another reply
+        const f = (n) => (n === 0 ? rh[0] : d[n - 1]);
+        if (!rh.every((x, i) => f(i) === x) || !codes.includes(f(rc))) return;   // a notice, or another reply
+        done = true;
         resolve(Uint8Array.from(d));
       };
       this.device.addEventListener('inputreport', listener);
@@ -231,6 +286,15 @@ export class Link {
       if (this.log.length > 100) this.log.splice(0, this.log.length - 100);
       if (!reply) { await sleep(50); return null; }   // HH waits 50 ms after each write before reading
       timer = setTimeout(() => fail(new Error(`no reply to ${hex(frame)}`)), this.timeoutMs);
+      // a reply to a feature report is an input report nobody reads by itself (hid-host only reads after an output
+      // report): on a raw channel the link reads them (receiveReports) and hands each to its listener until one matches
+      if (this.feature && this.model.pollReplies && typeof this.device.receiveReports === 'function') {
+        const until = Date.now() + this.timeoutMs;
+        while (!done && Date.now() < until) {
+          const got = await this.device.receiveReports(Math.max(0, Math.min(250, until - Date.now()))).catch(() => []);
+          for (const e of got || []) listener(e);
+        }
+      }
       return await answer;
     } finally {
       clearTimeout(timer);
@@ -269,11 +333,11 @@ export class Link {
 }
 
 const SETTINGS = [
-  { key: 'sidetone', label: 'Sidetone', type: 'toggle', hint: 'Hear your own voice. Changes on the Cloud II Wireless and Alpha Wireless; shown only on the Cloud III Wireless.' },
-  { key: 'micMute', label: 'Mic muted', type: 'toggle', hint: 'Changes on the Cloud II Wireless and Alpha Wireless; shown only on the Cloud III Wireless.' },
+  { key: 'sidetone', label: 'Sidetone', type: 'toggle', hint: 'Hear your own voice. Changes on the Cloud II Wireless and Alpha Wireless; shown only on the Cloud III, III S and II Core Wireless.' },
+  { key: 'micMute', label: 'Mic muted', type: 'toggle', hint: 'Changes on the Cloud II Wireless and Alpha Wireless; shown only on the Cloud III, III S and II Core Wireless.' },
   { key: 'autoOff', label: 'Turn off after', type: 'slider', min: 0, max: 255, step: 1, unit: 'min', hint: 'Minutes without sound. Whether 0 means never is unconfirmed, so 0 is only written to put back a 0 read from the headset.' },
   { key: 'sidetoneLevel', label: 'Sidetone level', type: 'slider', min: 0, max: 128, step: 1, hint: 'Cloud Alpha Wireless (03F0:098D) only, 0-128 as HeadsetControl sends it.' },
-  { key: 'voicePrompts', label: 'Voice prompts', type: 'toggle', hint: 'Cloud Alpha Wireless only.' },
+  { key: 'voicePrompts', label: 'Voice prompts', type: 'toggle', hint: 'Changes on the Cloud Alpha Wireless; shown only on the Cloud III S Wireless.' },
   { key: 'silentMode', label: 'Silent mode', type: 'toggle', hint: 'Cloud III and II Core Wireless, shown only (no change yet).' },
   { key: 'sidetoneStep', label: 'Sidetone level (step)', type: 'slider', min: -5, max: 5, step: 1, hint: 'Cloud II Core Wireless, -5 to 5, shown only (no change yet).' },
   { key: 'noiseGate', label: 'Noise gate', type: 'toggle', hint: 'Cloud II Core Wireless, shown only (no change yet).' },
@@ -299,10 +363,11 @@ export default {
     refusals: true, pids: MODELS.flatMap((m) => m.pids).map((p) => p.toUpperCase()),
     byPid: Object.fromEntries(MODELS.flatMap((m) => m.pids.map((p) => [p.toUpperCase(), {
       page: m.page == null ? '*' : m.page.toString(16).toUpperCase(), usage: m.usage == null ? '*' : m.usage.toString(16).toUpperCase().padStart(4, '0'),
-      ...(m.page == null ? { outputLen: m.len - 1 } : {}), len: m.len - 1, reportId: FAMILIES[m.family].header[0], echo: () => FAMILIES[m.family].echo, productName: m.name }]))) },
+      ...(m.feature ? { featureLen: m.len - 1, reply: 'raw' } : m.page == null ? { outputLen: m.len - 1 } : {}), len: m.len - 1, reportId: FAMILIES[m.family].header[0], echo: () => FAMILIES[m.family].echo, productName: m.name }]))) },
   unsupported: ['firmware updates (never: they stay in HyperX NGENUITY)', 'lights', 'equalizer', 'pairing (never sent)',
     'sidetone level changes on the Cloud II Wireless (range not documented)', 'connection state on the Alpha Wireless (sources disagree)',
-    'mic monitoring (no source; HyperX calls it sidetone)', 'running beside NGENUITY: close it first'],
+    'mic monitoring (no source; HyperX calls it sidetone)', 'Cloud III S Wireless changes and equalizer (one source; shown only)',
+    'Cloud Flight Wireless settings (no source reads any; battery only, estimated from its voltage)', 'running beside NGENUITY: close it first'],
   link: null,
   lastModel: null,
   first: {},
@@ -349,6 +414,7 @@ export default {
       Changes: m.readOnlyWhy ? `none: ${m.readOnlyWhy}` : Object.keys(m.writes).map(labelOf).join(', ') };
     const tryGet = async (k) => (Object.hasOwn(m.reads, k) ? this.link.getRaw(k).catch(() => null) : null);
     const b = await tryGet('battery'); if (b?.value?.mV) out['Battery voltage'] = `${b.value.mV} mV`;
+    if (b?.value?.estimate) out.Battery = `${b.value.percent}% (estimated from the voltage, HyperHeadset's table)`;
     // The raw sidetone byte (Cloud II Wireless 0B, Cloud III Wireless 88) is not shown (22 Oct 2026, support issue 4: a
     // friend's Cloud II Wireless showed "Sidetone level (raw): 231"). HH reads it as "side tone volume" and passes the
     // byte on as it is; HSC does not read it; no source gives its range or scale, so the number means nothing to a
@@ -403,7 +469,8 @@ export default {
     const m = this.model();
     const b = await this.link.get('battery');
     let charging = null;
-    if (Object.hasOwn(m.reads, 'charging')) { try { charging = await this.link.get('charging'); } catch { charging = null; } }
+    if (b && b.charging !== undefined) charging = b.charging;   // the Cloud Flight's voltage tells it (null = unknown)
+    else if (Object.hasOwn(m.reads, 'charging')) { try { charging = await this.link.get('charging'); } catch { charging = null; } }
     return { percent: b?.percent ?? null, charging: charging === null ? undefined : charging };
   },
 

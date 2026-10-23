@@ -14,7 +14,8 @@
   "doesNotWork": [
     "DPI, polling rate and battery (no open source documents them for any HyperX mouse)",
     "lights (every documented lighting command is write-only; OpenRGB drives them)",
-    "Kingston-era ids (vendor 0951), Pulsefire Haste 2, Alloy Rise",
+    "Kingston-era ids (vendor 0951: Pulsefire Haste 1727, Alloy Origins 16E5, Origins Core 16E6, Origins 60 1734): device-library/hyperx-kingston-peripherals (a library entry declares one vendor id)",
+    "Pulsefire Haste 2, Alloy Rise",
     "firmware updates (NGENUITY only)"
   ],
   "status": "untested",

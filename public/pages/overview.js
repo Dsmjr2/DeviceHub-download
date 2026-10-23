@@ -301,7 +301,7 @@ function batteries(redraw) {
   if (!list.length) return null;
   return h('div', { class: 'ov-batteries', 'aria-label': 'Bluetooth batteries' },
     h('span', { class: 'ov-bat-label' }, 'Batteries'),
-    ...list.map((d) => h('span', { class: `ov-bat${d.battery <= 10 ? ' bad' : d.battery <= 20 ? ' warn' : ''}` },
+    ...list.map((d) => h('span', { class: `ov-bat${d.battery <= 10 ? ' bad' : d.battery <= 20 ? ' warn' : ''}`, style: { '--pct': Math.max(0, Math.min(100, d.battery)) } },
       h('i', { style: { '--lvl': `${Math.max(4, Math.min(100, d.battery))}%` } }), h('span', {}, d.name), h('b', {}, `${d.battery}%`))));
 }
 

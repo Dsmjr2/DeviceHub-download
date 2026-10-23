@@ -50,7 +50,8 @@
     "sidetone and the sleep timer on/off on Virtuoso SE, Virtuoso RGB Wireless (original), Virtuoso MAX and Void MAX Wireless V2 (the sheet does not name them for those models)",
     "mic mute state on Virtuoso SE, Virtuoso RGB Wireless (original), Virtuoso MAX and Void MAX Wireless V2 (no property in the sheet)",
     "HS80 MAX, Virtuoso MAX, Void Wireless V2 and Void MAX Wireless V2 on their own USB cable (their cable ids are not in the sheet)",
-    "the HS80 RGB Wireless (0a69, 0a6b, 0a71): DeviceHub's built-in headset page runs it"
+    "the HS80 RGB Wireless (0a69, 0a6b, 0a71): DeviceHub's built-in headset page runs it",
+    "the HS80 RGB USB (0a88, wired only): not a bragi headset (OpenLinkHub's hs80rgb package sends it 16-byte write-only light reports and reads nothing back), so nothing here could be read back"
   ],
   "status": "read-only",
   "tested": [

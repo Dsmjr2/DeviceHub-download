@@ -110,7 +110,7 @@ const L1 = a1.learned;
 if (a1.ok) {
   check(L1.write.enc.offset === 3 && L1.write.enc.size === 2 && L1.write.enc.endian === 'little' && L1.write.enc.scale === 1 && L1.write.enc.add === 0, `the write's DPI is bytes 3-4, little-endian, as is (${JSON.stringify(L1.write.enc)})`);
   check(L1.read.data[0] === 5 && L1.read.data[1] === 0x81 && L1.read.field.offset === 3 && L1.read.field.size === 2, `the read is 05 81 and its reply holds DPI at bytes 3-4 (${JSON.stringify(L1.read)})`);
-  check(L1.echo >= 2 && L1.transport.report === 'output' && L1.transport.len === 64 && !L1.checksum, `output reports of 64 bytes, replies echo 2+ bytes, no checksum (${L1.echo})`);
+  check(L1.echo.length >= 2 && L1.transport.report === 'output' && L1.transport.len === 64 && !L1.checksum, `output reports of 64 bytes, replies echo 2+ bytes, no checksum (${L1.echo})`);
   check(L1.write.data[0][3] === 0x20 && L1.write.data[0][4] === 3, 'a slider dragged through 1000 counts with its final value, 800');
 }
 

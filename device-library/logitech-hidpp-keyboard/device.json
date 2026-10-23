@@ -8,6 +8,9 @@
     "c541",
     "c547",
     "c545",
+    "c539",
+    "c53f",
+    "c54d",
     "c33e",
     "c343",
     "c33f",
@@ -16,17 +19,21 @@
     "c336",
     "c339",
     "c232",
-    "b35f"
+    "c33a",
+    "b35f",
+    "b389"
   ],
   "models": [
     "G915",
     "G915 TKL (also on Bluetooth, B35F)",
     "G815",
     "G813 (wired; HID++ on interface 1, usage page FF43)",
-    "G515 LIGHTSPEED TKL",
+    "G515 LIGHTSPEED TKL (also on Bluetooth, B389)",
     "G512",
+    "G413",
     "G213",
-    "PRO Gaming Keyboard"
+    "PRO Gaming Keyboard",
+    "any HID++ 2.0 keyboard (PRO X TKL, G515 TKL and others) paired to a LIGHTSPEED receiver C539 / C53F / C54D"
   ],
   "works": [
     "written from Solaar (e7304c4c) and libratbag (8235b5bb) and checked against simulated keyboards only (tests/sim-logitech-keyboard.mjs)",
@@ -42,22 +49,26 @@
     "Bluetooth: the G915 TKL on its Bluetooth id B35F (Linux hid-logitech-hidpp.c @ 3fabd8ec; inside Solaar base.py Bluetooth keyboard range 0xB317-0xB3FF), HID++ 2.0 at device index 0xFF, replies with index 0x00 taken (Solaar base.py), the collection with 19-byte input and output reports on any usage page (Solaar hidapi_impl.py / OpenRGB 0xFF43 and 0xFF00); the same battery, settings source, profile display, key locks, F-key swap and backlight",
     "receivers C541 and C547 (G915, OpenRGB LogitechControllerDetect.cpp) and C545 (G915 TKL)",
     "22 Oct 2026: on a receiver every slot 1-6 is asked read-only (ping, getFeature 0x2201, DEVICE_NAME 0x0005 fn 0x20 for the kind, Solaar hidpp20.py get_kind) and only a keyboard's slot is run; a mouse there is left to the mouse driver with no error, nothing answering is the normal asleep state, one driver per slot",
-    "22 Oct 2026: the G813 on its cable (C232; Dsmjr2/DeviceHub-support#6): OpenRGB LogitechControllerDetect.cpp @ bbc77470 (line 58 LOGITECH_G813_PID 0xC232, line 1531 the G815's detector on interface 1, usage page 0xFF43; lines 163-166 usage 0x0602 = 20-byte packets) and LogitechG815Controller.cpp (HID++ 2.0 long report 0x11, device 0xFF); opened on interface 1, FF43 / 0602, the same feature lookup as the G815, so it shows only the settings it answers for"
+    "22 Oct 2026: the G813 on its cable (C232; Dsmjr2/DeviceHub-support#6): OpenRGB LogitechControllerDetect.cpp @ bbc77470 (line 58 LOGITECH_G813_PID 0xC232, line 1531 the G815's detector on interface 1, usage page 0xFF43; lines 163-166 usage 0x0602 = 20-byte packets) and LogitechG815Controller.cpp (HID++ 2.0 long report 0x11, device 0xFF); opened on interface 1, FF43 / 0602, the same feature lookup as the G815, so it shows only the settings it answers for",
+    "23 Oct 2026: the G413 on its cable (C33A): libratbag data/devices/logitech-g413.device @ 8235b5bb (DeviceMatch usb:046d:c33a, DeviceType keyboard, Driver hidpp20); MatMoul/g810-led Keyboard.h / Keyboard.cpp @ efa3c35e (HID++ long report 0x11 to device 0xFF on interface 1); the same feature lookup, so it shows only what it answers for",
+    "23 Oct 2026: the G515 LIGHTSPEED TKL on Bluetooth (B389): Solaar docs/devices/G515 LS TKL 40B4.text @ e7304c4c (Kind keyboard, HID++ 4.2, Transport IDs btleid B389 / wpid 40B4 / usbid C355), inside Solaar's Bluetooth keyboard range 0xB317-0xB3FF; the same Bluetooth channel as the G915 TKL",
+    "23 Oct 2026: a keyboard on a shared LIGHTSPEED receiver (C539 / C53F / C54D, Solaar base_usb.py; also run by logitech-hidpp-mouse): a slot is claimed only when it has neither 0x2201 nor 0x2202 and DEVICE_NAME fn 0x20 says keyboard or numpad; this driver's HID++ software id there is 0x0C (Solaar base.py: other clients sharing a device pick their own), so the two drivers never take each other's replies; the receiver is never closed by this driver there, and with no keyboard answering it steps aside quietly instead of waiting asleep"
   ],
   "doesNotWork": [
     "firmware updates, DFU, resets and pairing (never: Logitech's own app only)",
     "editing onboard profiles (keys, macros, lights): profile memory writes rewrite flash and are never sent",
     "lighting colours and effects (0x8071 / 0x8081 have no read-back)",
     "G-key and M-key remaps, and a game mode beyond the key locks (no documented read-back)",
-    "PRO X TKL and G915 X (no product ids in any source read)",
     "the K375s-style F-key swap 0x40A3 (needs the host-info feature; office keyboards)",
     "selecting an onboard profile: read-only until Solaar's or libratbag's profile numbering is confirmed on a real keyboard",
     "report rate over Bluetooth: it is the USB / Lightspeed polling rate; no source documents 0x8060 / 0x8061 over Bluetooth, so it is not looked up there",
-    "the G915, G515 TKL and other models on Bluetooth: no source read gives their Bluetooth product ids",
-    "a G813 (C232) whose PC shows only its typing interface (usage page 0001 usage 0006, no interface 1 with page FF43): there is nothing to send settings to, for DeviceHub, OpenRGB or G HUB alike; plug it straight into the PC (no KVM switch, hub or monitor USB) and check Windows lists a second HID entry for it"
+    "a G813 (C232) whose PC shows only its typing interface (usage page 0001 usage 0006, no interface 1 with page FF43): there is nothing to send settings to, for DeviceHub, OpenRGB or G HUB alike; plug it straight into the PC (no KVM switch, hub or monitor USB) and check Windows lists a second HID entry for it",
+    "PRO X TKL and G915 X on their cable, and their own receiver ids: no product id in any source read (on a shared LIGHTSPEED receiver C539 / C53F / C54D they are found by their kind)",
+    "the G915 and other models on Bluetooth: no source read gives their Bluetooth product ids",
+    "a keyboard asleep on a shared LIGHTSPEED receiver is found when it is plugged in, on a Connect click or after the 10-minute rest, not within 30 s (the driver steps aside there instead of waiting asleep, so a mouse-only receiver shows no keyboard)"
   ],
   "status": "untested",
-  "updated": "2026-10-23T00:18:02Z",
+  "updated": "2026-10-23T12:00:00Z",
   "tested": [],
-  "source": "Solaar lib/logitech_receiver (settings_templates.py, settings.py, settings_validator.py, special_keys.py, hidpp20_constants.py, descriptors.py, base_usb.py) @ e7304c4c451cc9bb4f206a914844525e67856a28; libratbag src/hidpp20.h @ 8235b5bb6032dea15901ab58a8218956f4494d08; Linux drivers/hid/hid-logitech-hidpp.c (hidpp_devices, Bluetooth ids) @ 3fabd8ec206bd48a45ef77aed170d25b322ad9a2; OpenRGB Controllers/LogitechController/LogitechControllerDetect.cpp @ a44f52507873f9810601a9ea2640cbe13a868c15; docs/brands/logitech.md; OpenRGB Controllers/LogitechController/LogitechControllerDetect.cpp and LogitechG815Controller/LogitechG815Controller.cpp @ bbc77470a7cba56af60989e54ba910d5ac66a3ac (the G813)"
+  "source": "Solaar lib/logitech_receiver (settings_templates.py, settings.py, settings_validator.py, special_keys.py, hidpp20_constants.py, descriptors.py, base_usb.py) @ e7304c4c451cc9bb4f206a914844525e67856a28; libratbag src/hidpp20.h @ 8235b5bb6032dea15901ab58a8218956f4494d08; Linux drivers/hid/hid-logitech-hidpp.c (hidpp_devices, Bluetooth ids) @ 3fabd8ec206bd48a45ef77aed170d25b322ad9a2; OpenRGB Controllers/LogitechController/LogitechControllerDetect.cpp @ a44f52507873f9810601a9ea2640cbe13a868c15; docs/brands/logitech.md; OpenRGB Controllers/LogitechController/LogitechControllerDetect.cpp and LogitechG815Controller/LogitechG815Controller.cpp @ bbc77470a7cba56af60989e54ba910d5ac66a3ac (the G813); libratbag data/devices/logitech-g413.device @ 8235b5bb6032dea15901ab58a8218956f4494d08; MatMoul/g810-led src/classes/Keyboard.h, Keyboard.cpp @ efa3c35e74f01a2ed2346320da8bad411bfe8ed8 (the G413); Solaar docs/devices/G515 LS TKL 40B4.text, lib/logitech_receiver/base_usb.py (LIGHTSPEED receivers), base.py (software id) @ e7304c4c451cc9bb4f206a914844525e67856a28"
 }

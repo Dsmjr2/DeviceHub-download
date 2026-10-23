@@ -153,8 +153,11 @@ h1 { margin: 0; font-size: clamp(26px, 3vw, 36px); line-height: 1.1; letter-spac
 .btn:hover { background: rgba(255, 255, 255, .18); }
 .btn:active { background: rgba(255, 255, 255, .08); }
 .btn .ic { width: 17px; height: 17px; }
-.btn.primary { background: #e6e8ed; border-color: transparent; color: var(--signal-ink); font-weight: 600; box-shadow: inset 0 1px 0 #fff, 0 6px 16px -10px rgba(0, 0, 0, .6); }
-.btn.primary:hover { background: #fff; }
+/* the main button: a soft tint of the theme's accent, not near-white (23 Oct 2026, Shawn: the Update and Add pictures
+   buttons were "far too bright", "doesnt follow the theme"); still the one that stands out on its card */
+.btn.primary { background: color-mix(in srgb, var(--signal) 20%, rgba(255, 255, 255, .05)); border-color: color-mix(in srgb, var(--signal) 45%, transparent);
+  color: var(--text); font-weight: 600; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), 0 6px 16px -10px rgba(0, 0, 0, .6); }
+.btn.primary:hover { background: color-mix(in srgb, var(--signal) 30%, rgba(255, 255, 255, .06)); border-color: color-mix(in srgb, var(--signal) 65%, transparent); }
 .btn.ghost { background: none; border-color: transparent; box-shadow: none; }
 .btn.ghost:hover { background: rgba(255, 255, 255, .1); }
 .btn.danger { color: var(--bad); }
@@ -1581,6 +1584,222 @@ html[data-skin="old-school"] .toast .ic { color: #6b0000; }
 /* wide stone scrollbars (the page sets scrollbar-color, so Chrome draws its own bar in these colors) */
 html[data-skin="old-school"] * { scrollbar-width: auto; scrollbar-color: #6a5a42 #231c13; }
 
+/* ---------- Old School, closer still (23 Oct 2026, Shawn: "Can we make the oldschool runescape even closer in accuracy
+   to osrs. I want it to be very cool and very realistic to the games ui and theme", then "I want it all to be easily
+   legible, like the battery for example that isnt easy to read", and the battery as the game's health orb) ----------
+   On top of the two Old School blocks above: the game's interface stone (a lit top-left bevel, a dark bottom-right one,
+   a black outer line), grooved dividers under card titles, side tabs as stone tabs with the red selected one, buttons
+   whose bevel flips when pressed, red/green orb toggles, the settings slider's small stone knob, interface windows with
+   a centred orange title and a stone X, the chatbox for messages, and batteries as the minimap's hitpoints orb (red
+   rising from the bottom with the level, a heart inside, a bolt while charging; the number beside it on a dark plate in
+   the game's green-to-red hitpoints colours). Small descriptive text is in a plain readable face (the
+   pixel letters stay on titles, names, buttons and values), never below 12.5px. All drawn in CSS: nothing from the
+   game itself. */
+html[data-skin="old-school"] {
+  --osrs-cyan: #00ffff; --osrs-red: #ff0000; --osrs-lime: #00ff00;
+  /* the interface stone and its bevel */
+  --os-face: #3e3529; --os-face-hi: #4a4034; --os-face-lo: #2e271f;
+  --os-lit: #5f5649; --os-shade: #1a1612; --os-black: #000000;
+  --os-bevel: inset 2px 2px 0 var(--os-lit), inset -2px -2px 0 var(--os-shade);
+  --os-bevel-in: inset 2px 2px 0 var(--os-shade), inset -2px -2px 0 var(--os-lit);
+  --os-btn: linear-gradient(180deg, #4d4334, #3b3227);
+  --os-btn-hi: linear-gradient(180deg, #5a4e3d, #463c2e);
+  /* the selected tab: the game's red-brown with a warm inner glow */
+  --os-tab-sel: radial-gradient(90% 120% at 50% 50%, rgba(255, 120, 60, .22), transparent 70%), linear-gradient(180deg, #7d2b1b, #5a1c11);
+  --os-read: "Segoe UI", "IBM Plex Sans", system-ui, sans-serif;
+  --muted: #e0c48f; --faint: #cfb07c;
+}
+/* panes: the interface stone, bevelled, with a black line round it (rivets and grain from the block above stay) */
+html[data-skin="old-school"] :is(.rail, .panel, .bay, .hero, .profile, .modal, .palette),
+html[data-skin="old-school"] #main :is(.panel, .bay, .hero, .profile) {
+  background: var(--rivets), var(--stone-grain), linear-gradient(180deg, var(--os-face-hi), var(--os-face) 40%, var(--os-face-lo));
+  border: 1px solid var(--os-black); border-radius: 0;
+  box-shadow: var(--os-bevel), inset 0 0 0 4px #2a231b, inset 0 0 0 5px rgba(95, 86, 73, .5), 0 3px 0 rgba(0, 0, 0, .55); }
+/* card titles sit over a groove, as the game's interface dividers */
+html[data-skin="old-school"] .panel > .panel-head { box-shadow: 0 5px 0 -3px var(--os-shade), 0 6px 0 -3px var(--os-lit); }
+html[data-skin="old-school"] .srow { border-top: 1px solid var(--os-shade); box-shadow: inset 0 1px 0 rgba(95, 86, 73, .45); }
+html[data-skin="old-school"] :is(.panel-head + .srow, .srow:first-child) { border-top: 0; box-shadow: none; }
+/* legibility: the pixel letters for titles, names, buttons and values; small words in a plain face at a size that reads */
+html[data-skin="old-school"] :is(small, .sub, .srow-desc, .faint, .muted, p.faint, .su-fine, .toast-detail, .bk-sub, .wp-where, .feed-empty, .meta,
+  .kv dt, .safety li, .bcell-text span, .ring-label small, .pc-guide, .eq-preset small, .gh-note, .brand small) {
+  font-family: var(--os-read); -webkit-font-smoothing: antialiased; letter-spacing: 0; }
+html[data-skin="old-school"] :is(.srow-desc, p.faint, .su-fine, .bk-sub, .panel-head .sub, small.faint, span.faint, .toast-detail) { font-size: 13px; }
+html[data-skin="old-school"] .srow-desc { color: var(--muted); }
+/* the keyboard drawing's key names are tiny: the plain face reads better there */
+html[data-skin="old-school"] :is(.cap .lbl, .dpi-tick) { font-family: var(--os-read); -webkit-font-smoothing: antialiased; }
+html[data-skin="old-school"] .srow-title { color: var(--osrs-orange); }
+/* labels in the pixel letters, a size up so they read at a glance */
+html[data-skin="old-school"] :is(.nav-label, .bay-kind, .ov-bat-label, .theme-label, .stage-top) { font-size: 13px; }
+html[data-skin="old-school"] :is(.readout span, .stat span, .gauge-text span, .page.ov .bay .readout span) { font-size: 13px; color: #e8cf9c; }
+html[data-skin="old-school"] .page.ov .bay .readout b { font-size: 15px; color: var(--osrs-yellow); }
+html[data-skin="old-school"] .page.ov .bay .readouts .readout { border-top: 1px solid var(--os-shade); box-shadow: inset 0 1px 0 rgba(95, 86, 73, .4); }
+html[data-skin="old-school"] .stat b { color: var(--osrs-yellow); }
+/* boxes inside a card (button slots, DPI stages, notes, presets): a sunken stone well with square corners */
+html[data-skin="old-school"] :is(.btnmap, .stage, .vendor-note, .eq-bands, .picker-cur) { border-radius: 0; background: rgba(0, 0, 0, .22); border: 1px solid var(--os-black);
+  box-shadow: inset 1px 1px 0 var(--os-shade), inset -1px -1px 0 rgba(95, 86, 73, .55); }
+html[data-skin="old-school"] .stage.on { border-color: var(--osrs-yellow); background: rgba(0, 0, 0, .3); }
+html[data-skin="old-school"] :is(.target, .art-style, .eq-preset, .stepper, .banner, summary) { border-radius: 0; }
+html[data-skin="old-school"] .art-style.sel { border-color: var(--osrs-yellow); }
+/* focus: the game's yellow, always visible on stone */
+html[data-skin="old-school"] :focus-visible { outline: 2px solid var(--osrs-yellow); outline-offset: 2px; border-radius: 0; }
+/* links and link-like words turn the game's cyan under the pointer */
+html[data-skin="old-school"] #main a:not(.btn):hover { color: var(--osrs-cyan); }
+
+/* the side tabs: each entry a stone tab; the open one the game's red selected tab */
+html[data-skin="old-school"] .nav { border: 0; border-radius: 0; color: var(--osrs-orange); background: var(--os-btn);
+  box-shadow: inset 1px 1px 0 var(--os-lit), inset -1px -1px 0 var(--os-shade), 0 0 0 1px var(--os-black); margin: 1px 0; }
+html[data-skin="old-school"] .nav:hover { background: var(--os-btn-hi); color: var(--osrs-white); }
+html[data-skin="old-school"] .nav.active { color: var(--osrs-white); background: var(--os-tab-sel);
+  box-shadow: inset 1px 1px 0 #a5543a, inset -1px -1px 0 #2a0b05, 0 0 0 1px var(--os-black), 0 0 8px rgba(200, 60, 30, .35); }
+html[data-skin="old-school"] .nav .ic { color: #d9b77a; opacity: 1; }
+html[data-skin="old-school"] .nav:hover .ic { color: var(--osrs-yellow); }
+html[data-skin="old-school"] .cmd-hint { border-radius: 0; border: 0; background: #1f1a14; color: #e0c48f;
+  box-shadow: var(--os-bevel-in), 0 0 0 1px var(--os-black); }
+html[data-skin="old-school"] .cmd-hint:hover { color: var(--osrs-white); }
+html[data-skin="old-school"] .nav-count { border-radius: 0; color: #000; background: var(--osrs-yellow); text-shadow: none; box-shadow: 0 0 0 1px #000; }
+
+/* buttons: flat stone, a 2 px bevel lit top-left; pressed, the bevel flips; under the pointer the words go white */
+html[data-skin="old-school"] :is(.btn, .wp-quick-btn, .layer-tab, .bk-more, .prof-link) { border-radius: 0; }
+html[data-skin="old-school"] .btn { background: var(--os-btn); border: 1px solid var(--os-black); color: var(--osrs-orange); box-shadow: var(--os-bevel); }
+html[data-skin="old-school"] .btn:hover { background: var(--os-btn-hi); color: var(--osrs-white); }
+html[data-skin="old-school"] .btn:active { box-shadow: var(--os-bevel-in); background: linear-gradient(180deg, #342c21, #3e3529); }
+html[data-skin="old-school"] .btn.primary { color: var(--osrs-yellow); background: linear-gradient(180deg, #5c4c33, #463a27); }
+html[data-skin="old-school"] .btn.primary:hover { color: var(--osrs-white); }
+html[data-skin="old-school"] .btn.danger { color: #ff4b3a; }
+/* a ghost button reads as the game's plain clickable words: no stone until the pointer is on it */
+html[data-skin="old-school"] .btn.ghost { background: none; border-color: transparent; box-shadow: none; color: var(--osrs-orange); }
+html[data-skin="old-school"] .btn.ghost:hover { background: rgba(0, 0, 0, .28); border-color: var(--os-black); color: var(--osrs-white); box-shadow: var(--os-bevel); }
+html[data-skin="old-school"] .btn .ic { color: inherit; }
+html[data-skin="old-school"] .layer-tab { background: var(--os-btn); border: 1px solid var(--os-black); color: var(--osrs-orange); box-shadow: inset 1px 1px 0 var(--os-lit), inset -1px -1px 0 var(--os-shade); }
+html[data-skin="old-school"] .layer-tab.sel { background: var(--os-tab-sel); color: var(--osrs-white); }
+/* text boxes and choices: a dark sunken well, as the game's input boxes */
+html[data-skin="old-school"] :is(.text, select.text) { border-radius: 0; background: #1f1a14; border: 1px solid var(--os-black); color: var(--osrs-white);
+  box-shadow: var(--os-bevel-in); }
+html[data-skin="old-school"] :is(.text, select.text):focus { border-color: var(--osrs-yellow); }
+/* choice rows: stone tabs side by side, the picked one the red selected tab */
+html[data-skin="old-school"] .seg { border-radius: 0; background: #1f1a14; border: 1px solid var(--os-black); box-shadow: var(--os-bevel-in); }
+html[data-skin="old-school"] .seg-thumb { border-radius: 0; background: var(--os-tab-sel); border: 1px solid var(--os-black);
+  box-shadow: inset 1px 1px 0 #a5543a, inset -1px -1px 0 #2a0b05; }
+html[data-skin="old-school"] .seg button { color: var(--osrs-orange); border-radius: 0; }
+html[data-skin="old-school"] .seg button:hover:not(:disabled) { color: var(--osrs-white); }
+html[data-skin="old-school"] .seg button.sel { color: var(--osrs-white); }
+html[data-skin="old-school"] .pill { border-radius: 0; background: #1f1a14; border: 1px solid var(--os-black); color: #e8cf9c; box-shadow: inset 1px 1px 0 var(--os-shade), inset -1px -1px 0 rgba(95, 86, 73, .6); }
+html[data-skin="old-school"] .pill.good { color: var(--osrs-lime); }
+html[data-skin="old-school"] .pill.bad { color: #ff5a4a; background: #2a110c; }
+html[data-skin="old-school"] .pill.accent { color: var(--osrs-yellow); background: #1f1a14; }
+
+/* switches: a sunken stone slot with a square stone block carrying a lamp orb, red when off, green when on */
+html[data-skin="old-school"] .switch { width: 44px; height: 24px; border-radius: 0; background: #1f1a14; border: 1px solid var(--os-black); box-shadow: var(--os-bevel-in); }
+html[data-skin="old-school"] .switch .knob { top: 2px; left: 2px; width: 20px; height: 18px; border-radius: 0; transition: transform .1s var(--ease);
+  background: radial-gradient(circle at 50% 50%, #ff6a55 0 1.5px, #d01a0a 2.5px, #6a0a04 5px, transparent 5.6px), var(--os-btn-hi);
+  box-shadow: inset 1px 1px 0 var(--os-lit), inset -1px -1px 0 var(--os-shade), 0 0 0 1px var(--os-black); }
+html[data-skin="old-school"] .switch.on { background: #12320f; }
+html[data-skin="old-school"] .switch.on .knob { transform: translateX(20px);
+  background: radial-gradient(circle at 50% 50%, #b6ff9c 0 1.5px, #19d40f 2.5px, #0a5a06 5px, transparent 5.6px), var(--os-btn-hi); }
+/* sliders: the settings slider: a thin dark groove, the part up to the knob in gold, a small bevelled stone knob */
+html[data-skin="old-school"] .slider input { height: 8px; border-radius: 0; border: 1px solid var(--os-black);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .18), transparent 50%) 0 0 / var(--p) 100% no-repeat, linear-gradient(90deg, #c77a15 var(--p), #1f1a14 var(--p));
+  box-shadow: inset 1px 1px 0 rgba(0, 0, 0, .5); }
+html[data-skin="old-school"] .slider input::-webkit-slider-thumb { width: 12px; height: 22px; border-radius: 0; background: linear-gradient(180deg, #8c7a5a, #5d4f3b);
+  box-shadow: inset 1px 1px 0 #b39d75, inset -1px -1px 0 #2a2219, 0 0 0 1px var(--os-black); }
+html[data-skin="old-school"] .slider output { font-size: 14px; }
+/* small meters: the game's stat bars, a black-edged groove with the fill lit along its top */
+html[data-skin="old-school"] :is(.gauge-bar, .loadbar, .mt-bar) { border-radius: 0; background: #1f1a14; border: 1px solid var(--os-black); }
+html[data-skin="old-school"] :is(.gauge-bar i, .loadbar span, .loadbar-fill, .mt-fill) { border-radius: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .3) 0 1px, transparent 1px), linear-gradient(180deg, #ffb13d, #d8780f); }
+/* DPI stages, layers and the like as little orbs */
+html[data-skin="old-school"] .gauge-dots i { border-radius: 50%; background: #1f1a14; box-shadow: 0 0 0 1px var(--os-black), inset 0 1px 1px rgba(0, 0, 0, .6); }
+html[data-skin="old-school"] .gauge-dots i.on { background: radial-gradient(circle at 35% 30%, #fff8b0 0 1px, var(--osrs-yellow) 2px, #b08a00 100%); }
+html[data-skin="old-school"] .gauge-signal i { border-radius: 0; background: #1f1a14; box-shadow: 0 0 0 1px var(--os-black); }
+html[data-skin="old-school"] .gauge-signal i.on { background: linear-gradient(180deg, #ffd060, #d8780f); }
+/* status dots as small orbs: green connected, yellow asleep, red off, a gloss on each */
+html[data-skin="old-school"] .dot { width: 9px; height: 9px; box-shadow: 0 0 0 1px var(--os-black), 0 0 0 2px #6b5a3f;
+  background-image: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, .75) 0 1px, transparent 2.5px); }
+html[data-skin="old-school"] .dot.connected { background-color: var(--osrs-lime); }
+html[data-skin="old-school"] .dot.asleep { background-color: var(--osrs-yellow); }
+html[data-skin="old-school"] :is(.dot.error, .dot.missing, .dot.idle, .dot.off) { background-color: var(--osrs-red); }
+html[data-skin="old-school"] .pill.good::before { background: var(--osrs-lime); box-shadow: 0 0 0 1px #000; }
+html[data-skin="old-school"] .bay-top .pill.good { color: var(--osrs-lime); background: #1f1a14; }
+
+/* batteries as the minimap's hitpoints orb (Shawn, 23 Oct 2026: the health orb, not the run orb; then "the health orbs
+   dont look like the game enough"). As the game draws it: a round orb in a dark iron ring with a broad gloss over its
+   top; inside, near-black where it is empty and deep red rising flat from the bottom with the level; a red heart with a
+   dark outline and a white glint in the middle. The number sits on a dark rounded plate that the orb overlaps on its
+   left, in the game's pixel lettering, green when full, yellow at half, orange, then red near empty. While charging the
+   heart gives way to a yellow bolt (the game has no charging; this is DeviceHub's own) */
+html[data-skin="old-school"] :is(.bcell, .ov-bat) {
+  --os-heart: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 21s-7.6-4.6-9.6-9C.9 8.6 3 5 6.6 5c2.2 0 3.7 1.3 5.4 3.2C13.7 6.3 15.2 5 17.4 5 21 5 23.1 8.6 21.6 12c-2 4.4-9.6 9-9.6 9z' fill='%23d4140c' stroke='%23380000' stroke-width='1.6'/%3E%3Cpath d='M12 21s-7.6-4.6-9.6-9c.9 2 5.3 5.6 9.6 7.3 4.3-1.7 8.7-5.3 9.6-7.3-2 4.4-9.6 9-9.6 9z' fill='%23880806'/%3E%3Cpath d='M6.2 7.7c-1.3.3-2 1.5-1.7 2.8' fill='none' stroke='%23ffe0d8' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E");
+  --os-bolt: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M13.5 2 4.5 13.5h6L9.5 22l9-11.5h-6z' fill='%23ffff00' stroke='%23000' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --os-icon: var(--os-heart);
+  --os-hp: hsl(calc(var(--pct, 100) * 1.2deg) 100% 50%);
+  --os-lvl: calc(var(--pct, 0) * 1%);
+  /* top to bottom: the gloss, the icon, the liquid's surface line, the liquid and the empty dark above it */
+  --orb: radial-gradient(ellipse 62% 38% at 50% 22%, rgba(255, 255, 255, .34), rgba(255, 255, 255, .1) 55%, transparent 72%),
+    var(--os-icon) 50% 55% / 58% 58% no-repeat,
+    linear-gradient(to top, transparent calc(var(--os-lvl) - 1.5%), rgba(255, 120, 90, .55) calc(var(--os-lvl) - 1.5%), rgba(255, 120, 90, .55) var(--os-lvl), transparent var(--os-lvl)),
+    linear-gradient(to top, #6e0905 0, #a8120c 35%, #c41a10 var(--os-lvl), #120a08 var(--os-lvl), #1d1612);
+  /* the dark iron ring: black, a dull iron band lit at the top, black */
+  --orb-ring: 0 0 0 1px #000, 0 0 0 3px #4a4741, 0 0 0 4px #000, inset 0 2px 3px rgba(0, 0, 0, .7), inset 0 -2px 4px rgba(0, 0, 0, .6);
+  --orb-ring-lit: linear-gradient(180deg, #6d6a62, #2e2c28);
+  counter-reset: osrs-pct var(--pct, 0); }
+html[data-skin="old-school"] .bcell.charging { --os-icon: var(--os-bolt); }
+/* the plate: dark, rounded on the left, the orb overlapping its right end */
+html[data-skin="old-school"] .bcell:not(.compact) .bcell-text, html[data-skin="old-school"] .bcell.compact::before {
+  background: linear-gradient(180deg, #4a483f 0, #36342d 50%, #26251f); border: 1px solid #0d0d0b; border-radius: 13px 0 0 13px;
+  box-shadow: inset 0 1px 0 rgba(170, 165, 150, .35), inset 0 -1px 0 rgba(0, 0, 0, .55); }
+/* the device pages' battery: the orb with its number and time left beside it */
+html[data-skin="old-school"] .bcell:not(.compact) { gap: 0; align-items: center; }
+html[data-skin="old-school"] .bcell:not(.compact) .bcell-shape { order: 2; position: relative; z-index: 1; width: 42px; height: 42px; border-radius: 50%; margin: 4px;
+  background: var(--orb); box-shadow: var(--orb-ring); }
+html[data-skin="old-school"] .bcell:not(.compact) :is(.bcell-body, .bcell-nub) { display: none; }
+html[data-skin="old-school"] .bcell:not(.compact) .bcell-text { order: 1; margin-right: -14px; padding: 4px 20px 4px 12px; min-width: 64px; text-align: center; }
+/* the numbers in a plain bold face: in the pixel lettering a 5 reads as an S (Shawn: "easily legible") */
+html[data-skin="old-school"] .bcell .bcell-text b { font: 800 20px/1.05 var(--os-read); color: var(--os-hp); text-shadow: 1px 1px 0 #000; }
+html[data-skin="old-school"] .bcell .bcell-text span { font-size: 12.5px; color: #e8cf9c; }
+html[data-skin="old-school"] .bcell.charging .bcell-text span { color: #6dff5a; }
+/* the Overview tiles' battery: the drawn battery gives way to the orb; the number (from --pct) on its plate */
+html[data-skin="old-school"] .bcell.compact { display: flex; align-items: center; }
+html[data-skin="old-school"] .bcell.compact .bcell-svg { display: none; }
+html[data-skin="old-school"] .bcell.compact::before { content: counter(osrs-pct); min-width: 30px; margin-right: -12px; padding: 2px 16px 2px 9px; text-align: center;
+  font: 800 16px/1.2 var(--os-read); color: var(--os-hp); text-shadow: 1px 1px 0 #000; }
+html[data-skin="old-school"] .bcell.compact::after { content: ""; position: relative; z-index: 1; width: 30px; height: 30px; margin: 4px; border-radius: 50%; flex: none;
+  background: var(--orb); box-shadow: var(--orb-ring); }
+/* Windows' batteries on the Overview: a stone plate each, a small hitpoints orb, the number in the same colours */
+html[data-skin="old-school"] .ov-bat { border-radius: 0; background: var(--os-btn); border: 1px solid var(--os-black); box-shadow: inset 1px 1px 0 var(--os-lit), inset -1px -1px 0 var(--os-shade);
+  color: #e8cf9c; font-size: 14px; }
+html[data-skin="old-school"] .ov-bat b { font: 800 15px var(--os-read); color: var(--os-hp); }
+html[data-skin="old-school"] .ov-bat i { width: 18px; height: 18px; border: 0; border-radius: 50%; opacity: 1; background: var(--orb);
+  box-shadow: 0 0 0 1px #000, 0 0 0 2px #4a4741, 0 0 0 3px #000; }
+html[data-skin="old-school"] .ov-bat i::before { display: none; }
+
+/* windows like the game's interfaces: a centred orange title over a groove, a stone X in the corner, no blur behind */
+html[data-skin="old-school"] :is(.modal-back, .palette-back) { background: rgba(0, 0, 0, .55); -webkit-backdrop-filter: none; backdrop-filter: none; }
+html[data-skin="old-school"] .modal header { position: relative; padding: 12px 12px 10px; box-shadow: 0 2px 0 -0px var(--os-shade), 0 3px 0 0 var(--os-lit); margin: 4px 6px 8px; }
+html[data-skin="old-school"] .modal h2 { flex: 1; text-align: center; padding-left: 30px; color: var(--osrs-orange); font-size: 18px; text-shadow: 1px 1px 0 #000; }
+html[data-skin="old-school"] .icon-btn { border-radius: 0; background: var(--os-btn); border: 1px solid var(--os-black); color: #d9b77a;
+  box-shadow: inset 1px 1px 0 var(--os-lit), inset -1px -1px 0 var(--os-shade); }
+html[data-skin="old-school"] .icon-btn:hover { color: var(--osrs-white); background: var(--os-btn-hi); }
+html[data-skin="old-school"] .modal header .icon-btn { width: 26px; height: 26px; }
+html[data-skin="old-school"] .modal header .icon-btn:hover { background: linear-gradient(180deg, #8a2a1a, #5a1a10); }
+html[data-skin="old-school"] .modal header .icon-btn .ic { width: 15px; height: 15px; stroke-width: 3; }
+html[data-skin="old-school"] .modal-body { color: #e8cf9c; }
+html[data-skin="old-school"] .modal footer { margin: 0 6px 4px; box-shadow: inset 0 2px 0 -0px var(--os-shade), inset 0 3px 0 0 rgba(95, 86, 73, .6); }
+/* the Ctrl+K list: the picked line in the game's yellow */
+html[data-skin="old-school"] .palette-item.sel { background: rgba(0, 0, 0, .35); color: var(--osrs-yellow); }
+
+/* messages: the chatbox: parchment in a bevelled stone frame, black words, the kind of message as a coloured orb */
+html[data-skin="old-school"] .toast { border-radius: 0; border: 1px solid var(--os-black); color: #000; text-shadow: none;
+  background: radial-gradient(120% 140% at 50% 0%, #e2d4ad, #cdb98e 70%, #bba67a);
+  box-shadow: inset 0 0 0 3px var(--os-face), inset 2px 2px 0 3px var(--os-lit), inset -2px -2px 0 3px var(--os-shade), inset 0 0 0 6px #8a7552, 0 3px 0 rgba(0, 0, 0, .55);
+  padding: 14px 18px; }
+html[data-skin="old-school"] .toast-msg { font-size: 15px; color: #000; }
+html[data-skin="old-school"] .toast-detail { color: #2a1800; }
+html[data-skin="old-school"] .toast.good .ic { color: #006400; }
+html[data-skin="old-school"] .toast.bad .ic { color: #a00000; }
+html[data-skin="old-school"] .toast.bad .toast-msg { color: #800000; }
+html[data-skin="old-school"] .toast.busy .ic { color: #00007f; }
+html[data-skin="old-school"] .toast.info .ic { color: #3b2a12; }
+
 /* the backdrops: fixed columns, so picking one (its name turns bold) never moves another to a new row; seven since Milk
    and Coral Reef came (22 Oct 2026), all on one row so Settings still fits one screen at 1650x910 */
 .theme-tiles { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px 4px; }
@@ -2304,3 +2523,58 @@ html[data-skin="verde"] .su-fold > summary { font-family: var(--chunky); color: 
 html[data-skin="old-school"] .su-can-tile { border-radius: 4px; border-color: var(--edge); background: rgba(0, 0, 0, .25); }
 html[data-skin="old-school"] .su-can-text b { color: var(--osrs-white); }
 html[data-skin="verde"] .su-can-text b { color: #ffffff; }
+/* Setup's count in the sidebar while something needs the person (23 Oct 2026) */
+.nav-count { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; display: inline-grid; place-items: center; font: 700 11px var(--ui); color: var(--bg, #0b0c0f); background: var(--warn); }
+/* Setup leaving or coming back to the sidebar: a short slide, not a jump (23 Oct 2026) */
+.nav.nav-out { animation: nav-out .22s ease forwards; }
+.nav.nav-in { animation: nav-in .26s ease; }
+@keyframes nav-out { to { opacity: 0; transform: translateX(-10px); max-height: 0; min-height: 0; padding-top: 0; padding-bottom: 0; margin: 0; } }
+@keyframes nav-in { from { opacity: 0; transform: translateX(-10px); } }
+@media (prefers-reduced-motion: reduce) { .nav.nav-out, .nav.nav-in { animation: none; } }
+/* Lighting on one screen: the color, where it goes, and the PC's own lights side by side; a long PC lights list scrolls
+   inside its own card, never the page (23 Oct 2026) */
+.grid.light-cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.15fr); align-items: start; }
+.light-pc > .panel { max-height: calc(100vh - 182px); overflow: auto; }
+/* in the narrower column: each light's name above its color dots, the dots on one line */
+.light-pc .pc-color-row { gap: 4px !important; }
+.light-pc .pc-color-row > .muted { flex-basis: 100%; min-width: 0 !important; }
+.light-pc .pc-color-row .swatch { width: 18px !important; height: 18px !important; }
+/* the Color card's sliders stay inside it in a narrow column */
+.light-cols .picker-row { grid-template-columns: 76px minmax(0, 1fr); }
+.light-cols .picker-row > * { min-width: 0; }
+@media (max-width: 1180px) { .grid.light-cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .light-pc { grid-column: 1 / -1; } .light-pc > .panel { max-height: none; } }
+/* Monitors on one screen: each monitor and the camera in a column of its own (up to four side by side, then the next
+   row); a card taller than the window scrolls inside itself (23 Oct 2026) */
+.grid.mon-cols { grid-template-columns: repeat(min(var(--n, 3), 4), minmax(0, 1fr)); align-items: start; }
+.grid.mon-cols > .panel { max-height: calc(100vh - 150px); overflow: auto; }
+.grid.mon-cols .srow { padding-top: 7px; padding-bottom: 7px; flex-wrap: wrap; gap: 6px 14px; }
+/* in a column: the control takes the room left on its line, and goes under its name when there is not enough */
+/* every name the same width, so the sliders line up; the obvious hints left out here */
+.grid.mon-cols .srow-text { flex: 0 0 104px; min-width: 0; }
+.grid.mon-cols .srow-desc { display: none; }
+.grid.mon-cols .srow:has(.seg) .srow-text { flex-basis: 100%; }
+.grid.mon-cols .srow-ctl { flex: 1 1 140px; min-width: 0; justify-content: flex-end; }
+.grid.mon-cols .srow-ctl > *, .grid.mon-cols .cam-ctl > :last-child { flex: 1 1 auto; min-width: 0; }
+.grid.mon-cols .cam-ctl { display: flex; align-items: center; gap: 10px; width: 100%; }
+.grid.mon-cols .srow-ctl > .seg { flex: 1 1 100%; }
+@media (max-width: 1100px) { .grid.mon-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); } .grid.mon-cols > .panel { max-height: none; } }
+/* a slider in a Monitors column shrinks to its line: no 240px minimum, a smaller number beside it */
+.grid.mon-cols .slider { min-width: 0; width: 100%; gap: 10px; }
+.grid.mon-cols .slider input { min-width: 0; }
+.grid.mon-cols .slider output { min-width: 44px; }
+/* a camera setting with an Auto switch: in a narrow card its switch and slider take their own line, so the slider keeps
+   a usable length */
+.grid.mon-cols > .panel { container-type: inline-size; }
+@container (max-width: 380px) {
+  .grid.mon-cols .srow:has(.cam-ctl) .srow-text { flex-basis: 100%; }
+  .grid.mon-cols .srow:has(.cam-ctl) .srow-ctl { flex-basis: 100%; }
+}
+
+/* Learn a device: a problem shown, and Test my learning setup's answer (23 Oct 2026) */
+.learn-problem, .learn-check { margin: 10px 0 0; padding: 10px 12px 2px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--warn) 30%, var(--line)); background: color-mix(in srgb, var(--warn) 8%, transparent); }
+.learn-check { border-color: color-mix(in srgb, var(--good) 30%, var(--line)); background: color-mix(in srgb, var(--good) 8%, transparent); }
+.learn-colour { width: 64px; height: 34px; padding: 2px; border-radius: 8px; border: 1px solid var(--line2); background: transparent; cursor: pointer; }
+.toast-act { margin-top: 8px; }
+.more-open { margin-top: 18px; }
+.more-head { font-size: 12.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); margin: 0 4px; }
+.more-open > .more-body { margin-top: 10px; }

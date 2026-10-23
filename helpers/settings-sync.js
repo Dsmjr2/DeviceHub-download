@@ -30,7 +30,10 @@ const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8'))
 const hash = (o) => crypto.createHash('sha1').update(JSON.stringify(o)).digest('hex');
 
 let eqapo = null, log = () => {}, timer = null, busy = false;
-let status = { enabled: true, role: 'follow', last: null, lastSent: null, lastLoaded: null, error: null };
+// known from the start (23 Oct 2026, a friend's PC showed "Follows your main PC ... Checked not yet"): a copy without git,
+// or one tied to the public download repository, has no settings repository, so Settings does not show the row at all
+const ownRepo = () => { try { const c = fs.readFileSync(path.join(ROOT, '.git', 'config'), 'utf8'); return /url\s*=/.test(c) && !/DeviceHub-download/i.test(c); } catch { return false; } };
+let status = { enabled: true, role: 'follow', last: null, lastSent: null, lastLoaded: null, error: null, ...(ownRepo() ? {} : { enabled: false, notSetUp: true }) };
 
 async function repoUrl() {
   const origin = await git(['remote', 'get-url', 'origin'], ROOT, 10000);

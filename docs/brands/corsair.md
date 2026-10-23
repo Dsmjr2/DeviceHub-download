@@ -22,7 +22,7 @@ receiver).
 | Model | Device (cable) id | Receiver id | Protocol | Source |
 |---|---|---|---|---|
 | HS80 RGB Wireless | `0A69` (also `0A71` behind a receiver) | `0A6B` | bragi | OLH devices.go, headsetdongle.go; DH |
-| HS80 RGB USB (wired-only model) | `0A88` | none | bragi (likely; OLH has its own `hs80rgb` package) | OLH devices.go |
+| HS80 RGB USB (wired-only model) | `0A88` | none | **not bragi** (checked 23 Oct 2026): OLH `hs80rgb` (e3cae8cb) sends 16-byte write-only reports `c8` mode, `c9` LED init (`64`, `66`), `cb` colours, reads nothing back; firmware from the USB bcdDevice; mute from input reports starting `64` on interface 3. Not in device-library (nothing to read back) | OLH devices.go (interface 3), src/devices/hs80rgb/hs80rgb.go |
 | HS80 MAX Wireless | not listed | `0A97`, `2A0F`; Xbox receiver `2A0C` | bragi | OLH devices.go; HSC corsair_void_v2w.hpp |
 | Virtuoso RGB Wireless XT | `0A62` | `0A64` | bragi | OLH; HSC corsair_virtuoso_xt.hpp |
 | Virtuoso RGB Wireless (original) | `0A41`, `0A43` | `0A42`, `0A44` | bragi (OLH `virtuosoW`) | OLH devices.go, headsetdongle.go |

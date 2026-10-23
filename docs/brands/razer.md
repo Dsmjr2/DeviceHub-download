@@ -23,14 +23,19 @@ Orochi V2 over Bluetooth under 0x1532 (PID 0x0095). Treat 0x068E as **unconfirme
 | DeathAdder V3 HyperSpeed | 0x00C4 | 0x00C5 | |
 | DeathAdder V4 Pro | 0x00BE | 0x00BF | |
 | Viper V3 Pro | 0x00C0 | 0x00C1 | SE edition: 0x00DE / 0x00DF |
-| Viper V3 HyperSpeed | - | 0x00B8 | AA battery; charge status not read |
-| Viper V2 Pro | 0x00A5 | 0x00A6 | |
+| Viper V3 HyperSpeed | - | 0x00B8 | AA battery; charge status not read; tid 0x1F for every command (OpenRazer `razermouse_driver.c`, 23 Oct 2026); no lighting |
+| Viper V2 Pro | 0x00A5 | 0x00A6 | tid 0x1F, low-battery threshold 0xFF (`razermouse_driver.c`); no lighting |
 | Basilisk V3 | 0x0099 | - | control on interface 3 (see section 2) |
 | Basilisk V3 Pro | 0x00AA | 0x00AB | |
 | Basilisk V3 35K / V3 Pro 35K | 0x00CB / 0x00CC | - / 0x00CD | Phantom Green: 0x00D6 / 0x00D7 |
 | Basilisk V3 X HyperSpeed | - | 0x00B9 | AA battery |
 | Cobra / Cobra Pro | 0x00A3 / 0x00AF | - / 0x00B0 | Cobra HyperSpeed: 0x00DA / 0x00DB |
 | Naga V2 Pro | 0x00A7 | 0x00A8 | |
+| Naga V2 HyperSpeed | - | 0x00B4 (receiver) | AA battery; tid 0x1F, low-battery threshold read 0x1F but written 0xFF (`razermouse_driver.c`); no lighting |
+| DeathAdder Essential / White Edition / (2021) | 0x006E / 0x0071 / 0x0098 | - | wired only; tid 0xFF, brightness 0x3F; classic polling; no DPI stages; 6400 DPI (`mouse.py`) |
+| DeathAdder V2 / V2 Mini | 0x0084 / 0x008C | - | tid 0x3F (V2 Mini's DPI stages 0xFF); 20000 / 8500 DPI (`mouse.py`) |
+| DeathAdder V2 Pro | 0x007C | 0x007D | tid 0x3F; idle timer, low-battery threshold and DPI stages 0xFF (`razermouse_driver.c`); 20000 DPI |
+| DeathAdder V2 X HyperSpeed | - | 0x009C | AA battery; tid 0x1F, low-battery threshold 0xFF; 14000 DPI; no lighting |
 | HyperPolling Wireless Dongle | - | 0x00B3 | the 4K/8K dongle itself |
 
 The "wireless" PID is what the 2.4 GHz HyperSpeed dongle enumerates as when the mouse is connected through
@@ -50,7 +55,10 @@ it. Mouse Dock Pro is 0x00A4 (in `razeraccessory_driver.h`, not the mouse driver
 | Huntsman V3 Pro / TKL / Mini | 0x02A6 / 0x02A7 / 0x02B0 | - |
 | Huntsman V3 Pro 8KHz | 0x02CF | - |
 | Huntsman V2 / V2 TKL | 0x026C / 0x026B | - |
-| Huntsman Mini | 0x0257 | - |
+| Huntsman Mini / Mini JP | 0x0257 / 0x0269 | - |
+| Huntsman V2 Analog / Mini Analog | 0x0266 / 0x0282 | - |
+| BlackWidow V4 Pro 75% (OpenRGB `RazerDevices.h` only) | 0x02B3 | 0x02B4 |
+| BlackWidow V4 Low Profile TKL (OpenRGB `RazerDevices.h` only) | 0x02D4 | 0x02D2 |
 | DeathStalker V2 / V2 Pro / V2 Pro TKL | 0x0295 / 0x0292 / 0x0298 | - / 0x0290 / 0x0296 |
 | Ornata V3 / V3 X / V3 TKL | 0x02A1 / 0x0294 / 0x02A3 | - |
 
@@ -303,6 +311,15 @@ battery and charging on the wireless boards (tid 9F on the dongle), and the Blac
 Not covered: static colour and effects (OpenRazer's matrix effect files are write-only), the Fn toggle (write-only),
 keyswitch optimization, device mode, the Huntsman V3 Pro TKL's brightness (no read in OpenRazer). Added to
 helpers/never-commands.json: dongle pair / unpair 00/46, 00/41, 00/42 and device mode 02 ("factory test mode").
+
+Added 23 Oct 2026 (37 ids): Huntsman Mini JP 0x0269 (OpenRazer: as the Huntsman Mini: interface 2, brightness extended
+tid 3F, game and macro LED tid FF); Huntsman V2 Analog 0x0266 and Mini Analog 0x0282 (OpenRazer: interface 3,
+brightness written extended tid 1F and read standard 03/83 tid FF, macro LED tid FF; lights and info only, game mode left
+off, analog actuation in no source); BlackWidow V4 Pro 75% 0x02B3 / 0x02B4 and V4 Low Profile TKL 0x02D4 / 0x02D2, not in
+OpenRazer @ 477f4d6d (its latest master): OpenRGB @ 817834cf `RazerDevices.h` / `RazerDevices.cpp` /
+`RazerControllerDetect.cpp` give interface 3 on the cable (usage page 0x0C, usage 1) and 2 on the dongle (0x01 / 0x02),
+transaction id 0x1F (0x9F on the Low Profile TKL's dongle); OpenRGB writes their brightness (NOSTORE) but reads only the
+firmware (00/81), so these four are info only (model, firmware) until a source documents a read.
 
 ## 6. Gaps and unknowns
 

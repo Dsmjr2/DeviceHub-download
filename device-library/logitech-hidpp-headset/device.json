@@ -1,7 +1,7 @@
 {
   "id": "logitech-hidpp-headset",
   "vendor": "Logitech",
-  "product": "Logitech G headsets (HID++ 2.0, and the PRO X 2 LIGHTSPEED over Centurion)",
+  "product": "Logitech G headsets (HID++ 2.0, and the PRO X 2 LIGHTSPEED and G522 LIGHTSPEED over Centurion)",
   "kind": "Headset",
   "vid": "046d",
   "pids": [
@@ -18,7 +18,9 @@
     "0afb",
     "0afc",
     "0ac4",
-    "0af7"
+    "0af7",
+    "0b18",
+    "0b19"
   ],
   "models": [
     "G633",
@@ -30,7 +32,8 @@
     "PRO X",
     "PRO X 2 (HID++ ids 0AFB / 0AFC)",
     "G535",
-    "PRO X 2 LIGHTSPEED"
+    "PRO X 2 LIGHTSPEED",
+    "G522 LIGHTSPEED (dongle 0B18, USB cable 0B19; battery only)"
   ],
   "works": [
     "written from Solaar (e7304c4c) and HeadsetControl (91ee690a) and checked against simulated headsets only (tests/sim-logitech-headset.mjs)",
@@ -40,17 +43,21 @@
     "turn off when idle: 0x1F20 v2+ read 0x10 / write 0x20, 0-255 min (Solaar ADCPower), the G535 limited to HeadsetControl's 0 / 1 / 2 / 5 / 10 / 15 / 30; PRO X 2: 0x0108 read 0x00 / write 0x10, the other timer slots sent back as read (Solaar HeadsetAutoSleep)",
     "mic muted, shown only: 0x0601 read fn 0x10 (Solaar HeadsetMicMute)",
     "EQ per band where the headset has 0x8310: range and band frequencies from the headset, read fn 0x20 [00], write fn 0x30 [02, gains] with every other band sent back as read (Solaar Equalizer)",
-    "every write read back; every write refused while G HUB (lghub*.exe) runs"
+    "every write read back; every write refused while G HUB (lghub*.exe) runs",
+    "23 Oct 2026: the G522 LIGHTSPEED, battery only (read-only): Centurion frames with report 0x50 and the address byte 0x23 (HeadsetControl logitech_g522_lightspeed.hpp @ a8120a62: id 0x0b18, usage page 0xFFA0 usage 0x0001 interface 3, FRAME_PREFIX 50 23; Solaar base.py @ e7304c4c: the 0x50 variant, \"typical G522 (addr=0x23)\", the address taken from a received frame; descriptors.py: 0x0B18 dongle, 0x0B19 wired); battery 0x0104 fn 0x00 through the bridge (HC getBattery), b0 percent, b2 1 / 2 charging, 3 full (Solaar centurion.py); the cable 0B19 on the 0xFFA0 collection with 63-byte reports (Solaar udev_impl.py), asked directly when it has no bridge (Solaar centurion.py). No address is ever guessed: only 0x23, or one the headset sent a frame from"
   ],
   "doesNotWork": [
     "firmware updates, DFU, resets and pairing (never: Logitech's own app only)",
     "setting the mic mute (only shown; the headset's own button mutes)",
     "lights (HeadsetControl 04 3C is write-only, no read-back)",
     "EQ on the PRO X 2 (0x020D / 0x0636: no plain read of the same value documented)",
-    "G432 / G431 / G433 and G533 sidetone (HeadsetControl writes it with fixed bytes and no read)",
-    "G522 (Centurion with a device address Solaar has to probe), G435 and ASTRO A50 X (in neither project), ASTRO A50 Gen 4 / 5 (their own protocol)"
+    "G431 / G432 / G433 (0A9B / 0A9C / 0A6D, HeadsetControl logitech_g432.hpp @ a8120a62): not run. HeadsetControl only writes their sidetone (05 1E level) with no reply read, on no named HID collection; no battery; Solaar and libratbag do not list them, so there is nothing to read back or show",
+    "G533 sidetone (HeadsetControl writes it with fixed bytes and no read)",
+    "G522 sidetone, auto sleep, lights, EQ, voice prompts and mic-mute light: not offered yet (HeadsetControl has a sidetone read 0x0604 fn 0x00 and auto-sleep read 0x0108 fn 0x00 for it; lights, EQ and voice prompts are write-only there); the G522 over Bluetooth",
+    "G435 and ASTRO A50 X (in neither project), ASTRO A50 Gen 4 / 5 (their own protocol)"
   ],
   "status": "untested",
   "tested": [],
-  "source": "Solaar lib/logitech_receiver (settings_templates.py, hidpp20.py, hidpp20_constants.py, descriptors.py) @ e7304c4c451cc9bb4f206a914844525e67856a28; HeadsetControl lib/devices (logitech_g633_g933_935.hpp, logitech_gpro.hpp, logitech_g535.hpp, logitech_gpro_x2_lightspeed.hpp, protocols/hidpp_protocol.hpp, protocols/logitech_centurion_protocol.hpp) @ 91ee690a5e302a10a6f4f75a46be05846a38a3b0; docs/brands/logitech.md"
+  "source": "Solaar lib/logitech_receiver (settings_templates.py, hidpp20.py, hidpp20_constants.py, descriptors.py) @ e7304c4c451cc9bb4f206a914844525e67856a28; HeadsetControl lib/devices (logitech_g633_g933_935.hpp, logitech_gpro.hpp, logitech_g535.hpp, logitech_gpro_x2_lightspeed.hpp, protocols/hidpp_protocol.hpp, protocols/logitech_centurion_protocol.hpp) @ 91ee690a5e302a10a6f4f75a46be05846a38a3b0; docs/brands/logitech.md; HeadsetControl lib/devices/logitech_g522_lightspeed.hpp, logitech_g432.hpp, protocols/logitech_centurion_protocol.hpp @ a8120a62bcbb45a9766d9060dfd21ae18f8550a5; Solaar lib/logitech_receiver/base.py, centurion.py, descriptors.py, lib/hidapi/udev_impl.py @ e7304c4c451cc9bb4f206a914844525e67856a28 (the G522)",
+  "updated": "2026-10-23T12:00:00Z"
 }

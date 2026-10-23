@@ -21,12 +21,12 @@ for (const n of (/const PAGES = \[([^\]]+)\]/.exec(app) || [])[1].split(',').map
   { const src = fs.readFileSync(path.join(ROOT, 'public', f), 'utf8'); pages.push((/export default \{[\s\S]*?\bid: '([\w-]+)'/.exec(src) || /\bid: '([\w-]+)'/.exec(src))[1]); }  // the page's own id, not a demo row's
 }
 
-const chromes = ['C:/Program Files/Google/Chrome/Application/chrome.exe', path.join(process.env.LOCALAPPDATA || '', 'Google/Chrome/Application/chrome.exe'), 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'];
+const chromes = [process.env.DEVICEHUB_CHROME || '', 'C:/Program Files/Google/Chrome/Application/chrome.exe', path.join(process.env.LOCALAPPDATA || '', 'Google/Chrome/Application/chrome.exe'), 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'];
 const exe = chromes.find((p) => fs.existsSync(p));
 if (!exe) { console.log('pages: skipped (no Chrome or Edge found)'); process.exit(0); }
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'devicehub-test-'));
 const dbg = 9300 + Math.floor(Math.random() * 600);
-const c = spawn(exe, ['--headless=new', `--remote-debugging-port=${dbg}`, `--user-data-dir=${profile}`, '--no-first-run', 'about:blank'], { stdio: 'ignore' });
+const c = spawn(exe, ['--headless=new', `--remote-debugging-port=${dbg}`, `--user-data-dir=${profile}`, '--no-first-run', ...(process.env.DEVICEHUB_CHROME ? ['--no-sandbox'] : []), 'about:blank'], { stdio: 'ignore' });
 let t; for (let i = 0; i < 150 && !t; i++) { try { t = await (await fetch(`http://127.0.0.1:${dbg}/json`)).json(); } catch { await sleep(200); } }
 const ws = new WebSocket(t.find((x) => x.type === 'page').webSocketDebuggerUrl); await new Promise((r) => ws.addEventListener('open', r));
 let n = 0; const w = new Map(); const errors = [];

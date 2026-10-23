@@ -20,9 +20,9 @@ All references write with hidapi: the first byte of each buffer is the report id
 |---|---|---|---|---|
 | Stealth 700 Gen 3 transmitter | 10F5:2251 (verified) | usage page 0xFF13, usage 0x0001 (Windows `COL02`, `MI_03`) | battery read (Airoha RACE + CoAP) | halobattery-stealth700 |
 | Stealth 700 Gen 3 siblings | 10F5:2250, 10F5:2253 | same | assumed same firmware, **untested** | same |
-| Stealth Pro II transmitter / dock | 10F5:229B | usage page 0xFF13, usage 0x0001 | battery, charging, name (read) | HaloBattery PR #194 |
-| Stealth Pro II headset on its cable | 10F5:229E | same | same records as the transmitter | same |
-| Stealth 600 Gen 3 (reported as "Stealth 600P Gen 3 headset"), USB-C | 10F5:223A | usage page 0xFF13 | RACE nvkey read/write | stealth600-gen3-usb-fix |
+| Stealth Pro II transmitter / dock | 10F5:229B | usage page 0xFF13, usage 0x0001 | battery, charging, name (read); in device-library/turtle-beach-battery | HaloBattery PR #194 |
+| Stealth Pro II headset on its cable | 10F5:229E | same | same records as the transmitter; in device-library/turtle-beach-battery | same |
+| Stealth 600 Gen 3 (reported as "Stealth 600P Gen 3 headset"), USB-C | 10F5:223A | usage page 0xFF13 | RACE nvkey read/write only (a firmware repair tool); no GSI or battery read in the source, so not in the library | stealth600-gen3-usb-fix (d1289754) race_hid.py |
 | Stealth 700 G2 receiver | 10F5:218C | if 0: 0xFF00/0x0001 (vendor); if 5: 0x000C/0x0001 (media keys) | ids only, no protocol | HaloBattery issue #206 |
 | ROCCAT Elo 7.1 Air | 1E7D:3A37 | 64-byte reports | lights on/off, auto-off (write) | HeadsetControl |
 | ROCCAT Elo 7.1 USB | 1E7D:3A34 | 16-byte reports; OpenRGB opens iface 3, usage page 0x0C, usage 1 | lights | HeadsetControl, OpenRGB |
@@ -96,9 +96,18 @@ usage, not interface number.
   - Reassembly: the reader just concatenates read payloads and takes the first `{` to the last `}`.
   - The direct RACE battery command `0x0CD6` returned status `02` (refused) on the USB transmitter.
 - Stealth Pro II: the same 0xFF13 transport and report ids, 62-byte reports, input framed
-  `07 <len> 00 <data>`. It opens a session ("SInf") and asks for the GSI record. The exact request bytes
-  are only in a USBPcap capture referenced by the PR, not on the page (**unconfirmed**). Pushed updates
-  `{"UP":"GSI",...}` carry only changed keys.
+  `07 <len> 00 <data>`. It opens a session ("SInf") and asks for the GSI record. Pushed updates
+  `{"UP":"GSI",...}` carry only changed keys. The request bytes are in the PR's code (HaloBattery PR #194 head
+  9a8f358d, providers/turtlebeach.py, copied from capture packets 150 and 616 of issue #173), checked 23 Oct 2026:
+  - SInf: `06 18 00 05 5A 14 00 02 99 48 01 C0 4A 01 00 00 00 00 00 00 00 61 00 53 49 6E 66` (zero-padded to 62).
+  - GSI: `06 18 00 05 5A 14 00 02 99 48 01 44 14 04 00 00 00 00 00 00 00 61 00 53 47 53 49` (zero-padded to 62).
+  - Both are RACE `0x9902`, the same CoAP tunnel as the 700's GET /GSI (CoAP `48 01` = GET with an 8-byte token,
+    option `61 00` observe 0, then the path). No `0x9942` enable. Byte 1 (`0x18` = 24) counts bytes 3..26.
+  - Replies read with GET_REPORT on 07, 60 ms apart: up to 10 after SInf, 16 after GSI, 32 in all.
+  - Key 240 = battery % (confirmed against Swarm II's screen), 250 = charging (confirmed both ways), 220 = name;
+    230 / 280 / 290 move in enum-like steps (230: 2 on battery, 0 on the cable), so 230 is not "linked" here.
+  - A third ask with token `11 01` is **inferred** in the PR, not captured; DeviceHub does not send it.
+  - Swarm II holds the channel while open (only idle frames come back).
 - Stealth 600 Gen 3: RACE nvkey commands over the same transport, fragmented at 59 bytes.
   Read `0x0A00`: `05 5A 06 00 00 0A <keyId LE16> <readLen LE16>`. Write `0x0A01`:
   `05 5A <L LE16> 01 0A <keyId LE16> <data>`, L = len(data) + 4. Key `0x1003` = model name; key `0xFFFF`
@@ -218,8 +227,9 @@ the person changes one setting at a time in Swarm II, then diff the captures.
   dongle, newer Kone II / Burst II / Pure Air mice.
 - Stealth 700 G2 (10F5:218C): vendor page 0xFF00, protocol completely unknown.
 - Stealth 700 Gen 3 charging key `250` is a best guess; PIDs 2250 and 2253 are untested.
-- Stealth Pro II exact session-open and GSI request bytes are only in a capture, not published as hex;
-  the fallback token is given as `11 01` in one place and `44 11 01` in another.
+- Stealth Pro II: the opener and GSI ask are now known (section 2); only the fallback ask's token (`11 01`) is
+  inferred, and on the PR reporter's unit it was the ask that answered on battery, so the library's read may fail on
+  battery on some units.
 - stealth600-gen3-usb-fix says status byte `0x00` means NON_INSTALLED but quotes an enum where
   `0 = UNKNOWN`, `2 = NON_INSTALLED`. They disagree.
 - Kone XP: DPI value units and the polling-rate code are not spelled out in OpenRGB.
@@ -264,15 +274,16 @@ the person changes one setting at a time in Swarm II, then diff the captures.
 
 Read only, simulated only (tests/sim-turtle-beach-battery.mjs), never run on a real transmitter; status "untested".
 - **Devices:** Stealth 700 Gen 3 transmitter `2251` (verified in the source), siblings `2250` and `2253` (labelled "not
-  yet seen working").
+  yet seen working"); Stealth Pro II transmitter `229B` and headset on its cable `229E` (23 Oct 2026, the two captured
+  asks of section 2 only, replies by GET_REPORT; labelled "not yet seen working").
 - **Reads:** battery % (GSI key `240`), charging (`250`, a best guess on this model), linked (`230`), name (`220`),
   Signature Sound preset raw (`2c0`), from the two fixed frames in section 2 (CoAP enable `0x9942`, GET /GSI in
   `0x9902`). Nothing else can be sent. Steps back while Swarm II runs.
 - **Unconfirmed:** the source asks for replies with GET_REPORT. The driver first reads input reports as they arrive,
   then, if none came, asks with GET_REPORT itself (`getInputReport()` in `helpers/hid-host.mjs`, 22 Oct 2026). Which
   of the two this transmitter answers is not measured yet.
-- Not covered: Stealth Pro II (request bytes only in a capture), Stealth 600 Gen 3, Stealth 700 G2, every headset
-  setting, ROCCAT mice and keyboards.
+- Not covered: the Stealth Pro II's inferred third ask, Stealth 600 Gen 3 (no battery read in its source), Stealth 700
+  G2, every headset setting, ROCCAT mice and keyboards.
 
 ## Covered in device-library/roccat-peripherals (22 Oct 2026, untested)
 

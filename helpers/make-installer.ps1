@@ -83,6 +83,14 @@ try {
     foreach ($k in $helperFiles.Keys) { $prints[$k] = (Get-FileHash $helperFiles[$k] -Algorithm SHA256).Hash.ToLower() }
     $e = $z.CreateEntry((Ent 'release-files.json'))
     $w = New-Object System.IO.StreamWriter $e.Open(); $w.Write(($prints | ConvertTo-Json -Compress)); $w.Dispose()
+    # every version of every app file DeviceHub ever had (23 Oct 2026, helpers/release-history.mjs): a file on a PC that
+    # matches one of them was not changed there (an update that stopped halfway), so an update goes over it
+    $list = Join-Path $env:TEMP "DeviceHub-files-$PID.txt"; $hist = Join-Path $env:TEMP "DeviceHub-history-$PID.json"
+    [IO.File]::WriteAllLines($list, [string[]]$files)
+    & (Get-Command node).Source (Join-Path $PSScriptRoot 'release-history.mjs') $list $hist
+    if ($LASTEXITCODE -or -not (Test-Path $hist)) { throw 'the release history could not be made' }
+    [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($z, $hist, (Ent 'release-history.json'), 'Optimal')
+    Remove-Item $list, $hist -Force -ErrorAction SilentlyContinue
     # ---- BUNDLED TOOLS (22 Oct 2026, the owner's decision; helpers/bundled-tools.json, docs/handoff/bundled-tools.md) ----
     # Equalizer APO's installer and OpenRGB's portable build, each the official file checked against its pinned SHA-256
     # by helpers/fetch-bundled.mjs (it downloads into bundled-cache\, outside git, and leaves out every driver and PawnIO

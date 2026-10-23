@@ -6,7 +6,9 @@ import fs from 'node:fs';
 import { setDeviceProvider } from '../public/devices/hid.js';
 import { problem, selfCheck } from '../helpers/my-devices.mjs';
 import { validateMeta } from '../helpers/device-library.mjs';
-import driver, { Link, MODELS, NEVER, FAMILIES, checkFrame, modelFor } from '../device-library/hyperx-cloud/device.mjs';
+import driver, { Link, MODELS, NEVER, FAMILIES, checkFrame, modelFor, flightBattery } from '../device-library/hyperx-cloud/device.mjs';
+import kdriver, * as K from '../device-library/hyperx-kingston/device.mjs';
+import { hidSpecs } from '../helpers/my-devices.mjs';
 
 driver.vendorApp = async () => null;   // no tasklist in the test
 const fails = [];
@@ -17,8 +19,8 @@ const hex = (a) => Array.from(a, (b) => b.toString(16).padStart(2, '0')).join(' 
 // Each keeps every report it was sent as the whole frame ([report id, ...data]) and answers a get with the reply frame
 // the sheet describes. Sets change its state and are not answered (the sheet documents no set reply).
 class Sim {
-  constructor({ pid, family, len, page, state, getMap, setMap, reply, dangerous }) {
-    Object.assign(this, { vendorId: 0x03f0, productId: parseInt(pid, 16), productName: `sim ${pid}`, family, len, state, getMap, setMap, reply, dangerous });
+  constructor({ pid, family, len, page, state, getMap, setMap, reply, dangerous, vid = 0x03f0, fams = FAMILIES }) {
+    Object.assign(this, { vendorId: vid, productId: parseInt(pid, 16), productName: `sim ${pid}`, family, fams, len, state, getMap, setMap, reply, dangerous });
     this.collections = [{ usagePage: page, usage: 1, inputReports: [], outputReports: [], featureReports: [] }];
     this.opened = false; this.listeners = new Set(); this.sent = []; this.feature = []; this.harm = [];
     this.ignoreSets = new Set(); this.refuseOutput = false;
@@ -33,7 +35,7 @@ class Sim {
   handle(id, d) {
     const frame = [id, ...d];
     if (frame.length !== this.len) throw new Error(`sim: a ${frame.length}-byte frame, wanted ${this.len}`);
-    const fam = FAMILIES[this.family];
+    const fam = this.fams[this.family];
     const cmd = frame[fam.cmdAt];
     if (this.dangerous[cmd]) this.harm.push(this.dangerous[cmd](this.state));
     if (cmd in this.getMap) { this.reply(this, cmd, this.getMap[cmd]); return; }
@@ -96,6 +98,47 @@ const core = () => new Sim({ pid: '069f', family: '66', len: 64, page: 0xff00,
     else sim.emit(0x66, [cmd, sim.state[key]]);
   } });
 
+// Cloud III S Wireless (HH cloud_iii_s_wireless.rs), 0C: gets are feature reports 0C 02 03 01 00 <cmd>; the reply is input
+// report 0C with the command at byte 5 and the value at byte 6 (FF = none). It answers only through receiveReports (as a
+// raw channel under hid-host does), never as an event, and refuses output reports (HH writes it only as feature reports).
+const iiis = (pid = '06be') => {
+  const sim = new Sim({ pid, family: '0c', len: 64, page: 0xff00,
+    state: { connected: 2, micMute: 1, battery: 77, voicePrompts: 0, sidetone: 1, charging: 1, autoOffHi: 0x02, autoOffLo: 0x58, productColor: 3 },
+    getMap: { 0x02: 'connected', 0x04: 'micMute', 0x06: 'battery', 0x14: 'voicePrompts', 0x16: 'sidetone', 0x48: 'charging', 0x4b: 'autoOffHi', 0x4d: 'productColor' },
+    setMap: {},
+    dangerous: { 0x5f: () => 'EQ band set 5F', 0x4a: () => 'auto-off set 4A', 0x01: () => 'mic mute set 01', 0x0d: () => 'sidetone set 0D', 0x0b: () => 'voice prompt set 0B' },
+    reply(sim, cmd, key) {
+      const d = new Uint8Array(63); d.set([0x02, 0x03, 0x00, 0x00, cmd, sim.state[key]]);
+      if (key === 'autoOffHi') d[6] = sim.state.autoOffLo;
+      const n = new Uint8Array(63); n.set([0x00, 0x00, 0x00, 0x01, 40]);   // a 0D battery notice first: not a reply
+      sim.queue.push({ reportId: 0x0d, data: new DataView(n.buffer) }, { reportId: 0x0c, data: new DataView(d.buffer) });
+    } });
+  sim.queue = [];
+  sim.refuseOutput = true;
+  sim.receiveReports = async () => sim.queue.splice(0);
+  return sim;
+};
+// Cloud Flight Wireless, 21 FF: get 21 FF 05, reply 21 FF 05 <HI> <LO> millivolts (HSC, HH); a 64 power notice first
+const flight = (pid = '0e90', vid = 0x03f0, fams = FAMILIES) => new Sim({ pid, vid, fams, family: '21ff', len: 20, page: 0xff00,
+  state: { mV: 3850 }, getMap: { 0x05: 'mV' }, setMap: {}, dangerous: {},
+  reply(sim) { sim.emit(0x64, [0x01]); sim.emit(0x21, [0xff, 0x05, sim.state.mV >> 8, sim.state.mV & 0xff]); } });
+// Cloud II Wireless (Kingston): 06 00 02 00 9A 00 00 68 4A 8E 0A 00 00 00 BB <cmd>, 62 bytes; reply input report 0B:
+// 0B 00 BB <cmd> <byte 4> .. <byte 7>; a 0A DSP report may come first. getInputReport(06) is the prepare read.
+const kingston = () => {
+  const sim = new Sim({ pid: '1718', vid: 0x0951, fams: K.FAMILIES, family: 'kingston', len: 62, page: 0xff00,
+    state: { battery: 64, charging: 1, autoOff: 20 },
+    getMap: { 0x02: 'battery', 0x03: 'charging', 0x1a: 'autoOff' }, setMap: {},
+    dangerous: { 0x01: () => '01 get: headset unmuted', 0x18: () => 'auto-off set 18', 0x19: () => 'sidetone set 19' },
+    reply(sim, cmd, key) {
+      sim.emit(0x0a, [0x00, 0x02]);
+      if (key === 'battery') sim.emit(0x0b, [0x00, 0xbb, cmd, 0, 0, 0, sim.state.battery]);
+      else sim.emit(0x0b, [0x00, 0xbb, cmd, sim.state[key]]);
+    } });
+  sim.prepared = [];
+  sim.getInputReport = async (id, len) => { sim.prepared.push([id, len]); return null; };
+  return sim;
+};
+
 let current = null;
 setDeviceProvider(async (filters) => {
   const f = filters[0];
@@ -109,7 +152,7 @@ const refused = async (key, value, why, sim) => {
   try { await driver.write(key, value); check(false, `${why}: was accepted`); }
   catch (e) { check(sim.sent.length === before, `${why}: refused but ${sim.sent.length - before} reports were sent (${e.message})`); }
 };
-const cmdsSent = (sim) => sim.sent.map((f) => f[FAMILIES[sim.family].cmdAt]);
+const cmdsSent = (sim) => sim.sent.map((f) => f[sim.fams[sim.family].cmdAt]);
 
 // ---- the driver and its library entry are well formed ----
 check(problem(driver) === null, `the driver passes my-devices' check (${problem(driver)})`);
@@ -289,6 +332,117 @@ check(modelFor('05B7')?.readOnlyWhy && modelFor('1743')?.readOnlyWhy && !modelFo
   check(!cmdsSent(s).some((c) => c < 0x80) && s.harm.length === 0, `Cloud II Core Wireless: only 0x8x gets were sent, never 1E or 83 (${s.harm})`);
 }
 
+// ---- Cloud III S Wireless: read-only, feature-report gets, replies read from the raw channel (HH only) ----
+{
+  const s = iiis();
+  check(await use(s), 'Cloud III S Wireless: connects');
+  check((await driver.info()).Model === 'HyperX Cloud III S Wireless', 'Cloud III S Wireless: info names the model');
+  s.sent.length = 0; s.feature.length = 0;
+  const v = await driver.read();
+  check(v.sidetone === true && v.micMute === true && v.voicePrompts === false && !('autoOff' in v), `Cloud III S Wireless: reads past the 0D notice ${JSON.stringify(v)}`);
+  check(s.feature.length === s.sent.length && s.sent.length === 3 && s.sent.every((f) => f.length === 64 && hex(f.slice(0, 5)) === '0c 02 03 01 00' && f.slice(6).every((x) => x === 0)),
+    `Cloud III S Wireless: every get is the feature report 0C 02 03 01 00 <cmd>, 64 bytes (${s.sent.map((f) => hex(f.slice(0, 6))).join(' | ')})`);
+  check(hex(cmdsSent(s)) === '16 04 14', `Cloud III S Wireless: read() sends sidetone 16, mute 04, voice prompts 14 (${hex(cmdsSent(s))})`);
+  const b = await driver.battery();
+  check(b.percent === 77 && b.charging === undefined, `Cloud III S Wireless: battery 77% from byte 6, charging left unknown (${JSON.stringify(b)})`);
+  s.state.battery = 0xff;
+  check((await driver.battery()).percent === null, 'Cloud III S Wireless: FF at byte 6 is no value');
+  const inf = await driver.info();
+  check(inf.Connected === 'yes' && inf['Product color code (mapping unconfirmed)'] === '3' && inf['Charging (raw, meaning unconfirmed)'] === '1' && /none/.test(inf.Changes), `Cloud III S Wireless: info ${JSON.stringify(inf)}`);
+  check((await driver.rawBackup()).replies.autoOffRaw && JSON.stringify(driver.settings.map((x) => x.key)) === JSON.stringify(['sidetone', 'micMute', 'voicePrompts']), `Cloud III S Wireless: auto-off only in the raw backup; offers ${driver.settings.map((x) => x.key)}`);
+  for (const [k, val] of [['sidetone', false], ['micMute', false], ['voicePrompts', true], ['autoOff', 10]]) await refused(k, val, `Cloud III S Wireless: ${k} (one source)`, s);
+  check(s.harm.length === 0 && cmdsSent(s).every((c) => Object.values(MODELS[5].reads).some((r) => r.cmd === c)), `Cloud III S Wireless: only its documented gets were sent (${s.harm})`);
+  const s2 = iiis('02cc');
+  check(await use(s2) && (await driver.battery()).percent === 77, 'Cloud III S Wireless 02CC: connects and reads');
+  const spec = hidSpecs(driver).find((x) => x.pid === '06BE');
+  check(spec.reply === 'raw' && spec.featureLen === 63 && spec.outputLen === undefined && spec.reportId === 0x0c && spec.page === '*', `Cloud III S Wireless: its channel is raw, feature length 63 (${JSON.stringify(spec)})`);
+}
+
+// ---- Cloud Flight Wireless (03F0:0E90): battery from voltage, nothing else ----
+{
+  const s = flight();
+  check(await use(s), 'Cloud Flight (HP 0E90): connects');
+  check(JSON.stringify(await driver.read()) === '{}' && driver.settings.length === 0, 'Cloud Flight: no settings');
+  s.sent.length = 0;
+  let b = await driver.battery();
+  check(b.percent === 70 && b.charging === false, `Cloud Flight: 3850 mV = 70% (HH table), not charging (${JSON.stringify(b)})`);
+  check(s.sent.length === 1 && s.sent[0].length === 20 && hex(s.sent[0].slice(0, 4)) === '21 ff 05 00', `Cloud Flight: the get is 21 FF 05, 20 bytes (${hex(s.sent[0] || [])})`);
+  const inf = await driver.info();
+  check(inf['Battery voltage'] === '3850 mV' && /estimated/.test(inf.Battery), `Cloud Flight: info shows the voltage and the estimate (${JSON.stringify(inf)})`);
+  s.state.mV = 4200; b = await driver.battery();
+  check(b.percent === null && b.charging === true, `Cloud Flight: 4200 mV = charging, no level (${JSON.stringify(b)})`);
+  s.state.mV = 0x1010; b = await driver.battery();
+  check(b.charging === undefined && b.percent === 100, `Cloud Flight: 4112 mV, the sources disagree on charging: left unknown (${JSON.stringify(b)})`);
+  check(flightBattery(3000).percent === 5 && flightBattery(3970).percent === 100 && flightBattery(3969).percent === 95 && flightBattery(0).percent === null, 'Cloud Flight: the table edges');
+  for (const [k, val] of [['sidetone', true], ['autoOff', 10], ['micMute', true]]) await refused(k, val, `Cloud Flight: ${k}`, s);
+  check(s.harm.length === 0, `Cloud Flight: nothing undocumented sent (${s.harm})`);
+}
+
+// ---- Kingston-era (0951) headsets: device-library/hyperx-kingston, read only ----
+{
+  const kmeta = JSON.parse(fs.readFileSync(new URL('../device-library/hyperx-kingston/device.json', import.meta.url), 'utf8'));
+  check(problem(kdriver) === null, `Kingston: the driver passes my-devices' check (${problem(kdriver)})`);
+  check(validateMeta(kmeta) === null && kmeta.id === kdriver.id && kmeta.vid === '0951' && kmeta.status === 'untested' && kmeta.tested.length === 0, `Kingston: device.json valid, untested, vendor 0951 (${validateMeta(kmeta)})`);
+  check(JSON.stringify([...kmeta.pids].sort()) === JSON.stringify(K.MODELS.flatMap((m) => m.pids).sort()), 'Kingston: device.json lists every product id the driver answers on');
+  const ks = hidSpecs(kdriver);
+  const k1718 = ks.find((x) => x.pid === '1718'), kf = ks.find((x) => x.pid === '16C4');
+  check(ks.length === 4 && ks.every((x) => x.vid === '0951'), 'Kingston: one channel per id, all vendor 0951');
+  check(k1718.reply === 'raw' && k1718.inputReports === true && k1718.outputLen === 61 && k1718.reportId === 6, `Kingston Cloud II: raw channel with input reports on request, 61-byte output (${JSON.stringify(k1718)})`);
+  check(kf.reply === undefined && kf.outputLen === 19 && kf.reportId === 0x21 && kf.echo() === 2, 'Kingston Cloud Flight: 21 FF channel, 19-byte output, echo 2');
+
+  const s = kingston();
+  current = s;
+  check(await kdriver.connect(), 'Kingston Cloud II: connects');
+  check((await kdriver.info()).Model === 'HyperX Cloud II Wireless (Kingston)' && (await kdriver.info())['USB id'] === '0951:1718', 'Kingston Cloud II: info names the model and its id');
+  s.sent.length = 0; s.prepared.length = 0;
+  const v = await kdriver.read();
+  check(v.autoOff === 20 && JSON.stringify(kdriver.settings.map((x) => x.key)) === '["autoOff"]', `Kingston Cloud II: auto-off 20 read past the 0A report (${JSON.stringify(v)})`);
+  check(s.sent.length === 1 && s.sent[0].length === 62 && hex(s.sent[0].slice(0, 17)) === '06 00 02 00 9a 00 00 68 4a 8e 0a 00 00 00 bb 1a 00', `Kingston Cloud II: the get is the 62-byte Kingston frame with 1A (${hex(s.sent[0] || [])})`);
+  check(s.prepared.length === 1 && s.prepared[0][0] === 6, 'Kingston Cloud II: input report 06 asked for (the prepare read) before the write');
+  const b = await kdriver.battery();
+  check(b.percent === 64 && b.charging === true, `Kingston Cloud II: battery 64% from byte 7, charging from byte 4 (${JSON.stringify(b)})`);
+  s.state.charging = 2;
+  check((await kdriver.battery()).charging === false, 'Kingston Cloud II: 2 (full) is not charging');
+  check(/^0b 00 bb 02/.test((await kdriver.rawBackup()).replies.battery), 'Kingston Cloud II: the raw backup keeps the 0B reply');
+  for (const [k, val] of [['autoOff', 10], ['autoOff', 20], ['sidetone', true], ['__proto__', 1]]) await refused(k, val, `Kingston Cloud II: ${k}`, s);
+  check(!cmdsSent(s).includes(0x01) && s.harm.length === 0, `Kingston Cloud II: 01, 18 and 19 never sent (${s.harm})`);
+
+  for (const pid of ['16c4', '1723', '1749']) {
+    const f = flight(pid, 0x0951, K.FAMILIES);
+    current = f;
+    check(await kdriver.connect(), `Kingston Cloud Flight ${pid}: connects`);
+    const fb = await kdriver.battery();
+    check(fb.percent === 70 && fb.charging === false && (await kdriver.info()).Model === 'HyperX Cloud Flight Wireless', `Kingston Cloud Flight ${pid}: 3850 mV = 70% (${JSON.stringify(fb)})`);
+    check(JSON.stringify(await kdriver.read()) === '{}' && kdriver.settings.length === 0, `Kingston Cloud Flight ${pid}: no settings`);
+    await refused('autoOff', 10, `Kingston Cloud Flight ${pid}: auto-off`, f);
+    check(f.harm.length === 0 && f.sent.every((x) => hex(x.slice(0, 3)) === '21 ff 05'), `Kingston Cloud Flight ${pid}: only 21 FF 05 sent`);
+  }
+  // an HP-era id is not this driver's, and a Kingston id is not hyperx-cloud's
+  current = flight('0e90');
+  check(!(await kdriver.connect()), 'Kingston: the HP Cloud Flight id (03F0:0E90) is left to hyperx-cloud');
+  current = flight('16c4', 0x0951, K.FAMILIES);
+  check(!(await driver.connect(false)), 'hyperx-cloud: a Kingston id is left to hyperx-kingston');
+
+  // the NEVER list and every command byte, as a get and as a set
+  for (const [mk, model] of [[kingston, K.MODELS[0]], [() => flight('16c4', 0x0951, K.FAMILIES), K.MODELS[1]], [() => flight('1749', 0x0951, K.FAMILIES), K.MODELS[2]]]) {
+    const sim = mk();
+    const link = new K.Link(sim, model, { timeoutMs: 20 });
+    const fam = K.FAMILIES[model.family];
+    for (let c = 0; c < 256; c++) for (const frame of [[...fam.header, c], [...fam.header, c, 1]]) { try { await link.send(frame); } catch {} }
+    const got = new Set(cmdsSent(sim));
+    const allowed = new Set(Object.values(model.reads).map((x) => x.cmd));
+    check([...got].every((c) => allowed.has(c)) && sim.harm.length === 0 && sim.sent.every((f) => f.length === model.len),
+      `${model.name} ${model.pids}: all 512 frames tried, only its gets left (${hex([...got])}; ${sim.harm})`);
+  }
+  for (const frame of [[...K.FAMILIES.kingston.header, 0x01], [...K.FAMILIES.kingston.header, 0x19, 0x01], [...K.FAMILIES.kingston.header, 0x18, 0x0a], [0x00, 0xde, 0xff], [0x06, 0xde, 0xff]]) {
+    const sim = kingston();
+    let threw = false;
+    try { await new K.Link(sim, K.MODELS[0], { timeoutMs: 20 }).send(frame); } catch (e) { threw = /refused/.test(e.message); }
+    check(threw && sim.sent.length === 0, `Kingston: ${hex(frame.slice(-3))} refused before sending`);
+  }
+  check(K.NEVER.every((n) => n.why && n.what), 'Kingston: every NEVER entry carries its reason');
+}
+
 // ---- the NEVER list, tried every way the driver has ----
 {
   const tries = [
@@ -309,7 +463,7 @@ check(modelFor('05B7')?.readOnlyWhy && modelFor('1743')?.readOnlyWhy && !modelFo
   }
   check(NEVER.every((n) => n.why && n.what), 'every NEVER entry carries the sheet\'s reason');
   // every possible command byte, as a get and as a set, through the link: only the model's documented bytes get out
-  for (const [mk, model] of [[hp, MODELS[0]], [alpha, MODELS[1]], [alpha, MODELS[2]], [iii, MODELS[3]], [core, MODELS[4]]]) {
+  for (const [mk, model] of [[hp, MODELS[0]], [alpha, MODELS[1]], [alpha, MODELS[2]], [iii, MODELS[3]], [core, MODELS[4]], [iiis, MODELS[5]], [flight, MODELS[6]]]) {
     const sim = mk();
     const link = new Link(sim, model, { timeoutMs: 20 });
     const fam = FAMILIES[model.family];
@@ -328,5 +482,5 @@ check(modelFor('05B7')?.readOnlyWhy && modelFor('1743')?.readOnlyWhy && !modelFo
 current = null;
 check((await driver.connect(false)) === false, 'nothing plugged in: connect() says so');
 
-console.log(fails.length ? `sim-hyperx: FAILED:\n  ${fails.join('\n  ')}` : 'sim-hyperx (Cloud II Wireless, Alpha Wireless, Cloud III Wireless, Cloud II Core Wireless simulated; NEVER list holds; nothing written while NGENUITY runs): all good');
+console.log(fails.length ? `sim-hyperx: FAILED:\n  ${fails.join('\n  ')}` : 'sim-hyperx (Cloud II Wireless, Alpha Wireless, Cloud III Wireless, Cloud II Core Wireless, Cloud III S Wireless, Cloud Flight (03F0 and 0951), Kingston Cloud II Wireless simulated; NEVER list holds; nothing written while NGENUITY runs): all good');
 process.exitCode = fails.length ? 1 : 0;

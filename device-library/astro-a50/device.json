@@ -1,0 +1,27 @@
+{
+  "id": "astro-a50",
+  "vendor": "Logitech",
+  "product": "ASTRO A50 Gen 5 base station (read only)",
+  "kind": "Headset",
+  "vid": "046d",
+  "pids": [
+    "0b1c"
+  ],
+  "models": [
+    "ASTRO A50 Gen 5"
+  ],
+  "works": [
+    "written from HeadsetControl lib/devices/logitech_astro_a50.hpp (master a8120a6) and docs/brands/logitech.md, checked against a simulated base station only (tests/sim-audeze-astro.mjs)",
+    "reads: battery %, docked/charging, ChatMix (0-12)",
+    "sends only the two GET frames HeadsetControl documents (battery 0C 03 00 06 0C, ChatMix 0C 03 00 0A 0C) on report 02",
+    "steps back while G HUB runs"
+  ],
+  "doesNotWork": [
+    "every setting: sidetone, dock light, noise gate, headset volume and EQ are only ever set, never read back, in HeadsetControl",
+    "ASTRO A50 Gen 4 (9886:002C: another protocol on another vendor id) and the A50 X (Centurion)",
+    "firmware updates and pairing (never: they stay in G HUB)"
+  ],
+  "status": "untested",
+  "tested": [],
+  "source": "HeadsetControl (github.com/Sapd/HeadsetControl) lib/devices/logitech_astro_a50.hpp"
+}

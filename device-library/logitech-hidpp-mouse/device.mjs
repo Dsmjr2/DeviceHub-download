@@ -65,6 +65,12 @@ const VID = 0x046d;
 // sheet section 1 "Lightspeed receivers" (Solaar base_usb.py): Lightspeed and Bolt receivers, HID++ interface 2
 // C541 / C545 / C547 are left out: the sheet (OpenRGB) names them G915 keyboard receivers
 export const RECEIVERS = [0xc539, 0xc53a, 0xc53d, 0xc53f, 0xc54d, 0xc548];
+// SHARED_WITH_KEYBOARD (23 Oct 2026): device-library/logitech-hidpp-keyboard also runs these three LIGHTSPEED receivers
+// (its SHARED: a keyboard paired to one, a PRO X TKL or G515, is found there by its DEVICE_NAME kind). Both drivers then
+// get the same HID handle (helpers/hid-host.mjs provider() gives the first host for the vid / pid / usage page), so on
+// these the mouse driver never closes the receiver when it steps aside; the keyboard driver uses its own HID++ software
+// id there (0x0C), so neither takes the other's replies.
+export const SHARED_WITH_KEYBOARD = [0xc539, 0xc53f, 0xc54d];
 // sheet section 1 "Mice": wired / USB product ids
 export const WIRED = {
   0xc09b: 'PRO X SUPERLIGHT 2', 0xc094: 'PRO X SUPERLIGHT', 0xc09a: 'PRO 2 LIGHTSPEED', 0xc098: 'G502 X LIGHTSPEED',
@@ -348,6 +354,8 @@ const adapter = {
     const found = await this.probeSlots(this.pingMs);
     if (found.mouse) return this.finishConnect();
     if (found.others.length) { this.stepAside(); throw notMine(this.notMineText(found.others)); }
+    // only slots another Logitech driver runs (the keyboard on a shared receiver): step aside, never a sleeping mouse tile
+    if (found.held?.length) { this.stepAside(); throw notMine(this.heldText(found.held)); }
     // no slot answered: a sleeping or switched-off mouse (or nothing paired). The receiver stays open, and the mouse is
     // looked for again when DeviceHub asks whether it woke (awake()) and on every read.
     this.asleep = true; this.index = null; this.wokeAt = Date.now();
@@ -358,10 +366,10 @@ const adapter = {
   // (DEVICE_NAME fn 0x20). Stops at the first slot with 0x2201 and claims it. Slots another Logitech driver holds are
   // skipped. Returns { mouse: slot | null, others: [{ slot, kind }] }.
   async probeSlots(pingMs) {
-    const others = [];
+    const others = [], held = [];
     for (const slot of SLOTS) {
       const owner = SLOT_OWNERS.get(slotKey(this.pid, slot));
-      if (owner && owner !== this.id) continue;
+      if (owner && owner !== this.id) { held.push({ slot, owner }); continue; }
       this.index = slot;
       let ver = null;
       try { ver = await this.ping(pingMs); } catch { continue; }   // empty, asleep or off: the receiver's answer is a short report this channel does not read
@@ -371,11 +379,11 @@ const adapter = {
       try { dpi = await this.getFeature(F.ADJUSTABLE_DPI); } catch (e) { if (!(e instanceof HidppError)) continue; dpi = null; }   // gone quiet again: treated as asleep
       // a mouse with 0x2202 and no 0x2201 (the PRO X2 SUPERSTRIKE: O, X, S feature tables) is a mouse too
       if (!dpi) { try { dpi = await this.getFeature(F.EXT_ADJUSTABLE_DPI); } catch (e) { if (!(e instanceof HidppError)) continue; dpi = null; } }
-      if (dpi) { this.protocol = ver; SLOT_OWNERS.set(slotKey(this.pid, slot), this.id); return { mouse: slot, others }; }
+      if (dpi) { this.protocol = ver; SLOT_OWNERS.set(slotKey(this.pid, slot), this.id); return { mouse: slot, others, held }; }
       others.push({ slot, kind: await this.deviceKind() });
     }
     this.features = {}; this.index = null;
-    return { mouse: null, others };
+    return { mouse: null, others, held };
   },
   // Solaar hidpp20.py get_kind(): DEVICE_NAME fn 0x20, byte 0 = DEVICE_KIND; null when the device has no 0x0005
   async deviceKind() {
@@ -392,10 +400,15 @@ const adapter = {
     const what = o.kind && o.kind !== 'mouse' ? `a ${o.kind}` : o.kind === 'mouse' ? 'a mouse without a DPI feature (0x2201 or 0x2202) this driver reads' : 'a device without a DPI feature (0x2201 or 0x2202)';
     return `the Logitech device on receiver ${hex4(this.pid)} (slot ${o.slot}) is ${what}, not a mouse this driver runs: the mouse driver leaves it alone`;
   },
-  // let go of the receiver, so another driver can open it
+  heldText(held) {
+    const h = held[0];
+    return `the Logitech device on receiver ${hex4(this.pid)} (slot ${h.slot}) is run by ${h.owner} and no mouse answered: the mouse driver leaves it alone`;
+  },
+  // let go of the receiver, so another driver can open it (on a receiver shared with the keyboard driver the handle may
+  // be that driver's too: let go of it without closing it)
   stepAside() {
     releaseSlots(this.id);
-    try { this.dev?.close?.(); } catch {}
+    if (!(this.receiver && SHARED_WITH_KEYBOARD.includes(this.pid))) { try { this.dev?.close?.(); } catch {} }
     this.dev = null; this.chan = null; this.features = {}; this.asleep = false;
   },
   // asleep at connect: is the mouse back? (public/core/devices.js asks before each look at an asleep device). Asks the slots
@@ -411,6 +424,7 @@ const adapter = {
       return true;
     }
     if (found.others.length) { this.pendingNotMine = this.notMineText(found.others); return true; }
+    if (found.held?.length) { this.pendingNotMine = this.heldText(found.held); return true; }
     return false;
   },
   async needAwake() {

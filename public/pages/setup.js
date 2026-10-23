@@ -36,7 +36,13 @@ const st = {
   ask: false,  // Set it all up's one question about the makers' apps is showing
 };
 let redrawPage = () => {};
-const redraw = () => redrawPage();
+// who else wants to know when the answer may have changed (the sidebar and Settings, setupNeeds below)
+const watchers = new Set();
+let notifyQueued = false;
+const redraw = () => {
+  redrawPage();
+  if (!notifyQueued) { notifyQueued = true; setTimeout(() => { notifyQueued = false; for (const w of watchers) { try { w(); } catch {} } }, 50); }
+};
 const post = async (url, body = {}) => {
   const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
@@ -272,7 +278,7 @@ function control(r) {
     case 'turn-on': return button('Turn on settings', () => runOne(r), { kind: 'primary small', ic: 'plug', disabled: busy });
     case 'check-again': return button('Check again', () => runOne(r), { kind: 'ghost small', ic: 'search', disabled: busy });
     case 'get-layout': return button('Get the layout', () => runOne(r), { kind: 'primary small', disabled: busy });
-    case 'learn': return button(a.vid ? 'Learn it' : 'Learn a device', () => { if (a.vid) learnThis(a.vid, a.pid); location.hash = '#/learn'; }, { kind: 'ghost small', ic: 'plug' });
+    case 'learn': return button(a.vid ? 'Learn it for me' : 'Learn a device', () => { if (a.vid) learnThis(a.vid, a.pid, { start: true }); location.hash = '#/learn'; }, { kind: 'ghost small', ic: 'plug' });
     case 'request': return getHelp(`request:${a.vid}:${a.pid}`, null, { label: 'Request support', request: { vid: a.vid, pid: a.pid, name: a.name || '' }, kind: 'ghost small' });
     case 'works': return worksReport(devices[a.id] || { id: a.id, adapter: {} });
     case 'settings': return button(a.label || 'Open', () => runOne(r), { kind: 'ghost small', ic: 'external' });
@@ -315,6 +321,40 @@ function tile(r) {
     icon(TILE_ICON[r.kind] || 'plug'), h('span', { class: 'su-tile-name' }, r.title),
     needs ? h('span', { class: 'su-tile-st' }, 'Needs you') : icon('check', 'ic su-tick'));
 }
+// What Setup would show, worked out the same way as the page (none of it drawn): null until its sources have answered
+function planNow() {
+  const live = liveDevices();
+  askDiagnose(live);
+  if (st.summary) askLayouts(st.summary);
+  if (st.summary === undefined) return null;
+  const devRows = applyOver(deviceRows(st.summary, { live, diag: st.diag, layouts: st.layouts, isVia }));
+  const all = [
+    ...devRows,
+    ...applyOver(soundRows(st.tools?.find((t) => t.id === 'eqapo'), st.eq)),
+    ...applyOver(lightRows(st.orgb, st.summary, st.lightsDiag, st.board)),
+    ...batteryRows(st.bt),
+    ...applyOver(learnRows(st.tools?.find((t) => t.id === 'usbpcap'), devRows)),
+  ];
+  return { live, devRows, plan: planSetup(all) };
+}
+
+// Is this PC fully set up? (23 Oct 2026, Shawn: "put the set up area in settings when its fully set up like mine
+// currently is, I need the app to recognize when it is and isnt fully set up"). The number of things that need the
+// person, from the same rows the page shows: null while its sources are still answering. Read in the background when
+// DeviceHub's window opens and again every 5 minutes, and at once when a device connects or drops. watch(fn) is told
+// when the answer may have changed; it returns a function that stops it.
+let bgAt = 0, lastLive = null;
+export function setupNeeds({ refresh = false } = {}) {
+  const sig = liveSig();
+  if (st.summary === undefined || (refresh && Date.now() - st.loadedAt > 30000) || Date.now() - st.loadedAt > 5 * 60000 || (sig !== lastLive && Date.now() - bgAt > 30000)) {
+    bgAt = Date.now(); lastLive = sig;
+    load();
+  }
+  const p = planNow();
+  return p ? p.plan.needs.length : null;
+}
+export function watchSetup(fn) { watchers.add(fn); return () => watchers.delete(fn); }
+
 function fold(key, title, rows) {
   if (!rows.length) return null;
   return h('details', { class: 'panel su-fold', open: st.fold[key] || null, ontoggle: (e) => { st.fold[key] = e.target.open; } },
@@ -331,23 +371,14 @@ export default {
   render({ fresh, redraw: r }) {
     redrawPage = r;
     if (st.summary === undefined || (fresh && Date.now() - st.loadedAt > 5000)) load();
-    const live = liveDevices();
     lastSig = liveSig();
-    askDiagnose(live);
-    if (st.summary) askLayouts(st.summary);
-
-    const devRows = st.summary === undefined ? null : applyOver(deviceRows(st.summary, { live, diag: st.diag, layouts: st.layouts, isVia }));
+    const now = planNow();
+    const live = now?.live || liveDevices();
+    const devRows = now ? now.devRows : null;
     const demo = isDemo() ? h('p', { class: 'su-fine' }, 'Demo mode: pretend devices and answers. Nothing is installed, sent or changed.') : null;
     if (devRows === null) return h('div', { class: 'setup-page' }, topbar('', 'Setup', null), demo, h('section', { class: 'panel su-status' }, skeleton([40, 62])));
 
-    const all = [
-      ...devRows,
-      ...applyOver(soundRows(st.tools?.find((t) => t.id === 'eqapo'), st.eq)),
-      ...applyOver(lightRows(st.orgb, st.summary, st.lightsDiag, st.board)),
-      ...batteryRows(st.bt),
-      ...applyOver(learnRows(st.tools?.find((t) => t.id === 'usbpcap'), devRows)),
-    ];
-    const plan = planSetup(all);
+    const plan = now.plan;
     const n = plan.needs.length;
     if (st.tile && !plan.devices.some((x) => x.key === st.tile && x.status === 'needs')) st.tile = null;
     const openTile = st.tile && plan.devices.find((x) => x.key === st.tile);

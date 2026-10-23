@@ -373,7 +373,12 @@ driver.vendorApp = async () => null;
   const lib = new URL('../device-library/', import.meta.url);
   const others = fsm.readdirSync(lib).filter((d) => d !== 'logitech-hidpp-mouse' && fsm.existsSync(new URL(`${d}/device.json`, lib)))
     .map((d) => JSON.parse(fsm.readFileSync(new URL(`${d}/device.json`, lib), 'utf8'))).filter((m) => (m.vid || '').toLowerCase() === '046d').flatMap((m) => m.pids.map((p) => p.toLowerCase()));
-  check(others.length > 0 && !all.some((p) => others.includes(p)) && !Object.keys(WPIDS).map(hx).some((p) => others.includes(p)), 'no mouse id is claimed by another library entry');
+  // 23 Oct 2026: the three LIGHTSPEED receivers SHARED_WITH_KEYBOARD are the keyboard driver's too (its SHARED); no other id is shared
+  const { SHARED_WITH_KEYBOARD } = await import('../device-library/logitech-hidpp-mouse/device.mjs');
+  const { SHARED: KB_SHARED } = await import('../device-library/logitech-hidpp-keyboard/device.mjs');
+  const sharedHex = SHARED_WITH_KEYBOARD.map(hx);
+  check(sharedHex.sort().join() === 'c539,c53f,c54d' && Object.keys(KB_SHARED).map(hx).sort().join() === sharedHex.join() && SHARED_WITH_KEYBOARD.every((p) => RECEIVERS.includes(p)), `the mouse and keyboard drivers name the same shared receivers (${sharedHex})`);
+  check(others.length > 0 && all.filter((p) => others.includes(p)).sort().join() === sharedHex.join() && !Object.keys(WPIDS).map(hx).some((p) => others.includes(p)), `no other mouse id is claimed by another library entry (${all.filter((p) => others.includes(p))})`);
   check(Object.keys(WPIDS).every((p) => !all.includes(hx(p))), 'receiver wpids (40xx) are never opened as channels');
   check([0xc08b, 0xc332, 0xb024].every((p) => PROFILE_READ_1BASED.includes(p)), 'libratbag INDEX_OFFSET ids read their profile 1-based');
 
@@ -454,7 +459,12 @@ driver.vendorApp = async () => null;
   useDevice(rx);
   e = await refusal(() => driver.connect(false));
   check(e?.notMine === true && e.gone === true && /keyboard/.test(e.message) && /not a mouse/.test(e.message) && /slot 1/.test(e.message), `a keyboard alone: steps aside (${e?.message})`);
-  check(rx.closed === 1 && driver.chan === null && !SLOT_OWNERS.has('C539:1'), 'the receiver is closed so another driver can open it; no slot held');
+  // C539 is shared with the keyboard driver (one HID handle for both): let go of, never closed
+  check(rx.closed === 0 && driver.chan === null && driver.dev === null && !SLOT_OWNERS.has('C539:1'), 'a shared receiver is let go of without closing it (the keyboard driver may hold the same handle); no slot held');
+  rx = simReceiver(0xc548, { 1: keyboard(0xc548, 1) });
+  useDevice(rx);
+  e = await refusal(() => driver.connect(false));
+  check(e?.notMine === true && rx.closed === 1 && driver.chan === null, `a receiver the keyboard driver does not run (Bolt C548) is closed when stepped aside, as before (${e?.message})`);
   check(onlyProbes(rx, 1, 2), 'the keyboard got only reads');
   check(NOT_A_FAULT.test(e.message), `auto-report does not count "${e.message}" as a fault`);
   check(NOT_A_FAULT.test('this Logitech device has no DPI feature (0x2201): it is not a mouse this driver runs'), 'nor the old wording from the report');
@@ -497,7 +507,7 @@ driver.vendorApp = async () => null;
   check((await driver.connect(false)) === true && driver.asleep, 'a sleeping keyboard: asleep at first');
   kb2.asleep = false; driver.wokeAt = 0;
   e = await refusal(() => driver.read());
-  check(e?.notMine === true && rx.closed === 1, `it wakes as a keyboard: read() steps aside (${e?.message})`);
+  check(e?.notMine === true && rx.closed === 0 && driver.chan === null, `it wakes as a keyboard: read() steps aside, the shared receiver not closed (${e?.message})`);
 
   // e) one owner per slot: a slot another Logitech driver holds is never asked
   SLOT_OWNERS.set('C539:1', 'logitech-hidpp-keyboard');
@@ -506,6 +516,24 @@ driver.vendorApp = async () => null;
   check(await driver.connect(false) && driver.index === 2 && !rx.sent.some((s) => s.b[0] === 1), 'slot 1 held by the keyboard driver: nothing sent to it, slot 2 run');
   SLOT_OWNERS.delete('C539:1');
   check(await driver.connect(false) && driver.index === 1 && SLOT_OWNERS.get('C539:1') === 'logitech-hidpp-mouse' && !SLOT_OWNERS.has('C539:2'), 'freed: the next connect takes slot 1 and lets slot 2 go');
+  // 23 Oct 2026: only a slot the keyboard driver runs (the keyboard alone on a shared receiver): stepped aside, not a
+  // sleeping mouse; nothing sent to that slot, the receiver not closed
+  SLOT_OWNERS.clear();
+  SLOT_OWNERS.set('C539:1', 'logitech-hidpp-keyboard');
+  rx = simReceiver(0xc539, { 1: keyboard(0xc539, 1) });
+  useDevice(rx);
+  e = await refusal(() => driver.connect(false));
+  check(e?.notMine === true && /run by logitech-hidpp-keyboard/.test(e.message) && !driver.asleep && rx.closed === 0 && !rx.sent.some((s) => s.b[0] === 1) && NOT_A_FAULT.test(e.message), `a receiver whose only device the keyboard driver runs: stepped aside, no asleep mouse (${e?.message})`);
+  // asleep at connect (nothing answered), then the keyboard driver claims slot 1: the next wake look steps aside
+  SLOT_OWNERS.clear();
+  const kb3 = keyboard(0xc539, 1); kb3.asleep = true;
+  rx = simReceiver(0xc539, { 1: kb3 });
+  useDevice(rx);
+  check((await driver.connect(false)) === true && driver.asleep, 'nothing answering: asleep at first');
+  SLOT_OWNERS.set('C539:1', 'logitech-hidpp-keyboard'); driver.wokeAt = 0;
+  e = await refusal(() => driver.read());
+  check(e?.notMine === true && /run by logitech-hidpp-keyboard/.test(e.message) && rx.closed === 0, `the keyboard driver took slot 1: the asleep mouse driver steps aside (${e?.message})`);
+  SLOT_OWNERS.clear();
 
   // f) a mouse with 0x2202 and no 0x2201 (22 Oct 2026, the PRO X2 SUPERSTRIKE's shape): run now, its DPI shown from
   // 0x2202 fn 0x50 and never written; a device with neither DPI feature is still stepped aside, plainly

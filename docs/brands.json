@@ -188,7 +188,7 @@
       {
         "name": "Audeze",
         "category": "headset",
-        "usbVendorIds": [],
+        "usbVendorIds": ["3329"],
         "vendorApp": "Audeze HQ",
         "transport": [
           "usb-hid",
@@ -203,7 +203,7 @@
         "dynamicLighting": false,
         "risk": "medium",
         "reason": "vendor app also updates firmware; never trigger it",
-        "notes": "Vendor ID not in usb.ids (unconfirmed); read it from HeadsetControl's source before relying on it."
+        "notes": "Vendor ID 3329 from HeadsetControl (lib/device.hpp; Maxwell 4B19/4B18, Maxwell 2 4B29/4B28); not in usb.ids. device-library/audeze-maxwell (23 Oct 2026)."
       },
       {
         "name": "EPOS / Sennheiser",

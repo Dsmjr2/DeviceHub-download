@@ -58,6 +58,18 @@ const lastOf = (list) => list[list.length - 1] || null;
 function readNum(d, o, size, endian) { let v = 0; for (let i = 0; i < size; i++) v += (d[o + i] ?? 0) * 2 ** (8 * (endian === 'big' ? size - 1 - i : i)); return v; }
 const show = (v) => (typeof v === 'string' ? `"${v}"` : typeof v === 'boolean' ? (v ? 'on' : 'off') : String(v));
 
+// the bytes a reply repeats from its request, which is how a driver matches the two (replies.echo): the places among
+// the first ECHO_SPAN where the request's byte is not zero and the reply carries the same one. Not only the leading
+// bytes (23 Oct 2026, tests/learn-bench.mjs): a Razer reply turns the status byte 00 into 02 and a Corsair Bragi reply
+// turns 08 into 00, and the bytes after them are repeated.
+export const ECHO_SPAN = 8;
+export function echoAt(req, reply) {
+  const out = [];
+  for (let i = 0; i < Math.min(ECHO_SPAN, req.length, reply.length); i++) if (req[i] !== 0 && req[i] === reply[i]) out.push(i);
+  return out;
+}
+const commonEcho = (lists) => lists.map((l) => (Array.isArray(l) ? l : Array.from({ length: l || 0 }, (_, i) => i))).reduce((a, b) => a.filter((x) => b.includes(x)));
+
 export const MAX_DIFF = 8;        // a write differs from the same write with another value in at most this many bytes
 export const PAIR_S = 1.0;        // a reply comes within this many seconds of its request
 export const SCALES = [1, 2, 4, 5, 8, 10, 16, 20, 25, 50, 100, 125, 250, 0.5, 0.1];
@@ -135,7 +147,7 @@ function sumOf(d, type, from, to) { let s = 0; for (let i = from; i <= to; i++) 
 function csHolds(d, c) { const s = sumOf(d, c.type, c.from, c.to); return c.type === 'sum16le' ? d[c.at] === (s & 255) && d[c.at + 1] === ((s >> 8) & 255) : d[c.at] === (s & 255); }
 const csPositions = (c) => (!c ? [] : c.type === 'sum16le' ? [c.at, c.at + 1] : [c.at]);
 
-// a checksum over the bytes before a moving byte, holding on EVERY outgoing message of that report (a transport
+// a checksum over the bytes before a moving byte (or after it), holding on EVERY outgoing message of that report (a transport
 // checksum covers every message the driver sends, so it must hold on the reads too)
 function findChecksum(D, sameReport) {
   const len = sameReport[0].data.length;
@@ -143,6 +155,12 @@ function findChecksum(D, sameReport) {
     const c = { type, from, to: at - 1, at };
     if (type === 'sum16le' && at + 1 >= len) continue;
     if (sameReport.every((m) => csHolds(m.data, c))) return c;
+  }
+  // in front of what it covers (23 Oct 2026, a published Sharkoon SGK3 capture: byte 0 is the sum of bytes 1 to the end,
+  // as on many Sonix keyboards): the moving byte the sum of every byte after it
+  for (const at of D) for (const type of ['sum8', 'xor']) {
+    const c = { type, from: at + 1, to: len - 1, at };
+    if (at + 1 < len && sameReport.every((m) => csHolds(m.data, c))) return c;
   }
   return null;
 }
@@ -174,20 +192,119 @@ function explainMap(msgs, values, R) {
   if (new Set(codes).size !== codes.length) return [];
   return [{ offset: p, size: 1, codes, rank: [1, 0, 0] }];
 }
+// a colour (23 Oct 2026, published Keychron K3 and Corsair Dark Core captures): its red, green and blue bytes side by
+// side, in that order, once or more (a Dark Core sends each colour twice); every changed byte belongs to one of them
+export const rgbOf = (v) => { const m = /^#?([0-9a-f]{6})$/i.exec(String(v ?? '').trim()); return m ? [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)) : null; };
+function explainColor(msgs, values, R, cs, len) {
+  const want = values.map(rgbOf);
+  if (!R.length || want.some((w) => !w)) return [];
+  const csp = csPositions(cs), fits = [];
+  for (let o = Math.max(0, Math.min(...R) - 2); o <= Math.min(len - 3, Math.max(...R)); o++) {
+    if (csp.some((p) => p >= o && p < o + 3) || !R.some((p) => p >= o && p < o + 3)) continue;
+    if (msgs.every((m, i) => m.data[o] === want[i][0] && m.data[o + 1] === want[i][1] && m.data[o + 2] === want[i][2])) fits.push(o);
+  }
+  const starts = [];
+  for (const o of fits) if (!starts.length || o >= starts[starts.length - 1] + 3) starts.push(o);
+  if (!starts.length || !R.every((p) => starts.some((o) => p >= o && p < o + 3))) return [];
+  return [{ offset: starts[0], size: 3, color: true, ...(starts.length > 1 ? { copies: starts } : {}), rank: [3, 0, 0] }];
+}
+const explainAs = (kind, msgs, values, R, cs, len) => (kind === 'number' ? explainNumber(msgs, values, R, cs, len) : kind === 'color' ? explainColor(msgs, values, R, cs, len) : explainMap(msgs, values, R));
+// The value sent in more than one place of the same message, the same way each time (23 Oct 2026,
+// tests/learn-bench.mjs): Razer sends DPI as X and Y, headsets a left and a right level. When the changed bytes are
+// copies of one window, each copy is a place of its own: { ...enc, copies: [offset, ...] } (the first is enc.offset).
+function explainCopies(msgs, values, R, cs, len, kind) {
+  for (const size of kind === 'number' ? [1, 2, 4] : [1]) {
+    if (R.length % size || R.length === size) continue;
+    const starts = [];
+    for (const p of R) if (!starts.length || p >= starts[starts.length - 1] + size) starts.push(p);
+    if (starts.length * size !== R.length || !starts.every((o) => R.filter((p) => p >= o && p < o + size).length === size)) continue;
+    // every copy carries the same bytes as the first, in every message
+    if (!msgs.every((m) => starts.every((o) => m.data.slice(o, o + size).every((b, i) => b === m.data[starts[0] + i])))) continue;
+    const window = R.filter((p) => p < starts[0] + size);
+    const encs = kind === 'number' ? explainNumber(msgs, values, window, cs, len).filter((e) => e.offset === starts[0] && e.size === size) : explainMap(msgs, values, window);
+    if (encs.length) return encs.map((e) => ({ ...e, copies: starts }));
+  }
+  return [];
+}
+// A rolling message number (23 Oct 2026, tests/learn-bench.mjs): one of the first bytes rises by the same step on every
+// message the app sends (of the device's usual report), in every recording, with at least three messages each. Then it
+// is taken out of every message (set to 0, replies too) before anything is compared, and the driver fills it itself
+// (transport.counter). { at, step, shape: 'type:len' } or null.
+export function findCounter(takes) {
+  const shapeOf = (m) => `${m.type}:${m.data.length}`;
+  const outs = takes.map((t) => t.messages.filter((m) => m.dir === 'out'));
+  const counts = new Map();
+  for (const o of outs) for (const m of o) counts.set(shapeOf(m), (counts.get(shapeOf(m)) || 0) + 1);
+  const shape = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0];
+  if (!shape) return null;
+  const mine = outs.map((o) => o.filter((m) => shapeOf(m) === shape));
+  if (mine.some((o) => o.length < 3)) return null;
+  for (let at = 0; at < Math.min(8, Number(shape.split(':')[1])); at++) {
+    let step = null, ok = true;
+    for (const o of mine) {
+      for (let i = 1; i < o.length && ok; i++) {
+        const d = (o[i].data[at] - o[i - 1].data[at] + 256) & 255;
+        if (!d || (step != null && d !== step)) ok = false; else step = d;
+      }
+      if (!ok) break;
+    }
+    // a real counter never repeats a number within a recording and moves in small steps (a byte that flips between two
+    // values, 81 01 81, also "rises" by 80 each time)
+    if (ok && step && step <= 16 && mine.every((o) => new Set(o.map((m) => m.data[at])).size === o.length)) return { at, step, shape };
+  }
+  return null;
+}
+const withoutCounter = (takes, c) => takes.map((t) => ({ ...t, messages: t.messages.map((m) => (`${m.type}:${m.data.length}` === c.shape || (m.dir === 'in' && m.data.length === Number(c.shape.split(':')[1]))
+  ? { ...m, data: m.data.map((b, i) => (i === c.at ? 0 : b)) } : m)) }));
+// the settings block a write family copies: in every take, the reply the device sent last before the write, of the same
+// report and length, to the same request; the places (after byte 0, not the checksum) where every write equals it, at
+// least one of them moving between takes. { req, replies, copied } or null.
+function blockOf(takes, f, cs) {
+  const t0 = f.group[0], replyType = t0.type === 'output' ? 'input' : 'feature';
+  const got = takes.map((t, i) => {
+    const ms = t.messages, at = ms.indexOf(f.group[i]);
+    for (let k = at - 1; k >= 0; k--) {
+      const r = ms[k];
+      if (r.dir !== 'in' || r.type !== replyType || r.data.length !== f.len || (t0.type === 'feature' && r.reportId !== t0.reportId)) continue;
+      for (let j = k - 1; j >= 0; j--) if (ms[j].dir === 'out' && ms[j].type === t0.type && (t0.type === 'output' || ms[j].reportId === r.reportId)) return { req: ms[j], reply: r };
+      return null;
+    }
+    return null;
+  });
+  if (got.some((g) => !g) || new Set(got.map((g) => keyOf(g.req))).size !== 1) return null;
+  const skip = new Set(csPositions(cs));
+  const copied = [];
+  for (let p = 1; p < f.len; p++) if (!skip.has(p) && got.every((g, i) => f.group[i].data[p] === g.reply.data[p])) copied.push(p);
+  if (!f.D.some((p) => copied.includes(p))) return null;
+  return { req: got[0].req, replies: got.map((g) => g.reply.data), copied };
+}
 const tie = (a, b) => same(a.rank, b.rank);
-const where = (e) => (e.size === 1 ? `byte ${e.offset}` : `bytes ${e.offset}-${e.offset + e.size - 1} (${e.endian === 'big' ? 'big' : 'little'}-endian)`);
+const where = (e) => (e.size === 1 ? `byte ${e.offset}` : e.color ? `bytes ${e.offset}-${e.offset + 2}` : `bytes ${e.offset}-${e.offset + e.size - 1} (${e.endian === 'big' ? 'big' : 'little'}-endian)`);
 const howScaled = (e) => (e.scale == null ? '' : `${e.scale !== 1 ? ` x ${e.scale}` : ''}${e.add ? ` ${e.add > 0 ? '+' : '-'} ${Math.abs(e.add)}` : ''}`);
 const refuse = (why, extra = {}) => ({ ok: false, why: [].concat(why), ...extra });
+// the way on when a setting cannot be learned at all (23 Oct 2026: every refusal names what to do next, never a dead end)
+const SKIP = 'Skip it to keep learning the other settings; Get help (top right) tells Shawn what was found.';
 
 // takes: [{ value, messages }]; setting: { label, kind: 'number' | 'toggle' | 'choice' }.
 // { ok: true, learned } or { ok: false, why: [sentences], ambiguous?, needMore? }
+// A message number is only looked for when the recordings do not learn without one: an app that reads memory addresses
+// one after another (10, 11, 12 ...) looks the same, and anything that learns as it is is learned as before.
 export function analyze(takes, setting) {
+  const plain = analyzeOnce(takes, setting, null);
+  if (plain.ok || !Array.isArray(takes) || takes.length < 2) return plain;
+  const counter = findCounter(takes);
+  if (!counter) return plain;
+  const numbered = analyzeOnce(withoutCounter(takes, counter), setting, counter);
+  return numbered.ok ? numbered : plain;
+}
+function analyzeOnce(takes, setting, counter) {
   const label = setting?.label || 'the setting';
   const kind = setting?.kind || 'number';
   if (!Array.isArray(takes) || takes.length < 2) return refuse('Record at least two values first.');
   const values = takes.map((t) => t.value);
-  if (new Set(values.map((v) => JSON.stringify(v))).size !== values.length) return refuse('Each recording needs a different value.');
-  if (kind === 'number' && !values.every((v) => typeof v === 'number' && Number.isFinite(v))) return refuse('Every value must be a number.');
+  if (new Set(values.map((v) => JSON.stringify(v))).size !== values.length) return refuse('Each recording needs a different value. Remove one of the recordings that share a value, or start this setting over.');
+  if (kind === 'number' && !values.every((v) => typeof v === 'number' && Number.isFinite(v))) return refuse('Every value must be a number. Start this setting over and enter each value as a number (for 1,600 DPI, 1600).');
+  if (kind === 'color' && !values.every(rgbOf)) return refuse('Every value must be a colour code like #FF0000. Start this setting over and pick each colour.');
   const outs = takes.map((t) => t.messages.filter((m) => m.dir === 'out'));
   if (outs.some((o) => !o.length)) return refuse(`In recording ${outs.findIndex((o) => !o.length) + 1} the maker's app sent the device nothing. Change the setting in the app while DeviceHub listens, then record that value again.`);
   const everywhere = new Set(outs.map((o) => new Set(o.map(keyOf))).reduce((a, b) => [...a].filter((k) => b.has(k))));
@@ -197,21 +314,26 @@ export function analyze(takes, setting) {
   // the candidate writes: one message per recording, the same report, differing in a few bytes (the last of each in a
   // recording, so a slider dragged through other values on the way counts with its final value)
   const fams = [], seen = new Set();
-  for (const m0 of changed[0]) {
-    const group = [];
-    for (const c of changed) {
-      // the same command: the same report, the same first byte, and only a few bytes apart
-      const pick = lastOf(c.filter((x) => sameShape(x, m0) && x.data[0] === m0.data[0] && diffCount(x, m0) <= MAX_DIFF));
-      if (!pick) { group.length = 0; break; }
-      group.push(pick);
+  // the same command: the same report, the same first byte, and only a few bytes apart. When nothing groups that way the
+  // first byte may be the value itself (23 Oct 2026, tests/learn-bench.mjs: a report id names the command and byte 0
+  // holds the level), so it is tried once more without that rule.
+  for (const firstByte of [true, false]) {
+    for (const m0 of changed[0]) {
+      const group = [];
+      for (const c of changed) {
+        const pick = lastOf(c.filter((x) => sameShape(x, m0) && (!firstByte || x.data[0] === m0.data[0]) && diffCount(x, m0) <= MAX_DIFF));
+        if (!pick) { group.length = 0; break; }
+        group.push(pick);
+      }
+      if (!group.length) continue;
+      const sig = group.map(keyOf).join('|');
+      if (seen.has(sig)) continue;
+      seen.add(sig);
+      const len = m0.data.length, D = [];
+      for (let i = 0; i < len; i++) if (group.some((m) => m.data[i] !== group[0].data[i])) D.push(i);
+      if (D.length && D.length <= MAX_DIFF) fams.push({ group, D, len });
     }
-    if (!group.length) continue;
-    const sig = group.map(keyOf).join('|');
-    if (seen.has(sig)) continue;
-    seen.add(sig);
-    const len = m0.data.length, D = [];
-    for (let i = 0; i < len; i++) if (group.some((m) => m.data[i] !== group[0].data[i])) D.push(i);
-    if (D.length && D.length <= MAX_DIFF) fams.push({ group, D, len });
+    if (fams.length) break;
   }
   if (!fams.length) return refuse(`No message changed in step with ${label}: the app's messages for each value are too different to compare. Record again, changing only ${label}.`);
 
@@ -220,31 +342,78 @@ export function analyze(takes, setting) {
     const sameReport = takes.flatMap((t) => t.messages.filter((m) => m.dir === 'out' && sameShape(m, f.group[0])));
     const cs = findChecksum(f.D, sameReport);
     const R = f.D.filter((p) => !csPositions(cs).includes(p));
-    const enc = kind === 'number' ? explainNumber(f.group, values, R, cs, f.len) : explainMap(f.group, values, R);
+    let enc = explainAs(kind, f.group, values, R, cs, f.len);
+    if (!enc.length && kind !== 'color') enc = explainCopies(f.group, values, R, cs, f.len, kind);
+    // A whole settings block written back (23 Oct 2026, tests/learn-bench.mjs): the app read the block, changed one byte
+    // and wrote it back, so other bytes moved too (another setting changed between recordings). The bytes that equal
+    // the block just read are copied from a FRESH read by the driver, never sent as recorded: a recorded block would
+    // put back every other setting as it was when it was recorded.
+    let block = null;
+    if (!enc.length) {
+      block = blockOf(takes, f, cs);
+      if (block) {
+        const R2 = R.filter((p) => !block.copied.includes(p));
+        enc = R2.length ? explainAs(kind, f.group, values, R2, cs, f.len) : [];
+        enc = enc.filter((e) => ![...Array(e.size).keys()].some((k) => block.copied.includes(e.offset + k)));
+        if (!enc.length) block = null;
+      }
+    }
     const what = `the ${f.group[0].type} report${f.group[0].reportId ? ` ${f.group[0].reportId}` : ''} starting ${hexOf(f.group[0].data.slice(0, 3))}`;
     if (!enc.length) { unexplained.push(`${what}: byte${R.length === 1 ? '' : 's'} ${R.join(', ')} changed, but not in a way that gives ${values.map(show).join(', ')}`); continue; }
-    explained.push({ ...f, cs, enc, what });
+    explained.push({ ...f, cs, enc, what, block });
   }
   if (!explained.length) {
     return refuse([`DeviceHub found no bytes that hold ${label}.`, ...unexplained.slice(0, 4).map((x) => `In ${x}.`),
-      'A byte other than the value may have changed (a counter or a whole block of settings): DeviceHub only learns messages where just the value moves.']);
+      'A byte other than the value may have changed (a counter or a whole block of settings): DeviceHub only learns messages where just the value moves.',
+      `Record again, changing only ${label} and nothing else in the app. If it comes out the same: ${SKIP}`]);
   }
   const needMore = takes.length < 3;
+  // The same value sent the same way in two messages (23 Oct 2026, a published Keychron K3 capture: the colour in a short
+  // message and again in a longer one): either sets it, and the read after every write checks it took. The shortest
+  // (fewest bytes besides zeros) is used; the others are named in the evidence.
+  let also = 0;
+  if (explained.length > 1) {
+    const sig = (e) => { const x = e.enc[0]; return JSON.stringify([e.group[0].type, e.group[0].reportId, e.len, e.enc.length, x.offset, x.size, x.endian, x.scale, x.add, x.codes, x.color, x.copies, !!e.block]); };
+    if (explained.every((e) => sig(e) === sig(explained[0]))) {
+      const busy = (e) => e.group[0].data.filter((b) => b !== 0).length;
+      also = explained.length - 1;
+      explained.sort((a, b) => busy(a) - busy(b));
+      explained.length = 1;
+    }
+  }
   if (explained.length > 1) {
     return refuse([`More than one message changed with ${label} (${explained.map((e) => e.what).join('; ')}), so DeviceHub cannot tell which one sets it.`,
-      needMore ? 'Record one more, different value: that often settles it.' : 'A third value did not settle it, so this setting cannot be learned here.'], { ambiguous: true, needMore });
+      needMore ? 'Record one more, different value: that often settles it.' : `A third value did not settle it, so this setting cannot be learned here. ${SKIP}`], { ambiguous: true, needMore });
   }
-  const w = explained[0];
+  let w = explained[0];
+  // The plainest message that carries the value (23 Oct 2026, tests/learn-bench.mjs two-messages): an app that sends
+  // the value in a short message and then in a longer one (that also sets other things) groups as one command, and the
+  // last of each recording is the longer one. When a message of the same command and shape, with the fewest bytes besides
+  // zeros, holds every recording's value at the same place, and compared across recordings it moves only there, it is
+  // the write instead.
+  if (w.enc.filter((x) => tie(x, w.enc[0])).length === 1 && !w.block) {
+    const e = w.enc[0], places = e.copies || [e.offset];
+    const holds = (d, i) => places.every((o) => (e.color ? same(d.slice(o, o + 3), rgbOf(values[i])) : e.codes ? d[o] === e.codes[i] : near(readNum(d, o, e.size, e.endian) * e.scale + e.add, values[i])));
+    const busy = (m) => m.data.filter((b) => b !== 0).length;
+    const alt = takes.map((t, i) => t.messages.filter((m) => m.dir === 'out' && sameShape(m, w.group[i]) && m.data[0] === w.group[i].data[0] && holds(m.data, i)).sort((a, b) => busy(a) - busy(b))[0]);
+    if (alt.every(Boolean) && alt.some((m, i) => m !== w.group[i]) && busy(alt[0]) < busy(w.group[0])) {
+      const D = [];
+      for (let i = 0; i < w.len; i++) if (alt.some((m) => m.data[i] !== alt[0].data[i])) D.push(i);
+      const R = D.filter((p) => !csPositions(w.cs).includes(p));
+      const enc2 = explainAs(kind, alt, values, R, w.cs, w.len);
+      if (enc2.length && enc2[0].offset === e.offset && enc2[0].size === e.size && enc2.filter((x) => tie(x, enc2[0])).length === 1) { w = { ...w, group: alt, D, enc: enc2 }; also++; }
+    }
+  }
   const top = w.enc.filter((e) => tie(e, w.enc[0]));
   if (top.length > 1) {
     return refuse([`The value could sit in more than one place (${top.map(where).join(' or ')}).`,
-      needMore ? 'Record one more value, far from the other two (for a number, one above 255): that settles it.' : 'Three values did not settle it, so this setting cannot be learned here.'], { ambiguous: true, needMore });
+      needMore ? 'Record one more value, far from the other two (for a number, one above 255): that settles it.' : `Three values did not settle it, so this setting cannot be learned here. ${SKIP}`], { ambiguous: true, needMore });
   }
   const enc = top[0];
 
   // the regular read whose reply carries the value
   const transport = w.group[0].type;
-  if (transport === 'input') return refuse('The value went out as an input report, which a driver cannot send.');
+  if (transport === 'input') return refuse(['The value went out as an input report, which a driver cannot send.', SKIP]);
   const replyType = transport === 'output' ? 'input' : 'feature';
   const pairsOf = (t, after) => {
     const ms = t.messages, out = [];
@@ -281,12 +450,30 @@ export function analyze(takes, setting) {
         }));
       }
       for (const f of fields) reads.push({ key: k, chosen, field: f });
+    } else if (kind === 'color') {
+      const want = values.map(rgbOf);
+      for (let o = 0; o + 3 <= rl; o++) if (replies.every((r, i) => r.data[o] === want[i][0] && r.data[o + 1] === want[i][1] && r.data[o + 2] === want[i][2])) reads.push({ key: k, chosen, field: { offset: o, size: 3, color: true, rank: [0, 3, 0, 0] } });
     } else {
       for (let o = 0; o < rl; o++) {
         const codes = replies.map((r) => r.data[o]);
         if (new Set(codes).size !== codes.length) continue;
         reads.push({ key: k, chosen, field: { offset: o, size: 1, codes, rank: [same(codes, enc.codes) ? 0 : 1, 1, 0, 0] } });
       }
+    }
+  }
+  // A settings block (23 Oct 2026): apps that write the whole block often do not read it again afterwards; the device's
+  // answer to the write is the updated block. Then the block read is the read, at the value's own place, but only when
+  // that answer shows the new value there in every recording.
+  if (!reads.length && w.block) {
+    const decodes = (d, i) => (enc.color ? same(d.slice(enc.offset, enc.offset + 3), rgbOf(values[i])) : enc.codes ? d[enc.offset] === enc.codes[i] : near(readNum(d, enc.offset, enc.size, enc.endian) * enc.scale + enc.add, values[i]));
+    const answers = takes.map((t, i) => {
+      const ms = t.messages, from = ms.indexOf(w.group[i]);
+      return ms.slice(from + 1).find((m) => m.dir === 'in' && m.type === replyType && m.data.length === w.len && m.ts - w.group[i].ts <= PAIR_S && (transport === 'output' || m.reportId === w.group[i].reportId)) || null;
+    });
+    if (answers.every((a, i) => a && decodes(a.data, i))) {
+      const req = w.block.req;
+      const chosen = takes.map((t, i) => ({ req, reply: answers[i] }));
+      reads.push({ key: keyOf(req), chosen, field: { offset: enc.offset, size: enc.size, ...(enc.color ? { color: true } : enc.codes ? { codes: enc.codes } : { endian: enc.endian, scale: enc.scale, add: enc.add }), rank: [0, 0, 0, 0] } });
     }
   }
   if (!reads.length) {
@@ -297,16 +484,21 @@ export function analyze(takes, setting) {
   reads.sort(cmp);
   // the smallest field at each place wins over a wider one around it
   const best = reads.filter((r) => cmp(r, reads[0]) === 0);
-  const places = [...new Map(best.map((r) => [`${r.key}@${r.field.offset}`, r])).values()];
+  let places = [...new Map(best.map((r) => [`${r.key}@${r.field.offset}`, r])).values()];
+  // the same reply reporting it in several places, byte for byte alike in every take (a left and a right level, DPI X
+  // and Y): one value, read from the first place
+  if (places.length > 1 && places.every((r) => r.key === places[0].key && r.field.size === places[0].field.size)) {
+    const at = (r) => r.chosen.map((c) => hexOf(c.reply.data.slice(r.field.offset, r.field.offset + r.field.size))).join('|');
+    if (places.every((r) => at(r) === at(places[0]))) places = [places.sort((a, b) => a.field.offset - b.field.offset)[0]];
+  }
   if (places.length > 1) {
     return refuse([`More than one reply reports ${label} (${places.slice(0, 3).map((r) => `byte ${r.field.offset} of the reply to ${hexOf(r.chosen[0].req.data.slice(0, 3))}`).join('; ')}).`,
-      needMore ? 'Record one more, different value: that settles it.' : 'Three values did not settle it, so this setting cannot be learned here.'], { ambiguous: true, needMore });
+      needMore ? 'Record one more, different value: that settles it.' : `Three values did not settle it, so this setting cannot be learned here. ${SKIP}`], { ambiguous: true, needMore });
   }
   const rd = places[0];
 
   // replies repeat the start of their request (how the driver matches them): the reads' and the write's
-  const echoLen = (a, b) => { let k = 0; while (k < Math.min(a.length, b.length, 4) && a[k] === b[k]) k++; return k; };
-  let echo = Math.min(...rd.chosen.map((c) => echoLen(c.req.data, c.reply.data)));
+  let echo = commonEcho(rd.chosen.map((c) => echoAt(c.req.data, c.reply.data)));
   const writeReplies = [];
   for (let i = 0; i < takes.length; i++) {
     const wm = w.group[i];
@@ -316,28 +508,56 @@ export function analyze(takes, setting) {
     for (let k = from + 1; k < ms.length; k++) {
       const m = ms[k];
       if (m.ts - wm.ts > PAIR_S || (m.dir === 'out' && m.type === transport)) break;
-      if (m.dir === 'in' && m.type === replyType && (transport === 'output' || m.reportId === wm.reportId) && echoLen(wm.data, m.data) >= 1) { r = m; break; }
+      if (m.dir === 'in' && m.type === replyType && (transport === 'output' || m.reportId === wm.reportId) && echoAt(wm.data, m.data).length) { r = m; break; }
     }
-    if (!r) return refuse([`The device did not answer the write of ${label} in recording ${i + 1}.`, 'DeviceHub only writes what the device answers and can read back, so this setting cannot be learned here.']);
+    if (!r) return refuse([`The device did not answer the write of ${label} in recording ${i + 1}.`, 'DeviceHub only writes what the device answers and can read back, so this setting cannot be learned here.', `If the device was asleep or unplugged then, wake it and record that value again; otherwise: ${SKIP}`]);
     writeReplies.push(r);
-    echo = Math.min(echo, echoLen(wm.data, r.data));
+    echo = commonEcho([echo, echoAt(wm.data, r.data)]);
   }
-  if (echo < 1) return refuse('The device\'s replies do not repeat the start of the request, so DeviceHub cannot tell which reply answers which request.');
-  if (rd.chosen[0].req.data.length !== w.len) return refuse('The read and the write use reports of different lengths; one driver.json uses one report length.');
+  // feature reports need none: the get right after the set is the answer (output reports' replies arrive on their own)
+  if (!echo.length && transport !== 'feature') return refuse(['The device\'s replies do not repeat any part of the request, so DeviceHub cannot tell which reply answers which request.', SKIP]);
+  if (rd.chosen[0].req.data.length !== w.len) return refuse(['The read and the write use reports of different lengths; one driver.json uses one report length.', SKIP]);
+  // A save after the write (23 Oct 2026, tests/learn-bench.mjs: SteelSeries-like "save to memory"): the next message the
+  // app sent after the write's reply, the same in every take, never sent before the write in that take, not the read.
+  // Sent again by the driver after the new value reads back (write.then); without it the setting may not last.
+  let then = null, thenNote = null;
+  {
+    const next = takes.map((t, i) => {
+      const ms = t.messages, from = ms.indexOf(writeReplies[i]);
+      const q = ms.slice(from + 1).find((m) => m.dir === 'out' && m.type === transport);
+      return q && q.ts - writeReplies[i].ts <= 2 * PAIR_S ? q : null;
+    });
+    const k0 = next[0] && keyOf(next[0]);
+    const before = (t, i) => t.messages.slice(0, t.messages.indexOf(w.group[i])).some((m) => keyOf(m) === k0);
+    if (k0 && next.every((q) => q && keyOf(q) === k0) && keyOf(rd.chosen[0].req) !== k0 && !takes.some(before) && next[0].data.length === w.len) {
+      // its reply, as the driver will wait for one
+      const answered = takes.every((t, i) => {
+        const ms = t.messages, at = ms.indexOf(next[i]);
+        return ms.slice(at + 1).some((m) => m.dir === 'in' && m.type === replyType && m.ts - next[i].ts <= PAIR_S && echo.every((p) => m.data[p] === next[i].data[p]));
+      });
+      if (answered) then = { reportId: next[0].reportId, data: next[0].data };
+      else thenNote = `After each change the app also sent ${hexOf(next[0].data.slice(0, 4))}... (a save?), which the device did not answer, so DeviceHub does not send it: the setting may not last when the device is unplugged.`;
+    }
+  }
   const allReplies = [...rd.chosen.map((c) => c.reply), ...writeReplies];
   const replyChecksum = !!w.cs && allReplies.every((r) => csHolds(r.data, w.cs));
-  const plain = (e) => ({ offset: e.offset, size: e.size, ...(e.endian && e.size > 1 ? { endian: e.endian } : {}), ...(e.codes ? { codes: e.codes } : { scale: e.scale, add: e.add }) });
+  const plain = (e) => ({ offset: e.offset, size: e.size, ...(e.endian && e.size > 1 && !e.color ? { endian: e.endian } : {}), ...(e.color ? { color: true } : e.codes ? { codes: e.codes } : { scale: e.scale, add: e.add }), ...(e.copies ? { copies: e.copies } : {}) });
   const learned = {
     label, kind, unit: setting.unit || '', options: setting.options || null, values,
     transport: { report: transport, len: w.len, reportId: w.group[0].reportId },
-    checksum: w.cs, replyChecksum, echo,
-    write: { reportId: w.group[0].reportId, data: w.group.map((m) => m.data), enc: plain(enc) },
+    checksum: w.cs, replyChecksum, echo, ...(counter ? { counter: { at: counter.at, step: counter.step } } : {}),
+    write: { reportId: w.group[0].reportId, data: w.group.map((m) => m.data), enc: plain(enc), ...(then ? { then } : {}),
+      ...(w.block ? { block: { reportId: w.block.req.reportId, data: w.block.req.data, replies: w.block.replies, copied: w.block.copied.filter((p) => p < enc.offset || p >= enc.offset + enc.size) } } : {}) },
     read: { reportId: rd.chosen[0].req.reportId, data: rd.chosen[0].req.data, field: plain(rd.field) },
   };
   learned.evidence = [
-    `The write: ${w.what}, ${label} in ${where(enc)}${kind === 'number' ? ` as the number${howScaled(enc)}` : `, one code per value (${enc.codes.map((c, i) => `${show(values[i])} = ${hexOf([c])}`).join(', ')})`}.`,
+    `The write: ${w.what}, ${label} in ${where(enc)}${enc.copies ? ` (and again at byte${enc.copies.length > 2 ? 's' : ''} ${enc.copies.slice(1).join(', ')})` : ''}${kind === 'number' ? ` as the number${howScaled(enc)}` : kind === 'color' ? ' as red, green and blue' : `, one code per value (${enc.codes.map((c, i) => `${show(values[i])} = ${hexOf([c])}`).join(', ')})`}.`,
+    also ? `The app also sent ${label} the same way in ${also === 1 ? 'another, longer message' : `${also} other, longer messages`}; DeviceHub sends the shortest and reads it back.` : null,
     w.cs ? `Byte ${w.cs.at} is a checksum (${w.cs.type === 'xor' ? 'XOR' : w.cs.type === 'sum8' ? 'sum' : '16-bit sum'} of bytes ${w.cs.from}-${w.cs.to}); DeviceHub works it out.` : null,
     `The read: ${hexOf(learned.read.data.slice(0, 4))}..., its reply reports ${label} in ${where(rd.field)}.`,
+    w.block ? `The app read the device's settings block (${hexOf(w.block.req.data.slice(0, 3))}...) and wrote it back with ${label} changed; DeviceHub does the same, copying the other ${w.block.copied.length} bytes from a fresh read so no other setting is put back.` : null,
+    counter ? `Byte ${counter.at} is a message number that goes up by ${counter.step} each time; DeviceHub keeps its own.` : null,
+    then ? `After each change the app saved it with ${hexOf(then.data.slice(0, 4))}...; DeviceHub does the same once the new value reads back.` : thenNote,
     `Seen for every value: ${values.map(show).join(', ')}.`,
   ].filter(Boolean);
   learned.writeBytes = w.group.map((m) => hexOf(m.data));
@@ -358,14 +578,12 @@ export function analyzeReading(takes, setting) {
   if (!Array.isArray(takes) || !takes.length) return refuse('Record it first.');
   const values = takes.map((t) => t.value);
   const kindOf = values.every((v) => typeof v === 'number' && Number.isFinite(v)) ? 'number' : values.every((v) => typeof v === 'boolean') ? 'toggle' : 'words';
-  if (battery && !(kindOf === 'number' && values.every((v) => Number.isInteger(v) && v >= 0 && v <= 100))) return refuse('A battery level is a percent: a whole number from 0 to 100.');
-  if (role === 'charging' && kindOf !== 'toggle') return refuse('Charging is on or off.');
+  if (battery && !(kindOf === 'number' && values.every((v) => Number.isInteger(v) && v >= 0 && v <= 100))) return refuse('A battery level is a percent: a whole number from 0 to 100. Start it over and enter the percent the maker\'s app shows.');
+  if (role === 'charging' && kindOf !== 'toggle') return refuse('Charging is on or off. Start it over and pick on or off for each recording.');
   if (!battery && takes.length < 2) return refuse('Record at least two values first.');
   if (new Set(values.map((v) => JSON.stringify(v))).size !== values.length) return refuse(battery ? 'Each recording needs a different percent. Record again once the maker\'s app shows another one.' : 'Each recording needs a different value.');
   if (takes.some((t) => !t.messages.some((m) => m.dir === 'in'))) return refuse(`In recording ${takes.findIndex((t) => !t.messages.some((m) => m.dir === 'in')) + 1} the device sent nothing. Keep the maker's app open while DeviceHub listens, then record that value again.`);
   const one = takes.length === 1;
-  const echoLen = (a, b) => { let k = 0; while (k < Math.min(a.length, b.length, 4) && a[k] === b[k]) k++; return k; };
-
   // each take: the requests with their replies (the last of each request), and the input reports that answer nothing
   const split = (t) => {
     const ms = t.messages, pairs = new Map(), notices = new Map(), used = new Set();
@@ -376,7 +594,7 @@ export function analyzeReading(takes, setting) {
         if (r.ts - q.ts > PAIR_S) break;
         if (q.dir !== 'out' || used.has(k)) continue;
         const fits = q.type === 'output' ? r.type === 'input' : q.type === 'feature' && r.type === 'feature' && q.reportId === r.reportId;
-        if (fits && echoLen(q.data, r.data) >= 1) { used.add(k); pairs.set(keyOf(q), { req: q, reply: r }); return; }
+        if (fits && echoAt(q.data, r.data).length) { used.add(k); pairs.set(keyOf(q), { req: q, reply: r }); return; }
         if (fits) break;
       }
       if (r.type === 'input' && r.data.length > 1) notices.set(`${r.reportId}:${r.data.length}:${r.data[0]}`, r);
@@ -386,9 +604,11 @@ export function analyzeReading(takes, setting) {
   const parts = takes.map(split);
 
   // where in these reports the value sits: [{ offset, size, endian, scale, add } | { offset, size: 1, codes }]
+  // skip: the places the reply repeats from its request (never the value)
   const placesIn = (datas, skip) => {
     const rl = datas[0].length, out = [];
-    for (let o = skip; o < rl; o++) {
+    for (let o = 0; o < rl; o++) {
+      if (skip.includes(o)) continue;
       if (kindOf !== 'number') {
         const codes = datas.map((d) => d[o]);
         if (new Set(codes).size === codes.length) out.push({ offset: o, size: 1, codes, rank: [1, 0, 0] });
@@ -412,14 +632,15 @@ export function analyzeReading(takes, setting) {
     const chosen = parts.map((p) => p.pairs.get(k));
     const r0 = chosen[0].reply;
     if (!chosen.every((c) => c.reply.data.length === r0.data.length && c.reply.reportId === r0.reportId)) continue;
-    const echo = Math.min(...chosen.map((c) => echoLen(c.req.data, c.reply.data)));
+    const echo = commonEcho(chosen.map((c) => echoAt(c.req.data, c.reply.data)));
+    if (!echo.length) continue;
     for (const f of placesIn(chosen.map((c) => c.reply.data), echo)) found.push({ src: 'reply', key: k, chosen, echo, field: f, rank: [0, ...f.rank] });
   }
   // b. a notice: an input report the device sent by itself, the same report and first byte in every take
   for (const [sig, n0] of parts[0].notices) {
     if (!parts.every((p) => p.notices.has(sig))) continue;
     const got = parts.map((p) => p.notices.get(sig));
-    for (const f of placesIn(got.map((n) => n.data), 1)) found.push({ src: 'notice', key: sig, got, field: f, rank: [1, ...f.rank] });
+    for (const f of placesIn(got.map((n) => n.data), [0])) found.push({ src: 'notice', key: sig, got, field: f, rank: [1, ...f.rank] });
   }
   const shown = values.map((v) => (v === true ? 'on' : v === false ? 'off' : String(v))).join(', ');
   if (!found.length) {
@@ -435,14 +656,14 @@ export function analyzeReading(takes, setting) {
     const say = (x) => `byte ${x.field.offset} of ${x.src === 'reply' ? `the reply to ${hexOf(x.chosen[0].req.data.slice(0, 3))}` : `a report the device sends starting ${hexOf(x.got[0].data.slice(0, 2))}`}`;
     return refuse([`More than one place matches ${label} (${places.slice(0, 3).map(say).join('; ')}${places.length > 3 ? ' and more' : ''}).`,
       needMore ? (battery ? 'Record again once the maker\'s app shows another percent: that settles it.' : 'Record one more, different value: that settles it.')
-        : 'Three values did not settle it, so this reading cannot be learned here.'], { ambiguous: true, needMore });
+        : `Three values did not settle it, so this reading cannot be learned here. ${SKIP}`], { ambiguous: true, needMore });
   }
   const x = places[0];
   const plain = (e) => ({ offset: e.offset, size: e.size, ...(e.endian && e.size > 1 ? { endian: e.endian } : {}), ...(e.codes ? { codes: e.codes } : { scale: e.scale, add: e.add }) });
   const learned = { label, kind: 'reading', role, valueKind: kindOf, unit: setting.unit || '', values, write: null, checksum: null, replyChecksum: false };
   if (x.src === 'reply') {
     const q = x.chosen[0].req;
-    if (q.type === 'input') return refuse('The request went out as an input report, which a driver cannot send.');
+    if (q.type === 'input') return refuse(['The request went out as an input report, which a driver cannot send.', SKIP]);
     Object.assign(learned, {
       transport: { report: q.type, len: q.data.length, reportId: q.reportId }, echo: x.echo,
       read: { reportId: q.reportId, data: q.data, field: plain(x.field), replies: x.chosen.map((c) => c.reply.data) },
@@ -482,15 +703,21 @@ const placeholder = (size, endian) => (size === 1 ? '{value}' : `{value:u${size 
 
 // the template for one captured message: its bytes up to the last non-zero one (the rest is padding), the value's bytes
 // as one placeholder, the checksum left out (DeviceHub writes it). Throws when the message cannot be a template.
-function template(data, place, cs) {
+// runs: [{ offset, size, name }] of bytes copied from a read ({name}, a bytes field), for a settings block
+function template(data, place, cs, runs = []) {
   const skip = new Set(csPositions(cs));
+  const at = place ? (place.copies || [place.offset]) : [];
+  const inPlace = (i) => at.some((o) => i >= o && i < o + place.size);
+  const inRun = (i) => runs.some((r) => i >= r.offset && i < r.offset + r.size);
   let end = 0;
-  for (let i = 0; i < data.length; i++) if (!skip.has(i) && (data[i] !== 0 || (place && i >= place.offset && i < place.offset + place.size))) end = i + 1;
-  if (cs && end > cs.at) throw new Error(`it has bytes after its checksum (byte ${cs.at}), which driver.json cannot express`);
+  for (let i = 0; i < data.length; i++) if (!skip.has(i) && (data[i] !== 0 || inPlace(i) || inRun(i))) end = i + 1;
+  if (cs && cs.at > cs.to && end > cs.at) throw new Error(`it has bytes after its checksum (byte ${cs.at}), which driver.json cannot express`);
   const out = [];
   for (let i = 0; i < end;) {
-    if (place && i === place.offset) { out.push(placeholder(place.size, place.endian)); i += place.size; continue; }
-    out.push(hexOf([data[i]])); i++;
+    const run = runs.find((r) => r.offset === i);
+    if (run) { out.push(`{${run.name}}`); i += run.size; continue; }
+    if (place && at.includes(i)) { out.push(place.color ? '{value:rgb}' : placeholder(place.size, place.endian)); i += place.size; continue; }
+    out.push(skip.has(i) ? '00' : hexOf([data[i]])); i++;          // a checksum in front: left 00, DeviceHub writes it
   }
   return out.join(' ') || '00';
 }
@@ -498,6 +725,7 @@ function template(data, place, cs) {
 // the raw code a value is sent as (the inverse of the write's encoding)
 export function codeFor(s, v) {
   const e = s.write.enc;
+  if (e.color) return rgbOf(v) || undefined;
   if (e.codes) { const i = s.values.findIndex((x) => same(x, v)); return i < 0 ? undefined : e.codes[i]; }
   return Math.round((v - e.add) / e.scale);
 }
@@ -514,11 +742,14 @@ export function buildDriver(draft, { date = new Date() } = {}) {
   const heard = ls.filter((s) => s.notice);
   const t0 = asked[0]?.transport || null, cs = sets[0]?.checksum || null;
   for (const s of asked) {
-    if (s.transport.report !== t0.report || s.transport.len !== t0.len) throw new Error(`${s.label} goes over ${s.transport.report} reports of ${s.transport.len} bytes and ${asked[0].label} over ${t0.report} reports of ${t0.len}: one driver.json uses one kind of report`);
+    if (s.transport.report !== t0.report || s.transport.len !== t0.len) throw new Error(`${s.label} goes over ${s.transport.report} reports of ${s.transport.len} bytes and ${asked[0].label} over ${t0.report} reports of ${t0.len}: one driver.json uses one kind of report. Remove one of them here and learn it as its own device.`);
   }
-  for (const s of sets) if (!same(s.checksum, cs)) throw new Error(`${s.label} and ${sets[0].label} use different checksums: one driver.json uses one`);
+  for (const s of sets) if (!same(s.checksum, cs)) throw new Error(`${s.label} and ${sets[0].label} use different checksums: one driver.json uses one. Remove one of them here and learn it as its own device.`);
+  const ctr = sets[0]?.counter || null;
+  for (const s of sets) if (!same(s.counter || null, ctr)) throw new Error(`${s.label} and ${sets[0].label} number their messages differently: one driver.json uses one way. Remove one of them here and learn it as its own device.`);
   if (ls.filter((s) => s.role === 'battery').length > 1) throw new Error('The battery level is learned twice: keep one.');
   if (ls.filter((s) => s.role === 'charging').length > 1) throw new Error('Charging is learned twice: keep one.');
+  if (asked.length && t0?.report !== 'feature' && !commonEcho(asked.map((s) => s.echo)).length) throw new Error('These settings\' replies repeat different parts of their requests, so one driver cannot match them all. Remove the last one learned and learn it as its own device.');
   const tr = t0 || { report: 'output', len: heard[0].notice.len, reportId: heard[0].notice.reportId || 0 };
   const vid = up4(draft.vid), pid = up4(draft.pid);
   const title = String(draft.title || draft.product || `USB device ${vid}:${pid}`).trim().slice(0, 60);
@@ -532,14 +763,14 @@ export function buildDriver(draft, { date = new Date() } = {}) {
     about: `Learned with DeviceHub's learning wizard on ${date.toISOString().slice(0, 10)} from what the maker's app sent while one setting at a time was changed. Every byte in "messages" was seen in those recordings.`,
     vid, pids: [pid],
     hid: { vid, pid, ...(draft.usagePage ? { page: up4(draft.usagePage) } : {}), ...(draft.usage ? { usage: up4(draft.usage) } : {}), len: tr.len, reportId: tr.reportId, ...(heard.length ? { reply: 'raw' } : {}) },
-    transport: { report: tr.report, len: tr.len, reportId: tr.reportId, ...(draft.usagePage ? { usagePage: up4(draft.usagePage) } : {}), timeoutMs: 1000, tries: 2, ...(cs ? { checksum: cs } : {}) },
+    transport: { report: tr.report, len: tr.len, reportId: tr.reportId, ...(draft.usagePage ? { usagePage: up4(draft.usagePage) } : {}), timeoutMs: 1000, tries: 2, ...(cs ? { checksum: cs } : {}), ...(ctr ? { counter: ctr } : {}) },
     links: { usb: { label: 'USB', wireless: false } },
     models: [{ key: 'learned', name: title, pids: { usb: [pid] } }],
-    ...(asked.length ? { replies: { echo: Array.from({ length: Math.min(...asked.map((s) => s.echo)) }, (_, i) => i), ...(replyCs ? { checksum: true } : {}) } } : {}),
+    ...(asked.length ? { replies: { echo: commonEcho(asked.map((s) => s.echo)), ...(replyCs ? { checksum: true } : {}) } } : {}),
     messages: {}, reads: [], fields: {}, settings: [], unsupported: [],
   };
   const keys = sets.map((s) => s.key);
-  const fieldOf = (rn, f, s) => (f.codes
+  const fieldOf = (rn, f, s) => (f.color ? { from: rn, offset: f.offset, size: 3, type: 'bytes' } : f.codes
     ? { from: rn, offset: f.offset, map: Object.fromEntries(f.codes.map((c, i) => [String(c), s.kind === 'toggle' ? s.values[i] === true : s.values[i]])) }
     : { from: rn, offset: f.offset, ...(f.size > 1 ? { size: f.size, endian: f.endian || 'little' } : {}), ...(f.scale !== 1 ? { scale: f.scale } : {}), ...(f.add ? { add: f.add } : {}) });
   const askRead = (s) => {
@@ -574,8 +805,27 @@ export function buildDriver(draft, { date = new Date() } = {}) {
     def.fields[s.key] = fieldOf(rn, f, s);
     const wn = `set${s.key[0].toUpperCase()}${s.key.slice(1)}`;
     const e = s.write.enc;
-    def.messages[wn] = { bytes: template(s.write.data[0], e, cs), ...(s.write.reportId !== tr.reportId ? { reportId: s.write.reportId } : {}) };
+    // a settings block: the read it is copied from, and each run of copied bytes as a bytes field of that read
+    const runs = [];
+    if (s.write.block) {
+      const bn = askRead({ read: { data: s.write.block.data, reportId: s.write.block.reportId } });
+      const cp = [...s.write.block.copied].sort((a, b) => a - b);
+      for (let i = 0; i < cp.length;) {
+        let j = i; while (j + 1 < cp.length && cp[j + 1] === cp[j] + 1) j++;
+        const name = `${s.key}Block${runs.length + 1}`;
+        runs.push({ offset: cp[i], size: cp[j] - cp[i] + 1, name });
+        def.fields[name] = { from: bn, offset: cp[i], size: cp[j] - cp[i] + 1, type: 'bytes' };
+        i = j + 1;
+      }
+    }
+    def.messages[wn] = { bytes: template(s.write.data[0], e, cs, runs), ...(s.write.reportId !== tr.reportId ? { reportId: s.write.reportId } : {}) };
     const write = { message: wn, keep: keys.filter((k) => k !== s.key) };
+    if (s.write.then) {
+      const tb = template(s.write.then.data, null, cs);
+      let sn = Object.keys(def.messages).find((n) => n.startsWith('save') && def.messages[n].bytes === tb && (def.messages[n].reportId ?? tr.reportId) === s.write.then.reportId);
+      if (!sn) { sn = `save${Object.keys(def.messages).filter((n) => n.startsWith('save')).length + 1}`; def.messages[sn] = { bytes: tb, ...(s.write.then.reportId !== tr.reportId ? { reportId: s.write.then.reportId } : {}) }; }
+      write.then = sn;
+    }
     if (!write.keep.length) delete write.keep;
     if (e.codes && !same(e.codes, f.codes)) write.encode = { map: Object.fromEntries(e.codes.map((c, i) => [String(s.values[i]), c])) };
     const st = { key: s.key, label: s.label, type: s.kind === 'number' ? 'slider' : s.kind, write };
@@ -601,7 +851,12 @@ export function verifySeen(def, settings, { pid = null } = {}) {
   try { drv = fromJson(def); } catch (e) { return [e.message]; }
   if (pid) drv.usePid(pid);
   const len = forPid(def, pid || def.pids[0]).transport.len;
-  const pad = (d) => { const a = new Uint8Array(len); a.set(d.slice(0, len)); return a; };
+  const ctr = forPid(def, pid || def.pids[0]).transport.counter;
+  const cs = forPid(def, pid || def.pids[0]).transport.checksum;
+  // with a message number the driver fills that byte (and so the checksum) itself: both are left out of the comparison
+  const skipAt = ctr ? [ctr.at, ...(cs && cs.type !== 'none' ? [cs.at, ...(cs.type === 'sum16le' ? [cs.at + 1] : [])] : [])] : [];
+  const pad = (d) => { const a = new Uint8Array(len); a.set(d.slice(0, len)); for (const i of skipAt) a[i] = 0; return a; };
+  const built = (b) => { const a = Uint8Array.from(b.data); for (const i of skipAt) a[i] = 0; return a; };
   const fdef = forPid(def, pid || def.pids[0]).fields;
   const readsAs = (rn, data, key) => drv.fieldsOf({ [rn]: Uint8Array.from(data) }).values[key];
   const sameValue = (a, b) => (typeof a === 'number' && typeof b === 'number' ? near(a, b) : same(a, b));
@@ -611,7 +866,7 @@ export function verifySeen(def, settings, { pid = null } = {}) {
     if (s.read) {
       try {
         const b = drv.build(rn);
-        if (hexOf(b.data) !== hexOf(pad(s.read.data)) || b.reportId !== s.read.reportId) problems.push(`${s.label}: the read it would send is not the one recorded`);
+        if (hexOf(built(b)) !== hexOf(pad(s.read.data)) || b.reportId !== s.read.reportId) problems.push(`${s.label}: the read it would send is not the one recorded`);
       } catch (e) { problems.push(`${s.label}: its read cannot be built (${e.message})`); }
     }
     if (s.kind === 'reading') {
@@ -620,10 +875,15 @@ export function verifySeen(def, settings, { pid = null } = {}) {
       continue;
     }
     const st = def.settings.find((x) => x.key === s.key);
+    if (s.write.then) {
+      try { const b = drv.build(st.write.then); if (hexOf(built(b)) !== hexOf(pad(s.write.then.data)) || b.reportId !== s.write.then.reportId) problems.push(`${s.label}: the save it would send is not the one recorded`); }
+      catch (e) { problems.push(`${s.label}: its save cannot be built (${e.message})`); }
+    }
     s.values.forEach((v, i) => {
       try {
-        const b = drv.build(st.write.message, { value: codeFor(s, v) });
-        if (hexOf(b.data) !== hexOf(pad(s.write.data[i])) || b.reportId !== s.write.reportId) problems.push(`${s.label} = ${show(v)}: the write it would send is not the one recorded`);
+        const raw = s.write.block ? drv.fieldsOf({ [fdef[`${s.key}Block1`]?.from]: Uint8Array.from(s.write.block.replies[i]) }).raw : undefined;
+        const b = drv.build(st.write.message, { value: codeFor(s, v), raw });
+        if (hexOf(built(b)) !== hexOf(pad(s.write.data[i])) || b.reportId !== s.write.reportId) problems.push(`${s.label} = ${show(v)}: the write it would send is not the one recorded`);
       } catch (e) { problems.push(`${s.label} = ${show(v)}: its write cannot be built (${e.message})`); }
     });
   }
@@ -640,8 +900,8 @@ export function withRange(learned, { min, max, step } = {}, taken = []) {
   min = min === '' || min == null ? Math.min(...vs) : Number(min);
   max = max === '' || max == null ? Math.max(...vs) : Number(max);
   step = step === '' || step == null ? (Number.isInteger(e.scale) ? e.scale : 1) : Number(step);
-  if (![min, max, step].every(Number.isFinite) || !(max > min) || !(step > 0)) return { why: 'The lowest value must be below the highest, and the step above 0.' };
-  if (!vs.every((v) => v >= min && v <= max)) return { why: `The range must include the values you recorded (${vs.join(', ')}).` };
+  if (![min, max, step].every(Number.isFinite) || !(max > min) || !(step > 0)) return { why: 'The lowest value must be below the highest, and the step above 0. Change the range and try again.' };
+  if (!vs.every((v) => v >= min && v <= max)) return { why: `The range must include the values you recorded (${vs.join(', ')}). Change the range so it does, and try again.` };
   const top = 2 ** (8 * e.size) - 1;
   const rawMax = (max - e.add) / e.scale, rawMin = (min - e.add) / e.scale;
   if (rawMax > top || rawMin < 0) return { why: `${learned.label} sits in ${e.size === 1 ? 'one byte' : `${e.size} bytes`} in what was recorded, which holds only ${e.add}-${e.add + e.scale * top}. Learn it again with values further apart (one above ${e.add + e.scale * 255}) if the app goes higher.` };
@@ -774,12 +1034,12 @@ export function mergeDriver(base, add) {
   const tb = base.transport || {}, ta = add.transport || {};
   // only heard notices (nothing sent): the report kind, checksum and reply matching do not come into it
   const sends = Object.keys(add.messages || {}).length > 0;
-  if (sends && (tb.report !== ta.report || tb.len !== ta.len || (tb.reportId || 0) !== (ta.reportId || 0))) throw new Error(`The driver it has talks over ${tb.report} reports of ${tb.len} bytes (id ${tb.reportId || 0}) and the recording over ${ta.report} reports of ${ta.len} bytes (id ${ta.reportId || 0}): one driver.json uses one kind, so the setting was not added.`);
-  if (sends && Object.keys(add.fields || {}).some((k) => (add.settings || []).some((s) => s.key === k && s.write)) && !same(tb.checksum || null, ta.checksum || null)) throw new Error('The driver it has and the recording use different checksums, so the setting was not added.');
-  const echo = base.replies?.echo || [], n = (add.replies?.echo || []).length;
-  if (sends && echo.some((i) => i >= n)) throw new Error('The driver it has matches replies on more bytes than the device repeated in the recording, so the setting was not added.');
-  if (add.battery && base.battery) throw new Error('The driver it has reads the battery already, so the battery level was not added.');
-  if ((add.reads || []).some((r) => r.notice) && base.hid && base.hid.reply !== 'raw') throw new Error('The driver it has does not listen to what the device sends by itself, so that reading was not added.');
+  if (sends && (tb.report !== ta.report || tb.len !== ta.len || (tb.reportId || 0) !== (ta.reportId || 0))) throw new Error(`The driver it has talks over ${tb.report} reports of ${tb.len} bytes (id ${tb.reportId || 0}) and the recording over ${ta.report} reports of ${ta.len} bytes (id ${ta.reportId || 0}): one driver.json uses one kind, so the setting was not added. ${SKIP}`);
+  if (sends && Object.keys(add.fields || {}).some((k) => (add.settings || []).some((s) => s.key === k && s.write)) && !same(tb.checksum || null, ta.checksum || null)) throw new Error(`The driver it has and the recording use different checksums, so the setting was not added. ${SKIP}`);
+  const echo = base.replies?.echo || [], addEcho = add.replies?.echo || [];
+  if (sends && echo.some((i) => !addEcho.includes(i))) throw new Error(`The driver it has matches replies on more bytes than the device repeated in the recording, so the setting was not added. ${SKIP}`);
+  if (add.battery && base.battery) throw new Error('The driver it has reads the battery already, so the battery level was not added. Nothing to do: its page shows it.');
+  if ((add.reads || []).some((r) => r.notice) && base.hid && base.hid.reply !== 'raw') throw new Error(`The driver it has does not listen to what the device sends by itself, so that reading was not added. ${SKIP}`);
   const out = JSON.parse(JSON.stringify(base));
   out.messages = out.messages || {}; out.reads = out.reads || []; out.fields = out.fields || {}; out.settings = out.settings || [];
   const ren = {};
@@ -799,7 +1059,7 @@ export function mergeDriver(base, add) {
     out.reads.push({ ...r, name: ren[r.name] || r.name, message: ren[r.message] || r.message });
   }
   for (const [k, fl] of Object.entries(add.fields || {})) {
-    if (out.fields[k] || out.settings.some((s) => s.key === k)) throw new Error(`The driver it has already has a setting called "${k}".`);
+    if (out.fields[k] || out.settings.some((s) => s.key === k)) throw new Error(`The driver it has already has a setting called "${k}". Skip it: the driver has it.`);
     out.fields[k] = { ...fl, from: ren[fl.from] || fl.from };
   }
   for (const s of add.settings || []) out.settings.push(s.write ? { ...s, write: { ...s.write, message: ren[s.write.message] || s.write.message } } : { ...s });
@@ -813,11 +1073,11 @@ export function mergeDriver(base, add) {
 // then replaced (temp file, then rename); library.json gets learnedKeys. Never anywhere but my-devices.
 export function saveInto(folder, def, keys, { root = ROOT, now = () => new Date() } = {}) {
   const dir = path.resolve(folder);
-  if (path.dirname(dir) !== path.resolve(root, 'my-devices')) return { ok: false, why: ['only a driver in my-devices can take learned settings'] };
+  if (path.dirname(dir) !== path.resolve(root, 'my-devices')) return { ok: false, why: ['Only a driver in my-devices can take learned settings. Pick the device again and learn it as its own driver.'] };
   const v = validate(def);
   if (!v.ok) return { ok: false, why: v.problems };
   const mark = libraryMark(dir);
-  if (!mark || !fs.existsSync(path.join(dir, 'driver.json'))) return { ok: false, why: ['that folder has no driver.json from the library or the wizard'] };
+  if (!mark || !fs.existsSync(path.join(dir, 'driver.json'))) return { ok: false, why: ['That folder has no driver.json from the library or the wizard. Pick the device again and learn it as its own driver.'] };
   const stamp = now().toISOString().replace(/[:.]/g, '-');
   const back = path.join(root, 'backups', `learn-${path.basename(dir)}-${stamp}`);
   fs.mkdirSync(back, { recursive: true });
@@ -836,8 +1096,8 @@ export function saveInto(folder, def, keys, { root = ROOT, now = () => new Date(
 // and codes (docs/DRIVER-FORMAT.md). Throws a plain sentence when the two cannot be one driver.
 export function addPid(base, other, { pid, link = 'cable' } = {}) {
   pid = up4(pid);
-  if ((base.pids || []).map(up4).includes(pid)) throw new Error(`USB id ${pid} is in this driver already.`);
-  if (up4(base.vid) !== up4(other.vid)) throw new Error('That is another maker\'s device (another USB vendor id), so it cannot share this driver.');
+  if ((base.pids || []).map(up4).includes(pid)) throw new Error(`USB id ${pid} is in this driver already. Nothing to do: it works on that id now.`);
+  if (up4(base.vid) !== up4(other.vid)) throw new Error('That is another maker\'s device (another USB vendor id), so it cannot share this driver. Learn it as its own device: Pick another device, then this one.');
   const names = (o) => Object.keys(o || {}).sort().join();
   const readsOf = (d) => (d.reads || []).map((r) => `${r.name}:${r.notice ? 'notice' : r.message}`).sort().join();
   if (names(base.messages) !== names(other.messages) || readsOf(base) !== readsOf(other) || names(base.fields) !== names(other.fields)) {
@@ -896,7 +1156,7 @@ export const deps = {
   async listHid() {
     const r = await PS(['-File', path.join(HERE, 'learn-hid-list.ps1')]);
     const at = r.out.indexOf('{');
-    if (at < 0) throw new Error('the device list could not be read');
+    if (at < 0) throw new Error('DeviceHub could not read the list of USB devices. Press Look again; if it stays, restart DeviceHub.');
     return JSON.parse(r.out.slice(at));
   },
   // the ids DeviceHub already runs: its own drivers (pc-map RUNS), the person's own my-devices drivers (mine, hidden),
@@ -957,6 +1217,15 @@ let lastSaved = null;
 export const current = () => session;
 export function reset() { session = null; listed = []; lastSaved = null; }
 
+// for helpers/learn-auto.mjs: the device list (as GET /api/learn/devices makes it), and the recording in progress so far
+// (the messages to and from the device; a recording still being written reads up to its last whole packet)
+export const refreshDevices = () => listDevices();
+export const status = () => summary();
+export function peek() {
+  if (!session?.recording) return null;
+  const dev = session.device;
+  return takeMessages(options.deps.readTake(session.dir, session.recording.take), { vid: dev.vid, pid: dev.pid, idsOut: usesIds(dev, 'outIds'), idsIn: usesIds(dev, 'inIds') });
+}
 async function listDevices() {
   const { root, deps: d } = options;
   const own = d.owned(root);
@@ -977,9 +1246,9 @@ async function listDevices() {
   return listed;
 }
 
-async function command(dir, verb, arg, want, ms = 15000) {
+async function command(dir, verb, arg, want, ms = 15000, holder = session) {
   const { deps: d } = options;
-  const seq = (session.seq = (session.seq || 0) + 1);
+  const seq = (holder.seq = (holder.seq || 0) + 1);
   d.writeCommand(dir, `${seq} ${verb}${arg ? ` ${arg}` : ''}`);
   for (let t = 0; t < ms; t += 200) {
     const s = d.readState(dir);
@@ -1016,9 +1285,11 @@ function summary() {
 const clean = (s, max = 60) => String(s ?? '').replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, max);
 const onOff = (v) => (v === true || v === 'on' || v === 'true' ? true : v === false || v === 'off' || v === 'false' ? false : undefined);
 // a value as the person typed it; a reading's by its role (battery: a percent; charging: on/off; else a number or a word)
+const COLOR_NAMES = { red: '#ff0000', green: '#00ff00', blue: '#0000ff', white: '#ffffff', black: '#000000', yellow: '#ffff00', cyan: '#00ffff', magenta: '#ff00ff', purple: '#800080', orange: '#ff8000' };
 function parseValue(kind, v, { role = null, numbers = null } = {}) {
   if (kind === 'number') { const n = Number(String(v).trim()); return String(v).trim() !== '' && Number.isFinite(n) ? n : undefined; }
   if (kind === 'toggle') return onOff(v);
+  if (kind === 'color') { const c = rgbOf(COLOR_NAMES[String(v ?? '').trim().toLowerCase()] || v); return c ? `#${hexOf(c).replace(/ /g, '').toLowerCase()}` : undefined; }
   if (kind === 'reading') {
     if (role === 'battery') { const n = Number(String(v).trim().replace(/%$/, '')); return String(v).trim() !== '' && Number.isInteger(n) && n >= 0 && n <= 100 ? n : undefined; }
     if (role === 'charging') return onOff(v);
@@ -1077,7 +1348,7 @@ export async function act(name, b = {}) {
     const sec = session.second, cur = sec ? nextOf(sec) : null;
     if (sec && !cur) return { ok: false, error: 'Every setting is learned on this id: add it to the driver.' };
     // on the second id the setting is the saved driver's own; only the values may be new (numbers and percents)
-    const kind = cur ? cur.kind : ['number', 'toggle', 'choice', 'reading'].includes(b.kind) ? b.kind : 'number';
+    const kind = cur ? cur.kind : ['number', 'toggle', 'choice', 'color', 'reading'].includes(b.kind) ? b.kind : 'number';
     const role = cur ? cur.role || null : kind === 'reading' ? (READING_ROLES.includes(b.role) ? b.role : 'display') : null;
     const label = cur ? cur.label : clean(b.label, 40) || (role === 'battery' ? 'Battery' : role === 'charging' ? 'Charging' : '');
     if (!label) return { ok: false, error: kind === 'reading' ? 'Name the reading first (for example ChatMix).' : 'Name the setting first (for example DPI).' };
@@ -1089,7 +1360,7 @@ export async function act(name, b = {}) {
     const values = raw.map((v) => parseValue(kind, v, { role, numbers }));
     const need = kind === 'reading' && role === 'battery' ? 1 : 2;
     if (values.length < need || values.some((v) => v === undefined)) {
-      return { ok: false, error: kind === 'number' ? 'Give two numbers.' : kind === 'toggle' ? 'Give on and off.' : kind === 'choice' ? 'Give two choices as the app names them.'
+      return { ok: false, error: kind === 'number' ? 'Give two numbers.' : kind === 'toggle' ? 'Give on and off.' : kind === 'choice' ? 'Give two choices as the app names them.' : kind === 'color' ? 'Pick two colours (for example red and blue).'
         : role === 'battery' ? 'Give the percent the maker\'s app shows now (0 to 100).' : role === 'charging' ? 'Give charging and not charging.' : 'Give two values the maker\'s app shows for it (numbers or words).' };
     }
     if (new Set(values.map((v) => JSON.stringify(v))).size !== values.length) return { ok: false, error: 'The two values must be different.' };
@@ -1181,7 +1452,7 @@ export async function act(name, b = {}) {
       let folder = session.base.where === 'my-devices' ? session.base.dir : null;
       if (!folder) {
         const inst = await installFromLibrary(session.base.name, { root, readOnly: true, untested: true });
-        if (!inst.ok) return { ok: false, why: [`Its library driver could not be copied to my-devices: ${inst.error}`] };
+        if (!inst.ok) return { ok: false, why: [`Its library driver could not be copied to my-devices: ${inst.error}`, 'Close any window showing the my-devices folder and try again; Get help (top right) tells Shawn if it stays.'] };
         folder = inst.to;
       }
       const r = saveInto(folder, c.driver, keys, { root });
@@ -1254,6 +1525,7 @@ async function drive() {
   const m = session.plan?.maker;
   const manual = (why, extra = {}) => { session.takes = []; return { ok: true, manual: true, why, ...extra, ...summary() }; };
   if (set.kind === 'reading') return manual('DeviceHub only listens for a reading.');
+  if (set.kind === 'color') return manual('DeviceHub cannot pick a colour in the maker\'s app for you.');
   if (!m?.window) return manual(m?.known ? `DeviceHub cannot change settings in ${m.name}.` : 'DeviceHub does not know this maker\'s app.');
   if (!m.running) return manual(`${m.name} is not open.`);
   const app = m.name, win = m.window, label = set.label;
@@ -1306,7 +1578,7 @@ function collectionOf(dev, learned) {
   const col = lead ? collectionFor(dev, lead.transport) : collectionForNotice(dev, noticeOf(learned));
   for (const s of learned.filter((x) => x.notice)) {
     const nc = collectionForNotice(dev, s.notice);
-    if (!nc) return { why: `DeviceHub cannot find the part of the device that sends ${s.label}, so it cannot listen for it.` };
+    if (!nc) return { why: `DeviceHub cannot find the part of the device that sends ${s.label}, so it cannot listen for it. Unplug it and plug it back in, then start this setting over; if it stays: ${SKIP}` };
     if (col && nc !== col) return { why: `${s.label} arrives on another part of the device than ${lead ? lead.label : 'the rest'}, and one driver listens to one part. Learn it on its own.` };
   }
   return { col };
@@ -1323,14 +1595,14 @@ function draftCheck(learned, b = {}) {
   const v = validate(def);
   if (!v.ok) return { ok: false, why: v.problems, driver: def };
   const seen = verifySeen(def, learned);
-  if (seen.length) return { ok: false, why: ['The driver would send something not seen in the recordings, so it was not made.', ...seen], driver: def };
+  if (seen.length) return { ok: false, why: ['The driver would send something not seen in the recordings, so it was not made.', ...seen, 'Remove the last setting learned (it is the likeliest cause) and press Save the driver again; Get help (top right) tells Shawn the rest.'], driver: def };
   if (session.base) {
     let merged;
     try { merged = mergeDriver(session.base.def, def); } catch (e) { return { ok: false, why: [e.message], driver: def }; }
     const mv = validate(merged);
     if (!mv.ok) return { ok: false, why: mv.problems, driver: merged };
     const ms = verifySeen(merged, learned);
-    if (ms.length) return { ok: false, why: ['Added to its driver, it would send something not seen in the recordings, so it was not added.', ...ms], driver: merged };
+    if (ms.length) return { ok: false, why: ['Added to its driver, it would send something not seen in the recordings, so it was not added.', ...ms, `Learn it as its own device instead (Pick another device, then this one), or ${SKIP[0].toLowerCase()}${SKIP.slice(1)}`], driver: merged };
     return { ok: true, driver: merged };
   }
   return { ok: true, driver: def };
@@ -1350,13 +1622,72 @@ function secondCheck() {
   const v = validate(other);
   if (!v.ok) return { ok: false, why: v.problems };
   const seen = verifySeen(other, session.learned);
-  if (seen.length) return { ok: false, why: ['On this id the driver would send something not seen in the recordings, so the id was not added.', ...seen] };
+  if (seen.length) return { ok: false, why: ['On this id the driver would send something not seen in the recordings, so the id was not added.', ...seen, 'Learn it on this id as its own device instead: Pick another device, then this one.'] };
   try { r = addPid(sec.def, other, { pid: dev.pid, link: sec.link }); } catch (e) { return { ok: false, why: [e.message] }; }
   const mv = validate(r.def);
   if (!mv.ok) return { ok: false, why: mv.problems, driver: r.def };
   const both = [...verifySeen(r.def, sec.orig), ...verifySeen(r.def, session.learned, { pid: dev.pid })];
-  if (both.length) return { ok: false, why: ['With the id added, the driver would send something not seen in the recordings, so it was not added.', ...both], driver: r.def };
+  if (both.length) return { ok: false, why: ['With the id added, the driver would send something not seen in the recordings, so it was not added.', ...both, 'Learn it on this id as its own device instead: Pick another device, then this one.'] };
   return { ok: true, driver: r.def, same: r.same };
+}
+
+// ---------------------------------------------------------------- Test my learning setup (23 Oct 2026)
+// Everything a learning session needs, tried once before one, with nothing learned and nothing sent to any device:
+// USBPcap is there, the listener starts (Windows' prompt), it records every USB hub for a few seconds, it stops, the
+// recording reads, and it names the USB devices plugged in (and the picked one, given vid/pid). The folder is removed
+// after. { ok, steps: [{ id, ok, says, fix? }] }: the first step that fails says what to do, and the test stops there.
+export const CHECK_MS = 3000;
+export async function checkSetup({ vid = null, pid = null } = {}) {
+  const { root, deps: d } = options;
+  const steps = [];
+  const step = (id, ok, says, fix) => { steps.push({ id, ok: !!ok, says, ...(ok || !fix ? {} : { fix }) }); return !!ok; };
+  const done = () => ({ ok: steps.every((x) => x.ok), steps });
+  if (session?.listening || session?.recording) {
+    step('busy', false, 'A learning session is listening now.', 'Finish it, or press Stop learning, then test again.');
+    return done();
+  }
+  const has = d.usbpcapInstalled();
+  if (!step('usbpcap', has, has ? 'USBPcap is installed.' : 'USBPcap is not installed.', 'Install it (Settings > Optional tools > Show, USBPcap), restart the PC once, then test again.')) return done();
+  const dir = path.join(root, 'learn', 'wizard', `check-${Date.now().toString(36)}`);
+  fs.mkdirSync(dir, { recursive: true });
+  const holder = { seq: 0 };
+  let started = false;
+  try {
+    const r = await d.startCapture(dir);
+    started = !!r.started;
+    if (!step('prompt', r.started, r.started ? 'Windows\' prompt was answered Yes.' : r.declined ? 'Windows\' prompt was answered No.' : `The listener did not start: ${r.error}.`,
+      r.declined ? 'Test again and press Yes: listening to USB needs administrator rights. It only listens.' : 'Restart DeviceHub and test again; Get help (top right) tells Shawn if it stays.')) return done();
+    let s = null;
+    for (let t = 0; t < 15000; t += 200) { s = d.readState(dir); if (s && ['ready', 'error', 'ended'].includes(s.status)) break; await d.sleep(200); }
+    const hubs = Number(s?.hubs) || 0;
+    if (!step('ready', s?.status === 'ready', s?.status === 'ready' ? `It listens on ${hubs} USB hub${hubs === 1 ? '' : 's'}.` : s?.error ? `The listener says: ${s.error}.` : 'The listener did not answer.',
+      /restart the PC/i.test(s?.error || '') || !s ? 'Restart the PC once (USBPcap needs it after installing), then test again.' : 'Restart the PC, then test again; Get help (top right) tells Shawn if it stays.')) return done();
+    s = await command(dir, 'start', 'check', 'recording', 15000, holder);
+    if (!step('record', s.status === 'recording', s.status === 'recording' ? 'It started recording.' : `It did not start recording${s.error ? `: ${s.error}` : ''}.`,
+      'Restart the PC once, then test again; Get help (top right) tells Shawn if it stays.')) return done();
+    await d.sleep(CHECK_MS);
+    s = await command(dir, 'stop', null, 'stopped', 15000, holder);
+    if (!step('stop', s.status === 'stopped', s.status === 'stopped' ? 'It stopped cleanly.' : 'It did not stop cleanly.', 'Test again; Get help (top right) tells Shawn if it stays.')) return done();
+    const bufs = d.readTake(dir, 'check');
+    const recs = [];
+    let bad = 0;
+    for (const b of bufs) { try { recs.push(...readPcapBuffer(b)); } catch { bad++; } }
+    if (!step('read', bufs.length && bad < bufs.length, bufs.length && bad < bufs.length ? `The recording reads (${recs.length} USB message${recs.length === 1 ? '' : 's'} in ${CHECK_MS / 1000} s).` : bufs.length ? 'The recording could not be read.' : 'No recording was saved.',
+      'Test again; Get help (top right) tells Shawn if it stays.')) return done();
+    const found = deviceDescriptors(recs);
+    if (!step('devices', found.size, found.size ? `It names the ${found.size} USB device${found.size === 1 ? '' : 's'} plugged in.` : 'It named no USB device.',
+      'Unplug the device you want to learn and plug it back in, then test again.')) return done();
+    if (vid && pid) {
+      const at = [...found].filter(([, x]) => x.vid === up4(vid) && x.pid === up4(pid)).map(([k]) => k);
+      const heard = at.length ? hidMessages(recs, { at: new Set(at) }).length : 0;
+      step('device', at.length, at.length ? `It finds USB ${up4(vid)}:${up4(pid)}${heard ? ` and heard ${heard} message${heard === 1 ? '' : 's'} from it` : ''}.` : `It does not find USB ${up4(vid)}:${up4(pid)}.`,
+        'Unplug it and plug it back in (a port on the PC itself, not a hub), then test again.');
+    }
+    return done();
+  } finally {
+    if (started) await command(dir, 'quit', null, 'ended', 3000, holder).catch(() => {});
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+  }
 }
 
 // ---------------------------------------------------------------- the route
@@ -1366,7 +1697,8 @@ function secondCheck() {
 //   POST /api/learn/<step>    begin {vid,pid}, listen, setting {label,kind,role?,unit,values}, record {value?}, stop, analyze,
 //                             add {min,max,step}, remove {key}, preview {title,kind}, save {title,kind}, quit,
 //                             second {vid,pid,link: 'cable'|'receiver'} (after a save: the same device on its other USB id),
-//                             drive (after setting + listen: the maker's app changes it through app-ui while DeviceHub records)
+//                             drive (after setting + listen: the maker's app changes it through app-ui while DeviceHub records),
+//                             check {vid?,pid?} (Test my learning setup: checkSetup, no session needed)
 //   kind 'reading' (role battery | charging | display): a value the device reports, never written (analyzeReading)
 export async function handle(url, req, res, send, readBody) {
   if (!url.pathname.startsWith('/api/learn/')) return false;
@@ -1381,6 +1713,7 @@ export async function handle(url, req, res, send, readBody) {
     if (req.method === 'GET' && step === 'state') { send(res, 200, { usbpcap: options.deps.usbpcapInstalled(), ...summary() }); return true; }
     if (req.method !== 'POST') { send(res, 405, { error: 'POST only' }); return true; }
     const b = (await readBody(req)) || {};
+    if (step === 'check') { send(res, 200, await checkSetup(b)); return true; }
     const r = await act(step, b);
     send(res, 200, r);
   } catch (e) { send(res, 500, { ok: false, error: e.message }); }

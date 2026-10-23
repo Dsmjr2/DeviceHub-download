@@ -31,6 +31,12 @@
 //    send (it switches the lighting mode); a Gen 3 board that does not answer without it simply offers no setting;
 //  - Gen 1 firmware: OpenRGB drops the first byte only when it is 0x90; DeviceHub's helper matches a reply by its first
 //    byte, so a Gen 1 reply that does not start with 0x90 shows as "no reply".
+//
+// Added 23 Oct 2026 (OpenRGB @ 817834c, the same files): the Apex 3 (161A), named only. SteelSeriesDevices.h
+// STEELSERIES_APEX_3_PID 0x161A; SteelSeriesControllerDetect.cpp REGISTER_HID_DETECTOR_I "SteelSeries Apex 3",
+// interface 3 (no usage page), DetectSteelSeriesApex3Full -> SteelSeriesApexTZoneController, which only writes
+// (SetColor 00 0A 00 <b> / 00 0B [RGB] x 10, Save 00 06 00 08 / 00 09: 33-byte packets) and reads nothing from the
+// keyboard. So type 'tzone' sends nothing at all: not even the A3 brightness read, which the T-zone controller lacks.
 import { getDevice } from '../../public/devices/hid.js';
 
 export const VID = 0x1038;
@@ -44,6 +50,7 @@ export const LEN = 64;   // STEELSERIES_PACKET_IN_SIZE; out = 64 + the report id
 
 // type 'apex': SteelSeriesApexController (status byte 00 at 1, value at 2, 0-10, firmware read).
 // type '8zone': SteelSeriesApex8ZoneController (value at 1, 0-0x10, no firmware read: GetVersion is "Unsupported protocol").
+// type 'tzone': SteelSeriesApexTZoneController (the Apex 3): no read at all, so the keyboard is named and nothing is sent.
 const WIRED = { iface: 1, page: '*', usage: '*', outputLen: LEN };
 const WIRELESS = { iface: 3, page: 'FFC0', usage: '0001' };
 const k = (name, type, chan) => ({ name, type, chan });
@@ -63,6 +70,7 @@ export const MODELS = {
   '1634': k('Apex 9 TKL', 'apex', WIRED),
   '1620': k('Apex 9 Mini', 'apex', WIRED),
   '1622': k('Apex 3 TKL', '8zone', { iface: 1, page: 'FFC0', usage: '0001' }),   // REGISTER_HID_DETECTOR_IPU 1, 0xFFC0, 1
+  '161A': k('Apex 3', 'tzone', { iface: 3, page: '*', usage: '*' }),               // REGISTER_HID_DETECTOR_I 3 (no page)
 };
 export const PIDS = Object.keys(MODELS);
 export const RANGE = { apex: { min: 0, max: 10 }, '8zone': { min: 0, max: 0x10 } };   // APEX_BRIGHTNESS_MAX; STEELSERIES_8Z_BRIGHTNESS_MAX
@@ -111,11 +119,11 @@ export function createApex({ open = defaultOpen, vendorApp = defaultVendorApp, n
       byPid: Object.fromEntries(PIDS.map((p) => [p, { outputLen: null, ...MODELS[p].chan, productName: `SteelSeries ${MODELS[p].name}` }])) },
     MODELS, WRITE_ONLY, VENDOR_APPS,
     unsupported: ['per-key colours and lighting effects (write-only)', 'profile select (write-only)', 'OmniPoint actuation (no open source documents it)',
-      'the Apex 3 (T-zone), Apex M750 and the old Apex / 350: no read-back', 'firmware updates (SteelSeries GG only)'],
+      'the Apex 3 (T-zone): named only, no source reads anything from it', 'the Apex M750 and the old Apex / 350: no read-back', 'firmware updates (SteelSeries GG only)'],
     dev: null, pid: null, model: null, has: null, raw: {}, q: Promise.resolve(), app: null, appAt: 0,
 
     get settings() {
-      if (!this.model || (this.has && !this.has.brightness)) return [];
+      if (!this.model || this.model.type === 'tzone' || (this.has && !this.has.brightness)) return [];
       const r = RANGE[this.model.type];
       return [{ key: 'brightness', label: 'Lighting brightness', type: 'slider', min: r.min, max: r.max, step: 1, unit: `/${r.max}`, live: true,
         hint: 'The same setting the keyboard\'s brightness keys step through' }];
@@ -169,6 +177,7 @@ export function createApex({ open = defaultOpen, vendorApp = defaultVendorApp, n
     async ready() {
       if (this.has) return;
       this.need();
+      if (this.model.type === 'tzone') { this.has = { brightness: false }; return; }   // no read exists: nothing is sent
       let ok = false;
       try { ok = (await this.readBrightness()) !== undefined; } catch (e) { if (e.gone) throw e; ok = false; }
       this.has = { brightness: ok };
@@ -181,6 +190,11 @@ export function createApex({ open = defaultOpen, vendorApp = defaultVendorApp, n
       if (this.model.type === 'apex') {
         const r = await this.request([CMD.firmware]).catch(() => null);
         out.Firmware = (r && firmwareText(r)) || 'no reply';
+      }
+      if (this.model.type === 'tzone') {
+        out.Lighting = 'SteelSeries GG only: no source reads the Apex 3\'s lighting back';
+        out.Driver = 'untested library driver: names this keyboard only; nothing is sent';
+        return out;
       }
       out.Brightness = this.has.brightness ? 'read back, can be changed' : 'not answered by this keyboard, so not offered';
       out.Driver = 'untested library driver: brightness only, after DeviceHub\'s own check';

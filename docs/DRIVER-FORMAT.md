@@ -43,6 +43,8 @@ byte-for-byte equal to its `device.mjs` by `tests\declarative-driver.mjs`.
     "timeoutMs": 600, "tries": 3,        per request: wait for a reply, then try again (silence only)
     "waitMs": 0,                         feature reports: pause between set and get
     "checksum": { "type": "xor", "from": 2, "to": 87, "at": 88 }   optional, see below
+    "counter": { "at": 1, "step": 1 }   optional: a message number the driver writes at "at", raised by "step" on every
+                                         message (before the checksum); templates leave that byte 00 (23 Oct 2026)
   },
   "links": {                             how the device is reached; each model maps its pids to links
     "cable":  { "label": "USB cable", "reportId": 0, "wireless": false },
@@ -213,6 +215,14 @@ included), its problems starting "on product id XXXX:". Settings, links and mode
 `none`, `xor` (XOR of bytes `from`..`to`, one byte at `at`; this is Razer's "crc"), `sum8` (low byte of the sum),
 `sum16le` (the sum's low 16 bits, little-endian at `at`, `at+1`; ROCCAT's Sum16). No other checksum or CRC is
 supported: a device that needs one stays a device.mjs.
+
+### Counter (23 Oct 2026)
+
+Some devices number every message and repeat the number in their reply. `transport.counter: { at, step }` makes the
+driver keep its own number in byte `at`, raised by `step` (1-255) on each message it sends. A template may not put
+anything in that byte, and the never lists treat it as any value (like a checksum byte). Learn a device sets it when it
+sees one byte rise by the same small step on every message the app sent, never repeating, and only when the recordings
+do not learn without it.
 
 ## Safety: what validate() refuses
 

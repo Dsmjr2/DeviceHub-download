@@ -29,10 +29,37 @@ const tracked = appFiles();
 const problems = [];
 let checked = 0;
 
-// 1. syntax: .mjs and everything under public/ as ES modules, the rest as Node decides (CommonJS here)
-for (const f of tracked.filter((x) => /\.(m?js)$/.test(x))) {
-  const file = path.join(ROOT, f);
-  const asModule = f.endsWith('.mjs') || f.startsWith('public/');
+// 1. syntax: .mjs and everything under public/ as ES modules, the rest as Node decides (CommonJS, or an ES module when
+// it has module syntax). All of them in ONE Node process (23 Oct 2026, Shawn: "make the updates work faster"): this check
+// runs before every update, and starting Node once per file (242 of them, ~0.1 s each on Windows) made it most of the
+// wait. The same parser: CommonJS through vm.Script with Node's own module wrapper, ES modules through
+// vm.SourceTextModule (a parse with every early error, as --check does; nothing is linked or run). If that process
+// cannot run (an older Node), each file is checked on its own as before.
+// runs in the child (passed as its source text; CommonJS there, so require works)
+function syntaxWorker() {
+  const vm = require('vm'), fs = require('fs'), Module = require('module');
+  const out = [];
+  const esm = (src, f) => new vm.SourceTextModule(src, { identifier: f });
+  const cjs = (src, f) => new vm.Script(Module.wrap(src.replace(/^#!.*/, '')), { filename: f });
+  for (const { f, file, asModule } of JSON.parse(fs.readFileSync(0, 'utf8'))) {
+    const src = fs.readFileSync(file, 'utf8');
+    try {
+      if (asModule) esm(src, f);
+      else {
+        // module syntax in a .js file: Node reads it as an ES module, so is this check
+        try { cjs(src, f); } catch (e) { if (!(e instanceof SyntaxError) || !/\b(import|export)\b/.test(src)) throw e; esm(src, f); }
+      }
+    } catch (e) { out.push(`${f}: ${String((e && e.stack) || e).split('\n').slice(0, 4).join(' / ')}`); }
+  }
+  process.stdout.write(JSON.stringify(out));
+}
+const SYNTAX = `(${syntaxWorker})()`;
+const scripts = tracked.filter((x) => /\.(m?js)$/.test(x)).map((f) => ({ f, file: path.join(ROOT, f), asModule: f.endsWith('.mjs') || f.startsWith('public/') }));
+const one = spawnSync(process.execPath, ['--experimental-vm-modules', '--no-warnings', '-e', SYNTAX], { input: JSON.stringify(scripts), encoding: 'utf8', maxBuffer: 16 << 20 });
+let syntax = null;
+try { if (one.status === 0) syntax = JSON.parse(one.stdout); } catch {}
+if (syntax) { problems.push(...syntax); checked += scripts.length; }
+else for (const { f, file, asModule } of scripts) {
   const r = asModule
     ? spawnSync(process.execPath, ['--input-type=module', '--check'], { input: fs.readFileSync(file), encoding: 'utf8' })
     : spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });

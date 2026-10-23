@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createLogitechHeadset, F, NEVER, PIDS, adcPercent } from '../device-library/logitech-hidpp-headset/device.mjs';
+import { createLogitechHeadset, F, NEVER, PIDS, CENTURION, C_FRAMES, adcPercent } from '../device-library/logitech-hidpp-headset/device.mjs';
 import { problem, fits } from '../helpers/my-devices.mjs';
 import { validateMeta } from '../helpers/device-library.mjs';
 
@@ -313,6 +313,96 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
     'the self-check really sent sidetone [01 FF 0A] and auto sleep [07 14] (the values it read), not only read them');
   check(px.bad.length === 0, `every Centurion frame was well formed (${px.bad.join('; ')})`);
   check((await d.info()).Protocol.startsWith('Centurion'), 'info names the protocol');
+}
+
+// ---- 3b. the G522 LIGHTSPEED (23 Oct 2026), battery only: Centurion report 0x50 with the address byte 0x23 (HeadsetControl
+// logitech_g522_lightspeed.hpp FRAME_PREFIX 50 23; Solaar base.py "typical G522 (addr=0x23)"). The dongle 0B18 has the
+// bridge; the cable 0B19 may have none (Solaar centurion.py: a direct device). Frames: [addr, len, flags, payload] ----
+function simG522({ addr = 0x23, bridge = 3, direct = false, percent = 58, charge = 0, batteryIndex = 2 }) {
+  const ev = emitter();
+  const frame = (payload) => { const d = new Array(63).fill(0); d[0] = addr; d[1] = payload.length + 1; d[2] = 0; payload.forEach((x, i) => { d[3 + i] = x; }); return d; };
+  const dev = {
+    ...ev, opened: false, sent: [], subs: [], bad: [], ignored: 0,
+    async open() { this.opened = true; },
+    say(payload) { ev.emit(0x50, frame(payload)); },   // a frame the headset sends by itself
+    async sendReport(rid, data) {
+      const b = Array.from(data);
+      this.sent.push(b);
+      if (rid !== 0x50 || b.length !== 63) { this.bad.push(`report ${rid} of ${b.length} bytes`); return; }
+      if (b[0] !== addr) { this.ignored++; return; }                       // a wrong address is ignored silently (Solaar base.py)
+      const len = b[1], payload = b.slice(3, 2 + len);
+      if (b[2] !== 0) this.bad.push('flags not 0');
+      if (b.slice(2 + len).some((x) => x !== 0)) this.bad.push('frame not zero padded after its length');
+      if ((payload[1] & 0x0f) !== 0x01) this.bad.push(`software id ${payload[1] & 0x0f}, not 1`);
+      if (payload[0] === 0x00) {                                             // Root.getFeature on the dongle / the cable
+        const want = (payload[2] << 8) | payload[3];
+        const hit = want === 0x0003 && !direct ? [bridge, 0, 1] : want === F.C_BATTERY && direct ? [batteryIndex, 0, 0] : [0, 0, 0];
+        return ev.emit(0x50, frame([0x00, payload[1], ...hit]));
+      }
+      if (direct) {
+        if (payload[0] === batteryIndex && (payload[1] & 0xf0) === 0x00) return ev.emit(0x50, frame([batteryIndex, payload[1], percent, percent, charge]));
+        this.bad.push(`direct request ${h(payload.slice(0, 4))}`); return;
+      }
+      if (payload[0] !== bridge || payload[1] !== 0x11) { this.bad.push(`direct request ${h(payload.slice(0, 4))}`); return; }
+      const size = ((payload[2] & 0x0f) << 8) | payload[3], msg = payload.slice(4, 4 + size);
+      const [, sub, fs] = msg, p = msg.slice(3), fn = fs & 0xf0;
+      this.subs.push({ sub, fn, p });
+      ev.emit(0x50, frame([bridge, 0x11, 0x00, 0x00]));                                 // the bridge's ack
+      const answer = (out) => ev.emit(0x50, frame([bridge, 0x10, 0x00, out.length + 3, 0x00, sub, fs, ...out]));
+      if (sub === 0 && fn === 0x00) { const id = (p[0] << 8) | p[1]; return answer(id === F.C_BATTERY ? [batteryIndex, 0, 0] : [0, 0, 0]); }
+      if (sub === batteryIndex && fn === 0x00) return answer([percent, percent, charge]);
+      return ev.emit(0x50, frame([bridge, 0x10, 0x00, 0x04, 0x00, 0xff, sub, fs, 0x07]));
+    },
+  };
+  return dev;
+}
+{
+  check(CENTURION['0B18'] && CENTURION['0B19'] && C_FRAMES['0B18'].reportId === 0x50 && C_FRAMES['0B18'].addr === 0x23 && C_FRAMES['0AF7'].addr === null, 'G522 ids 0B18 / 0B19: report 0x50, address 0x23; the PRO X 2 keeps 0x51 with no address');
+  // the dongle: bridge lookup at 50 23, battery through the bridge, nothing else looked up, no settings
+  const g = simG522({ charge: 1 });
+  const d = make('0B18', g);
+  check(await d.connect() && d.centurion && d.bridge === 3 && !d.direct, 'G522 dongle connects and finds its bridge at index 3');
+  check(d.hid.byPid['0B18'].reportId === 0x50 && d.hid.byPid['0B18'].page === 'FFA0' && d.hid.byPid['0B18'].usage === '0001' && d.hid.byPid['0B18'].iface === 3 && d.hid.byPid['0B18'].len === 63, 'G522 dongle channel: report 0x50, FFA0 / 0001, interface 3, 64-byte frames');
+  check(h(g.sent[0].slice(0, 8)) === '23 05 00 00 01 00 03 00', `bridge lookup frame = 50 [23 05 00] 00 01 00 03 (${h(g.sent[0].slice(0, 8))})`);
+  check(g.subs.length === 1 && g.subs[0].sub === 0 && h(g.subs[0].p.slice(0, 2)) === '01 04', `only the battery 0x0104 is looked up through the bridge (${JSON.stringify(g.subs)})`);
+  check(d.settings.length === 0 && JSON.stringify(await d.read()) === '{}', 'G522: no settings, nothing to write (battery only)');
+  let bat = await d.battery();
+  check(bat?.percent === 58 && bat.charging === true && bat.full === false, `G522 battery through the bridge ${JSON.stringify(bat)}`);
+  check(g.subs.at(-1).sub === 2 && g.subs.at(-1).fn === 0x00, 'battery = 0x0104 fn 0x00 (HeadsetControl getBattery)');
+  let e = await refusal(() => d.write('sidetone', 3));
+  check(/not a setting/.test(e?.message || ''), 'G522: no sidetone offered');
+  for (const id of [...NEVER_IDS]) { e = await refusal(() => d.cSub(id, 0x00)); check(/refused/.test(e?.message || ''), `G522 cSub() refuses 0x${id.toString(16)}`); }
+  check(g.bad.length === 0 && g.ignored === 0, `every G522 frame well formed and addressed 0x23 (${g.bad.join('; ')})`);
+  check(/0x50, address 0x23/.test((await d.info()).Protocol), `info names the 0x50 frames (${(await d.info()).Protocol})`);
+  // a frame from another address arrives (the headset's own); a reply on the wrong address is never taken
+  const g2 = simG522({ addr: 0x24 });
+  const d2 = make('0B18', g2);
+  g2.say([0x00, 0x00, 0x00, 0x01]);
+  check(await d2.connect() && d2.frame.addr === 0x24 && g2.ignored === 1, `no answer at 0x23, then asked once at 0x24, the address the headset sent a frame from (ignored ${g2.ignored})`);
+  check(g2.sent.every((b, i) => i === 0 ? b[0] === 0x23 : b[0] === 0x24) && g2.sent.length <= 3, `never a guessed address: only 0x23, then 0x24 (${g2.sent.map((b) => b[0].toString(16))})`);
+  const g3 = simG522({ addr: 0x30 });
+  const d3 = make('0B18', g3);
+  e = await refusal(() => d3.connect());
+  check(e && g3.sent.length === 1 && g3.sent[0][0] === 0x23, `nothing heard: one request at 0x23 and no address probing (${e?.message})`);
+  // the cable 0B19 with no bridge: asked directly (Solaar centurion.py), battery only
+  const c = simG522({ direct: true, percent: 100, charge: 3, batteryIndex: 4 });
+  const dc = make('0B19', c);
+  check(await dc.connect() && dc.direct && dc.bridge === null && dc.features[F.C_BATTERY]?.index === 4, 'G522 cable without a bridge: asked directly, battery at index 4');
+  check(dc.hid.byPid['0B19'].page === 'FFA0' && dc.hid.byPid['0B19'].usage === '*' && dc.hid.byPid['0B19'].inputLen === 63 && dc.hid.byPid['0B19'].outputLen === 63 && dc.hid.byPid['0B19'].iface === undefined, 'G522 cable channel: the FFA0 collection with 63-byte reports (Solaar udev_impl.py), no interface named');
+  bat = await dc.battery();
+  check(bat?.percent === 100 && bat.full === true && bat.charging === false, `G522 cable battery read directly ${JSON.stringify(bat)}`);
+  check(h(c.sent.at(-1).slice(0, 6)) === '23 03 00 04 01 00', `direct battery frame = 50 [23 03 00] 04 01 (${h(c.sent.at(-1).slice(0, 6))})`);
+  e = await refusal(() => dc.cDirect(F.C_SIDETONE, 0x00));
+  check(/refused/.test(e?.message || ''), 'G522 cable: only Root and the battery can be sent directly');
+  e = await refusal(() => dc.cDirect(0x010a, 0x00));
+  check(/refused/.test(e?.message || ''), 'G522 cable: Centurion DFU 0x010A refused');
+  check(c.bad.length === 0, `every G522 cable frame well formed (${c.bad.join('; ')})`);
+  // the G522 dongle without a bridge is an error, not a direct device (only the cable may be one)
+  const nb = simG522({ direct: true });
+  e = await refusal(() => make('0B18', nb).connect());
+  check(/no Centurion bridge/.test(e?.message || ''), `a G522 dongle with no bridge is reported (${e?.message})`);
+  // the G431 / G432 / G433 are not run (HeadsetControl only writes their sidetone, no read)
+  check(!['0A9B', '0A9C', '0A6D'].some((p) => PIDS.includes(p)), 'G431 / G432 / G433 are not among the ids');
 }
 
 // ---- 4. nothing plugged in; the library entry ----

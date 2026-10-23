@@ -536,7 +536,9 @@ export function guard(a, folder, mark, deps = null) {
     const r = await selfCheck(a, write, { folder, mark, ...rest, version, only: only || !all ? keys : null, previous: verified, log: (t, kind) => say?.(t, kind, a.id) });
     makerSeen = null;   // the check just asked; the next write asks again
     try { selfChecked?.(a, r); } catch {}
-    if (r.ran) verified = r; else say?.(`${a.title}: library self-check not run: ${r.why}`, 'info', a.id);
+    // why it did not run, kept on the device for its page and Get help (23 Oct 2026, a friend's Logitech mouse: 9
+    // settings "not checked yet" and the report said only "press Check again" while G HUB held it)
+    if (r.ran) { verified = r; a.library.notRun = null; } else { a.library.notRun = { why: r.why, waiting: !!r.waiting, at: new Date().toISOString() }; say?.(`${a.title}: library self-check not run: ${r.why}`, 'info', a.id); }
     relabel();
     return r;
   };

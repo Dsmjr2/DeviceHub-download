@@ -191,15 +191,17 @@ function nameBox(it, cls) {
 async function setWindows(name) {
   if (isDemo()) return DEMO_SAID;
   windowsLine = { text: `Setting ${title(name)} as your Windows wallpaper…` }; rerender();
-  try { await post('/api/wallpapers/set-windows', { name }); } catch (e) { windowsLine = null; rerender(); throw e; }
-  windowsLine = { text: `Your Windows wallpaper is now ${title(name)}.`, putBack: true };
+  let r;
+  try { r = await post('/api/wallpapers/set-windows', { name }); } catch (e) { windowsLine = null; rerender(); throw e; }
+  // Undo only when the earlier wallpaper can still be put back (helpers/wallpapers.js canUndo)
+  windowsLine = { text: `Your Windows wallpaper is now ${title(name)}.`, putBack: r?.canUndo !== false };
   rerender();
   return 'Set as your Windows wallpaper.';
 }
 async function putBack() {
   if (isDemo()) { windowsLine = { text: DEMO_SAID }; rerender(); return; }
   try { await post('/api/wallpapers/put-back-windows'); windowsLine = { text: 'Your earlier Windows wallpaper is back.' }; }
-  catch (e) { windowsLine = { text: e.message, bad: true, putBack: true }; }
+  catch (e) { windowsLine = { text: e.message, bad: true, putBack: !/no longer there/.test(e.message) }; }
   rerender();
 }
 async function useAsBackground(name) {
@@ -218,7 +220,9 @@ async function backupAll() {
   if (isDemo()) { backupLine = { text: DEMO_SAID }; rerender(); return; }
   try {
     const r = await post('/api/wallpapers/backup');
-    backupLine = r.count ? { text: `Backed up ${plural(r.count, 'picture')} (${mb(r.bytes)}) to ${r.dir}` } : { text: 'Nothing to back up yet.' };
+    // one copy of each picture (helpers/wallpapers.js backup): say what was new, and that the rest were already there
+    backupLine = !r.count ? { text: 'Nothing to back up yet.' }
+      : { text: `${r.added ? `Backed up ${plural(r.added, 'new picture')} (${mb(r.addedBytes)})` : 'Already backed up: nothing new'}${r.added && r.count > r.added ? `; the other ${r.count - r.added} were already there` : ''}. ${plural(r.inBackup, 'picture')}, one of each, in ${r.dir}${r.folded ? `. ${plural(r.folded, 'older backup folder')} merged into it` : ''}.` };
   } catch (e) { backupLine = { text: `Could not back up: ${e.message}`, bad: true }; }
   rerender();
 }

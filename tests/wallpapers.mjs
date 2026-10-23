@@ -106,14 +106,41 @@ try {
   check((await post('/api/wallpapers/remove', { name: '../secret.png' })).status === 400, 'POST remove refuses a path');
 } finally { server.close(); }
 
-// ---- back up ----
+// ---- back up: one folder, one copy of each picture (23 Oct 2026, Shawn: "it needs to just save 1 of each") ----
 const now = new Date(2026, 9, 22, 14, 5);
+const BK = path.join(path.resolve(dirs.backupsDir), 'Wallpapers');
+// a dated folder an earlier version made (two pictures already in the wallpaper folder, one only there)
+const oldDated = path.join(path.resolve(dirs.backupsDir), 'Wallpapers 2026-10-22 23-59 (3)');
+fs.mkdirSync(oldDated, { recursive: true });
+const firstPic = fs.readdirSync(dirs.dir).find((f) => !f.startsWith('.'));
+fs.copyFileSync(path.join(dirs.dir, firstPic), path.join(oldDated, firstPic));
+fs.writeFileSync(path.join(oldDated, 'only-in-old.png'), png(9, 9, 77));
 const b1 = wp.backup(now);
 const inFolder = fs.readdirSync(dirs.dir).filter((f) => !f.startsWith('.'));
-check(b1.ok && b1.count === inFolder.length && b1.dir === path.join(path.resolve(dirs.backupsDir), 'Wallpapers 2026-10-22 14-05'), `backup copies every picture to Wallpapers <date time> (${b1.dir})`);
-check(inFolder.every((f) => fs.readFileSync(path.join(b1.dir, f)).equals(fs.readFileSync(path.join(dirs.dir, f)))), 'each backed-up picture has the same bytes');
-check(!fs.existsSync(path.join(b1.dir, '.devicehub-starters')), 'the marker is not backed up');
-check(wp.backup(now).dir.endsWith('Wallpapers 2026-10-22 14-05 (2)'), 'a second backup in the same minute gets its own folder');
+const inBackup = () => fs.readdirSync(BK).filter((f) => !f.startsWith('.'));
+check(b1.ok && b1.count === inFolder.length && b1.dir === BK, `backup goes to the one Wallpapers folder (${b1.dir})`);
+check(inFolder.every((f) => fs.readFileSync(path.join(BK, f)).equals(fs.readFileSync(path.join(dirs.dir, f)))), 'each backed-up picture has the same bytes');
+check(!fs.existsSync(path.join(BK, '.devicehub-starters')), 'the marker is not backed up');
+check(!fs.existsSync(oldDated) && b1.folded === 1 && inBackup().includes('only-in-old.png'), 'an old dated folder is merged in (its own picture kept) and removed');
+check(inBackup().length === inFolder.length + 1, `one of each, nothing twice (${inBackup().length} for ${inFolder.length} + 1)`);
+const b2 = wp.backup(now);
+check(b2.ok && b2.added === 0 && inBackup().length === inFolder.length + 1, 'backing up again copies nothing');
+// the same picture under another name is not copied again; a different picture with a taken name gets "(2)"
+fs.copyFileSync(path.join(dirs.dir, firstPic), path.join(dirs.dir, `copy of ${firstPic}`));
+const b3 = wp.backup(now);
+check(b3.added === 0 && !inBackup().includes(`copy of ${firstPic}`), 'the same bytes under another name: not copied again');
+fs.unlinkSync(path.join(dirs.dir, `copy of ${firstPic}`));
+const ext = path.extname(firstPic), changed = path.join(dirs.dir, firstPic);
+const keep = fs.readFileSync(changed);
+fs.writeFileSync(changed, Buffer.concat([keep, Buffer.from('edited')]));
+const b4 = wp.backup(now);
+check(b4.added === 1 && inBackup().includes(`${firstPic.slice(0, -ext.length)} (2)${ext}`) && fs.readFileSync(path.join(BK, firstPic)).equals(keep), 'a changed picture is added beside the old one, never over it');
+fs.writeFileSync(changed, keep);
+// a dated folder with something else in it is left alone
+const odd = path.join(path.resolve(dirs.backupsDir), 'Wallpapers 2026-10-21 10-00');
+fs.mkdirSync(odd); fs.writeFileSync(path.join(odd, 'notes.txt'), 'mine');
+wp.backup(now);
+check(fs.existsSync(path.join(odd, 'notes.txt')), 'a dated folder holding other files is left alone');
 const emptyWp = create({ ...dirs, dir: path.join(tmp, 'empty'), startersDir: path.join(tmp, 'no-starters') });
 check(emptyWp.backup().count === 0 && emptyWp.list().items.length === 0, 'an empty folder (no starters) has nothing to back up');
 
@@ -139,6 +166,10 @@ if (!isWin) {
   // path checks below compare with path.resolve, which on Linux keeps a Windows path as text: compare as written
   const r = await winWp.setWindows('Sunset.png').catch((e) => ({ error: e.message }));
   check(r.ok, `set-windows runs (${r.error || ''})`);
+  // the earlier wallpaper is not on this machine and could not be copied: no Undo is offered (Shawn, 23 Oct 2026)
+  check(r.canUndo === false, 'an earlier wallpaper that cannot be put back: no Undo');
+  let gl = null; await winWp.handle(new URL('http://x/api/wallpapers'), { method: 'GET' }, {}, (res, code, b) => { gl = b; }, async () => ({}));
+  check(gl && gl.previousKept === false, 'the page is not told to show Undo for it either');
   check(calls.some((c) => c.env.DEVICEHUB_WALLPAPER === path.join(path.resolve(dirs.dir), 'Sunset.png')), 'the picture path goes to PowerShell in an environment variable');
   check(calls.every((c) => !c.script.includes('Sunset')), 'no file name is ever part of the script text');
   const kept = JSON.parse(fs.readFileSync(path.join(dirs.root, 'wallpaper-previous', 'previous.json'), 'utf8'));
@@ -154,8 +185,12 @@ if (!isWin) {
   // an earlier wallpaper that is a real file: it is copied, and put back restores it
   fs.rmSync(path.join(dirs.root, 'wallpaper-previous'), { recursive: true });
   const earlier = path.join(tmp, 'earlier.png'); fs.writeFileSync(earlier, png(8, 8, 20)); winReg = earlier;
-  await winWp.setWindows('Sunset.png');
+  const r2 = await winWp.setWindows('Sunset.png');
   check(fs.existsSync(path.join(dirs.root, 'wallpaper-previous', 'previous.png')), 'a copy of the earlier wallpaper is kept (Windows overwrites its own copy)');
+  check(r2.canUndo === true, 'an earlier wallpaper that can be put back: Undo offered');
+  fs.unlinkSync(earlier);
+  check(winWp.setWindows && (await winWp.setWindows('Sunset (2).png')).canUndo === true, 'the earlier file deleted, its kept copy still allows Undo');
+  fs.writeFileSync(earlier, png(8, 8, 20));
   const back = await winWp.putBackWindows();
   check(back.ok && winReg === earlier, 'put back sets the earlier wallpaper again');
   check(!fs.existsSync(path.join(dirs.root, 'wallpaper-previous', 'previous.json')), 'after put back nothing is kept');

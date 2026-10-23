@@ -167,8 +167,23 @@ async function builtIn(list) {
   });
 }
 
+// The Monitors page opens on the last reading (23 Oct 2026, Shawn: "make the monitors area load faster"): a DDC/CI read of
+// every monitor takes seconds (one question per setting, and a silent monitor is asked twice). A reading under 10 s old
+// is used as it is; an older one is shown at once while a new read runs (the page asks again for it, fresh); none at all
+// (only before the first read, which start() does in the background soon after DeviceHub starts) waits for the read.
+let refreshing = null;
 async function list(fresh) {
   if (!fresh && cache.list && Date.now() - cache.at < 10000) return cache.list;
+  if (!fresh && cache.list) {
+    if (!refreshing) list(true).catch(() => {});
+    return cache.list;
+  }
+  // a read already running answers this one too (the page asks fresh right after the quick answer)
+  if (refreshing) return refreshing;
+  refreshing = readAll();
+  try { return await refreshing; } finally { refreshing = null; }
+}
+async function readAll() {
   const result = await serial(async () => {
     let r0 = await call({ op: 'monitors', caps: false }, 30000);
     // a monitor that answered before and is silent now has usually just missed one DDC/CI reply: ask once more
@@ -181,6 +196,10 @@ async function list(fresh) {
   if (result.some((m) => m.waiting && m.ddc && !m.away)) setTimeout(() => flush().catch(() => {}), 0);
   return result;
 }
+
+// the first read, in the background once DeviceHub has settled (the helper is up, the devices have connected), so the
+// first visit to Monitors finds a reading ready
+function warm(ms = 15000) { setTimeout(() => { if (!cache.list) list(true).catch(() => {}); }, ms).unref?.(); }
 
 async function set(id, feature, value, { live = false, fromQueue = false } = {}) {
   const code = FEATURES[feature];
@@ -245,4 +264,4 @@ function wait(m, feature, value) {
   return { name: m.name, feature, value, waiting: true };
 }
 
-module.exports = { start(nat, dir, applied) { native = nat; backupDir = dir; if (applied) onApplied = applied; keepTrying(); }, list, set, FEATURES, _test: { vcpList, supportsList } };
+module.exports = { start(nat, dir, applied) { native = nat; backupDir = dir; if (applied) onApplied = applied; keepTrying(); warm(); }, list, set, FEATURES, _test: { vcpList, supportsList, warm, age: (ms) => { cache.at -= ms; } } };

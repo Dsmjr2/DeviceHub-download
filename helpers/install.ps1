@@ -56,16 +56,24 @@ if ($shared -and -not $Overwrite -and (Get-Command git -ErrorAction SilentlyCont
 $prints = Join-Path $Target 'release-files.json'
 if (-not $Overwrite -and (Test-Path -LiteralPath $prints) -and -not (Test-Path -LiteralPath (Join-Path $Target '.git'))) {
   $was = Get-Content -LiteralPath $prints -Raw | ConvertFrom-Json
+  # a file matching any version DeviceHub ever shipped (release-history.json, 23 Oct 2026) was not changed on this PC
+  $shipped = $null
+  # the new download's own list first (it knows every version, including the one an older install has); else the installed one
+  foreach ($histFile in @((Join-Path $Source 'release-history.json'), (Join-Path $Target 'release-history.json'))) {
+    if (-not $shipped -and (Test-Path -LiteralPath $histFile)) { try { $shipped = Get-Content -LiteralPath $histFile -Raw | ConvertFrom-Json } catch {} }
+  }
   # helpers/bin is built output (the pre-built helper, rebuilt on this PC if its sources change): always replaced
   $changed = @($was.PSObject.Properties | Where-Object { -not $_.Name.StartsWith('helpers/bin/') } | Where-Object {
     $p = Join-Path $Target ($_.Name -replace '/', '\')
-    -not (Test-Path -LiteralPath $p) -or (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLower() -ne $_.Value
+    if (-not (Test-Path -LiteralPath $p)) { return $true }
+    $now = (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLower()
+    $now -ne $_.Value -and -not ($shipped -and @($shipped.($_.Name)) -contains $now.Substring(0, 16))
   } | ForEach-Object { $_.Name })
   if ($changed.Count) {
     Write-Host ''
     Write-Host "   $($changed.Count) of DeviceHub's files were changed on this PC, so nothing was installed over them:" -ForegroundColor Yellow
     $changed | Select-Object -First 15 | ForEach-Object { Write-Host "     $_" -ForegroundColor Yellow }
-    Write-Host '   Ask Claude Code to "update DeviceHub" to bring the changes and the new version together, or run this again with -Overwrite to replace them.' -ForegroundColor Yellow
+    Write-Host '   In DeviceHub, Settings > DeviceHub updates > Update anyway keeps a copy of them and installs the new version; or run this again with -Overwrite to replace them.' -ForegroundColor Yellow
     exit 3
   }
 }

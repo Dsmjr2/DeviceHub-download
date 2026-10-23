@@ -30,6 +30,19 @@
 //  - No firmware update, no command id the sheet does not list ("Unknown command ids on the mouse (0x2D-0x92 range) ...
 //    could reach bootloader or calibration functions. Send only the ids listed here"). SENDABLE is the whole list.
 //  - No write at all: write() refuses every key.
+//
+// Added 23 Oct 2026 straight from rivalcfg's device files (github.com/flozz/rivalcfg @ 779ea52, rivalcfg/devices/*.py,
+// cited "rivalcfg <file>"), cross-checked with OpenRGB (@ 817834c, SteelSeriesDevices.h and SteelSeriesControllerDetect.cpp):
+//  - Prime Mini Wireless 184A (cable) / 1848 (receiver): the Prime Wireless profile (rivalcfg prime_wireless_wired.py
+//    and prime_wireless_wireless.py list both mice, endpoint 3), so the same battery read 92 / D2.
+//  - Rival 3 Wireless 1830 and Rival 3 Wireless Gen 2 1872 (both "2.4 GHz mode", endpoint 3): their own battery read,
+//    AA 01, sent as it is (the profile gives AA itself, no 0x40 patch), read 3: byte 0 = percent (rivalcfg keeps 0-100
+//    only), byte 2 non-zero = charging (rivalcfg rival3_wireless.py / rival3_wireless_gen2.py "battery_level"). OpenRGB
+//    opens 1830 on interface 3, usage page FFC0, usage 1. Not sent: the Rival 3 Wireless firmware read 90 00 (0x90 is in
+//    the 0x2D-0x92 range the sheet's section 4 says to send only when the sheet lists it, and the sheet does not).
+//  - Wired-only mice with no read in any source, named from their product id and nothing sent at all (`named`):
+//    Aerox 3 1836 and Aerox 5 1850 (endpoint 3; OpenRGB interface 3, FFC0 / 1), Rival 3 Gen 2 1870 (endpoint 3),
+//    Prime 182E (endpoint 0), Prime Mini 184D (endpoint 3), Rival 5 183C (endpoint 0; OpenRGB interface 0, FFC0 / 1).
 import { getDevice } from '../../public/devices/hid.js';
 
 const VID = 0x1038;
@@ -41,12 +54,17 @@ export const CMD = {
   battery: 0x92,     // "Battery + charging | 92 (wireless D2), read 2 (64 on dongle) | byte 1: bit 7 = charging; level = ((b1 & 0x7F) - 1) x 5 %"
   firmware: 0x10,    // "Firmware version | 10 00, read 2 | 2 raw bytes | Rival 3"
 };
-// the only command bytes that ever leave this file, by what the model has (wired byte; a dongle sends it | 0x40)
-const SENDABLE = { battery: [CMD.battery], firmware: [CMD.firmware] };
+// the Rival 3 Wireless / Wireless Gen 2 battery read (rivalcfg rival3_wireless.py, rival3_wireless_gen2.py "battery_level":
+// command AA 01, response_length 3, level = data[0], is_charging = bool(data[2])); sent as it is, never | 0x40
+export const CMD_AA = [0xaa, 0x01];
+// the only command bytes that ever leave this file, by what the model has (wired byte; a dongle sends it | 0x40,
+// except the AA read, which rivalcfg sends unchanged on the receiver)
+const SENDABLE = { battery: [CMD.battery], firmware: [CMD.firmware], batteryAA: CMD_AA };
 
 // The models (sheet s1 "Mice"). link: 'cable' (the mouse on its USB cable) or 'dongle' (its 2.4 GHz receiver).
 //  battery: the battery row lists the model (s3: "Aerox 3/5/9 Wireless, Prime Wireless"); firmware: the Rival 3 row.
-//  page: the usage page where the sheet gives one (HID LAYER 1).
+//  page: the usage page where the sheet gives one (HID LAYER 1). iface: the USB interface when it is not 3.
+//  battery: 'aa' = the Rival 3 Wireless AA 01 read. named: no read in any source; the mouse is only named, nothing is sent.
 export const MODELS = [
   { pid: 0x183a, name: 'Aerox 3 Wireless', link: 'cable', battery: true, page: 0xffc0 },
   { pid: 0x1838, name: 'Aerox 3 Wireless', link: 'dongle', battery: true, page: 0xffc0 },
@@ -67,8 +85,22 @@ export const MODELS = [
   // s1 "Rival 3 | 0x1824, 0x184C (firmware v0.37.0.0) | 3"; s3 "Firmware version | 10 00, read 2 | Rival 3"
   { pid: 0x1824, name: 'Rival 3', link: 'cable', firmware: true, page: null },
   { pid: 0x184c, name: 'Rival 3', link: 'cable', firmware: true, page: null },
+  // added 23 Oct 2026 (see the top): rivalcfg prime_wireless_wired.py / prime_wireless_wireless.py, endpoint 3
+  { pid: 0x184a, name: 'Prime Mini Wireless', link: 'cable', battery: true, page: null },
+  { pid: 0x1848, name: 'Prime Mini Wireless', link: 'dongle', battery: true, page: null },
+  // rivalcfg rival3_wireless.py (0x1830, endpoint 3; OpenRGB 3, 0xFFC0, 1) and rival3_wireless_gen2.py (0x1872, endpoint 3)
+  { pid: 0x1830, name: 'Rival 3 Wireless', link: 'dongle', battery: 'aa', page: 0xffc0 },
+  { pid: 0x1872, name: 'Rival 3 Wireless Gen 2', link: 'dongle', battery: 'aa', page: null },
+  // wired, no read anywhere: named only. rivalcfg aerox3.py 0x1836, aerox5.py 0x1850 (endpoint 3; OpenRGB 3, 0xFFC0, 1),
+  // rival3_gen2.py 0x1870 (3), prime.py 0x182E (0), prime_mini.py 0x184D (3), rival5.py 0x183C (0; OpenRGB 0, 0xFFC0, 1)
+  { pid: 0x1836, name: 'Aerox 3', link: 'cable', named: true, page: 0xffc0 },
+  { pid: 0x1850, name: 'Aerox 5', link: 'cable', named: true, page: 0xffc0 },
+  { pid: 0x1870, name: 'Rival 3 Gen 2', link: 'cable', named: true, page: null },
+  { pid: 0x182e, name: 'Prime', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x184d, name: 'Prime Mini', link: 'cable', named: true, page: null },
+  { pid: 0x183c, name: 'Rival 5', link: 'cable', named: true, page: 0xffc0, iface: 0 },
 ];
-const IFACE = 3;  // sheet s1 "Interface" column for every row above
+const IFACE = 3;  // sheet s1 "Interface" column (rivalcfg "endpoint") for every row above without its own iface
 const LEN = 64;   // UNCONFIRMED (see the top)
 
 // Documented writes with NO documented read (sheet s3 "Mice"; s2 "rivalcfg never reads settings back"). Never sent:
@@ -101,7 +133,7 @@ export function parseBattery(b) {
 
 // a model's HID channel (HID LAYER 1)
 function channelOf(m) {
-  return { page: m.page == null ? '*' : h4(m.page).toUpperCase(), usage: m.page == null ? '*' : '0001', iface: IFACE, len: LEN, reportId: 0,
+  return { page: m.page == null ? '*' : h4(m.page).toUpperCase(), usage: m.page == null ? '*' : '0001', iface: m.iface ?? IFACE, len: LEN, reportId: 0,
     productName: `SteelSeries ${m.name}` };
 }
 
@@ -110,10 +142,12 @@ class Link {
   constructor(dev, model) { this.dev = dev; this.model = model; this.q = Promise.resolve(); this.last = null; }
   serial(fn) { const p = this.q.then(fn, fn); this.q = p.catch(() => {}); return p; }
   ask(what, timeoutMs = 1000) {
-    const base = SENDABLE[what]?.[0];
-    if (base == null || !this.model[what]) throw new Error(`${what} is not a read the sheet documents for the ${this.model.name}`);
+    const req = SENDABLE[what];
+    const has = what === 'batteryAA' ? this.model.battery === 'aa' : what === 'battery' ? this.model.battery === true : !!this.model[what];
+    if (req == null || !has || this.model.named) throw new Error(`${what} is not a read the sheet documents for the ${this.model.name}`);
     const out = new Uint8Array(LEN);
-    out[0] = this.model.link === 'dongle' ? base | WIRELESS_FLAG : base;   // s2 "Wireless (2.4 GHz)"
+    if (what === 'batteryAA') out.set(req);   // AA 01 as rivalcfg sends it, on the receiver too
+    else out[0] = this.model.link === 'dongle' ? req[0] | WIRELESS_FLAG : req[0];   // s2 "Wireless (2.4 GHz)"
     // 10 00: the firmware request's second byte is the 00 in the sheet's row; the battery request is the command alone
     return this.serial(() => new Promise((resolve, reject) => {
       const on = (e) => {
@@ -139,7 +173,8 @@ export default {
   settings: [],
   unsupported: ['firmware updates', 'saving settings to the mouse',
     'DPI, polling rate, sleep and dim timers, lights and button mapping: every source only writes them and none reads them back, so DeviceHub does not change them (SteelSeries GG does)',
-    'battery on the Prime Mini Wireless, Rival 3 Wireless and Aerox 3 Gen 2 (not in the sheet\'s battery row)'],
+    'battery on the Aerox 3 Gen 2 (no source has its read)',
+    'the wired Aerox 3, Aerox 5, Rival 3 Gen 2, Prime, Prime Mini and Rival 5: no source has a read for them, so DeviceHub only names them'],
   MODELS, WRITE_ONLY, VENDOR_APPS,
 
   // the vendor-app check (replaceable in tests); resolves with the running app's name, or null
@@ -171,6 +206,13 @@ export default {
   async readBattery() {
     this.need();
     if (!this.model.battery) return null;
+    if (this.model.battery === 'aa') {
+      // rivalcfg rival3_wireless.py: read 3, byte 0 = percent (0-100, anything else = no reading), byte 2 = charging
+      const r = await this.link.ask('batteryAA');
+      if (r[0] > 100) throw new Error(`battery reply ${hex(r.slice(0, 3))} is outside 0-100 (mouse off?)`);
+      this.status = { percent: r[0], charging: r[2] !== 0, raw: hex(r.slice(0, 4)) };
+      return this.status;
+    }
     const r = await this.link.ask('battery');
     this.status = { ...parseBattery(r[1]), raw: hex(r.slice(0, 4)) };   // s3: the value is in byte 1
     return this.status;
@@ -180,7 +222,7 @@ export default {
     this.need();
     const m = this.model;
     const out = { Model: `SteelSeries ${m.name}`, 'USB id': `1038:${h4(m.pid)}`, Connection: m.link === 'dongle' ? 'wireless (2.4 GHz receiver)' : 'USB cable',
-      Driver: 'untested library driver: reads only (battery, firmware); nothing is ever written' };
+      Driver: m.named ? 'untested library driver: names this mouse only (no source has a read for it); nothing is sent' : 'untested library driver: reads only (battery, firmware); nothing is ever written' };
     if (m.firmware) {
       const r = await this.link.ask('firmware').catch(() => null);
       out.Firmware = r ? `${r[0]}.${r[1]} (raw bytes)` : 'no reply';   // s3 "2 raw bytes"; their meaning is not documented

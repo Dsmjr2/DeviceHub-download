@@ -275,6 +275,30 @@ export async function plan(dev, { root = ROOT, maker = findMaker, scan = (vid) =
   return { maker: m, kind, items, from: files.length ? 'files' : brand.length ? 'brand' : 'usual' };
 }
 
+// ---------------------------------------------------------------- opening the maker's app (23 Oct 2026)
+// Learn it for me opens the maker's app when it is installed and closed, as the person would from the Start menu:
+// Windows' own list of Start menu apps (Get-StartApps: shortcuts and Store apps alike), the entry whose name matches the
+// app, never an uninstaller, updater or help entry, started through explorer (shell:AppsFolder). Nothing is installed.
+const NOT_THE_APP = /uninstall|update|repair|help|readme|manual|website|support|remove/i;
+export function pickStartApp(apps, m) {
+  const want = m?.uninstall;
+  if (!want) return null;
+  const hits = (apps || []).filter((a) => a?.Name && a?.AppID && want.test(a.Name) && !NOT_THE_APP.test(a.Name));
+  return hits.sort((a, b) => a.Name.length - b.Name.length)[0] || null;
+}
+const startApps = () => new Promise((resolve) => execFile('powershell.exe', ['-NoProfile', '-Command', 'Get-StartApps | ConvertTo-Json -Compress'], { windowsHide: true, timeout: 20000, maxBuffer: 4 * 1024 * 1024 }, (e, out) => {
+  try { const j = JSON.parse(String(out || '').trim() || '[]'); resolve(Array.isArray(j) ? j : [j]); } catch { resolve([]); }
+}));
+// { opened: true, name } or { opened: false, why }
+export async function openMaker(vid, { apps = startApps, launch = (id) => execFile('explorer.exe', [`shell:AppsFolder\\${id}`], { windowsHide: true }, () => {}) } = {}) {
+  const m = makerOf(vid);
+  if (!m || m.web) return { opened: false, why: 'DeviceHub does not know this maker\'s app.' };
+  const hit = pickStartApp(await apps(), m);
+  if (!hit) return { opened: false, why: `${m.name} is not in the Start menu.` };
+  launch(hit.AppID);
+  return { opened: true, name: hit.Name };
+}
+
 // ---------------------------------------------------------------- driving app-ui (helpers/app-ui.ps1)
 // runs app-ui with these arguments: { code, out } (code: 0 done, 1 failed, 2 not found, 3 no controls, 4 refused)
 export function runAppUi(args, ms = 45000) {

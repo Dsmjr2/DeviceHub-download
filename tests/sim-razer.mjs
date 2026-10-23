@@ -456,6 +456,74 @@ check(allSims.every((s) => s.appChecks >= 0), 'vendor-app check injected (no tas
   check(await rejects(() => d.write('dpi', 1600), /Synapse/) && sim.sent.filter((x) => !(x.id & 0x80)).length === w, 'a same-value write is refused while Synapse runs, nothing written');
 }
 
+// ---- 8d. the models added 23 Oct 2026 from OpenRazer's driver: each on its own product id, with OpenRazer's transaction
+// id per command (the simulated mouse answers 0x05 to any other), its DPI maximum, its battery kind and only the
+// documented stage table and LED zones. Written by hand from razermouse_driver.c / mouse.py, not from the driver. ----
+const FF = [0xff], X3F = [0x3f];
+const ADDED = [
+  // pid, model, base tid, perCmd tids, power, dpiMax, wait, stages, lights the sim has, lights the model documents
+  ['006E', 'DeathAdder Essential', 0xff, { '0f/84': X3F, '0f/04': X3F }, null, 6400, 0.6, false, [0x01, 0x04, 0x10], [0x01, 0x04]],
+  ['0071', 'DeathAdder Essential White Edition', 0xff, { '0f/84': X3F, '0f/04': X3F }, null, 6400, 0.6, false, [0x01, 0x04, 0x10], [0x01, 0x04]],
+  ['0098', 'DeathAdder Essential (2021)', 0xff, { '0f/84': X3F, '0f/04': X3F }, null, 6400, 0.6, false, [0x01, 0x04], [0x04]],
+  ['0084', 'DeathAdder V2', 0x3f, {}, null, 20000, 0.6, false, [0x01, 0x04, 0x11], [0x01, 0x04]],
+  ['008C', 'DeathAdder V2 Mini', 0x3f, { '04/86': FF, '04/06': FF }, null, 8500, 0.6, true, [0x01, 0x04], [0x04]],
+  ['007C', 'DeathAdder V2 Pro', 0x3f, { '04/86': FF, '04/06': FF, '07/83': FF, '07/03': FF, '07/81': FF, '07/01': FF }, 'rechargeable', 20000, 59.9, true, [0x04], [0x04]],
+  ['007D', 'DeathAdder V2 Pro', 0x3f, { '04/86': FF, '04/06': FF, '07/83': FF, '07/03': FF, '07/81': FF, '07/01': FF }, 'rechargeable', 20000, 59.9, true, [0x04], [0x04]],
+  ['009C', 'DeathAdder V2 X HyperSpeed', 0x1f, { '07/81': FF, '07/01': FF }, 'aa', 14000, 31, true, [0x04], []],
+  ['00A5', 'Viper V2 Pro', 0x1f, { '07/81': FF, '07/01': FF }, 'rechargeable', 30000, 31, true, [0x04], []],
+  ['00A6', 'Viper V2 Pro', 0x1f, { '07/81': FF, '07/01': FF }, 'rechargeable', 30000, 31, true, [0x04], []],
+  ['00B8', 'Viper V3 HyperSpeed', 0x1f, {}, 'aa', 30000, 59.9, true, [0x04], []],
+  ['00B4', 'Naga V2 HyperSpeed', 0x1f, { '07/01': FF }, 'aa', 30000, 31, true, [0x04], []],
+];
+for (const [pid, model, tid, perCmd, power, max, wait, stages, simLights, docLights] of ADDED) {
+  const L = `${model} ${pid}`;
+  check(PIDS.includes(pid) && MODELS[pid].model === model, `${L}: in the model table`);
+  const { d, sim } = driverOn(pid, { tids: [tid], perCmd, power, poll: 'classic', lights: simLights }); allSims.push(sim);
+  sleeps.length = 0;
+  check(await d.connect() && d.pid === pid, `${L}: connects on its own product id`);
+  const v = await d.read();
+  check(d.tid === tid && /brand sheet/.test(d.tidHow), `${L}: transaction id ${tid.toString(16)} from the table (${d.tid?.toString(16)}, ${d.tidHow})`);
+  check(sim.sent[0].tid === tid && cmdKey(sim.sent[0]) === '00/81', `${L}: the first report is a firmware read with tid ${tid.toString(16)}`);
+  // every report used OpenRazer's id for its command; none was refused for a wrong id
+  const wrong = sim.sent.filter((r) => !(perCmd[cmdKey(r)] || [tid]).includes(r.tid));
+  check(!wrong.length, `${L}: each command with OpenRazer's tid (wrong: ${wrong.map((r) => `${cmdKey(r)}@${r.tid.toString(16)}`).join(', ')})`);
+  check(sleeps.includes(wait), `${L}: waits ${wait} ms (${[...new Set(sleeps)]})`);
+  check(v.dpi === 800 && v.pollingRate === 1000 && d.pollKind === 'classic', `${L}: DPI ${v.dpi} and classic polling ${v.pollingRate} read`);
+  check(!sim.sent.some((r) => cmdKey(r) === '00/c0'), `${L}: HyperPolling never asked`);
+  const keys = d.settings.map((s) => s.key);
+  check(d.settings.find((s) => s.key === 'dpi').max === max, `${L}: DPI slider ends at ${max}`);
+  check(await rejects(() => d.write('dpi', max + 50), new RegExp(`100-${max}`)), `${L}: DPI ${max + 50} refused (max ${max})`);
+  // stage table: asked only where mouse.py lists get_dpi_stages
+  check(stages ? keys.includes('dpiStage1') && v.dpiStage === 2 : !sim.sent.some((r) => cmdKey(r) === '04/86') && !keys.includes('dpiStage1'), `${L}: DPI stages ${stages ? 'read' : 'never asked'}`);
+  // LED zones: only those documented for the model are asked
+  const asked = [...new Set(sim.sent.filter((r) => cmdKey(r) === '0f/84').map((r) => r.args[1]))].sort();
+  check(asked.join() === [...docLights].sort().join(), `${L}: brightness asked for ${asked} (documented ${docLights})`);
+  // battery: none on a wired-only mouse, level only on AA, level and charging on a rechargeable one
+  const b = await d.battery();
+  if (!power) check(b === null && !keys.includes('idle') && !sim.sent.some((r) => r.cls === 0x07), `${L}: no battery, no class-07 command`);
+  else {
+    check(b.percent === 80 && b.charging === false, `${L}: battery 80% read (${JSON.stringify(b)})`);
+    check(power === 'aa' ? !sim.sent.some((r) => cmdKey(r) === '07/84') : sim.sent.some((r) => cmdKey(r) === '07/84'), `${L}: charging ${power === 'aa' ? 'not asked (AA)' : 'read'}`);
+    check(v.idle === 300 && v.lowBattery === 0x12, `${L}: idle ${v.idle} s and low-battery ${v.lowBattery} read`);
+  }
+  // writes (a simulated mouse only): DPI, and the commands with their own transaction id, each written, read back, put back
+  await roundTrip(d, sim, 'dpi', Math.min(1600, max), `${L} DPI`);
+  if (power) await roundTrip(d, sim, 'lowBattery', 0x0c, `${L} low battery`);
+  if (power) await roundTrip(d, sim, 'idle', 600, `${L} idle`);
+  if (stages) await roundTrip(d, sim, 'dpiStage', 3, `${L} active stage`);
+  if (docLights.length) await roundTrip(d, sim, docLights.includes(0x04) ? 'brightnessLogo' : 'brightnessWheel', 0x40, `${L} brightness`);
+  const wrong2 = sim.sent.filter((r) => !(perCmd[cmdKey(r)] || [tid]).includes(r.tid));
+  check(!wrong2.length, `${L}: writes with OpenRazer's tid too (wrong: ${wrong2.map((r) => `${cmdKey(r)}@${r.tid.toString(16)}`).join(', ')})`);
+}
+// Naga V2 HyperSpeed reads the low-battery threshold with 1F and writes it with FF (rmd.c:3636 / 3803)
+{
+  const { d, sim } = driverOn('00B4', { tids: [0x1f], perCmd: { '07/01': [0xff] }, power: 'aa', poll: 'classic' }); allSims.push(sim);
+  await d.connect();
+  await d.write('lowBattery', 0x20);
+  const rs = sim.sent.filter((r) => cmdKey(r) === '07/81'), ws = sim.sent.filter((r) => cmdKey(r) === '07/01');
+  check(rs.length && rs.every((r) => r.tid === 0x1f) && ws.length === 1 && ws[0].tid === 0xff && sim.s.lowBat === 0x20, 'Naga V2 HyperSpeed: threshold read with 1F, written with FF');
+}
+
 // ---- 9. nothing outside the sheet, ever; every report well formed ----
 const every = allSims.flatMap((s) => s.sent);
 check(every.every((r) => SHEET_CMDS.has(cmdKey(r))), `only sheet commands were sent: ${[...new Set(every.map(cmdKey))].join(', ')}`);
@@ -466,7 +534,7 @@ const meta = JSON.parse(fs.readFileSync(path.join(ROOT, 'device-library', 'razer
 check(meta.id === createRazerMouse().id && meta.vid === '1532' && meta.status === 'read-only' && Array.isArray(meta.tested) && meta.tested.length === 0 && meta.source === 'docs/brands/razer.md', 'device.json: id, vid 1532, read-only, tested [], source');
 check(meta.pids.join() === PIDS.map((p) => p.toLowerCase()).join(), 'device.json pids = the driver\'s model table');
 check(validateMeta({ ...meta, tested: [{ by: '-', date: '-', devicehub: '-' }] }) === null, `device.json is otherwise well formed (${validateMeta({ ...meta, tested: [{ by: '-', date: '-', devicehub: '-' }] })})`);
-for (const want of ['DeathAdder V3', 'DeathAdder V3 Pro', 'DeathAdder V4 Pro', 'Viper V3 Pro', 'Basilisk V3', 'Basilisk V3 Pro', 'Cobra', 'Naga V2 Pro', 'HyperPolling Wireless Dongle']) check(meta.models.includes(want), `device.json lists ${want}`);
+for (const want of ['DeathAdder V3', 'DeathAdder V3 Pro', 'DeathAdder V4 Pro', 'Viper V3 Pro', 'Basilisk V3', 'Basilisk V3 Pro', 'Cobra', 'Naga V2 Pro', 'HyperPolling Wireless Dongle', ...new Set(ADDED.map((r) => r[1]))]) check(meta.models.includes(want), `device.json lists ${want}`);
 const src = fs.readFileSync(path.join(ROOT, 'device-library', 'razer-mouse', 'device.mjs'), 'utf8');
 check(!/flash|bootloader|dfu|0x46|0x41, 0x42/i.test(src.replace(/^\/\/.*$/gm, '')), 'no flash, bootloader or pairing bytes in the driver code');
 

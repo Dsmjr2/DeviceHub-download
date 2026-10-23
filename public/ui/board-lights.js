@@ -45,14 +45,32 @@ async function run(kind, redraw, onDone) {
   redraw();
   let r;
   try { await env.api(`/api/board-lights/${kind}`, {}); r = await follow(redraw); }
-  catch (e) { r = { done: true, ok: false, text: `${kind === 'setup' ? 'Not set up' : 'Not removed'}: ${e.message}` }; }
+  catch (e) {
+    // already running (started before this window was opened or reloaded): follow it instead of calling it a failure
+    r = /being set up or removed/.test(e.message) ? await follow(redraw) : { done: true, ok: false, text: `${kind === 'setup' ? 'Not set up' : 'Not removed'}: ${e.message}` };
+  }
   s.job = r;
   await boardLightsStatus(true);
   redraw();
   onDone?.(r);
 }
 
+// a setup or removal still running on the server when this window opened (23 Oct 2026, a friend's PC: the window was
+// reopened mid-setup, the button came back, and pressing it said "Not set up: board lights are being set up or removed")
+let resumed = false;
+function resume(redraw, onDone) {
+  if (resumed || isDemo()) return;
+  resumed = true;
+  env.api('/api/board-lights/progress').then(async (p) => {
+    if (!p || p.done || !p.text || s.job) return;
+    s.job = p; redraw();
+    const r = await follow(redraw);
+    s.job = r; await boardLightsStatus(true); redraw(); onDone?.(r);
+  }, () => {});
+}
+
 export function boardLights({ redraw = () => {}, onDone } = {}) {
+  resume(redraw, onDone);
   const st = cachedBoard();
   // read once; an answer that failed (an older DeviceHub still running) is tried again only after 30 s
   if (!st && !s.loading && Date.now() - s.failed > 30000) boardLightsStatus().then(() => redraw());

@@ -22,7 +22,17 @@
     "1842",
     "1840",
     "1824",
-    "184c"
+    "184c",
+    "184a",
+    "1848",
+    "1830",
+    "1872",
+    "1836",
+    "1850",
+    "1870",
+    "182e",
+    "184d",
+    "183c"
   ],
   "models": [
     "Aerox 3 Wireless",
@@ -33,21 +43,31 @@
     "Aerox 9 Wireless",
     "Aerox 9 Wireless WoW Edition",
     "Prime Wireless",
-    "Rival 3"
+    "Rival 3",
+    "Prime Mini Wireless",
+    "Rival 3 Wireless",
+    "Rival 3 Wireless Gen 2",
+    "Aerox 3",
+    "Aerox 5",
+    "Rival 3 Gen 2",
+    "Prime",
+    "Prime Mini",
+    "Rival 5"
   ],
   "works": [
-    "battery and charging (command 92, D2 through the 2.4 GHz receiver; read only): Aerox 3 / 5 / 9 Wireless and their editions, Prime Wireless, on the cable and the receiver",
+    "battery and charging (command 92, D2 through the 2.4 GHz receiver; read only): Aerox 3 / 5 / 9 Wireless and their editions, Prime Wireless, Prime Mini Wireless, on the cable and the receiver",
+    "battery and charging (AA 01, read 3: byte 0 percent, byte 2 charging; read only): Rival 3 Wireless, Rival 3 Wireless Gen 2 (rivalcfg rival3_wireless.py, rival3_wireless_gen2.py)",
     "firmware bytes (10 00) in the device info: Rival 3",
-    "names the model and the connection from the product id",
-    "sends nothing but those two reads; writes nothing",
-    "all from docs/brands/steelseries.md (rivalcfg, OpenRGB) and simulated mice only (tests/sim-steelseries-mouse.mjs); never run on a real mouse"
+    "names the model and the connection from the product id; the wired Aerox 3, Aerox 5, Rival 3 Gen 2, Prime, Prime Mini and Rival 5 are named only (no source has a read for them, so nothing is sent)",
+    "sends nothing but those reads; writes nothing",
+    "all from docs/brands/steelseries.md and rivalcfg (rivalcfg/devices/*.py @ 779ea52, cross-checked with OpenRGB SteelSeriesControllerDetect.cpp @ 817834c), simulated mice only (tests/sim-steelseries-mouse.mjs); never run on a real mouse"
   ],
   "doesNotWork": [
     "firmware updates and saving to the mouse (never: 11 00 / 51 00 / 09 00 / 59 are on DeviceHub's never list)",
-    "DPI presets (2D, 0B 00, 61, 03 00), polling rate (2B, 04 00, 5D), sleep timer (29), dim timer (23 0F 01), lights (21, 22, 23, 26, 27, 05 00, 06 00, 5F, 62) and button mapping (2A): rivalcfg only writes them and no source reads them back (docs/brands/steelseries.md section 3 and 4), so DeviceHub does not change them",
-    "battery on the Prime Mini Wireless, Rival 3 Wireless and Aerox 3 Gen 2 Wireless (not in the sheet's battery row)",
-    "wired-only mice with no documented read: Aerox 3 (1836), Aerox 5 (1850), Prime (182e, 182a, 1856), Rival 5 (183c, 183e), Rival 600 (1724, 172e)",
-    "unconfirmed: the output report length (64 assumed) and the usage page of the Prime Wireless and Rival 3"
+    "DPI presets (2D, 0B 00, 61, 03 00, 20, 2C, 34), polling rate (2B, 04 00, 5D, 17), sleep timer (29), dim timer (23 0F 01), lights (21, 22, 23, 26, 27, 05 00, 06 00, 5F, 62) and button mapping (2A, 19, 5B): rivalcfg only writes them and no source reads them back (docs/brands/steelseries.md section 3 and 4), so DeviceHub does not change them",
+    "battery on the Aerox 3 Gen 2 Wireless (no source has its read); the Rival 3 Wireless firmware read (90 00) is not sent (not on the sheet's list)",
+    "not added yet (named-only like their base models in rivalcfg): Prime R6 Black Ice 182a, Prime CS:GO Neo Noir 1856, Rival 5 Destiny 183e; Rival 600 (1724, 172e)",
+    "unconfirmed: the output report length (64 assumed) and the usage page of the Prime, Prime Mini, Prime (Mini) Wireless, Rival 3 and Rival 3 Gen 2 / Wireless Gen 2"
   ],
   "status": "untested",
   "tested": [],

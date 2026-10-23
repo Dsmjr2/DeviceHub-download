@@ -90,7 +90,8 @@ check(/Set-Location -LiteralPath \$env:TEMP/.test(un) && /-WorkingDirectory \$en
 //     the release still sent after a drag back to the start), a held slider is not redrawn, and changes a few seconds
 //     apart share one backup
 const ctl = fs.readFileSync(path.join(ROOT, 'public/ui/controls.js'), 'utf8');
-check(/show\(!value\);\s*try \{ await run\(el/.test(ctl), 'a switch moves at once on a click');
+// (23 Oct 2026: the switch keeps its own state, so the side it moves to is `next`)
+check(/show\(next\);\s*try \{ await run\(el/.test(ctl), 'a switch moves at once on a click');
 check(/if \(v === value && !moved\) return;/.test(ctl) &&/if \(busy \|\| next == null \|\| next === sent\) return;/.test(ctl), 'a live slider sends one step at a time and its release after a drag back');
 check(/if \(holding\) heldRender = true; else render\(false\)/.test(fs.readFileSync(path.join(ROOT, 'public/app.js'), 'utf8')), 'a slider being dragged is not redrawn under the pointer');
 check(/Date\.now\(\) - \(lastBackupAt\[id\] \|\| 0\) < BACKUP_REUSE_MS/.test(fs.readFileSync(path.join(ROOT, 'public/core/devices.js'), 'utf8')), 'changes seconds apart share one device backup');

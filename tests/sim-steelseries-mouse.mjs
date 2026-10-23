@@ -48,7 +48,14 @@ class SimMouse {
     for (const n of NEVERS) if ((!n.pids || n.pids.includes(h4(this.m.pid))) && n.b.every((x, i) => b[i] === x)) this.bad.push(`never: ${n.what}`);
     const dongle = this.m.link === 'dongle', cmd = b[0];
     if (this.o.silent) return;
-    if (cmd === (dongle ? 0x92 | WIRELESS_FLAG : 0x92) && this.m.battery) {
+    if (this.m.named) { this.bad.push(`sent ${hx(b.slice(0, 3))} to a mouse no source documents a read for`); return; }
+    if (this.m.battery === 'aa') {
+      // rivalcfg rival3_wireless.py: AA 01 unchanged on the receiver, read 3: percent, ?, charging
+      if (cmd === 0xaa && b[1] === 0x01) this.reply([this.o.aaLevel ?? 60, 0x00, this.o.charging ? 0x01 : 0x00]);
+      else this.bad.push(`not the AA 01 read: ${hx(b.slice(0, 3))}`);
+      return;
+    }
+    if (cmd === (dongle ? 0x92 | WIRELESS_FLAG : 0x92) && this.m.battery === true) {
       const v = (this.o.charging ? 0x80 : 0) | this.o.level;
       this.reply(dongle ? [cmd, v, ...new Array(62).fill(0)] : [cmd, v]);   // read 2 on the cable, 64 on the dongle
     } else if (cmd === 0x10 && b[1] === 0x00 && this.m.firmware && !dongle) this.reply(this.o.fw);
@@ -68,10 +75,15 @@ setDeviceProvider(async (filters) => {
 check(!problem(drv), `the driver passes the my-devices check (${problem(drv)})`);
 check(!validateMeta(meta) && meta.status === 'untested' && meta.tested.length === 0 && meta.id === drv.id && meta.vid === '1038' && meta.source === 'docs/brands/steelseries.md', `device.json: untested, tested [], id, vid, source (${validateMeta(meta)})`);
 check(JSON.stringify([...meta.pids].sort()) === JSON.stringify(MODELS.map((m) => h4(m.pid).toLowerCase()).sort()), 'device.json pids are the table\'s');
-check(JSON.stringify(drv.hid.pids) === JSON.stringify(MODELS.map((m) => h4(m.pid))) && MODELS.every((m) => drv.hid.byPid[h4(m.pid)].iface === 3 && drv.hid.byPid[h4(m.pid)].reportId === 0), 'one channel per pid, interface 3, report id 0');
+const IF0 = ['182E', '183C'];   // rivalcfg prime.py / rival5.py "endpoint": 0
+check(JSON.stringify(drv.hid.pids) === JSON.stringify(MODELS.map((m) => h4(m.pid))) && MODELS.every((m) => drv.hid.byPid[h4(m.pid)].iface === (IF0.includes(h4(m.pid)) ? 0 : 3) && drv.hid.byPid[h4(m.pid)].reportId === 0), 'one channel per pid, interface 3 (Prime, Rival 5: 0), report id 0');
 check(drv.hid.byPid['1838'].page === 'FFC0' && drv.hid.byPid['1840'].page === '*' && drv.hid.byPid['1824'].page === '*', 'Aerox on FFC0, Prime Wireless and Rival 3 on any page (not in the sheet)');
+check(['1830', '1836', '1850', '183C'].every((p) => drv.hid.byPid[p].page === 'FFC0') && ['1872', '1870', '182E', '184D', '184A', '1848'].every((p) => drv.hid.byPid[p].page === '*'), 'OpenRGB\'s FFC0 where it gives one (1830, 1836, 1850, 183C), any page elsewhere');
+const NEW = [0x184a, 0x1848, 0x1830, 0x1872, 0x1836, 0x1850, 0x1870, 0x182e, 0x184d, 0x183c];
+check(NEW.every((p) => MODELS.some((m) => m.pid === p)), 'the rivalcfg models added 23 Oct 2026 are in the table');
+check(MODELS.filter((m) => m.named).map((m) => m.pid).sort().join() === [0x1836, 0x1850, 0x1870, 0x182e, 0x184d, 0x183c].sort().join() && MODELS.filter((m) => m.named).every((m) => !m.battery && !m.firmware), 'the wired mice with no read are named only');
 check(drv.settings.length === 0, 'no settings: every documented mouse setting is write-only');
-check(!MODELS.some((m) => [0x184a, 0x1848, 0x1830, 0x1890, 0x1836, 0x1850, 0x1724].includes(m.pid)), 'mice without a documented read are left out');
+check(!MODELS.some((m) => [0x1890, 0x1724, 0x172e].includes(m.pid)), 'mice without a documented id or read are left out');
 check(String(VENDOR_APPS) === String(ARCTIS_APPS) && VENDOR_APPS.test('SteelSeriesGG.exe') && VENDOR_APPS.test('SteelSeriesEngine3.exe') && !VENDOR_APPS.test('steam.exe'), 'the GG names are the Arctis driver\'s');
 for (const [b, p, c] of [[0x00, 0, false], [0x01, 0, false], [0x15, 100, false], [0x7f, 100, false], [0x8d, 60, true]]) {
   const r = parseBattery(b);
@@ -86,7 +98,21 @@ for (const m of MODELS) {
   check(JSON.stringify(v) === '{}', `${m.name}: read() has no values (no settings)`);
   const info = await drv.info();
   check(info.Model === `SteelSeries ${m.name}` && info['USB id'] === `1038:${h4(m.pid).toLowerCase()}`, `${m.name}: info ${JSON.stringify(info)}`);
-  if (m.battery) {
+  if (m.battery === 'aa') {
+    const b = await drv.battery();
+    check(b.percent === 60 && b.charging === (m.link === 'cable'), `${m.name}: AA battery ${JSON.stringify(b)}`);
+    check(plugged.sent.length > 0 && plugged.sent.every((s) => s[0] === 0xaa && s[1] === 0x01), `${m.name}: battery asked as AA 01, never | 0x40 (${plugged.sent.map((s) => hx(s.slice(0, 2)))})`);
+    check(/^60%/.test(info.Battery) && !info.Firmware, `${m.name}: info battery ${info.Battery}, no firmware read`);
+    plugged.o.charging = true; plugged.o.aaLevel = 100;
+    const c = await drv.battery();
+    check(c.percent === 100 && c.charging === true, `${m.name}: AA 100%, charging (byte 2) ${JSON.stringify(c)}`);
+    plugged.o.aaLevel = 0xff;
+    check((await throws(() => drv.battery()))?.message?.includes('outside 0-100'), `${m.name}: a level over 100 is no reading`);
+    plugged.o.aaLevel = 60; plugged.o.charging = m.link === 'cable';
+  } else if (m.named) {
+    check(await drv.battery() === null && !info.Battery && !info.Firmware && /names this mouse only/.test(info.Driver), `${m.name}: named only (${JSON.stringify(info)})`);
+    check(plugged.sent.length === 0, `${m.name}: nothing sent at all`);
+  } else if (m.battery) {
     const b = await drv.battery();
     check(b.percent === 60 && b.charging === (m.link === 'cable'), `${m.name} (${m.link}): battery ${JSON.stringify(b)}`);
     const want = m.link === 'dongle' ? 0xd2 : 0x92;

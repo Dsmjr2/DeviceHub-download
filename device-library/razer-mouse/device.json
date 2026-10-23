@@ -34,7 +34,19 @@
     "00db",
     "00a7",
     "00a8",
-    "00b3"
+    "00b3",
+    "006e",
+    "0071",
+    "0098",
+    "0084",
+    "008c",
+    "007c",
+    "007d",
+    "009c",
+    "00a5",
+    "00a6",
+    "00b8",
+    "00b4"
   ],
   "models": [
     "DeathAdder V3",
@@ -53,13 +65,24 @@
     "Cobra Pro",
     "Cobra HyperSpeed",
     "Naga V2 Pro",
-    "HyperPolling Wireless Dongle"
+    "HyperPolling Wireless Dongle",
+    "DeathAdder Essential",
+    "DeathAdder Essential White Edition",
+    "DeathAdder Essential (2021)",
+    "DeathAdder V2",
+    "DeathAdder V2 Mini",
+    "DeathAdder V2 Pro",
+    "DeathAdder V2 X HyperSpeed",
+    "Viper V2 Pro",
+    "Viper V3 HyperSpeed",
+    "Naga V2 HyperSpeed"
   ],
   "works": [
     "written from docs/brands/razer.md and checked against a simulated mouse only (tests/sim-razer.mjs)",
     "reads: firmware, battery level and charging, DPI (X/Y), DPI stage table, polling rate (classic and HyperPolling 125-8000 Hz), sleep timer, low-battery threshold (raw), scroll mode (raw), scroll acceleration, smart reel, HyperPolling dongle light, lighting brightness per LED zone",
     "writes (one at a time, read back; refused while Razer Synapse runs): DPI, polling rate, sleep timer, low-battery threshold, active DPI stage, each DPI stage's value (the stage count is kept), scroll acceleration and smart reel (Basilisk family), the HyperPolling dongle light (connection / battery / battery warning), brightness of each LED zone that answers",
-    "transaction id from the sheet, or found by reads only in the sheet order 0x1F, 0x3F, 0xFF"
+    "transaction id from the sheet, or found by reads only in the sheet order 0x1F, 0x3F, 0xFF",
+    "added 23 Oct 2026 from OpenRazer's driver itself (razermouse_driver.c, mouse.py): DeathAdder Essential family, DeathAdder V2 / V2 Mini / V2 Pro / V2 X HyperSpeed, Viper V2 Pro, Viper V3 HyperSpeed, Naga V2 HyperSpeed, each with OpenRazer's own transaction id per command and its DPI maximum; simulated only"
   ],
   "doesNotWork": [
     "firmware updates (never: Razer's own updater only)",

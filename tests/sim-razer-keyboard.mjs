@@ -263,6 +263,46 @@ check(hex(buildReport(0x1f, 0x00, 0x40, 0x02, [0x00, 0x10])) === lit([0x00, 0x1f
   check(tkl.d.settings.map((s) => s.key).join() === 'gameMode,macroLed', 'TKL keeps game mode and the macro light');
 }
 
+// ---- 5b. added 23 Oct 2026: Huntsman Mini JP (as the Mini), the two analog Huntsmans (lights and info only), and the
+// OpenRGB-only BlackWidow V4 Pro 75% / V4 Low Profile TKL (info only: firmware on the device's own transaction id) ----
+{
+  const jp = driverOn('0269', { tids: { '00/81': 0xff, '0f/84': 0x3f, '0f/04': 0x3f, '03/80': 0xff, '03/00': 0xff } });
+  allSims.push(jp.sim);
+  await jp.d.connect();
+  check(jp.d.hid.byPid['0269'].iface === 2 && (await jp.d.read()).brightness === 180 && jp.d.settings.map((s) => s.key).join() === 'brightness,gameMode,macroLed', `Huntsman Mini JP: interface 2, brightness, game mode, macro light (${jp.d.settings.map((s) => s.key)})`);
+  check((await jp.d.write('brightness', 33)) === 33 && jp.sim.sent.some((r) => cmdKey(r) === '0f/04' && r.tid === 0x3f && hex(r.args) === '01 05 21') && (await jp.d.write('brightness', 180)) === 180, 'Mini JP brightness = 0F/04 [01 05 21] tid 3F, put back');
+  await selfChecked(jp.d, jp.sim.s);
+
+  for (const pid of ['0266', '0282']) {
+    const a = driverOn(pid, { tids: { '00/81': 0xff, '03/83': 0xff, '0f/04': 0x1f, '03/80': 0xff, '03/00': 0xff } });
+    allSims.push(a.sim);
+    await a.d.connect();
+    const v = await a.d.read();
+    check(a.d.hid.byPid[pid].iface === 3 && a.d.settings.map((s) => s.key).join() === 'brightness,macroLed' && v.brightness === 180 && v.macroLed === false, `${pid} (analog): interface 3, brightness and the macro light only (${a.d.settings.map((s) => s.key)})`);
+    check(!a.sim.sent.some((r) => cmdKey(r).startsWith('03/') && r.args[1] === 0x08), `${pid}: game mode is never asked or written`);
+    check((await a.d.write('brightness', 64)) === 64 && a.sim.sent.some((r) => cmdKey(r) === '0f/04' && r.tid === 0x1f) && a.sim.sent.some((r) => cmdKey(r) === '03/83' && r.tid === 0xff), `${pid}: brightness written 0F/04 tid 1F, read 03/83 tid FF`);
+    check((await a.d.write('brightness', 180)) === 180, `${pid}: put back`);
+    const e = await refusal(() => a.d.write('gameMode', true));
+    check(/not a setting/.test(e?.message || ''), `${pid}: game mode refused (${e?.message})`);
+    check((await a.d.info()).Model === `Razer ${pid === '0266' ? 'Huntsman V2 Analog' : 'Huntsman Mini Analog'}`, `${pid}: info`);
+    await selfChecked(a.d, a.sim.s);
+  }
+
+  for (const [pid, iface, tid, model] of [['02B3', 3, 0x1f, 'BlackWidow V4 Pro 75%'], ['02B4', 2, 0x1f, 'BlackWidow V4 Pro 75%'], ['02D4', 3, 0x1f, 'BlackWidow V4 Low Profile TKL'], ['02D2', 2, 0x9f, 'BlackWidow V4 Low Profile TKL']]) {
+    // the keyboard would answer brightness too; the driver must not ask (no source has the read)
+    const o = driverOn(pid, { tids: { '00/81': tid, '0f/84': tid, '0f/04': tid, '03/80': 0xff, '03/00': 0xff, '07/80': tid, '07/84': tid } });
+    allSims.push(o.sim);
+    await o.d.connect();
+    const i = await o.d.info();
+    check(o.d.hid.byPid[pid].iface === iface && i.Model === `Razer ${model}` && i.Firmware === '1.4' && /none yet/.test(i.Settings), `${pid}: interface ${iface}, info only (${JSON.stringify(i)})`);
+    check(o.sim.sent.length === 1 && cmdKey(o.sim.sent[0]) === '00/81' && o.sim.sent[0].tid === tid && o.sim.sent[0].size === 2, `${pid}: only the firmware read, 00/81 size 02 on tid ${tid.toString(16)} (${o.sim.sent.map(cmdKey)})`);
+    check(o.d.settings.length === 0 && JSON.stringify(await o.d.read()) === '{}' && (await o.d.battery()) === null, `${pid}: no settings, no battery`);
+    const e = await refusal(() => o.d.write('brightness', 10));
+    check(/not a setting/.test(e?.message || '') && writes(o.sim).length === 0, `${pid}: brightness refused, nothing written`);
+    check(o.sim.sent.length === 1, `${pid}: still only the firmware read`);
+  }
+}
+
 // ---- 6. the model table and the never list ----
 {
   for (const sim of allSims) {
@@ -274,6 +314,8 @@ check(hex(buildReport(0x1f, 0x00, 0x40, 0x02, [0x00, 0x10])) === lit([0x00, 0x1f
   check(matchesNever(buildReport(0x1f, 0x00, 0x46, 0x01, [0x01])) && matchesNever(buildReport(0xff, 0x00, 0x04, 0x02, [0x02, 0x00])) && !matchesNever(buildReport(0xff, 0x00, 0x04, 0x02, [0x00, 0x00])), 'the never patterns catch pairing and factory mode, and not normal mode');
   const iface = (ids) => ids.every((p) => MODELS[p]);
   check(iface(['026B', '026C', '0258', '024E', '02B9', '0295', '0292', '0287', '028D', '02A5', '0298', '02A6', '02A7', '02B0', '02CF', '02D7']) && ['026B', '026C', '0258', '024E', '02B9', '0295', '0292', '0287', '028D', '02A5', '0298', '02A6', '02A7', '02B0', '02CF', '02D7', '0271', '02BA'].every((p) => MODELS[p].iface === 3), 'interface 3 where razer_get_report_params says 0x03');
+  check(['0266', '0282', '02B3', '02D4'].every((p) => MODELS[p].iface === 3) && ['0269', '02B4', '02D2'].every((p) => MODELS[p].iface === 2), 'the added boards: interface 3 / 2 as razer_get_report_params and OpenRGB\'s detectors say');
+  check(['02B3', '02B4', '02D4', '02D2'].every((p) => MODELS[p].infoOnly && MODELS[p].bright === null && MODELS[p].game === null && !MODELS[p].macro && MODELS[p].bat === null && MODELS[p].poll === null), 'the OpenRGB-only boards carry no setting');
   check(['02A1', '028F', '02A3', '0257', '025A', '0293', '025C', '02D5', '0290', '0296'].every((p) => MODELS[p].iface === 2) && ['0294', '02A2'].every((p) => MODELS[p].iface === 1), 'interface 2 and the default 1 as razer_get_report_params says');
   check(['02BA', '02D5', '025C', '0271', '0290', '0296'].every((p) => MODELS[p].wait === 4.9 && MODELS[p].bright === 'x9f' && MODELS[p].bat === 0x9f), 'wireless boards: 4.9 ms, tid 9F');
   const d = createRazerKeyboard({ open: async () => null, vendorApp: async () => null });

@@ -131,8 +131,8 @@ function diagnosis(d) {
       line(top, true),
       h('div', { class: 'actions', style: { margin: '8px 0 0', justifyContent: 'flex-start' } }, diagAction(d, top.action, done)),
       note,
-      rest.length ? h('details', { style: { marginTop: '8px' } }, h('summary', { style: { cursor: 'pointer', color: 'var(--muted)' } }, `More (${rest.length})`),
-        ...rest.map((f) => h('div', {}, line(f, false), f.action ? h('div', { class: 'actions', style: { margin: '6px 0 0', justifyContent: 'flex-start' } }, diagAction(d, f.action, done)) : null))) : null));
+      // every other finding shown too, no "More" fold (23 Oct 2026)
+      ...rest.map((f) => h('div', { style: { marginTop: '8px' } }, line(f, false), f.action ? h('div', { class: 'actions', style: { margin: '6px 0 0', justifyContent: 'flex-start' } }, diagAction(d, f.action, done)) : null))));
       // Get help is at the top right of the device page (deviceHelp), one per screen
   };
   const key = `${d.status}|${d.error || ''}`;

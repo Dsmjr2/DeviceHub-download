@@ -41,7 +41,8 @@ class SimHeadset {
     const b = Uint8Array.from(data);
     this.sent.push({ id, bytes: b });
     const o = this.o, f = this.family;
-    const wantId = f === 'legacy06' || f === 'legacy7' ? 0x06 : 0x00, wantLen = f === 'nova' ? 63 : 30;
+    if (f === 'nova3') { this.bad.push(`sent ${hx(b.slice(0, 3))} to the Nova 3 (no source has a read for it)`); return; }
+    const wantId = f === 'legacy06' || f === 'legacy7' || f === 'legacy1' ? 0x06 : 0x00, wantLen = f === 'nova' ? 63 : 30;
     if (id !== wantId) this.bad.push(`report id ${id} (want ${wantId})`);
     if (b.length !== wantLen) this.bad.push(`length ${b.length} (want ${wantLen})`);
     const cmd = b[0];
@@ -49,9 +50,12 @@ class SimHeadset {
       if (cmd === 0xb0) {
         if (this.status === null) { this.bad.push('status request sent to a model whose request the sheet does not give'); return; }
         // Nova 7: byte 2 level, byte 3 status (00 offline, 01/02 charging, 03 battery); 7+: byte 1 01 offline, byte 3 01 charging
+        // Nova 3P (HC nova_3p_wireless getBattery): byte 1 02 offline, byte 3 percent, byte 4 01 charging
         const r = this.status === 'a7p'
           ? [0xb0, o.online ? 0x00 : 0x01, o.level, o.charging ? 0x01 : 0x00, o.game, o.chat]
-          : [0xb0, 0x00, o.level, o.online ? (o.charging ? 0x01 : 0x03) : 0x00, o.game, o.chat];
+          : this.status === 'nova3p'
+            ? [0xb0, o.online ? 0x00 : 0x02, 0x00, o.level, o.charging ? 0x01 : 0x00]
+            : [0xb0, 0x00, o.level, o.online ? (o.charging ? 0x01 : 0x03) : 0x00, o.game, o.chat];
         this.reply(0, r, 63);
       } else if (cmd === 0x20) {
         if (!this.gen2) { this.bad.push('00 20 sent to a Nova that is not the Gen 2'); return; }
@@ -80,6 +84,10 @@ class SimHeadset {
       if (cmd === 0x18) this.reply(6, [0x18, o.level], 7);
       else if (cmd === 0x24) this.reply(6, [0x24, o.game, o.chat], 7);
       else this.bad.push(`undocumented or write-only Arctis 7 command ${hx(b.slice(0, 3))}`);
+    } else if (f === 'legacy1') {
+      // HC steelseries_arctis_1.hpp: 06 12, read 8 (hidapi bytes: 06, 12, status, battery): byte 2 01 offline, byte 3 percent
+      if (cmd === 0x12) this.reply(6, [0x12, o.online ? 0x00 : 0x01, o.level], 7);
+      else this.bad.push(`undocumented or write-only Arctis 1 command ${hx(b.slice(0, 3))}`);
     }
   }
 }
@@ -88,7 +96,7 @@ let plugged = null;
 setDeviceProvider(async (filters) => {
   const f = filters[0];
   if (!plugged || f.vendorId !== plugged.vendorId || f.productId !== plugged.productId) return null;
-  if (f.usagePage != null && f.usagePage !== 0xffc0) return null;
+  if (f.usagePage != null && f.usagePage !== (plugged.page ?? 0xffc0)) return null;
   return plugged;
 });
 async function plug(sim, opts = {}) { Object.assign(sim, opts); plugged = sim; return drv.connect(); }
@@ -104,7 +112,9 @@ check(problem(drv) === null, `the driver passes the my-devices check (${problem(
 check(meta.status === 'read-only' && meta.vid === '1038' && Array.isArray(meta.tested) && meta.tested.length === 0 && meta.source === 'docs/brands/steelseries.md', 'device.json: read-only, vid 1038, tested [], source');
 const pids = MODELS.map((m) => m.pid.toString(16).padStart(4, '0'));
 check(JSON.stringify([...meta.pids].sort()) === JSON.stringify([...pids].sort()), 'device.json pids = the driver\'s model table');
-check(!pids.includes('22a7') && !pids.includes('220a'), 'the unconfirmed Nova 7 ids are left out');
+for (const p of ['220a', '2298', '22a7', '2269', '226d', '12b3', '12b6', '12d7', '12d5', '12ec']) check(pids.includes(p), `HeadsetControl's ${p} is in the table`);
+check(drv.hid.byPid['12B3'].page === 'FF43' && drv.hid.byPid['12B3'].usage === '0202' && drv.hid.byPid['12B3'].iface === 3 && drv.hid.byPid['12B3'].reportId === 6, 'Arctis 1: interface 3, FF43 / 0202, report id 6');
+check(drv.hid.byPid['12EC'].iface === 4 && drv.hid.byPid['12EC'].page === 'FFC0' && drv.hid.byPid['2269'].iface === 3, 'Nova 3 on interface 4, Nova 3P on 3');
 check(new Set(MODELS.map((m) => m.name)).size === meta.models.length && MODELS.every((m) => meta.models.includes(m.name)), 'device.json models = the model names');
 check(JSON.stringify(drv.settings.map((x) => x.key)) === JSON.stringify(['sidetone', 'chatGame', 'chatChat']), `the page shows only readable settings (${drv.settings.map((x) => x.key)})`);
 check(drv.settings.filter((x) => x.key.startsWith('chat')).every((x) => x.type === 'display' && x.unit === '%' && x.min === undefined), 'ChatMix is a reading (display kind), not a slider');
@@ -234,11 +244,65 @@ s = new SimHeadset(0x1280, 'legacy7', { level: 80 });
 await plug(s);
 check(await drv.battery() === null && (await drv.read()).chatGame === 0, 'Arctis Pro GameDAC (wired): ChatMix, no battery');
 
+// --- Nova 7P (HC steelseries_arctis_nova_7p.hpp): Nova 7 status, battery only, no ChatMix ---
+s = new SimHeadset(0x220a, 'nova', { level: 2, game: 64, chat: 64 });
+check(await plug(s, { status: 'nova7' }), 'Nova 7P (220A) connects');
+b = await drv.battery(); info = await drv.info();
+check(b.percent === 50 && b.charging === false, `Nova 7P (220A) battery 2 of 4 = 50% (${JSON.stringify(b)})`);
+check(JSON.stringify(await drv.read()) === '{}' && /not on this model/.test(info.ChatMix || ''), `Nova 7P: no ChatMix (${JSON.stringify(info)})`);
+check(await refuses(() => drv.write('sidetone', 1), /cannot report it back/, 'Nova 7P sidetone', s) === 0, 'Nova 7P sidetone refused');
+for (const pid of [0x2298, 0x22a7]) {
+  s = new SimHeadset(pid, 'nova', { level: 87, charging: true });
+  await plug(s, { status: 'nova7' });
+  b = await drv.battery();
+  check(b.percent === 87 && b.charging === true && reqs(s)[0] === '00 b0 00', `Nova 7P V2 ${pid.toString(16)}: battery in percent, charging (${JSON.stringify(b)})`);
+  s.o.online = false;
+  check(await drv.battery() === null, `Nova 7P V2 ${pid.toString(16)} off: no battery`);
+  check(s.bad.length === 0, `Nova 7P V2: nothing undocumented sent (${s.bad})`);
+}
+
+// --- Nova 3P / 3X Wireless (HC steelseries_arctis_nova_3p_wireless.hpp) ---
+for (const pid of [0x2269, 0x226d]) {
+  s = new SimHeadset(pid, 'nova', { level: 72, charging: true });
+  check(await plug(s, { status: 'nova3p' }), `Nova 3P/3X (${pid.toString(16)}) connects`);
+  b = await drv.battery();
+  check(b.percent === 72 && b.charging === true && reqs(s)[0] === '00 b0 00', `Nova 3P battery byte 3 percent, byte 4 charging (${JSON.stringify(b)})`);
+  check(JSON.stringify(await drv.read()) === '{}', 'Nova 3P: nothing on the page (no readable setting)');
+  check(await refuses(() => drv.write('sidetone', 1), /cannot report it back/, 'Nova 3P sidetone', s) === 0, 'Nova 3P sidetone refused');
+  s.o.online = false;
+  check(await drv.battery() === null && (await drv.info()).Headset?.startsWith('off'), 'Nova 3P offline (byte 1 = 02): no battery');
+  check(s.bad.length === 0, `Nova 3P: nothing undocumented sent (${s.bad})`);
+}
+
+// --- Arctis 1 / 7X / 7P Wireless (HC steelseries_arctis_1.hpp): 06 12 battery on FF43 ---
+for (const pid of [0x12b3, 0x12b6, 0x12d7, 0x12d5]) {
+  s = new SimHeadset(pid, 'legacy1', { level: 45 });
+  s.page = 0xff43;
+  check(await plug(s), `Arctis 1 family (${pid.toString(16)}) connects on FF43`);
+  b = await drv.battery();
+  check(b && b.percent === 45 && b.charging === false && reqs(s)[0] === '06 12 00', `Arctis 1 battery 45%, request 06 12 (${JSON.stringify(b)} ${reqs(s)[0]})`);
+  check(JSON.stringify(await drv.read()) === '{}', 'Arctis 1: no ChatMix');
+  check(await refuses(() => drv.write('sidetone', 1), /cannot report it back/, 'Arctis 1 sidetone', s) === 0, 'Arctis 1 sidetone (write-only) refused');
+  s.o.online = false;
+  check(await drv.battery() === null, 'Arctis 1 offline (byte 2 = 01): no battery');
+  check(s.bad.length === 0, `Arctis 1: nothing undocumented sent (${s.bad})`);
+}
+
+// --- Arctis Nova 3 (12EC): named only, nothing sent ---
+s = new SimHeadset(0x12ec, 'nova3');
+check(await plug(s), 'Nova 3 (12EC) connects');
+info = await drv.info();
+check(info.Model === 'Arctis Nova 3' && /no source has a read/.test(info.Status || ''), `Nova 3 info (${JSON.stringify(info)})`);
+check(await drv.battery() === null && JSON.stringify(await drv.read()) === '{}', 'Nova 3: no battery, nothing readable');
+check(await refuses(() => drv.write('sidetone', 1), /cannot report it back/, 'Nova 3 sidetone', s) === 0, 'Nova 3 sidetone refused');
+check(s.sent.length === 0 && s.bad.length === 0, `Nova 3: nothing sent at all (${s.bad})`);
+
 // --- never a save, firmware or write-only command: each family frames only its own list ---
 const src = fs.readFileSync(path.join(ROOT, 'device-library/steelseries-arctis/device.mjs'), 'utf8');
 check(!/tell\(\[0x09|0x35, 0x01|0x90, 0x00/.test(src), 'no save command in the driver');
-for (const [pid, fam, bad] of [[0x2202, 'nova', [0x09, 0xa3, 0xae, 0x37, 0x33, 0x3a, 0x18]], [0x12e0, 'legacy06', [0x09, 0x39, 0xc1, 0x2e, 0xbf]], [0x12c2, 'arctis9', [0x00, 0x90, 0x39]], [0x1260, 'legacy7', [0x35, 0x51, 0x55, 0x09]]]) {
-  await plug(new SimHeadset(pid, fam));
+for (const [pid, fam, bad] of [[0x2202, 'nova', [0x09, 0xa3, 0xae, 0x37, 0x33, 0x3a, 0x18]], [0x12e0, 'legacy06', [0x09, 0x39, 0xc1, 0x2e, 0xbf]], [0x12c2, 'arctis9', [0x00, 0x90, 0x39]], [0x1260, 'legacy7', [0x35, 0x51, 0x55, 0x09]], [0x12b3, 'legacy1', [0x09, 0x35, 0x53, 0x18, 0xb0]], [0x12ec, 'nova3', [0x09, 0x39, 0x37, 0xae, 0x33, 0xb0]], [0x2269, 'nova', [0x09, 0xa3, 0x37, 0x33]]]) {
+  const sim = new SimHeadset(pid, fam); if (fam === 'legacy1') sim.page = 0xff43;
+  await plug(sim);
   for (const c of bad) { let threw = false; try { drv.link.frame([c]); } catch { threw = true; } check(threw, `${fam}: refuses to frame ${c.toString(16)}`); }
 }
 
@@ -246,5 +310,5 @@ for (const [pid, fam, bad] of [[0x2202, 'nova', [0x09, 0xa3, 0xae, 0x37, 0x33, 0
 plugged = null;
 check(await drv.connect() === false, 'no headset: connect() is false');
 
-console.log(fails.length ? `sim-steelseries: FAILED: ${fails.join('; ')}` : 'sim-steelseries (Nova, Nova Pro, Arctis 9, Arctis 7 simulated; write-only settings refused): all good');
+console.log(fails.length ? `sim-steelseries: FAILED: ${fails.join('; ')}` : 'sim-steelseries (Nova, Nova 7P, Nova 3P, Nova 3, Nova Pro, Arctis 9, Arctis 7, Arctis 1 simulated; write-only settings refused): all good');
 if (fails.length) process.exitCode = 1;

@@ -6,14 +6,17 @@ const tray = () => $('#toasts');
 // the last red message and the page it was shown on: Get help puts it in the report (ui/get-help.js), nothing else
 export const lastBad = { hash: '', text: '', at: 0 };
 const noteBad = (msg, detail) => { if (typeof msg === 'string') Object.assign(lastBad, { hash: location.hash, text: detail ? `${msg}: ${detail}` : msg, at: Date.now() }); };
-export function toast(msg, kind = 'info', { detail, ms = 3800 } = {}) {
+// action: { label, run } adds one button (23 Oct 2026: a device just plugged in offers Learn it for me)
+export function toast(msg, kind = 'info', { detail, ms = 3800, action = null } = {}) {
   if (kind === 'bad') noteBad(msg, detail);
-  const el = h('div', { class: `toast ${kind}`, role: 'status' },
+  let close = () => {};
+  const btn = action ? h('button', { class: 'btn primary small toast-act', onclick: () => { close(); action.run(); } }, action.label) : null;
+  const el = h('div', { class: `toast ${kind}${action ? ' has-act' : ''}`, role: 'status' },
     icon(kind === 'good' ? 'check' : kind === 'bad' ? 'alert' : kind === 'busy' ? 'refresh' : 'shield', `ic ${kind === 'busy' ? 'spin' : ''}`),
-    h('div', {}, h('div', { class: 'toast-msg' }, msg), detail ? h('div', { class: 'toast-detail' }, detail) : null));
+    h('div', {}, h('div', { class: 'toast-msg' }, msg), detail ? h('div', { class: 'toast-detail' }, detail) : null, btn));
   tray().append(el);
   setTimeout(() => el.classList.add('in'), 10);
-  const close = () => { el.classList.remove('in'); el.classList.add('out'); setTimeout(() => el.remove(), 300); };
+  close = () => { el.classList.remove('in'); el.classList.add('out'); setTimeout(() => el.remove(), 300); };
   if (ms) setTimeout(close, ms);
   return {
     close,

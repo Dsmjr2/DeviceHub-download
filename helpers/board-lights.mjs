@@ -223,7 +223,9 @@ let job = null;
 export const getProgress = () => job;
 const step = (text, pct = null) => { job = { ...job, text, pct, done: false, at: Date.now() }; };
 const finish = (ok, text, extra = {}) => { job = { ...job, text, pct: null, done: true, ok, at: Date.now(), ...extra }; cache.at = 0; deps.forget(); return job; };
-const begin = (kind) => { if (job && !job.done) throw new Error('board lights are being set up or removed; wait for it to finish'); job = { kind, text: 'Starting', pct: null, done: false, at: Date.now() }; };
+// a job started more than 15 minutes ago and never finished (a prompt nobody answered) no longer holds the next one back
+const running = () => !!job && !job.done && Date.now() - (job.startedAt || job.at) < 15 * 60 * 1000;
+const begin = (kind) => { if (running()) throw new Error('board lights are being set up or removed; wait for it to finish'); job = { kind, startedAt: Date.now(), text: 'Starting', pct: null, done: false, at: Date.now() }; };
 
 export async function setUp() {
   begin('setup');
@@ -243,7 +245,7 @@ export async function setUp() {
     // 2. two OpenRGBs must not share the USB lights: DeviceHub's own one stops (Find lights starts it again if this fails)
     deps.stopBundled();
     // 3. the one admin prompt: protected copy, checked, and the logon task; the script undoes itself on any failure
-    step("Windows asks once: allow OpenRGB to run as administrator for your board's lights");
+    step("Windows asks once: press Yes to let OpenRGB run as administrator for your board's lights. No prompt? It may be behind this window: look for the flashing shield on the taskbar.");
     fs.mkdirSync(DIR, { recursive: true });
     deps.clearResult(RESULT);
     const r = await deps.elevate(setupScript());
@@ -296,7 +298,7 @@ export async function handle(url, req, res, send) {
     if (p === '/api/board-lights' && req.method === 'GET') return send(res, 200, await status({ fresh: url.searchParams.has('fresh') })), true;
     if (p === '/api/board-lights/progress' && req.method === 'GET') return send(res, 200, job || {}), true;
     if ((p === '/api/board-lights/setup' || p === '/api/board-lights/remove') && req.method === 'POST') {
-      if (job && !job.done) return send(res, 409, { error: 'board lights are being set up or removed' }), true;
+      if (running()) return send(res, 409, { error: 'board lights are being set up or removed', running: true }), true;
       // started on the click and answered at once; the page follows /api/board-lights/progress
       (p.endsWith('setup') ? setUp() : remove()).catch(() => {});
       return send(res, 200, { started: true }), true;

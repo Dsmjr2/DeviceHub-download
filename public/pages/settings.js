@@ -28,6 +28,7 @@ import { getHelp } from '../ui/get-help.js';
 import { smoothBar } from '../ui/progress.js';
 import { loadSetupFile } from './backups.js';
 import { saveSetup } from '../core/setup.js';
+import { setupNeeds, watchSetup } from './setup.js';
 
 let startup = null;
 // DeviceHub's own updates from GitHub (helpers/self-update.js): null = not read yet
@@ -88,16 +89,32 @@ function watchSteps() {
     try { const p = await (await fetch('/api/self-update/progress')).json(); if (p.text && (p.text !== selfStep?.text || p.pct !== selfStep?.pct)) showStep(p); } catch {}
   }, 400);
 }
-async function runSelfUpdate() {
+// Reload as soon as the restarted DeviceHub answers (23 Oct 2026, Shawn: "make the updates work faster"): it had waited
+// for app.js's 20 s version check, then 3 s more. DeviceHub is seen going away (or answering with new files), then
+// answering twice in a row 0.3 s apart; the 20 s check stays as the fallback. Gives up after 3 minutes.
+async function reloadWhenRestarted(before) {
+  const until = Date.now() + 180000;
+  let gone = false, ok = 0;
+  while (Date.now() < until) {
+    await pause(ok ? 300 : 400);
+    try {
+      const v = (await (await fetch('/api/version', { cache: 'no-store' })).json()).version;
+      if (gone || (before && v !== before)) { if (++ok >= 2) { location.reload(); return; } }
+    } catch { gone = true; ok = 0; }
+  }
+}
+async function runSelfUpdate({ overwrite = false } = {}) {
+  let before = null;
+  try { before = (await (await fetch('/api/version', { cache: 'no-store' })).json()).version; } catch {}
   selfBusy = true; selfBar?.stop(); selfBar = smoothBar(); rerender();
   showStep({ text: 'Looking for the new version', pct: null }); watchSteps();
   try {
-    const r = await env.api('/api/self-update', {});
-    if (r.installing) toast('Updating DeviceHub', 'busy', { detail: 'Downloaded and checked. Installing; DeviceHub restarts by itself in under a minute.', ms: 30000 });
+    const r = await env.api('/api/self-update', overwrite ? { overwrite: true } : {});
+    if (r.installing) toast('Updating DeviceHub', 'busy', { detail: `Downloaded and checked.${r.kept ? ` A copy of the changed file${self?.blockedFiles?.length === 1 ? ' is' : 's are'} in ${r.kept}.` : ''} Installing; DeviceHub restarts by itself in under a minute.`, ms: 30000 });
     else if (r.updated) toast('Updating DeviceHub', 'busy', { detail: `${r.count} new change${r.count === 1 ? '' : 's'}. Restarting…`, ms: 8000 });
     else { toast('Already up to date', 'good'); selfBusy = false; selfBar?.stop(); selfBar = null; loadSelf(); }
     // updated: the bar stays ("Restarting") until the window reloads itself with the new version
-    if (r.updated) showStep({ text: r.installing ? 'Installing; DeviceHub restarts by itself' : 'Restarting DeviceHub', pct: null });
+    if (r.updated) { showStep({ text: r.installing ? 'Installing; DeviceHub restarts by itself' : 'Restarting DeviceHub', pct: null }); reloadWhenRestarted(before); }
   } catch (e) { toast('Not updated', 'bad', { detail: e.message }); selfBusy = false; selfBar?.stop(); selfBar = null; rerender(); }
 }
 // settings sync and the battery saver (helpers/settings-sync.js, helpers/power.js)
@@ -115,7 +132,8 @@ function syncRows() {
   const syncText = !syncSt ? 'Checking…' : sy.notSetUp ? 'Not set up: it needs your own private GitHub copy of DeviceHub.' : opts?.settingsSync === false ? 'Off.' : sy.error ? `Couldn't sync: ${sy.error}` : sy.role === 'main' ? `This PC sends its EQ, sound tools, options and profiles to your other PCs. Checked ${syncAgo(sy.last)}.` : `Follows ${sy.mainName || 'your main PC'}: its settings load here. Checked ${syncAgo(sy.last)}.`;
   const powerText = !powerSt ? 'Checking…' : !pw.hasBattery ? 'No battery on this PC: always full speed.' : pw.onBattery ? (pw.saving ? 'On battery: background checks slowed.' : 'On battery.') : 'On the charger: full speed.';
   return [
-    row('Settings sync', syncBusy ? loadingBar('sync-bar', 'Syncing with your other PCs', null) : syncText, h('div', { class: 'srow-ctl' },
+    // only on a PC with its own private copy of DeviceHub (Shawn's PCs); a friend's PC has nothing to sync with
+    sy.notSetUp ? null : row('Settings sync', syncBusy ? loadingBar('sync-bar', 'Syncing with your other PCs', null) : syncText, h('div', { class: 'srow-ctl' },
       opts?.settingsSync === false || sy.notSetUp ? null : button(syncBusy ? 'Syncing…' : 'Sync now', async () => { syncBusy = true; rerender(); syncSt = await env.api('/api/settings-sync', {}).catch((e) => ({ error: e.message })); syncBusy = false; toast(syncSt.error ? 'Not synced' : 'Synced', syncSt.error ? 'bad' : 'good', { detail: syncSt.error || (syncSt.lastLoaded ? `Loaded ${syncSt.lastLoaded.parts.join(', ')}` : null) }); loadSyncPower(); }, { kind: 'ghost small', ic: 'refresh', disabled: syncBusy }),
       toggle({ value: opts?.settingsSync !== false, label: 'Settings sync', onCommit: (on) => setOpt('settingsSync', on) }))),
     oneDriveRow(),
@@ -124,7 +142,12 @@ function syncRows() {
     // only a PC with a battery has anything to save (a desktop always runs at full speed)
     powerSt && !pw.hasBattery ? null : row('Battery saver', powerText, toggle({ value: opts?.batterySaver !== false, label: 'Battery saver', onCommit: (on) => setOpt('batterySaver', on) })),
     // light window: DeviceHub inside the Chrome already running (much less memory); on by default on a PC with a battery
-    row('Low-memory window', 'Opens in your Chrome, about 350 MB less.', toggle({ value: opts?.lightWindow ?? !!pw.hasBattery, label: 'Low-memory window', onCommit: (on) => setOpt('lightWindow', on) })),
+    // read by DeviceHub.vbs when it opens the window, so it changes nothing until then (23 Oct 2026, Shawn: "when I turn on
+    // the low memory window does anything actually happen"): said in the row and when it is switched
+    row('Low-memory window', 'Opens inside your Chrome, about 350 MB less. From the next time DeviceHub opens.', toggle({ value: opts?.lightWindow ?? !!pw.hasBattery, label: 'Low-memory window', onCommit: async (on) => {
+      await setOpt('lightWindow', on);
+      toast(on ? 'Low-memory window on' : 'Low-memory window off', 'good', { detail: on ? 'The next time DeviceHub opens, it opens inside your Chrome (about 350 MB less while Chrome is already running).' : 'The next time DeviceHub opens, it opens in its own window again.' });
+    } })),
   ];
 }
 
@@ -153,6 +176,16 @@ const setupFileRow = () => (isDemo() ? null : row('Move to another PC', 'Your wh
   button('Save', async () => { try { await saveSetup(); toast('Saved in your Downloads folder', 'good'); } catch (e) { toast('Not saved', 'bad', { detail: e.message }); } }, { kind: 'ghost small' }),
   button('Load…', loadSetupFile, { kind: 'ghost small' }))));
 
+// Setup's row: "Everything is set up" when nothing needs the person (then it is only reached from here and Search), else
+// how many things need them (23 Oct 2026, Shawn: "put the set up area in settings when its fully set up")
+let setupWatch = null;
+function setupRow() {
+  if (!setupWatch) setupWatch = watchSetup(() => { if (location.hash === '#/settings') rerender(); });
+  const n = setupNeeds();
+  return row('Setup', n == null ? 'Checking…' : n === 0 ? 'Everything is set up.' : `${n} thing${n === 1 ? ' needs' : 's need'} you.`,
+    button(n ? 'Set up' : 'Open', () => { location.hash = '#/setup'; }, { kind: n ? 'small' : 'ghost small' }));
+}
+
 function selfRow() {
   if (isDemo()) return null;
   const s = self || {};
@@ -160,7 +193,9 @@ function selfRow() {
   // while it looks or updates, the bar has the whole row (no button beside it: on a narrow window the two did not fit
   // and ran off the card, 22 Oct 2026)
   if ((selfBusy || s.checking) && selfBar) return row('DeviceHub updates', selfBar.el, null);
-  return row('DeviceHub updates', text, s.behind && !s.blocked ? button('Update', runSelfUpdate, { kind: 'primary small', ic: 'refresh' })
+  return row('DeviceHub updates', text, s.behind && !s.blocked ? button('Update', () => runSelfUpdate(), { kind: 'primary small', ic: 'refresh' })
+    // files changed on this PC: never a dead end (23 Oct 2026, a friend's PC was told to ask Claude Code)
+    : s.behind && s.blocked && s.zip ? button('Update anyway', () => runSelfUpdate({ overwrite: true }), { kind: 'primary small', ic: 'refresh' })
     : s.git === false && !s.zip ? null : button('Check', () => loadSelf(), { kind: 'ghost small', ic: 'refresh' }));
 }
 // Optional tools (22 Oct 2026, helpers/installers.mjs): Equalizer APO, ReaPlugs and USBPcap, each with its state and
@@ -234,20 +269,22 @@ function updatesRows() {
   if (!parts.length) return [];
   const mi = devices.mouse?.info || {}, hi = devices.headset?.info || {};
   const u = upd, web = u?.online || {}, apps = u?.apps || {};
-  const head = row('Device firmware', !u ? 'Looks for newer firmware. Nothing is installed.' : u.error ? `Could not check: ${u.error}` : 'Checked; each device below.',
+  const head = row('Device firmware', !u ? 'Looks for newer firmware. Nothing is installed.' : u.error ? `Could not check: ${u.error}` : 'Each device is updated in its maker\'s app.',
     button(updLoading ? 'Checking…' : 'Check now', () => loadUpdates(true), { kind: 'ghost small', ic: 'refresh', disabled: updLoading }));
   if (!u || u.error) return [head];
   const g = guide && GUIDES[guide];
   return [head,
-    !parts.includes('mouse') ? null : row('Mouse and dongle', `Mouse ${mi['Mouse firmware'] || '—'} · dongle ${mi['Dongle firmware'] || '—'} · Pulsar app ${apps.pulsar || 'not installed'}. `,
-      h('span', { class: 'actions', style: { alignItems: 'center' } },
-        u.pulsarAppNewer ? pill(`app ${web.pulsar.app} out`, 'warn') : web.pulsar ? pill('app up to date', 'good') : pill(web.errors?.pulsar ? 'could not check' : '—', ''),
-        u.pulsarAppNewer ? button(`Get ${web.pulsar.app}`, () => openPage('pulsarDownload'), { kind: 'ghost small', ic: 'external' }) : null,
-        button('Check in Pulsar app', async () => { guide = 'pulsar'; rerender(); await post('/api/updates/open', { app: 'pulsar' }); }, { kind: 'small' }))),
-    !parts.includes('headset') ? null : row('Headset', `Firmware ${hi.Firmware || '—'} · iCUE ${apps.icue || 'not installed'}`,
-      button('Check in iCUE', async () => { guide = 'icue'; rerender(); await post('/api/updates/open', { app: 'icue' }); }, { kind: 'small' })),
-    !parts.includes('keyboard') ? null : row('Keyboard', `Epomaker posts P75 firmware ${web.epomaker ? `V${web.epomaker.firmware}` : '—'}. Flashing erases the key map: back it up first.`,
-      button('Epomaker page', () => openPage('epomakerFirmware'), { kind: 'ghost small', ic: 'external' })),
+    // one tidy line per device (23 Oct 2026, Shawn: "make this look better and cleaner"): its name, its versions in one
+    // short line, one small button; the maker's app gets a badge only when it has an update
+    ...tight(
+      !parts.includes('mouse') ? null : row('Mouse', [`Firmware ${mi['Mouse firmware'] || '—'}`, `dongle ${mi['Dongle firmware'] || '—'}`].join(' · '),
+        // one button: the app's newer version when there is one, else the app itself (where its firmware is checked)
+        u.pulsarAppNewer ? button(`Get Pulsar app ${web.pulsar.app}`, () => openPage('pulsarDownload'), { kind: 'ghost small', ic: 'external' })
+          : button('Pulsar app', async () => { guide = 'pulsar'; rerender(); await post('/api/updates/open', { app: 'pulsar' }); }, { kind: 'ghost small', ic: 'external' })),
+      !parts.includes('headset') ? null : row('Headset', `Firmware ${hi.Firmware || '—'}`,
+        button('iCUE', async () => { guide = 'icue'; rerender(); await post('/api/updates/open', { app: 'icue' }); }, { kind: 'ghost small', ic: 'external' })),
+      !parts.includes('keyboard') ? null : row('Keyboard', web.epomaker ? `Newest V${web.epomaker.firmware} · back up keys first` : 'Back up keys before updating',
+        button('Epomaker', () => openPage('epomakerFirmware'), { kind: 'ghost small', ic: 'external' }))),
     g ? h('div', { class: 'banner', style: { marginTop: '12px' } }, h('div', { class: 'grow' },
       h('b', {}, `Updating in ${g.app}`),
       h('ol', { style: { margin: '6px 0 0', paddingLeft: '18px' } }, ...g.steps.map((t) => h('li', {}, t)))),
@@ -448,6 +485,8 @@ export default {
           card([h('h2', {}, 'DeviceHub')], ...tight(
             row('Share DeviceHub', 'Download link to send to people.', button('Copy link', copyDownloadLink, { kind: 'small', ic: 'external' })),
             // the devices DeviceHub runs and what each gets (pages/supported.js, 22 Oct 2026): a page of its own, not a dialog
+            // Setup lives here once nothing needs the person (its sidebar entry goes away then; app.js paintSetupNav)
+            setupRow(),
             row('Supported devices', 'Which devices work, and what each gets.', button('Show', () => { location.hash = '#/supported'; }, { kind: 'ghost small' })),
             setupFileRow(),
             isDemo() ? null : row('Files', 'Where DeviceHub keeps its data.', button('Open folder', () => fetch('/api/reveal', { method: 'POST' }), { kind: 'ghost small', ic: 'external' })),

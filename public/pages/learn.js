@@ -16,7 +16,7 @@ import { h } from '../ui/dom.js';
 import { card, row, segmented, button, pill } from '../ui/controls.js';
 import { installerButton } from '../ui/installer-button.js';
 import { isDemo } from '../core/devices.js';
-import { topbar } from './common.js';
+import { topbar, checkAnswer } from './common.js';
 import { genericDongle } from '../core/generic-dongle.js';
 import { getHelp, helpHere } from '../ui/get-help.js';
 
@@ -29,10 +29,48 @@ const st = { step: 'pick', devices: null, usbpcap: null, error: null, why: null,
   plan: null, queue: null, qi: 0, log: [], change: null, drive: null, putBack: [], autoPicked: false };
 let redrawPage = () => {};
 
-// Lighting > This PC's "Learn it": that device goes first on the Pick step, as the one to learn
-export function learnThis(vid, pid) {
+// Lighting > This PC's "Learn it": that device goes first on the Pick step, as the one to learn. start: Learn it for me
+// at once (the Set up page's Learn it, 23 Oct 2026)
+export function learnThis(vid, pid, { start = false } = {}) {
   st.want = vid && pid ? `${vid}:${pid}`.toUpperCase() : null;
-  if (st.step === 'pick') st.devices = null;
+  st.autoStart = start ? st.want : null;
+  if (st.step === 'pick' || st.step === 'auto') { st.step = 'pick'; st.devices = null; }
+}
+
+// ---------- Learn it for me (23 Oct 2026, helpers/learn-auto.mjs): the whole session runs on the server from one click;
+// this page only shows how far it is, the one change the person makes when DeviceHub cannot make it, and the end
+const auto = { s: null, timer: null, checked: false, last: '', finish: null };
+const AUTO_OVER = ['idle', 'done', 'stopped', 'failed'];
+async function autoApi(step = '', body) {
+  if (isDemo()) return demoAuto(step, body);
+  try {
+    const r = await fetch(`/api/learn/auto${step ? `/${step}` : ''}`, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (r.status === 404) return { ok: false, error: 'This DeviceHub does not have Learn it for me yet: restart DeviceHub.' };
+    return await r.json();
+  } catch { return { ok: false, error: 'DeviceHub did not answer.' }; }
+}
+async function startAuto(d) {
+  st.error = null; st.why = null; auto.finish = null;
+  const r = await autoApi('', { vid: d.vid, pid: d.pid });
+  if (r.ok === false) { st.error = r.error; redrawPage(); return; }
+  auto.s = r; auto.dev = d; st.step = 'auto'; redrawPage(); pollAuto();
+}
+function pollAuto() {
+  clearTimeout(auto.timer);
+  auto.timer = setTimeout(async () => {
+    const r = await autoApi();
+    if (!r || r.ok === false) { pollAuto(); return; }
+    auto.s = r;
+    const key = JSON.stringify(r);
+    if (key !== auto.last && location.hash.startsWith('#/learn')) { auto.last = key; redrawPage(); }
+    if (!AUTO_OVER.includes(r.phase)) pollAuto();
+  }, 700);
+}
+// coming back to the page while it runs: show it again
+function resumeAuto() {
+  if (auto.checked) return;
+  auto.checked = true;
+  autoApi().then((r) => { if (r?.phase && !AUTO_OVER.includes(r.phase)) { auto.s = r; st.step = 'auto'; redrawPage(); pollAuto(); } });
 }
 
 async function api(path, body) {
@@ -94,7 +132,7 @@ const field = (label, key, obj, attrs = {}) => {
 const problems = () => (st.error || st.why?.length ? h('div', { class: 'learn-problem', role: 'status' },
   st.error ? p(st.error) : null, ...(st.why || []).map((x) => p(x))) : null);
 const show = (v) => (v === true ? 'on' : v === false ? 'off' : String(v));
-const kindWord = () => (st.form.kind === 'toggle' ? 'on or off' : st.form.kind === 'choice' ? 'choice' : st.server?.setting?.role === 'battery' ? 'percent' : 'value');
+const kindWord = () => (st.form.kind === 'toggle' ? 'on or off' : st.form.kind === 'choice' ? 'choice' : st.form.kind === 'color' ? 'colour (e.g. #00FF00 or green)' : st.server?.setting?.role === 'battery' ? 'percent' : 'value');
 const device = () => st.server?.device;
 const second = () => st.server?.second || null;
 // a reading's value as the page says it (charging: charging / not charging; a percent with %)
@@ -116,15 +154,38 @@ function pickStep() {
   // only one device can be learned (or This PC sent one that can): it is picked by itself, once
   const pickable = list.filter((d) => !d.refused);
   const only = wanted && !wanted.refused ? wanted : pickable.length === 1 ? pickable[0] : null;
-  if (only && !st.autoPicked && !st.busy) { st.autoPicked = true; setTimeout(() => pick(only), 0); }
+  if (st.autoStart && wanted && !wanted.refused && !st.busy) { st.autoStart = null; setTimeout(() => startAuto(wanted), 0); }
   return card([h('h2', {}, 'Pick the device'), h('span', { class: 'spacer' }), stepNo('pick')],
-    p('These are plugged in and DeviceHub does not run them yet. Pick the one to learn.'),
+    p('These are plugged in and DeviceHub does not run them yet. Learn it for me does the rest: it opens the maker\'s app, changes each setting there and listens, and asks you only for what it cannot change itself.'),
     st.want && !wanted ? faint(`USB ${st.want.toLowerCase()} is not in this list: DeviceHub may run it already, or it has nothing DeviceHub can learn.`) : null,
     list.length ? list.map((d) => row(d.name, [d === wanted ? 'the one you picked on This PC' : null, `USB ${d.vid}:${d.pid}`, d.vendor ? 'has a settings channel' : 'no maker settings channel seen', d.library && !d.note ? 'a shared driver exists for it: install it from Set up on the Overview' : null, genericDongle({ ...d, name: /^USB device /.test(d.name) ? null : d.name })?.line || d.refused || d.note || null].filter(Boolean).join(' · '),
-      d.refused ? (genericDongle({ ...d, name: /^USB device /.test(d.name) ? null : d.name }) ? getHelp(`request:${d.vid.toLowerCase()}:${d.pid.toLowerCase()}`, null, { label: 'Request support', request: { vid: d.vid, pid: d.pid, name: '' }, kind: 'ghost small' }) : null) : button('Learn this one', () => pick(d), { kind: primary(d) ? 'primary small' : 'ghost small' })))
+      d.refused ? (genericDongle({ ...d, name: /^USB device /.test(d.name) ? null : d.name }) ? getHelp(`request:${d.vid.toLowerCase()}:${d.pid.toLowerCase()}`, null, { label: 'Request support', request: { vid: d.vid, pid: d.pid, name: '' }, kind: 'ghost small' }) : null)
+        : h('span', { class: 'actions', style: { margin: 0 } },
+          button('Learn it for me', () => startAuto(d), { kind: primary(d) || d === only ? 'primary small' : 'ghost small', ic: 'plug' }),
+          button('Choose the settings', () => pick(d), { kind: 'ghost small' }))))
       : faint('No device to learn was found. Plug it in, then look again.'),
     problems(),
-    h('div', { class: 'actions', style: { marginTop: '12px' } }, button('Look again', loadDevices, { kind: 'ghost small', ic: 'refresh' })));
+    checkResult(),
+    h('div', { class: 'actions', style: { marginTop: '12px' } }, button('Look again', loadDevices, { kind: 'ghost small', ic: 'refresh' }),
+      isDemo() ? null : button(st.check === 'running' ? 'Testing…' : 'Test my learning setup', () => checkSetup(), { kind: 'ghost small', disabled: st.check === 'running' })));
+}
+
+// Test my learning setup (23 Oct 2026): USBPcap, Windows' prompt, a few seconds' recording read back, the USB devices it
+// names; nothing is learned or sent (helpers/learn-wizard.mjs checkSetup). Each step in a line; the first failing one
+// says what to do.
+async function checkSetup() {
+  st.check = 'running'; redrawPage();
+  const r = await api('check', {});
+  st.check = r?.steps ? r : { ok: false, steps: [{ ok: false, says: r?.error || 'DeviceHub did not answer.', fix: 'Restart DeviceHub, then test again.' }] };
+  redrawPage();
+}
+function checkResult() {
+  const c = st.check;
+  if (!c) return null;
+  if (c === 'running') return faint('Testing: press Yes on Windows\' prompt. DeviceHub listens for a few seconds; it sends nothing to any device.');
+  return h('div', { class: c.ok ? 'learn-check' : 'learn-problem', role: 'status' },
+    p(c.ok ? 'Your learning setup works: DeviceHub can listen while you change settings in the maker\'s app.' : 'Your learning setup needs one thing first:'),
+    ...c.steps.map((x) => p(`${x.ok ? '✓' : '✗'} ${x.says}${x.fix ? ` ${x.fix}` : ''}`, x.ok ? 'faint' : null)));
 }
 
 function readyStep() {
@@ -143,8 +204,8 @@ function readyStep() {
   const cur = sec?.next || null;
   const kind = cur ? cur.kind : f.kind, role = cur ? cur.role : f.role;
   const reading = kind === 'reading';
-  const kindCtl = segmented({ value: f.kind, options: [{ value: 'number', label: 'Number' }, { value: 'toggle', label: 'On or off' }, { value: 'choice', label: 'Choice' }, { value: 'reading', label: 'Reading' }],
-    onCommit: (v) => { f.kind = v; redrawPage(); } });
+  const kindCtl = segmented({ value: f.kind, options: [{ value: 'number', label: 'Number' }, { value: 'toggle', label: 'On or off' }, { value: 'choice', label: 'Choice' }, { value: 'color', label: 'Colour' }, { value: 'reading', label: 'Reading' }],
+    onCommit: (v) => { f.kind = v; if (v === 'color') { f.a = /^#[0-9a-f]{6}$/i.test(f.a) ? f.a : '#ff0000'; f.b = /^#[0-9a-f]{6}$/i.test(f.b) ? f.b : '#0000ff'; } redrawPage(); } });
   const roleCtl = segmented({ value: f.role, options: [{ value: 'battery', label: 'Battery level' }, { value: 'charging', label: 'Charging' }, { value: 'display', label: 'Something else' }],
     onCommit: (v) => { f.role = v; redrawPage(); } });
   const two = (a, b) => h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' } }, field('First value', 'a', f, { placeholder: a }), field('Second value', 'b', f, { placeholder: b }));
@@ -153,7 +214,10 @@ function readyStep() {
       : reading && role === 'charging' ? faint('DeviceHub records it charging, then not charging. You plug in and unplug its cable.')
         : reading && role === 'battery' ? h('div', {}, field('Percent now', 'a', f, { placeholder: 'The percent the app shows now, e.g. 80', inputmode: 'numeric', style: { width: '260px' } }))
           : reading ? two('First value, e.g. game', 'Second value, e.g. chat')
-            : kind === 'number' ? two('First value, e.g. 800', 'Second value, e.g. 1600') : two('First choice, e.g. Low', 'Second choice, e.g. High');
+            : kind === 'number' ? two('First value, e.g. 800', 'Second value, e.g. 1600')
+              // a colour (23 Oct 2026): two the maker's app can show, far apart (red and blue by default)
+              : kind === 'color' ? h('div', { style: { display: 'flex', gap: '14px', alignItems: 'center' } }, h('span', { class: 'muted' }, 'First'), field('First colour', 'a', f, { type: 'color', class: 'learn-colour' }), h('span', { class: 'muted' }, 'Second'), field('Second colour', 'b', f, { type: 'color', class: 'learn-colour' }))
+                : two('First choice, e.g. Low', 'Second choice, e.g. High');
   const start = async () => {
     const vals = cur?.fixed ? [] : kind === 'toggle' ? ['on', 'off'] : reading && role === 'charging' ? [] : reading && role === 'battery' ? [f.a] : [f.a, f.b];
     const r = await run('setting', cur ? { values: vals } : { label: f.label, kind: f.kind, role: reading ? f.role : undefined, unit: f.unit, values: vals });
@@ -174,7 +238,7 @@ function readyStep() {
   }
   return card([h('h2', {}, `Get ready${d ? `: ${d.name}` : ''}`), h('span', { class: 'spacer' }), stepNo('ready')],
     p('Open the maker\'s app for this device. Pick ONE setting to teach DeviceHub, and two values the app offers for it.'),
-    faint('Colors, button remaps, macros and EQ cannot be learned yet: pick a number, an on or off, a choice, or a reading.'),
+    faint('Button remaps, macros and EQ cannot be learned yet: pick a number, an on or off, a choice, a colour or a reading.'),
     st.server?.addsTo?.note ? faint(`${st.server.addsTo.name}: ${st.server.addsTo.note}.`) : null,
     reading && f.role !== 'display' ? null : row(reading ? 'Reading' : 'Setting', reading ? 'As the maker\'s app names it, e.g. ChatMix' : 'As the maker\'s app names it, e.g. DPI or Brightness', field('Setting', 'label', f, { placeholder: reading ? 'e.g. ChatMix' : 'e.g. DPI', maxlength: 40 })),
     row('Kind', null, kindCtl),
@@ -323,7 +387,19 @@ async function beginChange() {
 }
 async function doneChange() {
   const it = current(), ch = st.change;
-  const r = await run('stop', {});
+  // one press at a time (23 Oct 2026, a friend's report: a second press reached the server after the first had stopped
+  // the recording, and "Nothing is being recorded." stayed on the page with no way on)
+  if (!it || !ch || st.stopping) return;
+  st.stopping = true;
+  let r;
+  try { r = await run('stop', {}); } finally { st.stopping = false; }
+  if (r.ok === false && /Nothing is being recorded/.test(r.error || '')) {
+    // not recording (yet): start this value's recording now and ask for the change again
+    st.error = null; st.why = null;
+    await beginChange();
+    if (st.server?.recording) { st.error = 'DeviceHub was not recording yet; it is now. Make the change in the app again, then press Done.'; redrawPage(); }
+    return;
+  }
   if (r.ok === false) return;
   st.heard = r.heard;
   if (ch.phase + 1 < changeOf(it).length) { ch.phase++; redrawPage(); beginChange(); return; }
@@ -376,6 +452,93 @@ function changeStep() {
       recording ? button(st.busy ? 'Stopping…' : 'Done', doneChange, { kind: 'primary', disabled: st.busy })
         : button(st.busy ? 'Starting…' : 'Try again', beginChange, { kind: 'primary', disabled: st.busy }),
       button('Skip this setting', () => skipItem(), { kind: 'ghost small' })));
+}
+
+// ---------- Learn it for me: one screen while it runs, then the end
+const AUTO_DOING = { start: 'Starting', device: 'Looking at the device', plan: 'Reading its settings', app: 'Opening the maker\'s app', listen: 'Waiting for your Yes', learn: 'Learning', save: 'Saving its driver' };
+function autoItem(x, app) {
+  const mark = { learned: '✓', skipped: '–', driving: '', asking: '', waiting: '' }[x.status] ?? '';
+  const say = x.status === 'learned' ? 'learned' : x.status === 'skipped' ? (x.why === 'skipped' ? 'skipped' : `not learned: ${x.why}`)
+    : x.status === 'driving' ? `DeviceHub is changing it in ${app}` : x.status === 'asking' ? 'your turn' : 'next';
+  return h('div', { class: `auto-item ${x.status}` }, h('span', { class: 'auto-mark' }, mark || h('span', { class: x.status === 'waiting' ? 'auto-dot' : 'auto-spin' })), h('b', {}, x.label), h('span', { class: 'faint' }, say));
+}
+function autoStep() {
+  const a = auto.s || {};
+  const name = a.device?.name || 'device', app = a.app?.name || 'the maker\'s app';
+  const working = !AUTO_OVER.includes(a.phase);
+  const ask = a.ask;
+  const items = a.items?.length ? h('div', { class: 'auto-items' }, ...a.items.map((x) => autoItem(x, app))) : null;
+  const log = a.steps?.length ? h('div', { class: 'auto-log' }, ...a.steps.map((x) => h('div', { class: x.ok ? 'faint' : 'auto-warn' }, x.text))) : null;
+  if (a.phase === 'done') return autoDone(a);
+  if (a.phase === 'failed' || a.phase === 'stopped') {
+    const d = auto.dev || (a.device ? { vid: a.device.vid, pid: a.device.pid, name } : null);
+    return card([h('h2', {}, a.phase === 'stopped' ? 'Stopped' : `The ${name} was not learned`), h('span', { class: 'spacer' })],
+      log, items,
+      a.phase === 'stopped' ? p('Nothing was saved. If you changed a setting in the maker\'s app, it stays as you left it.')
+        : h('div', { class: 'learn-problem', role: 'status' }, p(a.error?.text || 'Something went wrong.'), a.error?.next ? p(a.error.next) : null),
+      checkResult(),
+      h('div', { class: 'actions', style: { marginTop: '12px' } },
+        d ? button('Try again', () => startAuto(d), { kind: 'primary', ic: 'refresh' }) : null,
+        d ? button('Choose the settings myself', () => { st.devices = st.devices || []; if (!st.devices.some((x) => x.vid === d.vid && x.pid === d.pid)) st.devices.push(d); run('begin', { vid: d.vid, pid: d.pid }, () => { Object.assign(st, { step: 'plan', plan: null, queue: null, log: [], putBack: [] }); st.save.title = d.name || name; }); }, { kind: 'ghost small' }) : null,
+        isDemo() ? null : button(st.check === 'running' ? 'Testing…' : 'Test my learning setup', () => checkSetup(), { kind: 'ghost small', disabled: st.check === 'running' }),
+        button('Back', () => { auto.s = null; st.step = 'pick'; st.devices = null; redrawPage(); }, { kind: 'ghost small' })));
+  }
+  const now = ask?.kind === 'change' ? h('div', { class: 'auto-ask', role: 'status' },
+    h('div', { class: 'auto-ask-step' }, `${ask.label} · ${ask.step} of ${ask.of}`),
+    h('div', { class: 'auto-ask-line' }, ask.line),
+    ask.note ? faint(ask.note) : null,
+    faint('DeviceHub notices the change by itself. Change only this one setting.'),
+    h('div', { class: 'actions', style: { margin: '6px 0 0' } },
+      button('I changed it', () => autoApi('done', {}), { kind: 'ghost small' }),
+      button('Skip this setting', () => autoApi('skip', {}), { kind: 'ghost small' })))
+    : ask?.kind === 'prompt' ? h('div', { class: 'auto-ask', role: 'status' }, h('div', { class: 'auto-ask-line' }, ask.line))
+      : h('div', { class: 'loadbar-wrap' }, h('div', { class: 'loadbar sweep', role: 'progressbar', 'aria-label': AUTO_DOING[a.phase] || 'Working' }, h('span')),
+        h('span', { class: 'loadbar-text' }, a.phase === 'app' && a.app ? `Opening ${app}` : a.phase === 'learn' && a.items?.some((x) => x.status === 'driving') ? `Changing it in ${app}` : AUTO_DOING[a.phase] || 'Working'));
+  return card([h('h2', {}, `Learning the ${name}`), h('span', { class: 'spacer' }), working ? pill('listening only') : null],
+    now, items, log,
+    a.phase === 'learn' && !ask ? faint(`Leave ${app} alone while DeviceHub changes a setting there; it puts each one back after.`) : null,
+    h('div', { class: 'actions', style: { marginTop: '12px' } }, button('Stop', () => autoApi('stop', {}), { kind: 'ghost small' })));
+}
+function autoDone(a) {
+  const r = a.result || {}, name = a.device?.name || 'device', f = auto.finish;
+  const turnLabel = r.appOpen && r.app ? `Close ${r.app} and turn on settings` : 'Turn on settings';
+  const finish = async () => {
+    auto.finish = { busy: true }; redrawPage();
+    const x = await autoApi('finish', {});
+    auto.finish = x.ok === false ? { error: x.error } : { done: true, ...x };
+    redrawPage();
+  };
+  return card([h('h2', {}, `Your ${name} is learned`), h('span', { class: 'spacer' }), pill(f?.done ? 'on' : 'reads only, for now', f?.done ? 'good' : '')],
+    p(`Learned: ${(r.learned || []).join(', ')}.`),
+    ...(r.skipped || []).map((x) => faint(`Not learned: ${x.label}${x.why && x.why !== 'skipped' ? ` (${x.why})` : ''}.`)),
+    ...(r.leftAt || []).map((x) => faint(`${x.label} was left at ${x.value} in ${r.app || 'the maker\'s app'}; set it as you like on its page.`)),
+    f?.done ? p(checkAnswer(f, 'turn-on')) : f?.error ? h('div', { class: 'learn-problem', role: 'status' }, p(f.error))
+      : p(r.appOpen && r.app ? `One more click: DeviceHub closes ${r.app} (two apps changing the same device fight), then checks each setting once by writing its current value back.` : 'One more click: DeviceHub checks each setting once by writing its current value back. Then you change them on its page.'),
+    p('When it works, its page has a Share this driver button, so the next person with this device needs no learning.', 'faint'),
+    h('div', { class: 'actions', style: { marginTop: '12px' } },
+      f?.done ? null : button(f?.busy ? 'Turning on…' : turnLabel, finish, { kind: 'primary', ic: 'plug', disabled: !!f?.busy }),
+      r.saved?.id ? button('Open its page', () => { location.hash = `#/${r.saved.id}`; }, { kind: f?.done ? 'primary' : 'ghost small' }) : null,
+      button('Learn another device', () => { auto.s = null; auto.finish = null; st.step = 'pick'; st.devices = null; redrawPage(); }, { kind: 'ghost small' })));
+}
+
+// demo mode: a pretend Learn it for me, moved on by the clock (DPI changed by DeviceHub, Polling rate by the person)
+const demoA = { t0: 0, dev: null, finish: null, skip: false };
+function demoAuto(step, body) {
+  if (step === '' && body) { demoA.t0 = Date.now(); demoA.dev = { vid: body.vid, pid: body.pid, name: DEMO_DEV.name }; demoA.skip = false; return Promise.resolve({ ok: true, phase: 'start', device: demoA.dev, steps: [], items: [] }); }
+  if (step === 'finish') return Promise.resolve({ ok: true, ran: true, on: true, counts: { checked: 2, passed: 2 } });
+  if (step === 'stop') { demoA.t0 = 0; return Promise.resolve({ ok: true, phase: 'stopped', device: demoA.dev, steps: [], items: [] }); }
+  if (step === 'skip' || step === 'done') { demoA.skip = true; return Promise.resolve({ ok: true }); }
+  if (!demoA.t0) return Promise.resolve({ phase: 'idle' });
+  const t = (Date.now() - demoA.t0) / 1000;
+  const app = { name: 'Corsair iCUE' };
+  const it = (label, status, why = null) => ({ label, status, why });
+  const steps = [{ text: `Found the ${DEMO_DEV.name}.`, ok: true }, { text: 'It will learn DPI, Polling rate (the settings Corsair iCUE keeps for it).', ok: true }, ...(t > 4 ? [{ text: 'Listening.', ok: true }] : [])];
+  const base = { device: demoA.dev, app, steps };
+  if (t < 2) return Promise.resolve({ ...base, phase: 'plan', items: [it('DPI', 'waiting'), it('Polling rate', 'waiting')] });
+  if (t < 4) return Promise.resolve({ ...base, phase: 'listen', ask: { kind: 'prompt', line: 'Press Yes on Windows\' prompt: DeviceHub listens to USB while it learns. It only listens.' }, items: [it('DPI', 'waiting'), it('Polling rate', 'waiting')] });
+  if (t < 8) return Promise.resolve({ ...base, phase: 'learn', items: [it('DPI', 'driving'), it('Polling rate', 'waiting')] });
+  if (t < 14 && !demoA.skip) return Promise.resolve({ ...base, phase: 'learn', items: [it('DPI', 'learned'), it('Polling rate', 'asking')], ask: { kind: 'change', label: 'Polling rate', line: 'Set Polling rate to 1000 Hz in Corsair iCUE now.', step: 1, of: 2 } });
+  return Promise.resolve({ ...base, phase: 'done', items: [it('DPI', 'learned'), it('Polling rate', 'learned')], result: { saved: { name: 'kite-mouse', id: null }, learned: ['DPI', 'Polling rate'], skipped: [], leftAt: [{ label: 'Polling rate', value: '125 Hz' }], appOpen: true, app: 'Corsair iCUE' } });
 }
 
 // what could not be put back in the maker's app, shown until the page is left
@@ -638,6 +801,21 @@ function style() {
 .learn-val { width: 92px; }
 .learn-src { font-size: 12.5px; text-align: right; }
 .learn-other { margin-top: 12px; }
+.auto-items { display: grid; gap: 2px; margin: 10px 0; }
+.auto-item { display: grid; grid-template-columns: 22px 150px 1fr; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }
+.auto-item:first-child { border-top: 0; }
+.auto-item.learned .auto-mark { color: var(--good); }
+.auto-item.skipped { opacity: .7; }
+.auto-mark { display: inline-flex; justify-content: center; font-weight: 700; }
+.auto-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--line2); }
+.auto-spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line2); border-top-color: var(--accent, var(--good)); animation: auto-spin .8s linear infinite; }
+@keyframes auto-spin { to { transform: rotate(360deg); } }
+.auto-ask { margin: 6px 0 12px; padding: 14px 16px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--accent, var(--good)) 35%, var(--line)); background: color-mix(in srgb, var(--accent, var(--good)) 9%, transparent); }
+.auto-ask-step { font-size: 12.5px; color: var(--muted); margin-bottom: 4px; }
+.auto-ask-line { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+.auto-log { margin-top: 8px; font-size: 13px; }
+.auto-warn { color: var(--warn); }
+@media (max-width: 640px) { .auto-item { grid-template-columns: 22px 1fr; } .auto-item > .faint { grid-column: 2; } }
 .learn-other > summary { cursor: pointer; color: var(--muted); margin-bottom: 8px; }
 @media (max-width: 640px) { .learn-item { grid-template-columns: 1fr; gap: 4px; } .learn-src { text-align: left; } }
 `));
@@ -651,13 +829,14 @@ export default {
     // Get help on every step (area learn): the step, the setting being learned, what each one came to, the problem shown;
     // the server adds the session (device id, recordings and how many messages each heard). Nothing typed by hand.
     const head = topbar('', 'Learn a device', null, null, helpHere('learn', { context: learnContext }));
-    const body = { pick: pickStep, plan: planStep, ready: readyStep, starting: startingStep, take: takeStep, found: foundStep, driver: driverStep, saved: savedStep, other: otherStep, driving: drivingStep, change: changeStep }[st.step] || pickStep;
+    if (st.step === 'pick') resumeAuto();
+    const body = { auto: autoStep, pick: pickStep, plan: planStep, ready: readyStep, starting: startingStep, take: takeStep, found: foundStep, driver: driverStep, saved: savedStep, other: otherStep, driving: drivingStep, change: changeStep }[st.step] || pickStep;
     return h('div', {}, head,
       p('DeviceHub learns a device by listening while each setting is changed in the maker\'s app. It never sends the device anything while learning, never touches firmware, and only ever sends bytes it heard the app send.', 'faint'),
       isDemo() ? faint('Demo mode: pretend answers, nothing is listened to or saved.') : null,
       putBackNote(),
       body(),
-      st.step !== 'pick' && st.step !== 'saved' && st.step !== 'other' && st.server?.active ? h('div', { class: 'actions', style: { marginTop: '12px' } },
+      st.step !== 'pick' && st.step !== 'saved' && st.step !== 'other' && st.step !== 'auto' && st.server?.active ? h('div', { class: 'actions', style: { marginTop: '12px' } },
         button('Stop learning', () => run('quit', {}, () => { Object.assign(st, { step: 'pick', server: null, devices: null, plan: null, queue: null, change: null }); }), { kind: 'ghost small' })) : null);
   },
 };

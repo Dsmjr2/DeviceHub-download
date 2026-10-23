@@ -18,6 +18,21 @@
 // macros and key remaps (host-side in OpenRazer), and the Huntsman V3 Pro TKL's brightness (OpenRazer writes it but has
 // no read for it). Never: dongle pair / unpair (00/46, 00/41, 00/42) and device mode 02 ("factory test mode"), in
 // helpers/never-commands.json. Nothing outside CMD below can be built.
+//
+// Added 23 Oct 2026:
+//   Huntsman Mini JP 0269 (OpenRazer: in every Huntsman Mini case: interface 2, brightness extended tid 3F read and
+//     write, game and macro LED VARSTORE tid FF; daemon hardware/keyboards.py RazerHuntsmanMiniJP);
+//   Huntsman V2 Analog 0266 and Huntsman Mini Analog 0282 (OpenRazer: interface 3, brightness written extended tid 1F
+//     and read standard 03/83 tid FF, the Huntsman V3 Pro way; macro LED VARSTORE tid FF; daemon RazerHuntsmanV2Analog,
+//     RazerHuntsmanMiniAnalog). Lights and info only: game mode (which OpenRazer also has) is left off these two, and
+//     nothing about the analog switches (actuation, rapid trigger) is in any source;
+//   BlackWidow V4 Pro 75% 02B3 (cable) / 02B4 (dongle) and BlackWidow V4 Low Profile TKL 02D4 (cable) / 02D2 (dongle):
+//     not in OpenRazer @ 477f4d6d (its latest master). OpenRGB = gitlab.com/CalcProgrammer1/OpenRGB @ 817834cf,
+//     Controllers/RazerController/: RazerDevices.h (the ids), RazerControllerDetect.cpp (interface 3 on the cable,
+//     2 on the dongle), RazerDevices.cpp (transaction id 1F, and 9F on the Low Profile TKL's dongle), and
+//     RazerController.cpp razer_get_firmware (00/81 size 02 on that transaction id). OpenRGB only ever writes their
+//     brightness (NOSTORE, no read) and reads nothing else, so these four are info only (model and firmware): no
+//     setting, no battery, until a source documents a read.
 import { getDevice } from '../../public/devices/hid.js';
 
 // ---- the 90-byte report (razercommon.h struct razer_report; sheet section 2) ----
@@ -73,9 +88,12 @@ export const LOWBAT_MIN = 0x0c, LOWBAT_MAX = 0x3f;
 // game: game_led_state, 'v2' = NOSTORE with tid 1F (Huntsman V2 / V2 TKL), else VARSTORE with tid FF.
 // macro: macro_led_state (VARSTORE, tid FF) is created for it in razer_kbd_probe.
 // poll: poll_rate's transaction id (polling_rate2), or null. bat: charge_level / charge_status transaction id, or null.
-// lowBat: charge_low_threshold (tid FF) is created for it.
+// lowBat: charge_low_threshold (tid FF) is created for it. game null: game mode is not offered.
+// fw: the firmware read's transaction id (OpenRazer: FF on every keyboard; OpenRGB: the device's own id).
 const W = 0.6, WL = 4.9;
-const k = (model, link, iface, wait, bright, o = {}) => ({ model, link, iface, wait, bright, game: 'std', macro: true, poll: null, bat: null, lowBat: false, ...o });
+const k = (model, link, iface, wait, bright, o = {}) => ({ model, link, iface, wait, bright, game: 'std', macro: true, poll: null, bat: null, lowBat: false, fw: 0xff, ...o });
+// info only (OpenRGB): no brightness, game mode, macro light, polling or battery; firmware on the device's own tid
+const info = (model, link, iface, wait, fw) => k(model, link, iface, wait, null, { game: null, macro: false, fw, infoOnly: true });
 export const MODELS = {
   '0287': k('BlackWidow V4', 'wired', 3, W, 'x1f', { poll: 0x1f }),
   '028D': k('BlackWidow V4 Pro', 'wired', 3, W, 'x1f', { poll: 0x1f }),
@@ -97,6 +115,13 @@ export const MODELS = {
   '026C': k('Huntsman V2', 'wired', 3, W, 'x1f', { game: 'v2', poll: 0x1f }),
   '026B': k('Huntsman V2 TKL', 'wired', 3, W, 'x1f', { game: 'v2', poll: 0x1f }),
   '0257': k('Huntsman Mini', 'wired', 2, W, 'x3f'),
+  '0269': k('Huntsman Mini JP', 'wired', 2, W, 'x3f'),
+  '0266': k('Huntsman V2 Analog', 'wired', 3, W, 'v3', { game: null }),
+  '0282': k('Huntsman Mini Analog', 'wired', 3, W, 'v3', { game: null }),
+  '02B3': info('BlackWidow V4 Pro 75%', 'wired', 3, W, 0x1f),
+  '02B4': info('BlackWidow V4 Pro 75%', 'wireless', 2, WL, 0x1f),
+  '02D4': info('BlackWidow V4 Low Profile TKL', 'wired', 3, W, 0x1f),
+  '02D2': info('BlackWidow V4 Low Profile TKL', 'wireless', 2, WL, 0x9f),
   '0295': k('DeathStalker V2', 'wired', 3, W, 'x3f'),
   '0292': k('DeathStalker V2 Pro', 'wired', 3, W, 'x3f', { bat: 0x1f }),
   '0290': k('DeathStalker V2 Pro', 'wireless', 2, WL, 'x9f', { bat: 0x9f }),
@@ -205,7 +230,7 @@ export function createRazerKeyboard({ sleep = sleepReal, open = defaultOpen, ven
       const tries = async (fn) => { try { return { ok: true, v: await fn() }; } catch (e) { if (e.status === 4 || e.gone) throw e; return { ok: false }; } };
       const m = this.model;
       if (m.bright && (await tries(() => this.readBrightness())).ok) has.add('brightness');
-      if ((await tries(() => this.readGame())).ok) has.add('gameMode');
+      if (m.game && (await tries(() => this.readGame())).ok) has.add('gameMode');
       if (m.macro && (await tries(() => this.readMacro())).ok) has.add('macroLed');
       if (m.poll != null) {
         const r = await tries(() => this.readPoll());
@@ -217,9 +242,12 @@ export function createRazerKeyboard({ sleep = sleepReal, open = defaultOpen, ven
 
     async info() {
       await this.ready();
-      const fw = await this.get('firmware', 0xff);   // razer_attr_read_firmware_version: tid FF on every keyboard
-      return { Model: `Razer ${this.model.model}`, Connection: this.model.link === 'wireless' ? 'wireless (dongle)' : 'cable', 'Product id': `1532:${this.pid}`,
+      // razer_attr_read_firmware_version: tid FF on every OpenRazer keyboard; OpenRGB razer_get_firmware: the device's tid
+      const fw = await this.get('firmware', this.model.fw);
+      const out = { Model: `Razer ${this.model.model}`, Connection: this.model.link === 'wireless' ? 'wireless (dongle)' : 'cable', 'Product id': `1532:${this.pid}`,
         Firmware: `${fw[0]}.${fw[1]}`, Interface: String(this.model.iface) };
+      if (this.model.infoOnly) out.Settings = 'none yet: no open source documents a read for this keyboard (OpenRGB only writes its lights)';
+      return out;
     },
 
     async read() {

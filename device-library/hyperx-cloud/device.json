@@ -1,7 +1,7 @@
 {
   "id": "hyperx-cloud",
   "vendor": "HyperX",
-  "product": "Cloud wireless headsets (HP-era dongles)",
+  "product": "Cloud wireless headsets (HP-era dongles, vendor 03F0)",
   "kind": "Headset",
   "vid": "03f0",
   "pids": [
@@ -13,13 +13,18 @@
     "05b7",
     "0c9d",
     "069f",
-    "0995"
+    "0995",
+    "06be",
+    "02cc",
+    "0e90"
   ],
   "models": [
     "HyperX Cloud II Wireless",
     "HyperX Cloud Alpha Wireless",
     "HyperX Cloud III Wireless",
-    "HyperX Cloud II Core Wireless"
+    "HyperX Cloud II Core Wireless",
+    "HyperX Cloud III S Wireless",
+    "HyperX Cloud Flight Wireless"
   ],
   "works": [
     "Cloud II Wireless (03F0:0696, 018B): battery %, battery voltage, charging, sidetone on/off, auto-off minutes, mic mute, boom mic attached (read); sidetone on/off, auto-off, mic mute (write with read-back); only these three settings are offered for it",
@@ -27,6 +32,8 @@
     "Cloud Alpha Wireless (03F0:1743, 1765, ids from one source only): the same reads, no writes",
     "Cloud III Wireless (03F0:05B7, 0C9D, ids the source calls possible): battery %, connected, sidetone on/off, raw sidetone level, auto-off, mic mute, silent mode, charging raw byte, product color code (read only)",
     "Cloud II Core Wireless (03F0:069F, 0995, HyperHeadset only): battery %, connected, sidetone on/off and level -5..5, auto-off, mic mute, silent mode, noise gate, boom mic attached, charging raw byte (read only)",
+    "Cloud III S Wireless (03F0:06BE, 02CC, HyperHeadset only): battery %, connected, sidetone on/off, mic mute, voice prompts, charging raw byte, product color code, auto-off raw bytes (read only; gets as feature reports 0C 02 03 01 00 <cmd>, replies read from input report 0C)",
+    "Cloud Flight Wireless (03F0:0E90, id from HyperHeadset only): battery voltage, battery % estimated from it with HyperHeadset's table, charging when 4116 mV or more (read only)",
     "every write refused while HyperX NGENUITY runs"
   ],
   "doesNotWork": [
@@ -36,15 +43,18 @@
     "sidetone level on the Cloud II Wireless (a raw byte with no documented range or scale: kept in the raw backup only, not shown or changed)",
     "voice prompts, silent mode and noise gate on the Cloud II Wireless (its firmware does not report them: HH marks voice prompts \"Doesn't work\" and has no silent mode; HSC reads only battery and auto-off)",
     "Alpha Wireless connection state (the two sources disagree on its byte)",
-    "Cloud III Wireless and Cloud II Core Wireless changes (ids not confirmed / one source)",
     "mic monitoring (no source documents it; HyperX calls it sidetone)",
     "equalizer (documented only for the Cloud III S, write-only)",
-    "Kingston-era 0951 dongles, the wired Cloud III, Cloud III S, Cloud Flight, 03F0:0D93 (maybe a Cloud Stinger 2 Wireless)",
+    "the wired Cloud III and 03F0:0D93 (maybe a Cloud Stinger 2 Wireless)",
     "lights (mice and keyboards only, through OpenRGB)",
-    "running beside NGENUITY: close it first"
+    "running beside NGENUITY: close it first",
+    "Cloud III Wireless, Cloud II Core Wireless and Cloud III S Wireless changes (ids not confirmed / one source)",
+    "Cloud III S Wireless equalizer and auto-off changes (write-only EQ; auto-off seconds vs presets disagree in the source)",
+    "Cloud Flight Wireless settings (no source has any; battery only) and its charging state between 4108 and 4115 mV (HeadsetControl and HyperHeadset disagree)",
+    "Kingston-era 0951 ids: device-library/hyperx-kingston (a library entry declares one vendor id)"
   ],
   "status": "untested",
-  "updated": "2026-10-23T00:30:00Z",
+  "updated": "2026-10-23T12:00:00Z",
   "tested": [
     {
       "by": "nobody yet: simulation only",

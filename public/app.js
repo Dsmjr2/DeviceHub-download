@@ -14,6 +14,7 @@ import { useDemoHistory } from './ui/battery-chart.js';
 import { useDemoEstimate } from './ui/controls.js';
 import overview from './pages/overview.js';
 import setupPage from './pages/setup.js';
+import { setupNeeds, watchSetup } from './pages/setup.js';
 import mousePage from './pages/mouse.js';
 import keyboardPage from './pages/keyboard.js';
 import headsetPage from './pages/headset.js';
@@ -24,6 +25,7 @@ import monitorsPage from './pages/monitors.js';
 import fansPage from './pages/fans.js';
 import settingsPage from './pages/settings.js';
 import learnPage from './pages/learn.js';
+import { learnThis } from './pages/learn.js';
 import supportedPage from './pages/supported.js';
 import wallpapersPage from './pages/wallpapers.js';
 import { devicePage } from './pages/my-device.js';
@@ -77,6 +79,7 @@ function buildRail() {
   const rail = $('#rail');
   const navBtn = (p) => h('button', { class: 'nav', dataset: { page: p.id }, onclick: () => go(p.id) },
     icon(p.icon), h('span', {}, p.title), p.device ? h('span', { class: 'dot', dataset: { dev: p.device } }) : null,
+    p.id === 'setup' ? h('span', { class: 'nav-count', hidden: true }) : null,
     p.id === 'backups' ? h('span', { class: 'nav-shield', title: 'Checking backups…' }, icon('shield')) : null);
   if (!document.querySelector('.art-defs')) document.body.prepend(artDefs());
   rail.replaceChildren(
@@ -119,7 +122,45 @@ function paintShield() {
 setInterval(readLastBackup, 30000);
 setTimeout(readLastBackup, 500);
 
+// Setup in the sidebar only while something needs the person, with how many (23 Oct 2026, Shawn: "put the set up area
+// in settings when its fully set up ... I need the app to recognize when it is and isnt fully set up"); fully set up, it
+// is a row in Settings (and in Search), and comes back here by itself when a new device or a problem needs the person.
+// Shown while it is still working that out, and while it is the page open.
+// While it is still working that out (the first second or so after the window opens) the last answer stands, kept in
+// this window's storage, so Setup does not show and then disappear (Shawn, 23 Oct 2026: "setup shows and then
+// dissappears for me, it should be more fluid"); it slides in or out when the answer changes.
+let setupLast = (() => { try { const v = localStorage.getItem('setup.needs'); return v == null ? null : Number(v); } catch { return null; } })();
+function paintSetupNav() {
+  const nav = document.querySelector('.nav[data-page="setup"]');
+  if (!nav) return;
+  const now = setupNeeds();
+  if (now != null && now !== setupLast) { setupLast = now; try { localStorage.setItem('setup.needs', String(now)); } catch {} }
+  const n = now ?? setupLast;
+  const hide = n === 0 && current?.id !== 'setup';
+  if (nav.hidden !== hide) {
+    if (!nav.dataset.painted) nav.hidden = hide;   // the first paint: no animation
+    else if (hide) { nav.classList.add('nav-out'); setTimeout(() => { if (nav.classList.contains('nav-out')) { nav.hidden = true; nav.classList.remove('nav-out'); } }, 220); }
+    else { nav.classList.remove('nav-out'); nav.hidden = false; nav.classList.add('nav-in'); setTimeout(() => nav.classList.remove('nav-in'), 260); }
+  }
+  nav.dataset.painted = '1';
+  const c = nav.querySelector('.nav-count');
+  if (c) { c.hidden = !n; c.textContent = n ? String(n) : ''; }
+}
+watchSetup(paintSetupNav);
+// A device plugged in while DeviceHub runs (helpers/plug-watch.mjs, 23 Oct 2026, Shawn: "connect and wait"): its
+// library driver was installed (Open its page), or DeviceHub can learn it (Learn it for me, one click from here)
+env.onNewDevice = (x) => {
+  if (x.installed) {
+    toast(`${x.name} is ready`, 'good', { detail: 'Its driver was installed from the shared library. It reads the device now; Turn on settings on its page when you are ready.', ms: 15000,
+      action: x.installed.id ? { label: 'Open its page', run: () => { location.hash = `#/${x.installed.id}`; } } : null });
+  } else if (x.learn) {
+    toast(`New: ${x.name}`, 'info', { detail: 'DeviceHub can learn it: it opens the maker\'s app, changes each setting there and listens.', ms: 20000,
+      action: { label: 'Learn it for me', run: () => { learnThis(x.vid, x.pid, { start: true }); location.hash = '#/learn'; } } });
+  }
+};
+setInterval(paintSetupNav, 5 * 60000);
 function paintRail() {
+  paintSetupNav();
   document.querySelectorAll('.nav').forEach((b) => b.classList.toggle('active', b.dataset.page === current?.id));
   // a device this PC does not have gets no sidebar entry (core/devices.js shownDevices)
   const shown = new Set(shownDevices().map((d) => d.id));

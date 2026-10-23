@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createLogitechKeyboard, F, NEVER, PIDS, BLE, WIRED, RECEIVERS, HidppError, halvingMarks } from '../device-library/logitech-hidpp-keyboard/device.mjs';
+import { createLogitechKeyboard, F, NEVER, PIDS, BLE, WIRED, RECEIVERS, SHARED, SW_ID_SHARED, isReplyTo, HidppError, halvingMarks } from '../device-library/logitech-hidpp-keyboard/device.mjs';
 import { problem, fits, hidSpecs, ownClash } from '../helpers/my-devices.mjs';
 import { validateMeta } from '../helpers/device-library.mjs';
 
@@ -20,7 +20,8 @@ const refusal = async (fn) => { try { await fn(); return null; } catch (e) { ret
 
 // a simulated keyboard. features: { id: index }; slot: 0xFF wired or the receiver slot it answers on
 // replyIndex: the device index in its replies (a Bluetooth keyboard answers 0xFF with 0x00, Solaar base.py)
-function simKeyboard({ pid, slot, features, state, rateExt, rateMask, profiles, disableMask, bright, replyIndex }) {
+// swid: the software id the driver must use (0x0B; 0x0C on a shared LIGHTSPEED receiver); kind: DEVICE_NAME fn 0x20 byte 0
+function simKeyboard({ pid, slot, features, state, rateExt, rateMask, profiles, disableMask, bright, replyIndex, swid = 0x0b, kind }) {
   const byIndex = Object.fromEntries(Object.entries(features).map(([id, i]) => [i, Number(id)]));
   const ls = new Set();
   const dev = {
@@ -32,7 +33,7 @@ function simKeyboard({ pid, slot, features, state, rateExt, rateMask, profiles, 
       const b = Array.from(data);
       this.sent.push(b);
       if (rid !== 0x11 || b.length !== 19) { this.bad.push(`report ${rid} of ${b.length}`); return; }
-      if ((b[2] & 0x0f) !== 0x0b) this.bad.push('software id not 0x0B');
+      if ((b[2] & 0x0f) !== swid) this.bad.push(`software id not 0x${swid.toString(16)}`);
       const [d, idx, fs] = b, p = b.slice(3);
       if (d !== slot) return;                                           // an empty receiver slot: no answer
       const emit = (bytes) => setTimeout(() => { for (const fn of [...ls]) fn({ reportId: 0x11, data: new DataView(Uint8Array.from(bytes).buffer) }); }, 1);
@@ -43,6 +44,7 @@ function simKeyboard({ pid, slot, features, state, rateExt, rateMask, profiles, 
       const fn = fs & 0xf0, id = idx === 0 ? 0 : byIndex[idx];
       if (id === 0 && fn === 0x00) { const want = (p[0] << 8) | p[1]; return reply(features[want] ? [features[want], 0, 1] : [0, 0, 0]); }
       if (id === 0 && fn === 0x10) return reply([4, 2, p[2]]);
+      if (id === F.DEVICE_NAME && fn === 0x20 && kind != null) return reply([kind]);
       if (id === F.UNIFIED_BATTERY && fn === 0x00) return reply([0, 0x03]);
       if (id === F.UNIFIED_BATTERY && fn === 0x10) return reply([state.percent, 4, state.charge, 0]);
       if (id === F.EXT_REPORT_RATE && fn === 0x10 && rateExt) return reply([0, rateMask]);
@@ -290,14 +292,16 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
   check(validateMeta(meta) === null && meta.status === 'untested' && meta.tested.length === 0, `device.json well formed and untested (${validateMeta(meta)})`);
   check(meta.pids.map((p) => parseInt(p, 16)).sort().join() === [...PIDS].sort().join() && meta.id === d.id, 'device.json lists exactly the driver\'s ids');
   const mouse = JSON.parse(fs.readFileSync(path.join(ROOT, 'device-library', 'logitech-hidpp-mouse', 'device.json'), 'utf8'));
-  check(!meta.pids.some((p) => mouse.pids.includes(p)), 'no product id is shared with the mouse driver');
+  // 23 Oct 2026: only the three shared LIGHTSPEED receivers (SHARED) are in both drivers
+  check(meta.pids.filter((p) => mouse.pids.includes(p)).sort().join() === 'c539,c53f,c54d' && Object.keys(SHARED).map((p) => Number(p).toString(16)).sort().join() === 'c539,c53f,c54d', `only C539 / C53F / C54D are shared with the mouse driver (${meta.pids.filter((p) => mouse.pids.includes(p))})`);
+  check(PIDS.includes(0xc33a) && WIRED[0xc33a] === 'G413' && meta.models.includes('G413'), 'C33A is the wired G413 (libratbag logitech-g413.device)');
 }
 
 // ---- 5. Bluetooth (22 Oct 2026, docs/handoff/logitech-ble.md): the G915 TKL on its Bluetooth id B35F (Linux
 // hid-logitech-hidpp.c). HID++ 2.0 at device index 0xFF, replies with index 0x00 (Solaar base.py), the collection with
 // 19-byte reports on any page, no report rate; the same bytes and values as on its cable ----
 {
-  check(PIDS.includes(0xb35f) && BLE[0xb35f] === 'G915 TKL' && Object.keys(BLE).length === 1, 'B35F (G915 TKL over Bluetooth) is the one Bluetooth id');
+  check(PIDS.includes(0xb35f) && BLE[0xb35f] === 'G915 TKL' && BLE[0xb389] === 'G515 LIGHTSPEED TKL' && Object.keys(BLE).length === 2, 'B35F (G915 TKL) and B389 (G515 TKL, Solaar docs/devices) are the Bluetooth ids');
   check(Object.keys(BLE).every((p) => Number(p) >= 0xb317 && Number(p) <= 0xb3ff), 'every Bluetooth id is in Solaar\'s Bluetooth keyboard range 0xB317-0xB3FF');
   check(ownClash('046d', PIDS.map((p) => p.toString(16))).length === 0, 'no keyboard id (Bluetooth included) is one DeviceHub runs itself (pc-map RUNS)');
 
@@ -319,7 +323,9 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
   const specs = hidSpecs(plain);
   const bs = specs.find((s) => s.pid === 'B35F');
   check(bs && bs.page === '*' && bs.usage === '*' && bs.inputLen === 19 && bs.outputLen === 19 && bs.reportId === 0x11 && bs.reply === 'raw', `the B35F spec: any page / usage, 19-byte input and output, report 0x11, raw (${JSON.stringify(bs)})`);
-  check(specs.filter((s) => s.pid !== 'B35F' && s.pid !== 'C232').every((s) => s.page === 'FF00' && s.usage === '0002' && s.inputLen === undefined && s.outputLen === undefined && s.iface === undefined), 'every other USB id keeps the FF00 / 0002 spec it had');
+  const bs389 = specs.find((s) => s.pid === 'B389');
+  check(bs389 && bs389.page === '*' && bs389.inputLen === 19 && bs389.outputLen === 19, `the B389 spec is the Bluetooth one too (${JSON.stringify(bs389)})`);
+  check(specs.filter((s) => !BLE[parseInt(s.pid, 16)] && s.pid !== 'C232').every((s) => s.page === 'FF00' && s.usage === '0002' && s.inputLen === undefined && s.outputLen === undefined && s.iface === undefined), 'every other USB id keeps the FF00 / 0002 spec it had');
   const g813 = specs.find((s) => s.pid === 'C232'), g813Filter = asked.find((f) => f[0].productId === 0xc232);
   check(g813 && g813.iface === 1 && g813.page === 'FF43' && g813.usage === '0602' && g813.reportId === 0x11 && g813.reply === 'raw', `the G813 spec: interface 1, FF43 / 0602, report 0x11, raw (${JSON.stringify(g813)})`);
   check(g813Filter?.length === 1 && g813Filter[0].usagePage === 0xff43 && g813Filter[0].usage === 0x0602, `the G813 is asked for on FF43 / 0602 (${JSON.stringify(g813Filter)})`);
@@ -423,6 +429,89 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
   d = make(rx);
   check(await d.connect() && d.index === 2 && !rx.sent.some((b) => b[0] === 1), 'a slot the mouse driver holds is skipped');
   SLOT_OWNERS.clear();
+}
+
+// ---- 7. a keyboard on a shared LIGHTSPEED receiver (23 Oct 2026): C539 / C53F / C54D are also the mouse driver's. A slot
+// is claimed only with no 0x2201 / 0x2202 and DEVICE_NAME kind keyboard (or numpad); software id 0x0C there; the receiver
+// is never closed; no keyboard answering = stepped aside, never asleep ----
+{
+  const { SLOT_OWNERS } = await import('../device-library/logitech-hidpp-keyboard/device.mjs');
+  const { NOT_A_FAULT } = await import('../helpers/auto-report.mjs');
+  SLOT_OWNERS.clear();
+  check(Object.keys(SHARED).every((p) => RECEIVERS[p] && PIDS.includes(Number(p))) && SW_ID_SHARED === 0x0c, 'the shared receivers are receivers of this driver; software id 0x0C there');
+  const simReceiver = (pid, kids, decoy) => ({
+    opened: false, productId: pid, sent: [], closed: 0, kids, ls: new Set(),
+    async open() { this.opened = true; },
+    close() { this.closed++; },
+    addEventListener(t, fn) { this.ls.add(fn); for (const k of Object.values(kids)) k.addEventListener(t, fn); },
+    removeEventListener(t, fn) { this.ls.delete(fn); for (const k of Object.values(kids)) k.removeEventListener(t, fn); },
+    async sendReport(id, data) {
+      this.sent.push(Array.from(data));
+      // decoy: the mouse driver's answer to the same request (software id 0x0B) arrives first, with other bytes
+      if (decoy) { const d = Array.from(data); d[2] = (d[2] & 0xf0) | 0x0b; d[3] = 0xee; for (const fn of [...this.ls]) fn({ reportId: 0x11, data: new DataView(Uint8Array.from(d).buffer) }); }
+      const k = kids[data[0]]; if (k && !k.asleep) return k.sendReport(id, data);
+    },
+  });
+  const kit = { state: { percent: 70, charge: 0, disabled: 0x00, fnSwap: 0 }, rateMask: 0, profiles: 0, disableMask: 0x10, bright: {} };
+  const board = (pid, slot, more = {}) => simKeyboard({ pid, slot, swid: 0x0c, kind: 0, features: { [F.DEVICE_NAME]: 2, [F.UNIFIED_BATTERY]: 3, [F.DISABLE_KEYS]: 4, [F.NEW_FN_INVERSION]: 5 }, ...kit, ...more });
+
+  // a) a PRO X TKL-like keyboard (kind 0) on C539 slot 1, with the mouse driver's replies arriving first: claimed, read and written
+  for (const pid of [0xc539, 0xc53f, 0xc54d]) {
+    const kb = board(pid, 1);
+    const rx = simReceiver(pid, { 1: kb }, true);
+    const d = make(rx);
+    check(await d.connect() && d.index === 1 && d.shared && SLOT_OWNERS.get(`${pid.toString(16).toUpperCase()}:1`) === d.id, `${pid.toString(16)}: a keyboard (DEVICE_NAME kind 0) in slot 1 is run`);
+    check(kb.bad.length === 0 && rx.sent.every((b) => (b[2] & 0x0f) === 0x0c), `${pid.toString(16)}: every request carries software id 0x0C (${kb.bad.join('; ')})`);
+    check((await d.battery())?.percent === 70 && (await d.write('lockWinKey', true)) === true && (await d.write('lockWinKey', false)) === false && kb.state.disabled === 0, `${pid.toString(16)}: the mouse driver's 0x0B replies are never taken; battery read, Windows-key lock written and put back`);
+    check(/LIGHTSPEED receiver/.test((await d.info()).Model), `${pid.toString(16)}: info names the LIGHTSPEED receiver (${(await d.info()).Model})`);
+    SLOT_OWNERS.clear();
+  }
+  check(!isReplyTo([1, 2, 0x1c], [1, 2, 0x1b, 0]) && isReplyTo([1, 2, 0x1c], [1, 2, 0x1c, 0]), 'a reply with another software id is not a reply to this driver');
+
+  // b) a mouse alone (0x2201): stepped aside, the shared receiver let go of but not closed, not asleep
+  let rx = simReceiver(0xc539, { 1: simKeyboard({ pid: 0xc539, slot: 1, swid: 0x0c, kind: 3, features: { [F.DEVICE_NAME]: 2, [F.ADJUSTABLE_DPI]: 3 }, ...kit }) });
+  let d = make(rx);
+  let e = await refusal(() => d.connect());
+  check(e?.notMine === true && /mouse/.test(e.message) && rx.closed === 0 && d.chan === null && !d.asleep && NOT_A_FAULT.test(e.message), `C539 with a mouse: stepped aside, receiver not closed (${e?.message})`);
+  // c) a 0x2202-only mouse (the SUPERSTRIKE's shape) on C54D, and one without DEVICE_NAME: never claimed here
+  rx = simReceiver(0xc54d, { 1: simKeyboard({ pid: 0xc54d, slot: 1, swid: 0x0c, features: { [F.EXT_ADJUSTABLE_DPI]: 3, [F.UNIFIED_BATTERY]: 4 }, ...kit }) });
+  e = await refusal(() => make(rx).connect());
+  check(e?.notMine === true && /mouse/.test(e.message) && rx.closed === 0, `C54D: a 0x2202-only mouse is left to the mouse driver (${e?.message})`);
+  rx = simReceiver(0xc53f, { 1: simKeyboard({ pid: 0xc53f, slot: 1, swid: 0x0c, features: { [F.UNIFIED_BATTERY]: 4 }, ...kit }) });
+  e = await refusal(() => make(rx).connect());
+  check(e?.notMine === true && /does not say it is a keyboard/.test(e.message) && NOT_A_FAULT.test(e.message), `C53F: a device that does not say it is a keyboard is not claimed (${e?.message})`);
+  check(!rx.sent.some((b) => b[1] !== 0 && (b[2] & 0xf0) !== 0x20), 'it got only ping, getFeature and the kind read');
+  // the same device on a G915 receiver (not shared) is still run, as before
+  const plainKb = simKeyboard({ pid: 0xc541, slot: 1, features: { [F.UNIFIED_BATTERY]: 4 }, ...kit });
+  check(await make(plainKb).connect(), 'on C541 (not shared) a device without DEVICE_NAME and no DPI is still taken as the keyboard');
+  // d) nothing answering on a shared receiver: stepped aside, not asleep (a sleeping mouse must not show a keyboard)
+  const sleepy = board(0xc539, 1); sleepy.asleep = true;
+  rx = simReceiver(0xc539, { 1: sleepy });
+  d = make(rx);
+  e = await refusal(() => d.connect());
+  check(e?.notMine === true && !d.asleep && /no keyboard answered/.test(e.message) && NOT_A_FAULT.test(e.message) && rx.closed === 0, `C539, nothing answering: stepped aside, not asleep (${e?.message})`);
+  // e) slot 1 held by the mouse driver: never asked; a keyboard in slot 2 is run; with nothing else, stepped aside
+  SLOT_OWNERS.set('C539:1', 'logitech-hidpp-mouse');
+  rx = simReceiver(0xc539, { 1: board(0xc539, 1), 2: board(0xc539, 2) });
+  d = make(rx);
+  check(await d.connect() && d.index === 2 && !rx.sent.some((b) => b[0] === 1), 'C539: slot 1 held by the mouse driver is skipped, the keyboard in slot 2 run');
+  SLOT_OWNERS.clear();
+  SLOT_OWNERS.set('C539:1', 'logitech-hidpp-mouse');
+  rx = simReceiver(0xc539, { 1: board(0xc539, 1) });
+  d = make(rx);
+  e = await refusal(() => d.connect());
+  check(e?.notMine === true && /run by logitech-hidpp-mouse/.test(e.message) && NOT_A_FAULT.test(e.message) && !rx.sent.some((b) => b[0] === 1), `C539 whose only slot the mouse driver runs: stepped aside (${e?.message})`);
+  SLOT_OWNERS.clear();
+}
+
+// ---- 8. the G413 on its cable (C33A; libratbag logitech-g413.device, g810-led): index 0xFF, FF00 / 0002, only what it answers ----
+{
+  const kb = simKeyboard({ pid: 0xc33a, slot: 0xff, features: { [F.BRIGHTNESS]: 3 }, state: { level: 80, on: true }, rateMask: 0, profiles: 0, disableMask: 0, bright: { max: 100, steps: 0, onOff: false, min: 0 } });
+  const d = make(kb);
+  check(await d.connect() && d.index === 0xff && !d.receiver && (await d.info()).Model === 'Logitech G413', 'a wired G413 connects at index 0xFF');
+  check(d.settings.map((x) => x.key).join() === 'brightness' && (await d.write('brightness', 40)) === 40 && (await d.write('brightness', 80)) === 80 && kb.state.level === 80, 'G413: backlight written, read back and put back');
+  check(kb.bad.length === 0 && !lookedUp(kb).some((id) => NEVER.includes(id)), 'G413: 19-byte reports with software id 0x0B; nothing on the never list looked up');
+  await selfChecked(d, kb.state);
 }
 
 console.log(fails.length ? `sim-logitech-keyboard: FAILED: ${fails.join('; ')}` : 'sim-logitech-keyboard (Logitech HID++ keyboard driver, simulated): all good');

@@ -74,6 +74,20 @@ try {
     }
     Start-Sleep -Milliseconds 800
     $dead = @($script:procs | Where-Object { $_.HasExited })
+    # right after a stop, USBPcap can still hold a hub for a moment (23 Oct 2026): every one gone, so wait and start once more
+    if ($dead.Count -eq $script:procs.Count) {
+      $script:procs = @()
+      Start-Sleep -Milliseconds 1500
+      $i = 0
+      foreach ($iface in $ifaces) {
+        $i++
+        $out = Join-Path $Dir "$name-$i.pcap"
+        if (Test-Path -LiteralPath $out) { Remove-Item -LiteralPath $out -Force }
+        $script:procs += Start-Process -FilePath $exe -ArgumentList @('-d', $iface, '-A', '--inject-descriptors', '-s', '1100', '-o', "`"$out`"") -PassThru -WindowStyle Hidden
+      }
+      Start-Sleep -Milliseconds 800
+      $dead = @($script:procs | Where-Object { $_.HasExited })
+    }
     if ($dead.Count -eq $script:procs.Count) { Save-State 'error' @{ error = 'USBPcap did not start recording (restart the PC once after installing it)' }; $script:procs = @(); continue }
     Save-State 'recording'
   }

@@ -14,10 +14,15 @@ export function toggle({ value, onCommit, disabled, label }) {
   const el = h('button', { class: `switch${value ? ' on' : ''}`, role: 'switch', 'aria-checked': String(!!value), 'aria-label': label, disabled },
     h('span', { class: 'knob' }));
   const show = (on) => { el.classList.toggle('on', on); el.setAttribute('aria-checked', String(on)); };
+  // its own state, not the value it was drawn with (23 Oct 2026, Shawn: the Apply to switches "either dont work or are
+  // very slow"): a switch whose page does not redraw after a click (a choice kept on the page only) flipped back to the
+  // same side on the second click, until something else redrew the page
+  let cur = !!value;
   el.addEventListener('click', async () => {
     if (el.classList.contains('pending')) return;
-    show(!value);
-    try { await run(el, () => onCommit(!value)); } catch { show(!!value); }
+    const next = !cur;
+    show(next);
+    try { await run(el, () => onCommit(next)); cur = next; } catch { show(cur); }
   });
   return el;
 }
@@ -120,19 +125,10 @@ export function row(title, desc, control, extra) {
   return h('div', { class: 'srow' }, h('div', { class: 'srow-text' }, h('div', { class: 'srow-title' }, title, extra), desc ? h('div', { class: 'srow-desc' }, desc) : null), h('div', { class: 'srow-ctl' }, control));
 }
 
-// The cards used once in a while, folded under one row (a native <details>: keyboard and screen readers work as they
-// do everywhere). The row names what is inside; open or closed is remembered per page (20 Oct 2026).
+// The cards used once in a while, under a small heading naming them. They used to fold under a "More" row; Shawn (23 Oct
+// 2026): "I dont want the more area to exist on the app, should just show all settings on pages", so they are shown.
 export function more(id, what, ...body) {
-  let open = false;
-  try { open = localStorage.getItem(`more:${id}`) === '1'; } catch {}
-  const d = h('details', { class: 'more', open: open || null },
-    h('summary', { 'aria-label': `More: ${what}` }, h('span', { class: 'more-title' }, 'More'), h('span', { class: 'more-what' }, what)),
-    h('div', { class: 'more-body' }, ...body.filter(Boolean)));
-  const remember = (on) => { try { localStorage.setItem(`more:${id}`, on ? '1' : '0'); } catch {} };
-  // remembered on the click itself (a page redraw can land before the toggle event and would otherwise close it again)
-  d.querySelector('summary').addEventListener('click', () => remember(!d.open));
-  d.addEventListener('toggle', () => remember(d.open));
-  return d;
+  return h('section', { class: 'more-open', 'aria-label': what }, h('div', { class: 'more-body' }, ...body.filter(Boolean)));
 }
 
 export function card(title, ...body) {
@@ -186,8 +182,10 @@ export function batteryCell({ id, percent, charging, big, reported, compact }) {
   // the hover note is the mouse's and the headset's only (an added device shows no tooltip)
   const tip = id !== 'mouse' && id !== 'headset' ? null : reported != null && reported !== p ? `The mouse itself reads ${reported}%: its reading comes from the battery voltage, which the charger lifts. ${p}% is DeviceHub's level.`
     : est?.ratePerHour && !charging ? `Draining about ${est.ratePerHour}% an hour lately` : null;
-  if (compact) return h('div', { class: `bcell compact${charging ? ' charging' : ''}`, style: { '--bt': tone }, title: tip }, compactBattery(p));
-  return h('div', { class: `bcell${big ? ' big' : ''}${charging ? ' charging' : ''}`, style: { '--bt': tone }, title: tip },
+  // --pct: the level as a plain number for a look that draws the battery its own way (Old School's hitpoints orb, 23 Oct
+  // 2026); the other looks ignore it
+  if (compact) return h('div', { class: `bcell compact${charging ? ' charging' : ''}`, style: { '--bt': tone, '--pct': p }, title: tip }, compactBattery(p));
+  return h('div', { class: `bcell${big ? ' big' : ''}${charging ? ' charging' : ''}`, style: { '--bt': tone, '--pct': p }, title: tip },
     // one solid fill, like the iOS battery
     h('div', { class: 'bcell-shape' }, h('div', { class: 'bcell-body' }, h('div', { class: 'bcell-fill', style: { width: `${Math.max(p, 4)}%` } })), h('div', { class: 'bcell-nub' })),
     h('div', { class: 'bcell-text' }, h('b', {}, `${p}%`), note ? h('span', {}, note) : null));

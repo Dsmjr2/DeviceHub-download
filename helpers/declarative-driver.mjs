@@ -176,7 +176,7 @@ const KNOWN = {
   top: ['format', 'id', 'title', 'kind', 'vendor', 'about', 'source', 'note', 'vid', 'pids', 'hid', 'transport', 'links', 'models', 'replies', 'messages', 'reads', 'fields', 'settings', 'battery', 'batteryCare', 'info', 'stepBack', 'unsupported', 'never', 'byPid'],
   notice: ['reportId', 'starts', 'len', 'note'],
   byPid: ['transport', 'replies', 'messages', 'fields', 'notices', 'encode', 'note'],
-  transport: ['report', 'len', 'reportId', 'usagePage', 'timeoutMs', 'tries', 'waitMs', 'checksum', 'note'],
+  transport: ['report', 'len', 'reportId', 'usagePage', 'timeoutMs', 'tries', 'waitMs', 'checksum', 'counter', 'note'],
   link: ['label', 'reportId', 'wireless', 'usagePage', 'pids', 'identify', 'probes', 'note'],
   model: ['key', 'name', 'pids', 'paired', 'vars', 'note'],
   replies: ['echo', 'error', 'ok', 'checksum', 'note'],
@@ -228,6 +228,13 @@ export function validate(obj) {
       else if (c.type !== 'none' && !(Number.isInteger(c.from) && Number.isInteger(c.to) && Number.isInteger(c.at) && c.from >= 0 && c.from <= c.to && c.to < len && c.at >= 0 && c.at + (c.type === 'sum16le' ? 1 : 0) < len && (c.at < c.from || c.at > c.to)))
         no('transport.checksum needs from <= to and an "at" outside that range, all inside the report');
     }
+    // a rolling message number (23 Oct 2026, learned by Learn a device: tests/learn-bench.mjs): one byte at "at" that the
+    // driver raises by "step" on every message it sends, the device repeating it in its reply
+    const k = t.counter;
+    if (k != null) {
+      const csAt = c && c.type !== 'none' ? [c.at, ...(c.type === 'sum16le' ? [c.at + 1] : [])] : [];
+      if (!isObj(k) || !Number.isInteger(k.at) || k.at < 0 || k.at >= len || !Number.isInteger(k.step) || k.step < 1 || k.step > 255 || csAt.includes(k.at)) no('transport.counter needs "at" (a byte inside the report, not the checksum) and "step" (1-255)');
+    }
   }
 
   // links and models
@@ -277,7 +284,8 @@ export function validate(obj) {
   else if (!isObj(rp)) no('it needs "replies": how a reply is matched to its request');
   else {
     unknown(rp, 'replies', '"replies"');
-    if (!Array.isArray(rp.echo) || !rp.echo.length || !rp.echo.every((x) => Number.isInteger(x) && x >= 0 && x < len)) no('replies.echo must list the byte positions a reply repeats from its request (at least one)');
+    // feature reports may list none (23 Oct 2026): the get right after the set is the answer, nothing else can arrive
+    if (!Array.isArray(rp.echo) || (!rp.echo.length && t?.report !== 'feature') || !rp.echo.every((x) => Number.isInteger(x) && x >= 0 && x < len)) no('replies.echo must list the byte positions a reply repeats from its request (at least one)');
     if (rp.error != null) { try { parseTemplate(rp.error.bytes).forEach((x) => { if (x.name) throw new Error('placeholders are not allowed there'); }); } catch (e) { no(`replies.error.bytes: ${e.message}`); } }
     if (rp.ok != null && !(isObj(rp.ok) && Number.isInteger(rp.ok.offset) && rp.ok.offset < len && /^[0-9A-F]{2}$/i.test(rp.ok.equals || ''))) no('replies.ok must be { offset, equals: "02" }');
   }
@@ -342,8 +350,9 @@ export function validate(obj) {
     try { parts = parseTemplate(m.bytes); } catch (e) { no(`message "${name}": ${e.message}`); continue; }
     parsed[name] = parts;
     let width = 0;
+    const lits = [];
     for (const [i, p] of parts.entries()) {
-      if (p.byte != null) { width++; continue; }
+      if (p.byte != null) { lits[width] = p.byte; width++; continue; }
       if (p.optional && i !== parts.length - 1) no(`message "${name}": an optional placeholder ({${p.name}?}) may only be the last thing in it`);
       if (p.name === 'value') { if (p.type === 'bytes') no(`message "${name}": {value} cannot be bytes`); width += PLACE[p.type || 'u8']; continue; }
       if (p.name === 'zone' || p.name === 'button') { if (p.type && p.type !== 'u8') no(`message "${name}": {${p.name}} is one byte`); width += 1; continue; }
@@ -355,7 +364,9 @@ export function validate(obj) {
     }
     if (width > len) no(`message "${name}" is ${width} bytes, longer than the ${len}-byte report`);
     const c = t?.checksum;
-    if (c && c.type !== 'none' && Number.isInteger(c.at) && width > c.at) no(`message "${name}" reaches the checksum byte (${c.at})`);
+    // a checksum in front of what it covers (Sonix-style keyboards, 23 Oct 2026): the template leaves its byte(s) 00
+    const front = c && Number.isInteger(c.at) && Number.isInteger(c.from) && c.at < c.from && [c.at, ...(c.type === 'sum16le' ? [c.at + 1] : [])].every((i) => i >= width || lits[i] === 0);
+    if (c && c.type !== 'none' && Number.isInteger(c.at) && width > c.at && !front) no(`message "${name}" reaches the checksum byte (${c.at})${c.at < c.from ? ': leave it 00 there, DeviceHub writes it' : ''}`);
   }
   const msgUse = (name, where, { value = false, give = null } = {}) => {
     if (!messages[name]) { no(`${where} sends the message "${name}", which "messages" does not have; nothing may be sent that is not a template`); return; }
@@ -559,6 +570,12 @@ export function validate(obj) {
     const slots = expand(parts, fields, valueSets[name], codeSets[name]);
     const cs = t?.checksum && t.checksum.type !== 'none' ? t.checksum : null;
     if (cs) for (let i = cs.at; i <= cs.at + (cs.type === 'sum16le' ? 1 : 0); i++) { while (slots.length < i) slots.push([0]); slots[i] = null; }
+    // the counter byte can be any value: a template may not put anything there, and the never lists see it as anything
+    const ctr = isObj(t?.counter) && Number.isInteger(t.counter.at) ? t.counter.at : null;
+    if (ctr != null) {
+      if (slots[ctr] && !(slots[ctr].length === 1 && slots[ctr][0] === 0)) no(`message "${name}" puts something in the counter byte (${ctr}), which the driver fills itself`);
+      while (slots.length < ctr) slots.push([0]); slots[ctr] = null;
+    }
     for (const n of [...own, ...builtIn]) {
       if (n.reportId != null && !ids.has(n.reportId)) continue;
       for (let start = 0; start <= (n.within || 0); start++) {
@@ -801,6 +818,7 @@ function makeDriver(base) {
       }
       const data = new Uint8Array(t.len);
       data.set(out.slice(0, t.len));
+      if (t.counter) { this.seq = ((this.seq ?? 0) + t.counter.step) & 255; data[t.counter.at] = this.seq; }
       checksum(data, t.checksum);
       const m = def.messages[name];
       return { reportId: m.reportId ?? def.links[this.link]?.reportId ?? t.reportId, data };

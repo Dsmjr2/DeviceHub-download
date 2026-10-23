@@ -16,10 +16,33 @@
 // BLE pre-pairing 0x1816 and Lightspeed pairing 0x0309 are in NEVER, are never looked up and can never be sent.
 // Every write is read back; every write is refused while G HUB runs.
 //
+// G522 LIGHTSPEED (23 Oct 2026), battery only:
+//   HC2    = HeadsetControl @ a8120a62bcbb45a9766d9060dfd21ae18f8550a5, lib/devices/logitech_g522_lightspeed.hpp
+//            (SUPPORTED_PRODUCT_IDS { 0x0b18 }; usage page 0xffa0, usage 0x0001, interface 3; FRAME_PREFIX { 0x50, 0x23 }:
+//            "its frames start with 0x50 0x23 instead of 0x51"; getBattery = CenturionBatterySoc 0x0104 fn 0x00 through the
+//            bridge, parseCenturionBatteryResponse) and protocols/logitech_centurion_protocol.hpp (buildCenturionFrame /
+//            extractCenturionPayload: the prefix, then [length, flags], the prefix checked on every reply)
+//   Solaar = lib/logitech_receiver/base.py lines 99-117 ("0x50 (G522): [0x50, device_addr, cpl_length, flags, feat_idx,
+//            func_sw, params..., pad]"; "device_addr learned from first RX"), 346-356 ("Typical G522 (addr=0x23)"),
+//            400-416 (the address taken from byte 1 of a received 0x50 frame); lib/hidapi/udev_impl.py lines 114-122 (a
+//            Centurion collection = 63-byte input and output reports 0x50 / 0x51); descriptors.py line 471 ("G522 LIGHTSPEED
+//            Gaming Headset (0x0B18 dongle, 0x0B19 wired) — Centurion 0x50 variant"); centurion.py lines 199-230
+//            (CENTURION_BATTERY_SOC: b0 percent, b2 1 / 2 charging, 3 full) and 545-588 (a 0x50 device whose dongle has no
+//            bridge 0x0003 is a direct device: its features asked without the bridge)
+//   The address byte is 0x23 (HC2's fixed prefix, Solaar's "typical G522"). Solaar finds it by sending a ping to every
+//   address 0x00-0xFF; DeviceHub never does (no guessed sends): it only takes another address from a 0x50 frame the
+//   headset sends by itself, as Solaar's receive path does, and asks once more there. The cable id 0B19: Solaar names it
+//   but gives no collection or interface, so its channel is the 0xFFA0 collection with 63-byte reports (udev_impl.py);
+//   with no bridge there it is asked directly (centurion.py). Sidetone, auto sleep, lights, EQ and voice prompts on the
+//   G522 are not offered yet (only the battery is, read-only).
+//
 // Left out (no source documents a read-back, or the layout is not documented): HID++ sidetone on the G432 family and
 // G533 (HC writes only), lights (HC `04 3C`: write only), the PRO X 2's EQ (0x020D / 0x0636: HC writes a parametric
-// set, no plain read of the same value), the G522 (Centurion with a probed device address, Solaar base.py), the G435
-// and ASTRO A50 X (in neither project), ASTRO A50 Gen 4 / 5 (their own non-HID++ protocol).
+// set, no plain read of the same value), the G435 and ASTRO A50 X (in neither project), ASTRO A50 Gen 4 / 5 (their own
+// non-HID++ protocol). The G431 / G432 / G433 (HC2 logitech_g432.hpp: 0x0a9b / 0x0a9c / 0x0a6d) are not run: HC2's only
+// command for them is a sidetone write (`05 1e level`, sendHIDPPFeature: no reply read), it opens them on no named
+// collection (the first one, getCapabilityDetail default), they have no battery, and Solaar and libratbag do not list
+// them, so there is nothing to read back or show.
 import { getDevice } from '../../public/devices/hid.js';
 
 const VID = 0x046d;
@@ -38,7 +61,12 @@ export const HIDPP = {
 export const G535 = '0AC4';
 // Centurion: HC logitech_gpro_x2_lightspeed.hpp SUPPORTED_PRODUCT_IDS { 0x0af7 }, usage page 0xFFA0, usage 0x0001,
 // interface 3 (getCapabilityDetail); report id 0x51 (REPORT_PREFIX), 64-byte frames (PACKET_SIZE)
-export const CENTURION = { '0AF7': 'PRO X 2 LIGHTSPEED' };
+export const CENTURION = { '0AF7': 'PRO X 2 LIGHTSPEED', '0B18': 'G522 LIGHTSPEED', '0B19': 'G522 LIGHTSPEED (USB cable)' };
+// each Centurion id's frame: report id, and the 0x50 variant's address byte (HC2 FRAME_PREFIX, Solaar base.py)
+export const C_FRAMES = { '0AF7': { reportId: 0x51, addr: null }, '0B18': { reportId: 0x50, addr: 0x23 }, '0B19': { reportId: 0x50, addr: 0x23 } };
+// the G522: battery only (see the header); the cable may have no bridge (Solaar centurion.py: a direct device)
+export const G522 = ['0B18', '0B19'];
+export const C_MAY_BE_DIRECT = ['0B19'];
 export const PIDS = [...Object.keys(HIDPP), ...Object.keys(CENTURION)];
 
 // ---- HID++ 2.0 framing (HC protocols/hidpp_protocol.hpp sendHIDPPCommand; sheet section 2 "Message format") ----
@@ -49,7 +77,7 @@ export const REPORT_LONG = 0x11, REPORT_SHORT = 0x10, LEN = 19, DEV = 0xff, SW_I
 // Centurion framing (HC logitech_centurion_protocol.hpp): report 0x51, then [length, flags 00, payload...] padded to 64;
 // length = payload length + 1 (exact_direct_length, which logitech_gpro_x2_lightspeed.hpp turns on); payload = [feature
 // index, (function & 0xF0) | 0x01 (SOFTWARE_ID), params...]. Bridge: feature 0x0003, function 0x10 (send fragment).
-export const C_REPORT = 0x51, C_LEN = 63, C_SW = 0x01, C_BRIDGE_FN = 0x10;
+export const C_REPORT = 0x51, C_REPORT_ADDR = 0x50, C_LEN = 63, C_SW = 0x01, C_BRIDGE_FN = 0x10;
 
 // feature ids (Solaar hidpp20_constants.py SupportedFeature)
 export const F = {
@@ -69,6 +97,8 @@ export const ALLOWED = {
 // PRO X 2: direct requests to the dongle and bridged requests to the headset (HC logitech_centurion_protocol.hpp)
 export const C_ALLOWED = {
   direct: { [F.ROOT]: [0x00], [F.BRIDGE]: [C_BRIDGE_FN] },   // Root.getFeature for the bridge; the bridge's send-fragment
+  // a G522 on its cable with no bridge (Solaar centurion.py: a direct device): Root.getFeature and the battery only
+  device: { [F.ROOT]: [0x00], [F.C_BATTERY]: [0x00] },
   sub: {
     [F.ROOT]: [0x00],                  // lookupCenturionFeature: Root.getFeature through the bridge
     [F.C_BATTERY]: [0x00],             // HC getBattery: CenturionBatterySoc fn 0x00
@@ -113,7 +143,8 @@ async function defaultVendorApp() {
   return null;
 }
 async function defaultOpen(pid) {
-  const iface = pid === G535 || CENTURION[pid] ? 3 : undefined;
+  // interface 3: G535 (HC), PRO X 2 (HC), the G522 dongle (HC2); the G522 cable's interface is in no source
+  const iface = pid === G535 || (CENTURION[pid] && !C_MAY_BE_DIRECT.includes(pid)) ? 3 : undefined;
   return getDevice([{ vendorId: VID, productId: parseInt(pid, 16), ...(iface ? { iface } : {}) }], { prompt: false });
 }
 
@@ -141,9 +172,12 @@ export function createLogitechHeadset({ open = defaultOpen, vendorApp = defaultV
     kind: 'Headset',
     vendor: 'Logitech',
     hid: { vid: '046D', pid: '0AB5', pids: PIDS, page: 'FF43', usage: '0202', len: LEN, reportId: REPORT_LONG, reply: 'raw', replyMs: 2000,
-      byPid: { [G535]: { page: '000C', usage: '0001', iface: 3 }, '0AF7': { page: 'FFA0', usage: '0001', iface: 3, len: C_LEN, reportId: C_REPORT } } },
-    unsupported: ['lights', 'EQ on the PRO X 2', 'setting the mic mute (shown only)', 'G432 / G533 sidetone', 'G522, G435, ASTRO A50 / A50 X', 'firmware updates', 'pairing'],
-    dev: null, pid: null, centurion: false, features: {}, caps: {}, bridge: null, q: Promise.resolve(),
+      byPid: { [G535]: { page: '000C', usage: '0001', iface: 3 }, '0AF7': { page: 'FFA0', usage: '0001', iface: 3, len: C_LEN, reportId: C_REPORT },
+        '0B18': { page: 'FFA0', usage: '0001', iface: 3, len: C_LEN, reportId: C_REPORT_ADDR },
+        // the G522 cable: the 0xFFA0 collection whose input and output reports are 63 bytes (Solaar udev_impl.py)
+        '0B19': { page: 'FFA0', usage: '*', inputLen: C_LEN, outputLen: C_LEN, len: C_LEN, reportId: C_REPORT_ADDR } } },
+    unsupported: ['lights', 'EQ on the PRO X 2', 'setting the mic mute (shown only)', 'G432 / G533 sidetone', 'G522 settings (battery only)', 'G435, ASTRO A50 / A50 X', 'firmware updates', 'pairing'],
+    dev: null, pid: null, centurion: false, features: {}, caps: {}, bridge: null, q: Promise.resolve(), frame: null, direct: false, heardAddr: null,
 
     get settings() {
       const out = [];
@@ -157,12 +191,19 @@ export function createLogitechHeadset({ open = defaultOpen, vendorApp = defaultV
     },
 
     async connect() {
-      this.dev = null; this.features = {}; this.caps = {}; this.bridge = null; this.q = Promise.resolve();
+      if (this.dev && this.onAddr) this.dev.removeEventListener('inputreport', this.onAddr);
+      this.dev = null; this.features = {}; this.caps = {}; this.bridge = null; this.q = Promise.resolve(); this.frame = null; this.direct = false; this.heardAddr = null; this.onAddr = null;
       for (const pid of PIDS) {
         const dev = await open(pid);
         if (!dev) continue;
         if (!dev.opened && dev.open) await dev.open();
         this.dev = dev; this.pid = pid; this.centurion = !!CENTURION[pid];
+        if (this.centurion) this.frame = { ...C_FRAMES[pid] };
+        if (this.frame?.addr != null) {
+          // the 0x50 variant: note the address byte of any 0x50 frame the headset sends (Solaar base.py _unwrap_centurion_frame)
+          this.onAddr = (e) => { if (e.reportId === C_REPORT_ADDR && e.data.byteLength > 1) this.heardAddr = e.data.getUint8(0); };
+          dev.addEventListener('inputreport', this.onAddr);
+        }
         await (this.centurion ? this.discoverCenturion() : this.discoverHidpp());
         return true;
       }
@@ -226,15 +267,31 @@ export function createLogitechHeadset({ open = defaultOpen, vendorApp = defaultV
 
     // ---- Centurion (PRO X 2) ----
     // a frame on report 0x51: [len, flags 00, payload...], payload = [feature index, fn | 0x01, params]
-    centurionFrame(payload) { const out = new Uint8Array(C_LEN); out.set([payload.length + 1, 0x00, ...payload].slice(0, C_LEN)); return out; },
-    // the payload of a reply frame (HC extractCenturionPayload): data[2 .. 1+len), or null when it is not a frame
-    centurionPayload(rid, d) { if (rid !== C_REPORT) return null; const len = d[0]; if (len <= 1 || len + 1 > d.length) return null; return d.slice(2, 1 + len); },
+    // the 0x50 variant (G522) puts its address byte first: [addr, len, flags 00, payload...] (HC2 FRAME_PREFIX 50 23)
+    centurionFrame(payload) {
+      const out = new Uint8Array(C_LEN), a = this.frame?.addr;
+      out.set([...(a != null ? [a] : []), payload.length + 1, 0x00, ...payload].slice(0, C_LEN));
+      return out;
+    },
+    get cReport() { return this.frame?.reportId ?? C_REPORT; },
+    // the payload of a reply frame (HC extractCenturionPayload: the prefix must match): data[2 .. 1+len) after the
+    // address byte when there is one, or null when it is not a frame of this headset
+    centurionPayload(rid, d) {
+      if (rid !== this.cReport) return null;
+      const a = this.frame?.addr, o = a != null ? 1 : 0;
+      if (a != null && d[0] !== a) return null;
+      const len = d[o];
+      if (len <= 1 || len + 1 + o > d.length) return null;
+      return d.slice(2 + o, 1 + o + len);
+    },
 
     // direct request to the dongle (HC sendCenturionRequest): the reply is the first frame for the same feature index;
     // the bridge's connection event ([bridge, 00, 00, connected]) is skipped
     cDirect(featureId, fn, params = []) {
-      if (NEVER.includes(featureId) || !(C_ALLOWED.direct[featureId] || []).includes(fn)) return Promise.reject(new Error(`refused: Centurion feature 0x${hex4(featureId)} function 0x${hex2(fn)} is not one this driver sends`));
-      const index = featureId === F.ROOT ? 0 : this.bridge;
+      const allowed = this.direct ? C_ALLOWED.device : C_ALLOWED.direct;
+      if (NEVER.includes(featureId) || !(allowed[featureId] || []).includes(fn)) return Promise.reject(new Error(`refused: Centurion feature 0x${hex4(featureId)} function 0x${hex2(fn)} is not one this driver sends`));
+      const index = featureId === F.ROOT ? 0 : this.direct ? this.features[featureId]?.index : this.bridge;
+      if (!index && featureId !== F.ROOT) return Promise.reject(new Error(`the headset has no feature 0x${hex4(featureId)}`));
       const out = this.centurionFrame([index, (fn & 0xf0) | C_SW, ...params]);
       const decide = (rid, d) => {
         const p = this.centurionPayload(rid, d);
@@ -243,7 +300,7 @@ export function createLogitechHeadset({ open = defaultOpen, vendorApp = defaultV
         if (p[0] === 0xff && p[1] === index) return { error: new HidppError(p[3] ?? 0, `Centurion 0x${hex4(featureId)} fn 0x${hex2(fn)}`) };
         return p[0] === index ? { value: p.slice(2) } : undefined;
       };
-      return this.serial(() => exchange(this.dev, () => this.dev.sendReport(C_REPORT, out), decide, timeoutMs));
+      return this.serial(() => exchange(this.dev, () => this.dev.sendReport(this.cReport, out), decide, timeoutMs));
     },
 
     // a request to the headset behind the bridge (HC sendCenturionBridgeRequest, one fragment): [bridge, 0x11, size hi,
@@ -270,16 +327,34 @@ export function createLogitechHeadset({ open = defaultOpen, vendorApp = defaultV
         if (p[5] === 0xff && p[6] === sub) return { error: new HidppError(p[8] ?? 0, what) };
         return undefined;
       };
-      return this.serial(() => exchange(this.dev, () => this.dev.sendReport(C_REPORT, out), decide, timeoutMs));
+      return this.serial(() => exchange(this.dev, () => this.dev.sendReport(this.cReport, out), decide, timeoutMs));
+    },
+
+    // the first request to a 0x50 headset: at 0x23, and once more at an address the headset itself sent a frame from
+    async cFirst(featureId, fn, params) {
+      try { return await this.cDirect(featureId, fn, params); } catch (e) {
+        if (!e.noReply || this.frame?.addr == null || this.heardAddr == null || this.heardAddr === this.frame.addr) throw e;
+        this.frame.addr = this.heardAddr;
+        return this.cDirect(featureId, fn, params);
+      }
     },
 
     async discoverCenturion() {
       // HC lookupCenturionFeature (lookup_features_by_id): Root.getFeature(0x0003) on the dongle, then Root.getFeature
       // through the bridge for each headset feature; reply [index (0 = absent), flags, version]
-      const b = await this.cDirect(F.ROOT, 0x00, [F.BRIDGE >> 8, F.BRIDGE & 0xff]);
-      if (!b[0]) throw new Error('the PRO X 2 dongle has no Centurion bridge (0x0003)');
+      const g522 = G522.includes(this.pid);
+      const b = await this.cFirst(F.ROOT, 0x00, [F.BRIDGE >> 8, F.BRIDGE & 0xff]);
+      if (!b[0] && C_MAY_BE_DIRECT.includes(this.pid)) {
+        // the G522 on its cable: no bridge, so its own features are asked directly (Solaar centurion.py create_centurion_receiver)
+        this.direct = true;
+        const r = await this.cDirect(F.ROOT, 0x00, [F.C_BATTERY >> 8, F.C_BATTERY & 0xff]);
+        if (r[0]) this.features[F.C_BATTERY] = { index: r[0], flags: r[1], version: r[2] };
+        return;
+      }
+      if (!b[0]) throw new Error(`the ${CENTURION[this.pid]} dongle has no Centurion bridge (0x0003)`);
       this.bridge = b[0];
-      for (const id of [F.C_BATTERY, F.C_SIDETONE, F.C_AUTO_SLEEP, F.MIC_MUTE]) {
+      // the G522: only the battery is looked up (sidetone, auto sleep and mic mute are not offered for it yet)
+      for (const id of g522 ? [F.C_BATTERY] : [F.C_BATTERY, F.C_SIDETONE, F.C_AUTO_SLEEP, F.MIC_MUTE]) {
         const r = await this.cSub(F.ROOT, 0x00, [id >> 8, id & 0xff]);
         if (r[0]) this.features[id] = { index: r[0], flags: r[1], version: r[2] };
       }
@@ -326,7 +401,7 @@ export function createLogitechHeadset({ open = defaultOpen, vendorApp = defaultV
       const out = {
         Model: `Logitech ${this.centurion ? CENTURION[this.pid] : HIDPP[this.pid] || 'headset'}`,
         'Product id': `046D:${this.pid}`,
-        Protocol: this.centurion ? `Centurion (bridge at index ${this.bridge})` : `HID++ ${this.protocol}`,
+        Protocol: this.centurion ? `Centurion${this.frame?.addr != null ? ` 0x50, address 0x${hex2(this.frame.addr)}` : ''} (${this.direct ? 'no bridge: asked directly' : `bridge at index ${this.bridge}`})` : `HID++ ${this.protocol}`,
         Features: Object.entries(this.features).map(([id, f]) => `0x${hex4(Number(id))} v${f.version}`).join(', ') || 'none found',
       };
       if (this.caps.eq) out.EQ = `${this.caps.eq.count} bands, ${this.caps.eq.min} to ${this.caps.eq.max} dB`;
@@ -390,9 +465,10 @@ export function createLogitechHeadset({ open = defaultOpen, vendorApp = defaultV
       if (!this.dev) return null;
       if (this.centurion) {
         if (!this.features[F.C_BATTERY]) return null;
-        // HC parseCenturionBatteryResponse: b0 percent 0-100, b2 state, 1 or 2 = charging
-        const r = await this.cSub(F.C_BATTERY, 0x00);
-        return r[0] <= 100 ? { percent: r[0], charging: r[2] === 1 || r[2] === 2 } : null;
+        // HC parseCenturionBatteryResponse: b0 percent 0-100, b2 state, 1 or 2 = charging (Solaar centurion.py: 3 = full)
+        const r = this.direct ? await this.cDirect(F.C_BATTERY, 0x00) : await this.cSub(F.C_BATTERY, 0x00);
+        if (r[0] > 100) return null;
+        return G522.includes(this.pid) ? { percent: r[0], charging: r[2] === 1 || r[2] === 2, full: r[2] === 3 } : { percent: r[0], charging: r[2] === 1 || r[2] === 2 };
       }
       if (this.features[F.UNIFIED_BATTERY]) {
         // sheet section 3 "Battery (unified)": b0 %, b1 level bits, b2 0 discharging / 1 charging / 2 slow / 3 complete
@@ -415,7 +491,7 @@ export function createLogitechHeadset({ open = defaultOpen, vendorApp = defaultV
     },
 
     async rawBackup() {
-      return { pid: this.pid, centurion: this.centurion, bridge: this.bridge, features: Object.fromEntries(Object.entries(this.features).map(([id, f]) => [`0x${hex4(Number(id))}`, f])),
+      return { pid: this.pid, centurion: this.centurion, bridge: this.bridge, direct: this.direct || undefined, frame: this.frame || undefined, features: Object.fromEntries(Object.entries(this.features).map(([id, f]) => [`0x${hex4(Number(id))}`, f])),
         caps: this.caps, values: await this.read(), autoOffBytes: this.centurion && this.caps.autoOff ? await this.readAutoOffBytes() : undefined };
     },
   };

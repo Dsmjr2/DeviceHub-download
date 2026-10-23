@@ -200,8 +200,16 @@ export async function start({ port, corsairHelper }) {
   setInterval(oneDriveTick, 30 * 60 * 1000);
   // Windows says a device was added or removed (helpers/native/tray.cs DeviceWatch): look at once, not on the next timed
   // check. Several messages come per plug, so they are gathered for 400 ms first.
-  let devTimer = null;
+  let devTimer = null, plugTimer = null;
+  // a device plugged in while DeviceHub runs (helpers/plug-watch.mjs): its library driver installed at once, or the
+  // window offers Learn it for me. Not in tests (DEVICEHUB_TEST), as auto setup at start.
+  const plug = process.env.DEVICEHUB_TEST === '1' ? null : (await import('./plug-watch.mjs')).watcher({
+    root: pathSeen.dirname(SEEN_FILE), pcMap: require('./pc-map.js'), send,
+    log: (e) => core.log(e.text, e.kind || 'info'),
+  });
+  if (plug) setTimeout(() => plug.start().catch(() => {}), 5000);
   require('./native').onEvent('dev', () => {
+    if (plug) { clearTimeout(plugTimer); plugTimer = setTimeout(() => plug.check().catch((e) => console.error('[plug]', e.message)), 2500); }
     clearTimeout(devTimer);
     devTimer = setTimeout(() => {
       const at = new Date().toLocaleTimeString();

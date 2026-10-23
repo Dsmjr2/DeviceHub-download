@@ -39,6 +39,10 @@ import { chargerLifted } from '../../public/devices/headset-adapter.js';
 // DeviceHub's built-in adapter owns the HS80 RGB Wireless (sheet section 1 "Headsets", first row: cable 0A69, behind a
 // receiver 0A71, receiver 0A6B). Never in the table below; the test checks.
 export const HS80_OWN_PIDS = ['0A69', '0A6B', '0A71'];
+// The HS80 RGB USB (0A88, wired only) is left out: OpenLinkHub (e3cae8cb) runs it with its own hs80rgb package, not
+// bragi: 16-byte output reports c8 (device mode), c9 (LED init), cb (colours), all write-only, firmware from the USB
+// bcdDevice, mute from reports starting 64 on interface 3. Nothing is read back, so there is nothing here to offer.
+
 
 // Endpoints (sheet section 2 "The bragi frame" and "Receiver vs cable"): 09 = the headset through its receiver,
 // 08 = the device that is plugged in (the headset on its own USB cable).

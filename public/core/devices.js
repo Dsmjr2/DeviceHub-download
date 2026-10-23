@@ -118,6 +118,8 @@ export async function useRemote() {
   const listen = (src) => {
     src.addEventListener('device', (e) => applyRemote({ devices: [JSON.parse(e.data)] }));
     src.addEventListener('auto', (e) => applyRemote({ auto: JSON.parse(e.data) }));
+    // a device just plugged in (helpers/plug-watch.mjs): the window says what DeviceHub did or can do
+    src.addEventListener('newdevice', (e) => { try { env.onNewDevice?.(JSON.parse(e.data)); } catch {} });
     src.addEventListener('activity', (e) => {
       const a = JSON.parse(e.data);
       activity.unshift({ ...a, at: new Date(a.at) });

@@ -1,0 +1,37 @@
+{
+  "id": "hyperx-kingston",
+  "vendor": "HyperX",
+  "product": "Cloud wireless headsets (Kingston-era dongles, vendor 0951), read only",
+  "kind": "Headset",
+  "vid": "0951",
+  "pids": [
+    "1718",
+    "16c4",
+    "1723",
+    "1749"
+  ],
+  "models": [
+    "HyperX Cloud II Wireless (Kingston)",
+    "HyperX Cloud Flight Wireless"
+  ],
+  "works": [
+    "written from docs/brands/hyperx.md, HeadsetControl and HyperHeadset, and checked against simulated headsets only (tests/sim-hyperx.mjs)",
+    "Cloud II Wireless (Kingston, 0951:1718): battery %, charging, auto-off minutes (read only; the dongle is first asked for input report 06, as both sources do, and replies come as input report 0B)",
+    "Cloud Flight Wireless (0951:16C4, 1723; 1749 from HyperHeadset only): battery voltage, battery % estimated from it with HyperHeadset's table, charging when 4116 mV or more (read only)",
+    "nothing is ever written: every change is refused"
+  ],
+  "doesNotWork": [
+    "firmware updates (never: they stay in HyperX NGENUITY)",
+    "the Kingston Cloud II 01 get (HyperHeadset suspects it unmutes the headset): never sent",
+    "sidetone on the Kingston Cloud II (its set has no get, so no read-back)",
+    "auto-off changes on the Kingston Cloud II (its get 1A is in HyperHeadset alone)",
+    "Cloud Flight settings (no source has any) and its charging state between 4108 and 4115 mV (the two sources disagree)",
+    "HyperHeadset's other possible Cloud II / Cloud Flight S ids 0951:0B92, 16EA, 16EB (the model behind each is not named)",
+    "HP-era (03F0) Cloud headsets: device-library/hyperx-cloud",
+    "Kingston-era mice and keyboards (Pulsefire Haste 0951:1727, Alloy Origins 16E5, Origins Core 16E6, Origins 60 1734): need their own library folder"
+  ],
+  "status": "untested",
+  "updated": "2026-10-23T12:00:00Z",
+  "tested": [],
+  "source": "docs/brands/hyperx.md"
+}

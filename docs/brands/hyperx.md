@@ -18,13 +18,13 @@ Short names used below:
 | Model | Vendor:product | Protocol family (section 2) | Source |
 |---|---|---|---|
 | Cloud III Wireless | `03f0:05b7`, `03f0:0c9d` (HH calls both "possible") | **66** | HH cloud_iii_wireless.rs |
-| Cloud III S Wireless | `03f0:06be`, `03f0:02cc` | **0C** (newer, report-id framed) | HH cloud_iii_s_wireless.rs |
+| Cloud III S Wireless | `03f0:06be`, `03f0:02cc` | **0C** (newer, report-id framed); gets `0C 02 03 01 00 <cmd>` as feature reports, reply input report `0C` with the command at byte 5 and the value at byte 6 | HH cloud_iii_s_wireless.rs. DeviceHub: device-library/hyperx-cloud, read only (23 Oct 2026) |
 | Cloud III (wired) | `03f0:089d`, `03f0:03cc` ("Cloud 3 Wired 2026") | feature report `20` (sidetone only) | HSC hyperx_cloud_3.hpp |
 | Cloud Alpha Wireless | `03f0:098d` (HSC, HH); HH also `03f0:1743`, `03f0:1765` | **21 BB** | HSC, HH cloud_alpha_wireless.rs |
 | Cloud II Wireless (HP) | `03f0:0696`, `03f0:018b` (newer dongle); HH also `03f0:0d93` | **06 FF BB** | HSC hyperx_cloud_2_wireless.hpp, HH cloud_ii_wireless_dts.rs |
-| Cloud II Wireless (Kingston) | `0951:1718`; HH also `0951:0b92`, `0951:16ea`, `0951:16eb` (some may be Cloud Flight S) | **06 ... BB** (long Kingston header) | HSC hyperx_cloud_2_wireless_kingston.hpp, HH cloud_ii_wireless.rs |
+| Cloud II Wireless (Kingston) | `0951:1718`; HH also `0951:0b92`, `0951:16ea`, `0951:16eb` (some may be Cloud Flight S) | **06 ... BB** (long Kingston header); reply input report `0B 00 BB <cmd>` (battery byte 7, charging byte 4, auto-off get `1A` byte 4 HH only); input report `06` read first | HSC hyperx_cloud_2_wireless_kingston.hpp, HH cloud_ii_wireless.rs. DeviceHub: `0951:1718` in device-library/hyperx-kingston, read only (23 Oct 2026) |
 | Cloud II Core Wireless (and similar) | `03f0:069f`, `03f0:0995` | **66** (with extras) | HH cloud_ii_core_wireless.rs |
-| Cloud Flight Wireless | `0951:16c4` (old), `0951:1723` (new); HH also `0951:1749`, `03f0:0e90` | **21 FF** (battery only) | HSC hyperx_cloud_flight.hpp, HH cloud_flight_wireless.rs |
+| Cloud Flight Wireless | `0951:16c4` (old), `0951:1723` (new); HH also `0951:1749`, `03f0:0e90` | **21 FF** (battery only; % from HH's 20-step millivolt table) | HSC hyperx_cloud_flight.hpp, HH cloud_flight_wireless.rs. DeviceHub: `0951` ids in device-library/hyperx-kingston, `03f0:0e90` in hyperx-cloud, read only (23 Oct 2026) |
 | Cloud Stinger 2 Wireless | **unconfirmed**. HH's README lists it as supported but no file names its id | probably one of HH's families | HH README |
 | Cloud Stinger (wired, 3.5 mm/USB) | **not found** in any open project | unknown | none |
 
@@ -266,7 +266,7 @@ for wireless headsets on Windows. Plan for both paths from the start.
 - [libratbag data/devices (no HyperX files)](https://github.com/libratbag/libratbag/tree/master/data/devices)
 - [SignalRGB forum: Haste 2 Wireless support (closed source, no ids)](https://forum.signalrgb.com/t/hyperx-haste-2-wireless-not-found-driver/1936)
 
-## Covered in device-library/hyperx-cloud (22 Oct 2026)
+## Covered in device-library/hyperx-cloud (22 Oct 2026, Cloud III S and Flight added 23 Oct)
 
 Simulated only (tests/sim-hyperx.mjs), never run on a real headset; status "untested".
 - **Cloud II Wireless (HP) `0696`, `018b`:** battery %, voltage, charging, sidetone on/off, auto-off, mic mute (read and
@@ -277,19 +277,39 @@ Simulated only (tests/sim-hyperx.mjs), never run on a real headset; status "unte
   ("possible" ids).
 - **Cloud II Core Wireless `069f`, `0995`:** the `66` gets plus sidetone level -5..5 (`88`), boom mic `8C`, noise gate `8D`;
   read-only (HH alone). `1E` / `83` never sent.
+- **Cloud III S Wireless `06be`, `02cc`:** gets as feature reports `0C 02 03 01 00 <cmd>`, replies read as input report
+  `0C` (command byte 5, value byte 6, `FF` = none): connected `02`, mic mute `04`, battery `06`, voice prompts `14`,
+  sidetone `16`; charging `48`, colour `4D` raw in info; auto-off `4B` in the raw backup only (seconds vs presets
+  disagree). Read-only (HH alone); sets `01` `0D` `0B` `4A` and EQ `5F` held.
+- **Cloud Flight Wireless `0e90` (HH only):** `21 FF 05` battery voltage; % estimated from HH's 20-step table; charging
+  at 4116 mV and up, unknown between 4108 and 4115 mV (HSC and HH disagree). Nothing to change.
 - Every write is refused while a process named like `NGENUITY` runs.
-- Not covered: Kingston `0951` dongles, wired Cloud III (write-only sidetone), Cloud III S (reply framing), Cloud Flight
-  (% curve), Cloud II HP sidetone level writes (no range), mic monitoring (no source), EQ (Cloud III S only, write-only),
-  mouse and keyboard lights (OpenRGB).
+- Not covered: wired Cloud III (write-only sidetone), `03f0:0d93` (maybe Stinger 2 Wireless), Cloud II HP sidetone level
+  writes (no range), mic monitoring (no source), Cloud III S EQ and other writes (one source), mouse and keyboard lights
+  (OpenRGB). Kingston `0951` headsets: device-library/hyperx-kingston below.
 
-## Covered in device-library/hyperx-peripherals (22 Oct 2026)
+## Covered in device-library/hyperx-kingston (23 Oct 2026)
+
+Read-only, simulated only (tests/sim-hyperx.mjs); status "untested". Its own folder because a library entry declares one
+vendor id.
+- **Cloud II Wireless (Kingston) `0951:1718`:** the long Kingston frame `06 00 02 00 9A 00 00 68 4A 8E 0A 00 00 00 BB
+  <cmd>` (62 bytes), input report `06` read first, reply input report `0B 00 BB <cmd>` on a raw channel: battery `02`
+  (byte 7), charging `03` (byte 4), auto-off `1A` (byte 4, HH only, shown only). `01` never sent (HH: it may unmute);
+  sidetone set `19` (no get) and auto-off set `18` held.
+- **Cloud Flight Wireless `0951:16c4`, `1723` (HSC, HH), `1749` (HH only):** as the `0e90` Flight above.
+- Not covered: HH's unnamed `0951:0b92`, `16ea`, `16eb`; every change.
+
+## Covered in device-library/hyperx-peripherals and hyperx-kingston-peripherals (22-23 Oct 2026)
 
 Info only, simulated only (tests/sim-hyperx-peripherals.mjs); status "untested".
-- **Devices:** HP-era (`03f0`) Pulsefire Haste `0f8f`, Dart `068e` / `088e`, Core `0d8f`, Surge `0490`; Alloy Origins 60
-  `0c8e`, 65 `038f`, Core `098f`, Origins `0591`, Origins 2 65 `0cc2`.
+- **Devices (hyperx-peripherals):** HP-era (`03f0`) Pulsefire Haste `0f8f`, Dart `068e` / `088e`, Core `0d8f`, Surge
+  `0490`; Alloy Origins 60 `0c8e`, 65 `038f`, Core `098f`, Origins `0591`, Origins 2 65 `0cc2`.
+- **Devices (hyperx-kingston-peripherals, 23 Oct):** Kingston-era (`0951`) Pulsefire Haste `1727` (interface 3, page
+  `FF90`), Alloy Origins `16e5` (3), Origins Core `16e6` (2), Origins 60 `1734` (3), from OpenRGB's Windows detectors.
 - **What it does:** names the model, type and link from the product id. It sends nothing: the channel is opened with no
   access on OpenRGB's interface and usage page.
 - **Why nothing more:** no source documents DPI, polling or battery for any HyperX mouse; every lighting command is a
   write with no read-back (OpenRGB drives the lights). The Alloy Origins Core variant query `00 10` is a read, but its
   usage page is not named, and an output report on the keyboard's own collection would change its lock lights.
-- Not covered: Kingston `0951` ids, Haste 2, Alloy Rise.
+- Not covered: other Kingston `0951` mice and keyboards (Dart `16e1` / `16e2`, FPS Pro, Core `16de`, Surge, Raid, Alloy
+  Elite, FPS), Haste 2, Alloy Rise.

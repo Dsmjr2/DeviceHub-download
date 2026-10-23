@@ -53,21 +53,23 @@ Solaar's list; no source ties it to a model). Solaar also accepts any unknown re
 | G915 TKL | 0xC343 (wpid 0x408E, Bluetooth 0xB35F) | 0xC545 | OpenRGB, Solaar, Linux |
 | G815 | 0xC33F | - | OpenRGB, Solaar |
 | G813 | 0xC232 (HID++ on interface 1, usage page 0xFF43 usage 0x0602) | - | OpenRGB `LogitechControllerDetect.cpp` @ bbc77470 (lines 58, 1531); not in Solaar, Linux or libratbag |
-| G515 LIGHTSPEED TKL | 0xC355 (wpid 0x40B4) | **unconfirmed** | OpenRGB |
+| G515 LIGHTSPEED TKL | 0xC355 (wpid 0x40B4, Bluetooth 0xB389) | **unconfirmed** (found by its kind on C539 / C53F / C54D) | OpenRGB; Solaar `docs/devices/G515 LS TKL 40B4.text` @ e7304c4c (Transport IDs btleid B389, wpid 40B4, usbid C355) |
 | G512 | 0xC33C | - | Solaar |
+| G413 | 0xC33A (HID++ 2.0 on interface 1) | - | libratbag `data/devices/logitech-g413.device` @ 8235b5bb; g810-led `Keyboard.h` / `Keyboard.cpp` @ efa3c35e |
 | G213 | 0xC336 | - | OpenRGB, Solaar |
 | PRO Gaming Keyboard | 0xC339 | - | Solaar |
-| PRO X TKL, G915 X | **unconfirmed** | **unconfirmed** | not found in any source read |
+| PRO X TKL, G915 X | **unconfirmed** | **unconfirmed** (on C539 / C53F / C54D found by its DEVICE_NAME kind) | not found in any source read |
 
 ### Headsets
 
 | Model | PID | HID interface | Protocol | Source |
 |---|---|---|---|---|
 | PRO X 2 LIGHTSPEED | 0x0AF7 | iface 3, usage page 0xFFA0, usage 0x01 | Centurion, report 0x51 | HeadsetControl `logitech_gpro_x2_lightspeed.hpp` |
-| G522 LIGHTSPEED | 0x0B18 (dongle), 0x0B19 (USB) | **unconfirmed** | Centurion, report 0x50 | OpenRGB, Solaar `base.py`, HeadsetControl |
+| G522 LIGHTSPEED | 0x0B18 (dongle), 0x0B19 (USB) | 0B18: iface 3, usage page 0xFFA0, usage 0x01; 0B19: **unconfirmed** (Solaar: the 0xFFA0 collection with 63-byte reports) | Centurion, report 0x50 + address byte 0x23; 0B19 may have no bridge (direct) | HeadsetControl `logitech_g522_lightspeed.hpp` @ a8120a62; Solaar `base.py`, `centurion.py`, `descriptors.py`, `udev_impl.py` @ e7304c4c |
 | G733 | 0x0AB5, 0x0AFE, 0x0B1F | usage page 0xFF43, usage 0x0202 | HID++ 2.0 | HeadsetControl `logitech_g633_g933_935.hpp`, Solaar |
 | G935 / G933 / G635 / G633 | 0x0A87 / 0x0A5B / 0x0A89 / 0x0A5C | usage page 0xFF43, usage 0x0202 | HID++ 2.0 | HeadsetControl, OpenRGB |
 | G535 | 0x0AC4 | iface 3, usage page 0x0C, usage 0x01 | HID++ (fixed indexes) | HeadsetControl `logitech_g535.hpp` |
+| G431 / G432 / G433 | 0x0A9B / 0x0A9C / 0x0A6D | **unconfirmed** (HeadsetControl opens the first collection) | HID++ long report, sidetone write `05 1E level` only, no read | HeadsetControl `logitech_g432.hpp` @ a8120a62 |
 | ASTRO A50 Gen 5 | 0x0B1C (vendor 046D) | iface 8, usage page 0xFF32, usage 0x0074 | ASTRO, report 0x02 | HeadsetControl `logitech_astro_a50.hpp` |
 | ASTRO A50 Gen 4 | 0x002C (vendor **0x9886**) | iface 6, usage page 0xFF32, usage 0x0074 | ASTRO, report 0x02 | HeadsetControl `logitech_astro_a50_gen4.hpp` |
 

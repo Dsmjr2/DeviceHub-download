@@ -210,19 +210,49 @@ function create(opts = {}) {
     return { ok: true, name: wanted };
   }
 
-  function backup(now = new Date()) {
+  // Back up all (23 Oct 2026, Shawn: "make sure its not saving duplicates. when it backs up it needs to just save 1 of
+  // each"): ONE folder, Documents\DeviceHub backups\Wallpapers, holding one copy of each picture, matched by its bytes
+  // (SHA-256), not its name. Each backup copies only the pictures not already in it; a different picture with a name
+  // already taken gets "name (2).ext". The dated folders earlier versions made (Wallpapers <date time>) are folded in
+  // the same way, then deleted, but only once every picture in them is in the one folder with the same bytes.
+  const BACKUP_DIR = path.join(BACKUPS, 'Wallpapers');
+  const OLD_DATED = /^Wallpapers \d{4}-\d{2}-\d{2} \d{2}-\d{2}( \(\d+\))?$/;
+  const PICTURE = /\.(jpe?g|png|webp|gif|bmp)$/i;
+  function backup() {
     const pictures = list().items;
-    if (!pictures.length) return { ok: true, count: 0, dir: null };
-    const p2 = (n) => String(n).padStart(2, '0');
-    const stamp = `${now.getFullYear()}-${p2(now.getMonth() + 1)}-${p2(now.getDate())} ${p2(now.getHours())}-${p2(now.getMinutes())}`;
-    let dest = path.join(BACKUPS, `Wallpapers ${stamp}`);
-    for (let i = 2; fs.existsSync(dest); i++) dest = path.join(BACKUPS, `Wallpapers ${stamp} (${i})`);
-    fs.mkdirSync(BACKUPS, { recursive: true });
-    fs.cpSync(DIR, dest, { recursive: true, errorOnExist: true, force: false, filter: (src) => src === DIR || !path.basename(src).startsWith('.') });
-    // checked: every picture is there with its size
-    const missing = pictures.filter((x) => { try { return fs.statSync(path.join(dest, x.name)).size !== x.bytes; } catch { return true; } });
-    if (missing.length) throw new Error(`${missing.length} picture${missing.length === 1 ? ' was' : 's were'} not copied (${missing.slice(0, 3).map((x) => x.name).join(', ')}).`);
-    return { ok: true, count: pictures.length, bytes: pictures.reduce((s, x) => s + x.bytes, 0), dir: dest };
+    fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    const have = new Map();   // sha256 -> name in the backup folder
+    for (const f of fs.readdirSync(BACKUP_DIR)) { const full = path.join(BACKUP_DIR, f); if (PICTURE.test(f) && fs.statSync(full).isFile()) have.set(hashOf(full), f); }
+    const freeName = (name) => {
+      if (!fs.existsSync(path.join(BACKUP_DIR, name))) return name;
+      const ext = path.extname(name), base = name.slice(0, -ext.length);
+      for (let i = 2; ; i++) { const n = `${base} (${i})${ext}`; if (!fs.existsSync(path.join(BACKUP_DIR, n))) return n; }
+    };
+    const copyIn = (full, name) => {
+      const h = hashOf(full);
+      if (have.has(h)) return false;
+      const dest = path.join(BACKUP_DIR, freeName(name));
+      fs.copyFileSync(full, dest, fs.constants.COPYFILE_EXCL);
+      if (hashOf(dest) !== h) { fs.rmSync(dest, { force: true }); throw new Error(`${name} was not copied correctly.`); }
+      have.set(h, path.basename(dest));
+      return true;
+    };
+    let added = 0, addedBytes = 0;
+    for (const x of pictures) if (copyIn(path.join(DIR, x.name), x.name)) { added++; addedBytes += x.bytes; }
+    // the dated folders of earlier backups: their pictures folded in, then the folder removed once all are there
+    let folded = 0;
+    for (const d of fs.existsSync(BACKUPS) ? fs.readdirSync(BACKUPS) : []) {
+      const old = path.join(BACKUPS, d);
+      if (!OLD_DATED.test(d) || !fs.statSync(old).isDirectory()) continue;
+      const files = fs.readdirSync(old);
+      if (files.some((f) => !PICTURE.test(f) && !f.startsWith('.'))) continue;   // something else in it: left alone
+      for (const f of files.filter((f) => PICTURE.test(f))) if (copyIn(path.join(old, f), f)) added++;
+      if (files.filter((f) => PICTURE.test(f)).every((f) => have.has(hashOf(path.join(old, f))))) { fs.rmSync(old, { recursive: true, force: true }); folded++; }
+    }
+    // checked: every picture in the wallpaper folder is in the backup with the same bytes
+    const missing = pictures.filter((x) => !have.has(hashOf(path.join(DIR, x.name))));
+    if (missing.length) throw new Error(`${missing.length} picture${missing.length === 1 ? ' was' : 's were'} not backed up (${missing.slice(0, 3).map((x) => x.name).join(', ')}).`);
+    return { ok: true, count: pictures.length, added, addedBytes, inBackup: have.size, folded, bytes: pictures.reduce((s, x) => s + x.bytes, 0), dir: pictures.length || have.size ? BACKUP_DIR : null };
   }
 
   function useAsBackground(name) {
@@ -269,17 +299,29 @@ function create(opts = {}) {
       writeAtomic(PREV_JSON, JSON.stringify({ path: was, copy, keptAt: new Date().toISOString() }, null, 2));
     }
     await applyWindows(full);
-    return { ok: true, previous: readPrevious()?.path || '' };
+    return { ok: true, previous: readPrevious()?.path || '', canUndo: canUndo() };
   }
+
+  // what Undo would put back, or null when it is gone (23 Oct 2026, Shawn: "if this is the case then do not show the
+  // undo button"): its own file, else the copy kept when DeviceHub set one; '' = Windows had no wallpaper (a colour)
+  function undoTarget(kept = readPrevious()) {
+    if (!kept) return null;
+    if (!kept.path) return '';
+    // Windows' own TranscodedWallpaper (and anything in its Themes folder) was overwritten when DeviceHub set one: use the copy
+    const own = /[\\/]Microsoft[\\/]Windows[\\/]Themes[\\/]/i.test(kept.path) || /TranscodedWallpaper/i.test(kept.path);
+    if (!own && fs.existsSync(kept.path)) return kept.path;
+    return kept.copy && fs.existsSync(kept.copy) ? kept.copy : null;
+  }
+  // Undo is offered only while the kept wallpaper can still be put back (read-only: the record stays, so setting another
+  // one later never takes DeviceHub's own wallpaper for the earlier one)
+  const canUndo = () => { const kept = readPrevious(); return !!kept && undoTarget(kept) != null; };
 
   async function putBackWindows() {
     if (platform !== 'win32') throw Object.assign(new Error('Setting the desktop wallpaper works on Windows only.'), { code: 400 });
     const kept = readPrevious();
     if (!kept) throw Object.assign(new Error('Nothing to undo: no earlier wallpaper was kept.'), { code: 400 });
-    // Windows' own TranscodedWallpaper (and anything in its Themes folder) was overwritten when DeviceHub set one: use the copy
-    const own = /[\\/]Microsoft[\\/]Windows[\\/]Themes[\\/]/i.test(kept.path || '') || /TranscodedWallpaper/i.test(kept.path || '');
-    const target = !kept.path ? '' : (!own && fs.existsSync(kept.path)) ? kept.path : (kept.copy && fs.existsSync(kept.copy) ? kept.copy : null);
-    if (target == null) throw Object.assign(new Error(`The earlier wallpaper (${kept.path}) is no longer there.`), { code: 400 });
+    const target = undoTarget(kept);
+    if (target == null) throw Object.assign(new Error(`The earlier wallpaper (${kept.path}) is no longer there, so it cannot be put back.`), { code: 400, gone: true });
     await applyWindows(target);
     try { fs.unlinkSync(PREV_JSON); } catch {}
     return { ok: true, path: target };
@@ -300,8 +342,8 @@ function create(opts = {}) {
     const fail = (e) => send(res, e.code || 400, { error: e.message });
     try {
       if (p === '/api/wallpapers' && GET) {
-        const kept = readPrevious();
-        return send(res, 200, { ...list(), windows: platform === 'win32', previousKept: !!kept, previous: kept?.path || null });
+        const undo = canUndo(), kept = undo ? readPrevious() : null;
+        return send(res, 200, { ...list(), windows: platform === 'win32', previousKept: undo, previous: kept?.path || null });
       }
       if (p === '/api/wallpapers/starters' && GET) return send(res, 200, { items: starters() });
       if ((p === '/api/wallpapers/file' || p === '/api/wallpapers/starter' || p === '/api/wallpapers/thumb') && GET) {

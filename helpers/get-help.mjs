@@ -285,7 +285,7 @@ async function gatherFacts(id, deps = {}) {
   const [ver, windows, state] = await Promise.all([
     deps.version ? deps.version() : getJson(port, '/api/version', 5000).then((v) => v?.version || null),
     deps.windows ? deps.windows() : windowsVersion(),
-    deps.state ? deps.state() : getJson(port, '/api/agent/state'),
+    deps.state ? deps.state() : deps.get ? deps.get('/api/agent/state') : getJson(port, '/api/agent/state'),
   ]);
   const version = `${devicehubVersion(root)}${ver ? ` (build ${ver})` : ''}`;
   const devs = state?.devices || [];

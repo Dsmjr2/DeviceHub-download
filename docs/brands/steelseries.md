@@ -26,27 +26,33 @@ SteelSeries it is almost always `0x00` (no numbered reports). The only exception
 | Arctis Nova 5 / 5X (base station) | 0x2232, 0x2253 | iface 3, 0xFFC0, 0x01 | steelseries_arctis_nova_5.hpp |
 | Arctis 9 | 0x12C2 | iface 0 | steelseries_arctis_9.hpp |
 | Arctis 7 / 7 2019 / Pro 2019 / Pro GameDAC (older) | 0x1260, 0x12AD, 0x1252, 0x1280 | iface 5 | steelseries_arctis_7.hpp |
+| Arctis Nova 7P / 7P V2 | 0x220A / 0x2298, 0x22A7 | iface 3, 0xFFC0, 0x01 (Nova 7 status `00 B0`; 0x220A battery 0-4, the V2 ids percent; no ChatMix) | steelseries_arctis_nova_7p.hpp (HC @ a8120a6) |
+| Arctis Nova 3P / 3X Wireless | 0x2269, 0x226D | iface 3, 0xFFC0, 0x01 (status `00 B0`: byte 1 `02` offline, byte 3 percent, byte 4 `01` charging) | steelseries_arctis_nova_3p_wireless.hpp |
+| Arctis 1 / 1 Xbox / 7X / 7P Wireless | 0x12B3, 0x12B6, 0x12D7, 0x12D5 | iface 3, usage page 0xFF43, usage 0x202 (battery `06 12`, read 8: byte 3 percent, byte 2 `01` offline, no charge flag) | steelseries_arctis_1.hpp |
+| Arctis Nova 3 (wired) | 0x12EC | iface 4, 0xFFC0, 0x01 (feature-report writes only, no read) | steelseries_arctis_nova_3.hpp |
 
-HeadsetControl also has Arctis 1, Nova 3, Nova 3P Wireless, Nova 7P, Pro Wireless and GameBuds files
-(not mapped here). The Nova 7 file mentions 0x22A7 and 0x220A in comments and lists, but neither is in its
-supported list (**unconfirmed**).
+HeadsetControl also has Pro Wireless and GameBuds files (not mapped here). 0x22A7 and 0x220A, once
+**unconfirmed** here, are the Nova 7P (steelseries_arctis_nova_7p.hpp, HeadsetControl @ a8120a6).
 
 ### Mice (rivalcfg, cross-checked with OpenRGB `SteelSeriesDevices.h`)
 
 | Model | PID wired / USB | PID 2.4 GHz dongle | Interface |
 |---|---|---|---|
-| Aerox 3 (wired-only) | 0x1836 | - | 3 |
+| Aerox 3 (wired-only) | 0x1836 | - | 3 (OpenRGB 3, 0xFFC0, 1); no read in rivalcfg |
 | Aerox 3 Wireless | 0x183A | 0x1838 | 3 |
 | Aerox 3 Wireless CS2 Dragon Lore | 0x187A | 0x1878 | 3 |
 | Aerox 3 Gen 2 Wireless | - | 0x1890 (OpenRGB only) | **unconfirmed** |
-| Aerox 5 (wired-only) | 0x1850 | - | 3 |
+| Aerox 5 (wired-only) | 0x1850 | - | 3 (OpenRGB 3, 0xFFC0, 1); no read in rivalcfg |
 | Aerox 5 Wireless (+ Destiny 2, Diablo IV) | 0x1854, 0x185E, 0x1862 | 0x1852, 0x185C, 0x1860 | 3 |
 | Aerox 9 Wireless (+ WoW) | 0x185A, 0x1876 | 0x1858, 0x1874 | 3 |
 | Rival 3 | 0x1824, 0x184C (firmware v0.37.0.0) | - | 3 |
-| Rival 3 Wireless | - | 0x1830 (OpenRGB) | see rivalcfg rival3_wireless.py |
-| Prime (+ R6 Black Ice, CS:GO Neo Noir) | 0x182E, 0x182A, 0x1856 | - | 0 |
-| Prime Wireless / Prime Mini Wireless | 0x1842 / 0x184A | 0x1840 / 0x1848 | 3 |
-| Rival 5 (+ Destiny) | 0x183C, 0x183E | - | 0 |
+| Rival 3 Wireless | - | 0x1830 (rivalcfg rival3_wireless.py; OpenRGB 3, 0xFFC0, 1) | 3; battery `AA 01` (not OR'd), read 3: byte 0 percent, byte 2 charging |
+| Rival 3 Wireless Gen 2 | - | 0x1872 (rivalcfg rival3_wireless_gen2.py) | 3; battery `AA 01` as the Rival 3 Wireless |
+| Rival 3 Gen 2 | 0x1870 (rivalcfg rival3_gen2.py) | - | 3; no read |
+| Prime (+ R6 Black Ice, CS:GO Neo Noir) | 0x182E, 0x182A, 0x1856 | - | 0; no read |
+| Prime Mini | 0x184D (rivalcfg prime_mini.py) | - | 3; no read |
+| Prime Wireless / Prime Mini Wireless | 0x1842 / 0x184A | 0x1840 / 0x1848 | 3; battery `92` / `D2` (rivalcfg prime_wireless_wired.py lists both) |
+| Rival 5 (+ Destiny) | 0x183C, 0x183E | - | 0 (OpenRGB 0, 0xFFC0, 1); no read |
 | Rival 600 (+ Dota 2) | 0x1724, 0x172E | - | 0 |
 
 OpenRGB opens Aerox 3/5/9 on interface 3, usage page 0xFFC0, usage 1, and Rival 5 on interface 0,
@@ -64,7 +70,7 @@ usage page 0xFFC0, usage 1. Note OpenRGB gives 0x185A to both "Aerox 9" and "Aer
 | Apex 7 / Apex 7 TKL | 0x1612 / 0x1618 | 1 | SteelSeriesApex |
 | Apex 5 | 0x161C | 1 | SteelSeriesApex |
 | Apex 9 TKL / Apex 9 Mini | 0x1634 / 0x1620 | 1 | SteelSeriesApex (shorter packet) |
-| Apex 3 | 0x161A | 3 | Apex3 (zone, "Full") |
+| Apex 3 | 0x161A | 3 (no page) | Apex3 ("Full") over SteelSeriesApexTZoneController: writes only, no read (OpenRGB @ 817834c) |
 | Apex 3 TKL | 0x1622 | 1 (0xFFC0 / 1) | Apex3 ("TKL") |
 
 No source lists the Apex Pro Mini under that name (**unconfirmed**).

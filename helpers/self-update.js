@@ -44,14 +44,33 @@ async function releaseInfo() {
 }
 // app files changed on this PC since it was installed (release-files.json: each file's SHA-256 then): an update
 // would undo them, so it is not offered over them (21 Oct 2026)
-function changedFiles() {
-  let prints; try { prints = JSON.parse(fs.readFileSync(path.join(ROOT, 'release-files.json'), 'utf8')); } catch { return []; }
+// A file that matches any version DeviceHub ever shipped (release-history.json, helpers/release-history.mjs: every
+// committed version, LF and CRLF) was not changed on this PC: an update that stopped halfway, or an older install, left
+// it (23 Oct 2026, a friend's PC was held back by public/style.css that nobody had changed).
+function changedFiles(root = ROOT) {
+  let prints; try { prints = JSON.parse(fs.readFileSync(path.join(root, 'release-files.json'), 'utf8')); } catch { return []; }
+  let shipped = {}; try { shipped = JSON.parse(fs.readFileSync(path.join(root, 'release-history.json'), 'utf8')) || {}; } catch {}
   const crypto = require('crypto');
   // helpers/bin is built output (the pre-built helper, rebuilt here if its sources change; helpers/native.js): an
   // update always replaces it, so it is never "changed on this PC" (22 Oct 2026, docs/handoff/prebuilt-helper.md)
-  return Object.entries(prints).filter(([f]) => !f.startsWith('helpers/bin/')).filter(([f, h]) => { try { return crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, f))).digest('hex') !== h; } catch { return true; } }).map(([f]) => f);
+  return Object.entries(prints).filter(([f]) => !f.startsWith('helpers/bin/')).filter(([f, h]) => {
+    let now; try { now = crypto.createHash('sha256').update(fs.readFileSync(path.join(root, f))).digest('hex'); } catch { return true; }
+    return now !== h && !(shipped[f] || []).includes(now.slice(0, 16));
+  }).map(([f]) => f);
 }
-const blockedText = (c) => `${c.length} of DeviceHub's files were changed on this PC (${c.slice(0, 4).join(', ')}${c.length > 4 ? ', …' : ''}); updating would undo them. Ask Claude Code to "update DeviceHub" to bring them and the new version together.`;
+// No dead end for someone without Claude: Update anyway keeps a copy of each changed file first (backups\changed-before-
+// update-<time>\), then installs the new version over it (23 Oct 2026)
+const blockedText = (c) => `${c.length} of DeviceHub's files ${c.length === 1 ? 'was' : 'were'} changed on this PC (${c.slice(0, 4).join(', ')}${c.length > 4 ? ', …' : ''}). Update anyway keeps a copy of ${c.length === 1 ? 'it' : 'them'} in DeviceHub's backups folder, then installs the new version.`;
+function keepChanged(files, root = ROOT) {
+  const dir = path.join(root, 'backups', `changed-before-update-${new Date().toISOString().replace(/[:.]/g, '-')}`);
+  for (const f of files) {
+    const from = path.join(root, f);
+    if (!fs.existsSync(from)) continue;
+    fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true });
+    fs.copyFileSync(from, path.join(dir, f));
+  }
+  return dir;
+}
 
 async function zipStatus() {
   const own = mine();
@@ -61,7 +80,7 @@ async function zipStatus() {
     let failed = null; try { failed = fs.readFileSync(path.join(ROOT, 'update-failed.txt'), 'utf8').trim(); } catch {}
     const newer = rel.commit && rel.commit !== own.commit && rel.builtAt > own.builtAt && failed !== rel.commit;
     const blocked = newer ? changedFiles() : [];
-    return { git: false, zip: true, behind: newer ? 1 : 0, blocked: blocked.length ? blockedText(blocked) : undefined, latest: newer ? `a new version from ${new Date(rel.builtAt).toLocaleDateString()}` : null, at: own.builtAt, skipped: failed === rel.commit ? 'the newest version' : undefined };
+    return { git: false, zip: true, behind: newer ? 1 : 0, blocked: blocked.length ? blockedText(blocked) : undefined, blockedFiles: blocked.length ? blocked : undefined, latest: newer ? `a new version from ${new Date(rel.builtAt).toLocaleDateString()}` : null, at: own.builtAt, skipped: failed === rel.commit ? 'the newest version' : undefined };
   } catch (e) { return { git: false, zip: true, error: e.message }; }
 }
 // How far an update has got (21 Oct 2026, for Settings' loading bar): the step in words and, while downloading, a
@@ -72,13 +91,15 @@ const getProgress = () => progress;
 // a program run without stopping DeviceHub meanwhile (spawnSync held the whole server, the loading bar too)
 const runAsync = (cmd, args, opts) => new Promise((resolve) => execFile(cmd, args, { encoding: 'utf8', windowsHide: true, maxBuffer: 8 << 20, ...opts }, (e, stdout, stderr) => resolve({ status: e ? (typeof e.code === 'number' ? e.code : 1) : 0, stdout, stderr })));
 
-async function zipUpdate() {
+async function zipUpdate({ overwrite = false } = {}) {
   step('Checking for the new version');
   const own = mine(), rel = await releaseInfo();
   if (!own) throw new Error('this copy does not know its version');
   if (!(rel.commit !== own.commit && rel.builtAt > own.builtAt)) return { updated: false };
   const changed = changedFiles();
-  if (changed.length) throw new Error(blockedText(changed));
+  if (changed.length && !overwrite) throw new Error(blockedText(changed));
+  let kept = null;
+  if (changed.length) { step('Keeping a copy of the changed files'); kept = keepChanged(changed); }
   const crypto = require('crypto'), os = require('os');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'devicehub-update-'));
   const zip = path.join(dir, 'DeviceHub-setup.zip');
@@ -123,16 +144,25 @@ async function zipUpdate() {
   // and the installer ends this DeviceHub (21 Oct 2026: it ended itself with it, halfway, and the copy stayed stopped).
   // Its output goes to install.log in the download folder.
   const q = (s) => `"${s}"`;
-  const inner = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', q(path.join(src, 'helpers', 'install.ps1')), '-Target', q(ROOT), '-NoShortcuts', '-AppsKey', q(key), ...(process.env.DEVICEHUB_TEST === '1' ? ['-NoLaunch'] : [])].join(' ');
+  const inner = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', q(path.join(src, 'helpers', 'install.ps1')), '-Target', q(ROOT), '-NoShortcuts', '-AppsKey', q(key), ...(kept ? ['-Overwrite'] : []), ...(process.env.DEVICEHUB_TEST === '1' ? ['-NoLaunch'] : [])].join(' ');
   const sq = (s) => `'${String(s).replace(/'/g, "''")}'`;
   const launcher = `Start-Process -FilePath powershell.exe -WindowStyle Hidden -WorkingDirectory ${sq(dir)} -RedirectStandardOutput ${sq(path.join(dir, 'install.log'))} -ArgumentList ${sq(inner)}`;
   const p = spawn('powershell.exe', ['-NoProfile', '-EncodedCommand', Buffer.from(launcher, 'utf16le').toString('base64')], { cwd: dir, stdio: 'ignore', windowsHide: true });
   p.on('error', () => {});
   step('Installing; DeviceHub restarts by itself');
-  return { updated: true, installing: true, count: 1, latest: `version from ${new Date(rel.builtAt).toLocaleDateString()}` };
+  return { updated: true, installing: true, count: 1, latest: `version from ${new Date(rel.builtAt).toLocaleDateString()}`, ...(kept ? { kept: path.relative(ROOT, kept) } : {}) };
 }
 
+// The last answer, so Update right after Settings showed it does not ask GitHub again (23 Oct 2026, Shawn: "make the
+// updates work faster"): an update used to fetch up to three times (Settings' check, Update's own check, then pull).
+let last = { at: 0, value: null };
+const FRESH_MS = 60000;
 async function status() {
+  const value = await statusNow();
+  last = { at: Date.now(), value };
+  return value;
+}
+async function statusNow() {
   try { if ((await git(['rev-parse', '--is-inside-work-tree'], 8000)) !== 'true') throw new Error(); } catch { return zipStatus(); }
   try {
     await git(['fetch', '--quiet', 'origin'], 30000);
@@ -162,13 +192,16 @@ async function status() {
 }
 
 // pulls the new changes; the caller restarts DeviceHub afterwards
-async function update() {
+async function update(opts = {}) {
   step('Looking for the new version');
-  try { return await updateSteps(); } catch (e) { progress = null; throw e; }
+  try { return await updateSteps(opts); } catch (e) { progress = null; throw e; }
 }
-async function updateSteps() {
-  const s = await status();
-  if (s.zip) return zipUpdate();
+async function updateSteps(opts = {}) {
+  // the status Settings just showed (under a minute old, nothing failed) is used as it is; else asked again
+  const recent = last.value && !last.value.error && Date.now() - last.at < FRESH_MS;
+  const s = recent ? last.value : await status();
+  last = { at: 0, value: null };   // an update is never planned from the same answer twice
+  if (s.zip) return zipUpdate(opts);
   if (!s.git) throw new Error('this copy of DeviceHub is not connected to GitHub');
   if (s.error) throw new Error(s.error);
   if (s.shared) return mergeUpdate(s);
@@ -176,7 +209,9 @@ async function updateSteps() {
   if (!s.behind) return { updated: false };
   const old = await git(['rev-parse', 'HEAD']);
   step('Getting the new changes');
-  await git(['pull', '--ff-only', '--quiet'], 60000);
+  // fetched moments ago (status): moved forward from what is already here; else fetched now
+  if (recent) await git(['merge', '--ff-only', '--quiet', '@{u}'], 60000);
+  else await git(['pull', '--ff-only', '--quiet'], 60000);
   // check the new code before running it
   const check = path.join(ROOT, 'tests', 'check.mjs');
   if (fs.existsSync(check)) {
@@ -234,4 +269,4 @@ function confirm(log) {
   setTimeout(() => { try { fs.unlinkSync(f); log && log({ kind: 'good', text: 'DeviceHub update running well' }); } catch {} }, 60000);
 }
 
-module.exports = { status, update, confirm, getProgress, releaseInfo };
+module.exports = { status, update, confirm, getProgress, releaseInfo, _test: { changedFiles, keepChanged, blockedText } };

@@ -12,11 +12,18 @@ import { helpHere } from '../ui/get-help.js';
 let list = null, error = null, loading = false;
 let rerender = () => {};
 
+// shown at once from DeviceHub's last reading, then read again in the background when that came back quicker than any
+// DDC/CI read can (helpers/monitors.js list): the page never waits on the monitors when a reading exists
+let refreshed = 0;
 async function load(fresh) {
   if (loading) return; loading = true;
-  try { list = await env.api(`/api/monitors${fresh ? '?fresh=1' : ''}`); error = null; }
+  const t = Date.now();
+  try {
+    list = await env.api(`/api/monitors${fresh ? '?fresh=1' : ''}`); error = null;
+    if (!fresh && Date.now() - t < 300 && Date.now() - refreshed > 10000) { refreshed = Date.now(); setTimeout(() => load(true), 0); }
+  }
   catch (e) { error = e.message; }
-  finally { loading = false; rerender(); }
+  finally { loading = false; if (fresh) refreshed = Date.now(); rerender(); }
 }
 
 // a slider step while dragging: the screen follows (21 Oct 2026); no message, the release confirms the final value
@@ -86,15 +93,18 @@ export default {
     rerender = () => { const el = document.querySelector('#main .page'); if (el && location.hash === '#/monitors') el.replaceWith(Object.assign(this.render(), { className: 'page no-anim' })); };
     if (isDemo()) return h('div', {}, topbar('Displays and camera', 'Monitors', null, null, helpHere('monitors')), card([h('h2', {}, 'Monitors')], h('p', { class: 'faint' }, 'In the installed app, your monitors\' brightness, contrast and speakers are here.')));
     if (!list && !error) load(false);
+    else if (list && !loading && Date.now() - refreshed > 10000) { refreshed = Date.now(); queueMicrotask(() => load(true)); }
     return h('div', {},
       // Get help (area monitors: each monitor's DDC/CI answer and the camera's settings), top right
       topbar('Displays and camera', 'Monitors', null, null, helpHere('monitors')),
-      error ? card([h('h2', {}, 'Monitors')], h('p', { class: 'faint' }, `Couldn't read the monitors: ${error}`))
-        // while they are read: two monitor cards with shimmering rows (21 Oct 2026)
-        : !list ? h('div', { class: 'grid two top' }, loadingCard('Monitor', 4, 'monitor'), loadingCard('Monitor', 4, 'monitor'))
-          : list.length ? h('div', { class: 'grid two top' }, ...list.map(monitorCard))
-            : card([h('h2', {}, 'Monitors')], h('p', { class: 'faint' }, 'No monitors found.')),
-      // the camera: half width below the monitors
-      h('div', { class: 'grid halves top', style: { marginTop: '16px' } }, ...cameraCards(rerender)));
+      // the monitors and the camera side by side on one screen (23 Oct 2026, Shawn: "I want the lighting area non
+      // scrollable if possible, same with monitors"); a card that grows (Color balance opened) scrolls inside itself
+      h('div', { class: 'grid mon-cols top', style: { '--n': (list?.length || 2) + 1 } },
+        ...(error ? [card([h('h2', {}, 'Monitors')], h('p', { class: 'faint' }, `Couldn't read the monitors: ${error}`))]
+          // while they are read: two monitor cards with shimmering rows (21 Oct 2026)
+          : !list ? [loadingCard('Monitor', 4, 'monitor'), loadingCard('Monitor', 4, 'monitor')]
+            : list.length ? list.map(monitorCard)
+              : [card([h('h2', {}, 'Monitors')], h('p', { class: 'faint' }, 'No monitors found.'))]),
+        ...cameraCards(rerender)));
   },
 };

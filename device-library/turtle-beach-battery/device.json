@@ -1,21 +1,33 @@
 {
   "id": "turtle-beach-battery",
   "vendor": "Turtle Beach",
-  "product": "Stealth 700 Gen 3 battery (Airoha RACE, read only)",
+  "product": "Stealth 700 Gen 3 and Stealth Pro II battery (Airoha RACE, read only)",
   "kind": "Headset",
   "vid": "10f5",
-  "pids": ["2251", "2250", "2253"],
-  "models": ["Stealth 700 Gen 3"],
+  "pids": [
+    "2251",
+    "2250",
+    "2253",
+    "229b",
+    "229e"
+  ],
+  "models": [
+    "Stealth 700 Gen 3",
+    "Stealth Pro II"
+  ],
   "works": [
-    "written from docs/brands/turtle-beach.md (halobattery-stealth700) and checked against a simulated transmitter only (tests/sim-turtle-beach-battery.mjs)",
-    "reads: battery %, charging (key 250, a best guess on this model), headset linked, headset name, Signature Sound preset (raw)",
-    "sends only the sheet's two fixed frames (CoAP enable 0x9942, GET /GSI in 0x9902); steps back while Swarm II runs",
+    "written from docs/brands/turtle-beach.md (halobattery-stealth700; HaloBattery PR #194 for the Stealth Pro II) and checked against simulated transmitters only (tests/sim-turtle-beach-battery.mjs)",
+    "reads: battery %, charging (key 250: confirmed on a Stealth Pro II, a best guess on the 700), headset linked, headset name, Signature Sound preset (raw)",
+    "Stealth 700 Gen 3: sends only the sheet's two fixed frames (CoAP enable 0x9942, GET /GSI in 0x9902)",
+    "Stealth Pro II (transmitter 229B, headset on its cable 229E): sends only the two frames from Swarm II's capture (the SInf session opener, then the GSI ask, both RACE 0x9902) and asks for the replies with GET_REPORT, as PR #194 does",
+    "steps back while Swarm II runs (it holds the channel)",
     "reads replies as they arrive, then, if none came, asks for them with GET_REPORT exactly as the source's reader.py does"
   ],
   "doesNotWork": [
     "any setting (no open source documents one on any Turtle Beach headset)",
     "firmware updates and RACE nvkey writes (never)",
-    "Stealth Pro II (its request bytes are only in a capture), Stealth 600 Gen 3, Stealth 700 G2 and older headsets"
+    "the Stealth Pro II's third, inferred GSI ask (token 11 01, not in the capture): left out, so a read on battery may fail on some units",
+    "Stealth 600 Gen 3 (223A: its only source uses RACE nvkey commands, no battery read), Stealth 700 G2 and older headsets"
   ],
   "status": "untested",
   "tested": [],

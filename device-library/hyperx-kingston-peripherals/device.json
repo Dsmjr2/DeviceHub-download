@@ -1,0 +1,25 @@
+{
+  "id": "hyperx-kingston-peripherals",
+  "vendor": "HyperX",
+  "product": "Pulsefire Haste and Alloy Origins keyboards, Kingston-era ids, vendor 0951 (info only)",
+  "kind": "Mouse or keyboard",
+  "vid": "0951",
+  "pids": ["1727", "1734", "16e5", "16e6"],
+  "models": ["Pulsefire Haste", "Alloy Origins", "Alloy Origins Core", "Alloy Origins 60"],
+  "works": [
+    "written from docs/brands/hyperx.md and OpenRGB's Windows detector lines (ids and interfaces), checked against simulated devices only (tests/sim-hyperx-peripherals.mjs)",
+    "names the device (model, mouse or keyboard) from its product id and says where its lights and settings are",
+    "sends nothing: its channel is opened with no access"
+  ],
+  "doesNotWork": [
+    "DPI, polling rate and battery (no open source documents them for these models)",
+    "lights (every documented lighting command is write-only; OpenRGB drives them)",
+    "HP-era ids (vendor 03F0): device-library/hyperx-peripherals",
+    "other Kingston-era mice and keyboards (Pulsefire Dart, FPS Pro, Core, Surge, Raid, Alloy Elite, FPS): not mapped yet",
+    "firmware updates (NGENUITY only)"
+  ],
+  "status": "untested",
+  "updated": "2026-10-23T12:00:00Z",
+  "tested": [],
+  "source": "docs/brands/hyperx.md"
+}

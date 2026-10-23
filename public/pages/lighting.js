@@ -1,13 +1,13 @@
 // Lighting: one color for every device with RGB.
 import { h, icon } from '../ui/dom.js';
-import { card, slider, button, toggle, pill, more } from '../ui/controls.js';
-import { devices, write, writeBatch, log, stillLooking } from '../core/devices.js';
+import { card, slider, button, toggle, pill } from '../ui/controls.js';
+import { devices, write, writeBatch, log, stillLooking, shownDevices } from '../core/devices.js';
 import { artFor } from '../ui/art.js';
 import { topbar } from './common.js';
 import { setGlow, getGlow } from '../core/theme.js';
 import { toast } from '../ui/overlay.js';
 import { SWATCHES } from './headset.js';
-import { pcSection, applyPc, pcIncluded, pcAvailable, setPcIncluded } from './pc-lights.js';
+import { pcLightsCard, applyPc, pcIncluded, pcAvailable, setPcIncluded } from './pc-lights.js';
 
 const ui = { hex: getGlow() || '#ff6a1a', brightness: 80, include: { keyboard: true, headset: true } };
 
@@ -26,13 +26,13 @@ function rgbToHs(r, g, b) {
 }
 
 // The picker (19 Oct 2026, Shawn: "more minimal and modern"): a thin hue ring with a round knob, the chosen color
-// as a solid disc in the middle with its code, and saturation on its own slider underneath.
+// as a solid disc in the middle, and saturation on its own slider underneath. The color's code is no longer written on
+// the disc (23 Oct 2026, Shawn: "remove the middle typable color": it looked like a box to type in).
 const RING = 0.13;  // ring thickness as a fraction of the radius
 function wheel(onPick) {
   const size = 260, canvas = h('canvas', { width: size * 2, height: size * 2, 'aria-label': 'hue ring' });
   const knob = h('div', { class: 'ring-knob' });
-  const code = h('span');
-  const disc = h('div', { class: 'ring-disc' }, code);
+  const disc = h('div', { class: 'ring-disc' });
   const wrap = h('div', { class: 'ring-wrap' }, canvas, disc, knob);
   const ctx = canvas.getContext('2d');
   const R = size, r0 = R * (1 - RING);
@@ -53,7 +53,6 @@ function wheel(onPick) {
     knob.style.background = rgbToHex(...hsvToRgb(hue, 1, 1));
     const hex = hexOf();
     wrap.style.setProperty('--pick', hex); satEl.style.setProperty('--hue', rgbToHex(...hsvToRgb(hue, 1, 1)));
-    code.textContent = hex.toUpperCase();
   };
   const place = (hex) => { const v = rgbToHs(...hexToRgb(hex)); hue = v.h; sat = v.s; setSat(Math.round(sat * 100)); show(); };
   const pick = (e) => {
@@ -97,10 +96,23 @@ async function applyAll() {
       done.push(d.adapter.title);
     } catch (e) { log(`lighting failed: ${e.message}`, 'bad', id); }
   }
+  // added devices with one color (my-devices and library drivers), each through its own read-back write
+  for (const { d, s } of addedColors()) {
+    if (ui.include[d.id] === false || d.status !== 'connected' || s.readOnly) continue;
+    try { await write(d.id, s.key, rgbToHex(r * k, g * k, b * k), { label: s.label, display: ui.hex, silent: true }); done.push(d.adapter.title); }
+    catch (e) { log(`lighting failed: ${e.message}`, 'bad', d.id); }
+  }
   // the PC's own lights (board, fans, RAM, graphics card) through OpenRGB, when it runs
   try { const pc = await applyPc(rgbToHex(r * k, g * k, b * k)); if (pc) done.push(pc); } catch (e) { log(`PC lights failed: ${e.message}`, 'bad'); }
   setGlow(ui.hex);
   t.update(done.length ? `Lighting set on ${done.join(' + ')}` : 'No connected device with lighting', done.length ? 'good' : 'bad', done.length ? undefined : 'Connect the keyboard or headset first');
+}
+
+// the devices this PC has, beyond the built-in three, that take one color (23 Oct 2026, a friend's PC listed Shawn's
+// own three devices whatever it had)
+function addedColors() {
+  return shownDevices().filter((d) => !['mouse', 'keyboard', 'headset'].includes(d.id))
+    .map((d) => ({ d, s: (d.adapter.settings || []).find((x) => x.type === 'color' && !x.zones) })).filter((x) => x.s);
 }
 
 export default {
@@ -109,6 +121,8 @@ export default {
     const redraw = () => { const el = document.querySelector('#main .page'); if (el && location.hash === '#/lighting') el.replaceWith(Object.assign(this.render(), { className: 'page no-anim' })); };
     const w = wheel((hex) => { ui.hex = hex; preview(hex); });
     queueMicrotask(() => { w.place(ui.hex); preview(ui.hex); });
+    const shown = new Set(shownDevices().map((d) => d.id));
+    const has = (id) => shown.has(id);
     const target = (id, note) => {
       const d = devices[id];
       const ok = d.status === 'connected' && d.adapter.hasLighting?.();
@@ -120,7 +134,9 @@ export default {
     };
     return h('div', {},
       topbar('All devices', 'Lighting', 'One color for every device.'),
-      h('div', { class: 'grid two' },
+      // one screen, three columns: the color, where it goes, and the PC's own lights (23 Oct 2026, Shawn: "remove this
+      // [More], I want the lighting area non scrollable")
+      h('div', { class: 'grid light-cols top' },
         card([h('h2', {}, 'Color')], w.el,
           h('div', { class: 'swatches' }, ...SWATCHES.map((c) => h('button', { class: 'swatch', style: { '--s': c }, 'aria-label': c, onclick: () => { ui.hex = c; w.place(c); preview(c); } }))),
           h('div', { class: 'picker-row' }, h('span', { class: 'muted' }, 'Saturation'), w.sat),
@@ -128,15 +144,22 @@ export default {
             slider({ value: ui.brightness, min: 5, max: 100, unit: '%', label: 'Brightness', onCommit: async (x) => { ui.brightness = x; } }))),
         h('div', { class: 'stack' },
           card([h('h2', {}, 'Apply to')],
+            // only the devices this PC has, by their own names (23 Oct 2026, Shawn: a friend's PC showed his P75, HS80
+            // and Pulsar whatever it had)
             h('div', { class: 'targets' },
-              target('keyboard', 'color + brightness, effect kept · saved on the keyboard'),
-              target('headset', 'LED color · held while DeviceHub runs'),
-              h('div', { class: 'target', style: { '--cc': 'var(--c-mouse)' } }, artFor.mouse(), h('div', { class: 'grow' }, h('b', {}, 'Pulsar X-Lite CrazyLight'), h('small', {}, 'no RGB on this mouse')), pill('n/a')),
+              has('keyboard') ? target('keyboard', 'color + brightness, effect kept · saved on the keyboard') : null,
+              has('headset') ? target('headset', 'LED color · held while DeviceHub runs') : null,
+              ...addedColors().map(({ d, s }) => {
+                const ok = d.status === 'connected' && !s.readOnly;
+                return h('div', { class: 'target lighting-preview', style: { '--cc': 'var(--signal)', '--pick': ui.hex } }, h('div', { class: 'target-ic' }, icon(d.adapter.kind === 'Mouse' ? 'mouse' : d.adapter.kind === 'Headset' ? 'headset' : d.adapter.kind === 'Keyboard' ? 'keyboard' : 'lighting')),
+                  h('div', { class: 'grow' }, h('b', {}, d.adapter.title), h('small', {}, ok ? s.label : d.status !== 'connected' ? 'not connected' : `${s.label}: read-only until Turn on settings on its page`)),
+                  toggle({ value: ui.include[d.id] !== false && ok, disabled: !ok, label: `include ${d.adapter.title}`, onCommit: async (on) => { ui.include[d.id] = on; } }));
+              }),
+              has('mouse') ? h('div', { class: 'target', style: { '--cc': 'var(--c-mouse)' } }, artFor.mouse(), h('div', { class: 'grow' }, h('b', {}, devices.mouse.adapter.title), h('small', {}, 'no lights DeviceHub can set on this mouse')), pill('n/a')) : null,
               h('div', { class: 'target lighting-preview', style: { '--cc': 'var(--signal)', '--pick': ui.hex } }, h('div', { class: 'target-ic' }, icon('lighting')),
-                h('div', { class: 'grow' }, h('b', {}, 'PC lights'), h('small', {}, pcIncluded() ? 'board, fans and more, through OpenRGB' : 'through OpenRGB, when it runs (see More)')),
+                h('div', { class: 'grow' }, h('b', {}, 'PC lights'), h('small', {}, pcIncluded() ? 'board, fans and more, through OpenRGB' : 'through OpenRGB, when it runs (PC lights, right)')),
                 toggle({ value: pcIncluded(), disabled: !pcAvailable(), label: 'include PC lights', onCommit: async (on) => { setPcIncluded(on); } })))),
-          h('div', { class: 'actions' }, button('Apply to all', applyAll, { kind: 'primary', ic: 'lighting' })))),
-      // the PC's own lights and what is inside it: folded under More like the other pages' once-in-a-while cards
-      h('div', { style: { marginTop: '18px' } }, more('lighting', 'PC lights, this PC and other devices', pcSection(redraw))));
+          h('div', { class: 'actions' }, button('Apply to all', applyAll, { kind: 'primary', ic: 'lighting' }))),
+        h('div', { class: 'light-pc' }, pcLightsCard(redraw))));
   },
 };

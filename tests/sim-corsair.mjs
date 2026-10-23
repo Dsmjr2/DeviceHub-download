@@ -94,6 +94,9 @@ const throwsMsg = async (fn) => { try { await fn(); return null; } catch (e) { r
 // ---- the table and the entry ----
 check(!ALL_PIDS.some((p) => HS80_OWN_PIDS.includes(p)), 'no HS80 RGB Wireless id (0A69, 0A6B, 0A71) in the table');
 check(new Set(ALL_PIDS).size === ALL_PIDS.length, 'every product id is in the table once');
+// the HS80 RGB USB (0A88) is not a bragi headset: OpenLinkHub e3cae8cb src/devices/hs80rgb/hs80rgb.go drives it with
+// 16-byte write-only reports (c8 mode, c9 LED init, cb colours) and reads nothing back, so it stays out of this driver
+check(!ALL_PIDS.includes('0A88'), 'the HS80 RGB USB (0A88, not bragi, nothing to read back) is not in the table');
 const meta = JSON.parse(fs.readFileSync(path.join(ROOT, 'device-library', 'corsair-bragi-headset', 'device.json'), 'utf8'));
 check(JSON.stringify([...meta.pids].sort()) === JSON.stringify(ALL_PIDS.map((p) => p.toLowerCase()).sort()), `device.json pids are the table's (${meta.pids})`);
 check(meta.vid === '1b1c' && meta.status === 'read-only' && meta.source === 'docs/brands/corsair.md' && meta.id === real.id, 'device.json: vid, status read-only, source, id');

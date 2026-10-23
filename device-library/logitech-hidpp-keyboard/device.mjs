@@ -28,8 +28,29 @@ const hex2 = (b) => b.toString(16).padStart(2, '0');
 // C547: OpenRGB LogitechControllerDetect.cpp names it the G915's second receiver (docs/brands/logitech.md section 1,
 // "G915 | 0xC33E | 0xC541, 0xC547"). Added 22 Oct 2026 (docs/handoff/driver-safety.md). Recent Lightspeed mice may ship
 // on it too (the sheet's open question); a mouse on it is refused by its 0x2201 feature, as on C541 / C545.
-export const RECEIVERS = { 0xc541: 'G915 receiver', 0xc547: 'G915 receiver', 0xc545: 'G915 TKL receiver' };
-export const WIRED = { 0xc33e: 'G915', 0xc343: 'G915 TKL', 0xc33f: 'G815', 0xc355: 'G515 LIGHTSPEED TKL', 0xc33c: 'G512', 0xc336: 'G213', 0xc339: 'PRO Gaming Keyboard', 0xc232: 'G813' };
+// SHARED (23 Oct 2026): the LIGHTSPEED receivers C539, C53F and C54D (Solaar base_usb.py @ e7304c4c lines 171-178 and
+// 200-207: _lightspeed_receiver, HID++ on interface 2) are not tied to one kind of device by any source (sheet section
+// "Receiver slots"), so a keyboard paired to one (PRO X TKL, G515 TKL: no source gives their receiver id) would only ever
+// be met by the mouse driver, which steps aside from it. They are also in device-library/logitech-hidpp-mouse RECEIVERS.
+// On these three the two drivers share one HID handle (helpers/hid-host.mjs provider() hands both the first host for the
+// vid / pid / usage page, and the native channel name is the same), so on a SHARED receiver this driver:
+//   - claims a slot only when its device has neither DPI feature (0x2201, 0x2202) AND DEVICE_NAME fn 0x20 says
+//     keyboard or numpad (an unknown kind is never claimed here);
+//   - uses its own HID++ software id 0x0C (Solaar base.py @ e7304c4c lines 897-911: the software id is echoed in each
+//     reply and "cooperative userspace HID++ clients sharing the same device can pick a different value"; 0x0B is
+//     Solaar's and the mouse driver's, 0x07 OpenRGB, 0x0A LGSTrayEx, 0x0D G HUB, 0x0F firmware), so neither driver can
+//     take the other's reply;
+//   - never closes the receiver when it steps aside (the mouse driver may be using the same handle), and
+//   - never waits "asleep" on it: no keyboard answering = stepped aside quietly (notMine), looked at again on a plug, a
+//     Connect click or after the rest, so a mouse-only receiver never shows a keyboard tile.
+export const SHARED = { 0xc539: 'LIGHTSPEED receiver', 0xc53f: 'LIGHTSPEED receiver', 0xc54d: 'LIGHTSPEED receiver' };
+export const RECEIVERS = { 0xc541: 'G915 receiver', 0xc547: 'G915 receiver', 0xc545: 'G915 TKL receiver', ...SHARED };
+// G413 C33A (23 Oct 2026): libratbag data/devices/logitech-g413.device @ 8235b5bb6032dea15901ab58a8218956f4494d08
+// ("DeviceMatch=usb:046d:c33a", "DeviceType=keyboard", "Driver=hidpp20"); MatMoul/g810-led src/classes/Keyboard.h
+// @ efa3c35e74f01a2ed2346320da8bad411bfe8ed8 ("{ 0x46d, 0xc33a, ... g413 }") sends it HID++ long reports 0x11 to device
+// 0xFF on USB interface 1 (Keyboard.cpp libusb_claim_interface(..., 1)), as for the G213 / G512 here. Its features are
+// looked up like every other model's, so it shows only what it answers for.
+export const WIRED = { 0xc33e: 'G915', 0xc343: 'G915 TKL', 0xc33f: 'G815', 0xc355: 'G515 LIGHTSPEED TKL', 0xc33c: 'G512', 0xc336: 'G213', 0xc339: 'PRO Gaming Keyboard', 0xc232: 'G813', 0xc33a: 'G413' };
 // The G813 (22 Oct 2026, Dsmjr2/DeviceHub-support#6; docs/handoff/friend-lights-c232.md): OpenRGB
 // Controllers/LogitechController/LogitechControllerDetect.cpp @ bbc77470a7cba56af60989e54ba910d5ac66a3ac line 58
 // "#define LOGITECH_G813_PID 0xC232" and line 1531 'REGISTER_HID_DETECTOR_IP ("Logitech G813 RGB Mechanical Gaming
@@ -46,16 +67,21 @@ export const FF43 = { 0xc232: { iface: 1, page: 'FF43', usage: '0602' } };
 //           "Logitech G915 TKL keyboard over Bluetooth" HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_LOGITECH, 0xb35f).
 //           It is inside Solaar's Bluetooth keyboard range (base.py get_unknown_logitech_device_info: BusID.BLUETOOTH and
 //           0xB317 <= product_id <= 0xB3FF, @ e7304c4c). Solaar descriptors.py lists no btid for any G keyboard.
-//   No source read gives a Bluetooth id for the G915, G515 TKL or any other model here, so none is guessed.
-export const BLE = { 0xb35f: 'G915 TKL' };
+//   0xB389 (23 Oct 2026): the G515 LIGHTSPEED TKL. Solaar docs/devices/"G515 LS TKL 40B4.text" @ e7304c4c (a device dump):
+//           "Kind: keyboard", "Protocol: HID++ 4.2", "Transport IDs: {'btleid': 'B389', 'wpid': '40B4', 'usbid': 'C355'}";
+//           inside the same Bluetooth keyboard range.
+//   No source read gives a Bluetooth id for the G915 or any other model here, so none is guessed.
+export const BLE = { 0xb35f: 'G915 TKL', 0xb389: 'G515 LIGHTSPEED TKL' };
 export const PIDS = [...Object.keys(RECEIVERS), ...Object.keys(WIRED), ...Object.keys(BLE)].map(Number);
 
 // sheet section 2: long report 0x11, 19 bytes after the id; software id 0x0B (Solaar); 0xFF = wired, 1-6 = receiver slots
 const REPORT_LONG = 0x11, LEN = 19, SW_ID = 0x0b, DEV_WIRED = 0xff, SLOTS = [1, 2, 3, 4, 5, 6];
+// on a SHARED receiver: this driver's own software id (see SHARED above)
+export const SW_ID_SHARED = 0x0c;
 
 // feature ids (Solaar hidpp20_constants.py SupportedFeature)
 export const F = {
-  ROOT: 0x0000, DEVICE_NAME: 0x0005, BATTERY_STATUS: 0x1000, BATTERY_VOLTAGE: 0x1001, UNIFIED_BATTERY: 0x1004, ADJUSTABLE_DPI: 0x2201,
+  ROOT: 0x0000, DEVICE_NAME: 0x0005, BATTERY_STATUS: 0x1000, BATTERY_VOLTAGE: 0x1001, UNIFIED_BATTERY: 0x1004, ADJUSTABLE_DPI: 0x2201, EXT_ADJUSTABLE_DPI: 0x2202,
   FN_INVERSION: 0x40a0, NEW_FN_INVERSION: 0x40a2, DISABLE_KEYS: 0x4521, BRIGHTNESS: 0x8040, REPORT_RATE: 0x8060,
   EXT_REPORT_RATE: 0x8061, ONBOARD_PROFILES: 0x8100,
 };
@@ -152,7 +178,7 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
     hid: { vid: '046D', pid: 'C33E', pids: PIDS.map(hex4), page: 'FF00', usage: '0002', len: LEN, reportId: REPORT_LONG, replyMs: 2000, reply: 'raw',
       byPid: Object.fromEntries([...Object.keys(BLE).map((p) => [hex4(Number(p)), { ...BLE_HID }]), ...Object.entries(FF43).map(([p, c]) => [hex4(Number(p)), { ...c }])]) },
     unsupported: ['editing onboard profiles (keys, macros, lights)', 'lighting colours and effects (no read-back)', 'G-key and M-key remaps', 'game mode beyond the key locks', 'firmware updates', 'pairing'],
-    dev: null, chan: null, index: DEV_WIRED, features: {}, caps: {}, asleep: false, usbId: null,
+    dev: null, chan: null, index: DEV_WIRED, features: {}, caps: {}, asleep: false, usbId: null, shared: false, swid: SW_ID,
     pingMs: 2600,   // how long a slot's ping waits (tests shorten it)
 
     get settings() {
@@ -187,6 +213,8 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
       this.dev = dev;
       this.pid = typeof dev.pid === 'string' ? parseInt(dev.pid, 16) : dev.productId;
       this.receiver = !!RECEIVERS[this.pid];
+      this.shared = !!SHARED[this.pid];
+      this.swid = this.shared ? SW_ID_SHARED : SW_ID;
       this.ble = !!BLE[this.pid];
       this.usbId = `046d:${hex4(this.pid).toLowerCase()}`;
       this.chan = new HidChannel(dev, { reportId: REPORT_LONG, length: LEN, match: this.ble ? isReplyToBle : isReplyTo });
@@ -194,6 +222,8 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
         const found = await this.probeSlots(this.pingMs);
         if (found.keyboard) return this.finishConnect();
         if (found.others.length) { this.stepAside(); throw notMine(this.notMineText(found.others)); }
+        // a SHARED receiver with no keyboard answering: most hold a mouse, so step aside instead of waiting asleep
+        if (this.shared) { this.stepAside(); throw notMine(this.noKeyboardText(found.held)); }
         this.asleep = true; this.index = null; this.wokeAt = Date.now();   // nothing answered: asleep or switched off
         return true;
       }
@@ -207,23 +237,27 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
 
     // every receiver slot, read-only: ping, getFeature 0x2201 (a mouse has it), and the kind (DEVICE_NAME fn 0x20, when
     // the device has it). The first keyboard (or a device without 0x2201 whose kind is not known) is claimed.
+    // On a SHARED receiver the kind must be keyboard / numpad and 0x2202 counts as a mouse too (the PRO X2 SUPERSTRIKE has
+    // only 0x2202: device-library/logitech-hidpp-mouse). held = slots another Logitech driver runs (never asked).
     async probeSlots(pingMs) {
-      const others = [];
+      const others = [], held = [];
       for (const slot of SLOTS) {
         const owner = SLOT_OWNERS.get(slotKey(this.pid, slot));
-        if (owner && owner !== this.id) continue;
+        if (owner && owner !== this.id) { held.push({ slot, owner }); continue; }
         this.index = slot;
         let ver = null;
         try { ver = await this.ping(pingMs); } catch { continue; }
         this.features = {};
         let dpi;
         try { dpi = await this.getFeature(F.ADJUSTABLE_DPI); } catch (e) { if (!(e instanceof HidppError)) continue; dpi = null; }
+        if (!dpi && this.shared) { try { dpi = await this.getFeature(F.EXT_ADJUSTABLE_DPI); } catch (e) { if (!(e instanceof HidppError)) continue; dpi = null; } }
         const kind = dpi ? 'mouse' : await this.deviceKind();
-        if (!dpi && (kind === null || KEYBOARD_KINDS.includes(kind))) { this.protocol = ver; SLOT_OWNERS.set(slotKey(this.pid, slot), this.id); return { keyboard: slot, others }; }
+        const keyboard = !dpi && (KEYBOARD_KINDS.includes(kind) || (kind === null && !this.shared));
+        if (keyboard) { this.protocol = ver; SLOT_OWNERS.set(slotKey(this.pid, slot), this.id); return { keyboard: slot, others, held }; }
         others.push({ slot, kind });
       }
       this.features = {}; this.index = null;
-      return { keyboard: null, others };
+      return { keyboard: null, others, held };
     },
     async deviceKind() {
       try {
@@ -238,11 +272,20 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
       const o = others[0];
       return o.kind === 'mouse'
         ? `the Logitech device on receiver ${hex4(this.pid)} (slot ${o.slot}) has a DPI feature (0x2201): it is a mouse, not a keyboard this driver runs, so the keyboard driver leaves it to the mouse driver`
-        : `the Logitech device on receiver ${hex4(this.pid)} (slot ${o.slot}) is a ${o.kind}, not a keyboard this driver runs: the keyboard driver leaves it alone`;
+        : o.kind === null
+          ? `the Logitech device on receiver ${hex4(this.pid)} (slot ${o.slot}) does not say it is a keyboard (no DEVICE_NAME kind): on a shared LIGHTSPEED receiver the keyboard driver leaves it alone`
+          : `the Logitech device on receiver ${hex4(this.pid)} (slot ${o.slot}) is a ${o.kind}, not a keyboard this driver runs: the keyboard driver leaves it alone`;
+    },
+    noKeyboardText(held = []) {
+      const h = held[0];
+      return h
+        ? `no keyboard answered on LIGHTSPEED receiver ${hex4(this.pid)}; slot ${h.slot} is run by ${h.owner}: the keyboard driver leaves it alone`
+        : `no keyboard answered on LIGHTSPEED receiver ${hex4(this.pid)} (asleep, switched off or none paired): the keyboard driver looks again on a plug or a Connect click`;
     },
     stepAside() {
       releaseSlots(this.id);
-      try { this.dev?.close?.(); } catch {}
+      // a SHARED receiver's handle may be the mouse driver's too (see SHARED): let go of it without closing it
+      if (!this.shared) { try { this.dev?.close?.(); } catch {} }
       this.dev = null; this.chan = null; this.features = {}; this.caps = {}; this.asleep = false;
     },
     // asleep at connect: asks the slots again at most every 30 s (public/core/devices.js asks before each look)
@@ -284,7 +327,7 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
       if (NEVER.includes(featureId) || (NEVER_FN[featureId] || []).includes(fn) || !(ALLOWED[featureId] || []).includes(fn)) throw new Error(`refused: feature 0x${hex4(featureId)} function 0x${hex2(fn)} is not one this driver sends`);
       const index = featureId === F.ROOT ? 0 : this.features[featureId]?.index;
       if (!index && featureId !== F.ROOT) throw new Error(`the keyboard has no feature 0x${hex4(featureId)}`);
-      const out = [this.index, index, (fn & 0xf0) | SW_ID, ...params];
+      const out = [this.index, index, (fn & 0xf0) | this.swid, ...params];
       const what = `0x${hex4(featureId)} fn 0x${hex2(fn)}`;
       let r;
       try { r = await this.chan.request(out, { timeoutMs }); }

@@ -34,6 +34,7 @@ function simKeyboard(pid, o = {}) {
     async sendReport(id, data) {
       const q = Uint8Array.from(data);
       sim.sent.push(q);
+      if (type === 'tzone') { sim.bad.push(`sent ${hex(q.slice(0, 4))} to the Apex 3 (OpenRGB reads nothing from it)`); return; }
       if (id !== 0 || q.length !== 64) sim.bad.push(`report ${id}, ${q.length} bytes`);
       if (q.slice(3).some((b) => b !== 0) && q[0] !== 0x23) sim.bad.push(`padding not zero: ${hex(q.slice(0, 8))}`);
       const max = type === 'apex' ? 10 : 0x10;
@@ -116,6 +117,21 @@ const sets = (sim) => sim.sent.filter((q) => q[0] === 0x23);
   check(sim.bright === 16, 'the self-check left it at 16');
 }
 
+// ---- 2b. Apex 3 (161A, T-zone controller): named only, nothing sent ----
+{
+  const { d, sim } = driverOn('161A');
+  all.push(sim);
+  check(await d.connect() === true && d.model.name === 'Apex 3', 'Apex 3 (161A) connects');
+  check(d.settings.length === 0 && JSON.stringify(await d.read()) === '{}', 'Apex 3: no settings, nothing read');
+  const info = await d.info();
+  check(info.Model === 'SteelSeries Apex 3' && info.Firmware === undefined && /names this keyboard only/.test(info.Driver), `Apex 3 info (${JSON.stringify(info)})`);
+  const e = await refusal(() => d.write('brightness', 5));
+  check(/not a setting/.test(e?.message || ''), 'Apex 3 brightness write refused');
+  const sc = await selfCheck(d, d.write, { backup: async () => true, makerApp: async () => null });
+  check(sc.ran !== false || sc.why, `Apex 3 self-check runs with nothing to write (${JSON.stringify(sc)})`);
+  check(sim.sent.length === 0, `Apex 3: nothing sent at all (${sim.sent.map((q) => hex(q.slice(0, 3)))})`);
+}
+
 // ---- 3. a keyboard that does not answer the read: nothing offered, nothing written ----
 {
   const { d, sim } = driverOn('1642', { unsupported: true, gen1: true });
@@ -144,7 +160,7 @@ const sets = (sim) => sim.sent.filter((q) => q[0] === 0x23);
     check(!s.sent.some((q) => neverHit({ vid: '1038', pid: s.pid, page: MODELS[s.pid].chan.page, reportId: 0, bytes: q })), `nothing on the never list was sent (${s.pid})`);
   }
   const specs = Object.fromEntries(hidSpecs(createApex()).map((s) => [s.pid, s]));
-  check(PIDS.every((p) => specs[p]) && specs['1610'].iface === 1 && specs['1610'].outputLen === 64 && specs['1644'].iface === 3 && specs['1644'].page === 'FFC0' && specs['1644'].outputLen == null && specs['1622'].page === 'FFC0', 'channels: wired interface 1 by its 64-byte output report, wireless and Apex 3 TKL interface 3 / 1 on FFC0');
+  check(PIDS.every((p) => specs[p]) && specs['1610'].iface === 1 && specs['1610'].outputLen === 64 && specs['1644'].iface === 3 && specs['1644'].page === 'FFC0' && specs['1644'].outputLen == null && specs['1622'].page === 'FFC0' && specs['161A'].iface === 3 && specs['161A'].page === '*', 'channels: wired interface 1 by its 64-byte output report, wireless and Apex 3 TKL interface 3 / 1 on FFC0');
   const meta = JSON.parse(fs.readFileSync(path.join(ROOT, 'device-library', 'steelseries-apex', 'device.json'), 'utf8'));
   check(validateMeta(meta) === null && meta.status === 'untested' && meta.tested.length === 0, `device.json well formed and untested (${validateMeta(meta)})`);
   check(meta.id === d.id && meta.pids.map((p) => p.toUpperCase()).sort().join() === [...PIDS].sort().join(), 'device.json lists exactly the driver\'s ids');
@@ -163,7 +179,7 @@ const sets = (sim) => sim.sent.filter((q) => q[0] === 0x23);
   check(claims.length > 50 && clash.length === 0, `no other library entry claims these ids (${clash.join(', ')})`);
   const { RUNS } = createRequire(import.meta.url)('../helpers/pc-map.js');
   check(!mine.some((id) => RUNS[id]), 'none of these ids is one DeviceHub\'s own drivers run');
-  check(!['161a', '0616', '1202', '1206'].some((p) => meta.pids.includes(p)), 'the boards with no read-back (Apex 3, M750, old Apex, 350) are not claimed');
+  check(!['0616', '1202', '1206'].some((p) => meta.pids.includes(p)) && meta.pids.includes('161a'), 'the boards with no read-back (M750, old Apex, 350) are not claimed; the Apex 3 is, named only');
   const none = createApex({ open: async () => null, vendorApp: async () => null });
   check((await none.connect()) === false, 'nothing plugged in: connect() is false');
 }

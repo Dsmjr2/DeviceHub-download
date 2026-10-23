@@ -636,6 +636,8 @@ async function api(req, res, url) {
   // in one click (helpers/share-route.mjs: checks for anything personal, then opens a pre-filled GitHub page)
   if (url.pathname.startsWith('/api/library/update')) { try { if (await (await import('./helpers/library-updates.mjs')).handle(url, req, res, send)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   // Learn a device: USB recordings -> a read-only driver.json, without Claude (helpers/learn-wizard.mjs, public/pages/learn.js)
+  // Learn it for me (helpers/learn-auto.mjs): the whole learning session on one click
+  if (url.pathname.startsWith('/api/learn/auto')) { try { if (await (await import('./helpers/learn-auto.mjs')).handle(url, req, res, send, readBody)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   if (url.pathname.startsWith('/api/learn/')) { try { if (await (await import('./helpers/learn-wizard.mjs')).handle(url, req, res, send, readBody)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   // Get help: a short report with anything personal taken out, then a pre-filled GitHub issue on the person's click
   if (url.pathname.startsWith('/api/help/')) { try { if (await (await import('./helpers/get-help.mjs')).handle(url, req, res, send, readBody)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
@@ -746,7 +748,9 @@ async function api(req, res, url) {
     const su = require('./helpers/self-update');
     if (req.method === 'GET') return send(res, 200, await su.status());
     try {
-      const r = await su.update();
+      // Update anyway (23 Oct 2026): over files changed on this PC, a copy of each kept first (self-update.js)
+      const body = await readBody(req).catch(() => ({}));
+      const r = await su.update({ overwrite: body?.overwrite === true });
       send(res, 200, r);
       // a copy installed from the zip: the new version's installer is already running; it quits and restarts DeviceHub
       if (r.installing) serverLog({ kind: 'good', text: `Installing the ${r.latest}; DeviceHub restarts by itself` });
