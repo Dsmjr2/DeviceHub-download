@@ -175,7 +175,7 @@ function pcLights() {
     o.controllers.length ? h('div', { class: 'pc-parts' }, ...o.controllers.map((c) => h('div', { class: 'pc-part' },
       h('div', { class: 'pc-part-head' }, h('span', { class: 'muted' }, c.type), h('b', {}, c.name),
         c.color ? h('span', { class: 'dot', style: { background: c.same ? c.color : 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)' }, title: c.same ? c.color : 'several colors' }) : null),
-      h('small', { class: 'faint' }, [c.mode ? `Mode: ${c.mode}` : null, `${c.leds} light${c.leds === 1 ? '' : 's'}`, c.zones.length > 1 ? c.zones.map((z) => z.name).join(', ') : null].filter(Boolean).join(' · ')))))
+      h('small', { class: 'faint' }, [c.mode ? `Mode: ${c.mode}` : null, `${c.leds} light${c.leds === 1 ? '' : 's'}`, c.zones.length > 1 ? c.zones.map((z, i) => (/^\?+$/.test(z.name || '') ? `unnamed ${i + 1}` : z.name)).join(', ') : null].filter(Boolean).join(' · ')))))
       : h('p', { class: 'faint' }, 'OpenRGB runs but found no lights.'),
     h('div', { class: 'actions' },
       button('Undo', async () => { if (isDemo()) { st.orgb = DEMO_ORGB(); redraw(); toast('PC lights undone', 'good'); return; } try { await env.api('/api/openrgb/restore', {}); toast('PC lights undone', 'good'); } catch (e) { toast('Nothing to undo', 'bad', { detail: e.message }); } loadPc(true); }, { kind: 'small', ic: 'undo' }),

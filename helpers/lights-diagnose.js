@@ -18,6 +18,7 @@ const TABLE = require('./rgb-controllers.json');
 const BY_ID = new Map(TABLE.controllers.map((c) => [c.id, c]));
 const SOURCE = `${TABLE.source.repo}/src/commit/${TABLE.source.commit}`;
 const KIND = {
+  reached: 'reached: the board\'s lights, its fan (ARGB) headers included, are listed above',
   usb: 'reachable over USB: should show after Find lights',
   smbus: 'on the board\'s SMBus: needs OpenRGB with PawnIO as administrator (Add board, fan and RAM lights sets it up)',
   none: 'no lighting controller found: the fans may be on a non-addressable or remote-controlled hub',
@@ -63,7 +64,9 @@ function diagnose({ pc = null, orgb = null } = {}) {
     .map(({ u, c }) => ({ id: c.id, name: c.name, kind: c.kind, windowsName: u.name || null, source: `${SOURCE}/${c.source}`, found: orgb?.running ? foundIds.has(c.id) : null }));
   const smbus = TABLE.smbusBoards.find((m) => new RegExp(m.match, 'i').test(boardMaker)) || null;
   let kind = null;
-  if (pc) kind = seen.length ? 'usb' : smbus && (pc.smbus?.length || 0) > 0 ? 'smbus' : 'none';
+  // OpenRGB already lists the board (its fan headers are zones of it): nothing left to set up
+  const boardFound = found.some((c) => /motherboard|mainboard/i.test(String(c.type || '')));
+  if (pc) kind = seen.length ? 'usb' : boardFound ? 'reached' : smbus && (pc.smbus?.length || 0) > 0 ? 'smbus' : 'none';
   const verdict = kind ? { kind, line: KIND[kind], source: kind === 'smbus' ? `${SOURCE}/${smbus.source.split(' and ')[0]}` : null } : null;
 
   // what to tell the person, most useful first

@@ -59,7 +59,7 @@ d = diagnose({ pc: PC('ASUSTeK COMPUTER INC.', 'PRIME B450M-A', []), orgb: ORGB(
 check(d.problems.length === 0 && /as administrator for board lights/.test(d.openrgb.version), `board lights set up: ${d.openrgb.version}`);
 // the person's own OpenRGB (with PawnIO) already serving: no "use your own OpenRGB" advice
 d = diagnose({ pc: PC('ASUSTeK COMPUTER INC.', 'PRIME B450M-A', []), orgb: ORGB([ctl('ASUS PRIME B450M-A', 'motherboard', '0000:0000')], { bundled: false }) });
-check(d.verdict.kind === 'smbus' && d.problems.length === 0 && d.openrgb.version === 'your own OpenRGB', 'own OpenRGB running: no PawnIO advice');
+check(d.verdict.kind === 'reached' && d.problems.length === 0 && d.openrgb.version === 'your own OpenRGB', 'own OpenRGB running: no PawnIO advice');
 
 // 5. an OEM board, nothing on USB: no lighting controller found, non-addressable or remote hub
 d = diagnose({ pc: PC('Dell Inc.', '0K3CM7', [usb('046d:c232'), usb('8087:0026')], ['Intel(R) SMBus - 7AA3']), orgb: ORGB([]) });
