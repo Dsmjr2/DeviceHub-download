@@ -187,8 +187,10 @@ function publishRow() {
   if (!pub && Date.now() - pubAt > 60000) { pubAt = Date.now(); fetch('/api/publish-release').then((r) => r.json()).then((j) => { pub = j; rerender(); }).catch(() => {}); }
   if (!pub?.owner) return null;
   const when = pub.published?.builtAt ? new Date(pub.published.builtAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : null;
+  // no signing key on this PC: the release would stop at signing, so say where it is first
+  if (pub.keyHere === false) return row('Publish', 'The signing key is not on this PC: publish from the PC that published last time, or restore the key here (node helpers/signing-key.mjs --restore).', null);
   const text = pub.ahead > 0 ? `Friends have the version from ${when}; this PC has ${pub.ahead} newer change${pub.ahead === 1 ? '' : 's'}.` : when ? `Friends have this PC's version (${when}).` : 'Builds, signs and uploads this PC\'s version for friends.';
-  return row('Publish to friends', text, button('Publish', async () => {
+  return row('Publish', text, button('Publish', async () => {
     try { await env.api('/api/publish-release', {}); toast('Publishing in its own window', 'busy', { detail: 'Building, signing and uploading take a few minutes. Friends then see Update in Settings.', ms: 12000 }); }
     catch (e) { toast('Not started', 'bad', { detail: e.message }); }
     pub = null; pubAt = Date.now() + 5 * 60000;

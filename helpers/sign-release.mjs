@@ -18,7 +18,20 @@ export const payload = (v) => JSON.stringify([v.commit, v.builtAt, v.appCommit ?
 
 if (process.argv[2]) {
   if (!keyAvailable()) {
-    if (fs.existsSync(pub)) { console.error(`no signing key at ${priv}, but a public key is in the app: put the key back (or make a new pair and ship the new public key first)`); process.exit(1); }
+    if (fs.existsSync(pub)) {
+      // plain words for the publisher (23 Oct 2026): what to do, in order; a new key pair is never made here, as every
+      // installed copy would then refuse the update
+      const backup = fs.existsSync(path.join(dir, 'release-key.backup.pem'));
+      console.error([
+        `The signing key is not on this PC (looked in ${dir}). Nothing was uploaded.`,
+        'Copies only install an update signed with the same key that signed the version they have, so:',
+        '  1. Publish from the PC that published last time (the key is in that PC\'s %APPDATA%\\DeviceHub-signing).',
+        backup ? '  2. Or restore it here from release-key.backup.pem: node helpers/signing-key.mjs --restore (type its password, Enter).'
+          : '  2. Or copy release-key.backup.pem from that PC into this folder, then: node helpers/signing-key.mjs --restore (type its password, Enter).',
+        '  Do not make a new key: every installed copy would refuse the update.',
+      ].join('\n'));
+      process.exit(1);
+    }
     const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(priv, privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 });

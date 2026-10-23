@@ -159,6 +159,9 @@ function boardSection() {
 
 // What was found and why fan lights may be missing (helpers/lights-diagnose.js), in place: no pop-ups or tooltips.
 // Get help for lights sends Shawn the same facts in one click (helpers/get-help.mjs, area "lights").
+// the Result row's title per verdict (23 Oct 2026, Shawn: "no lighting controller found doesnt really make sense" when
+// the board's lights were listed)
+const VERDICT_TITLE = { reached: 'Board lights found', smbus: "On the board's SMBus", none: 'No lighting controller found' };
 function fanHelp() {
   const d = st.diag;
   if (!d || d.isolated) return null;
@@ -167,9 +170,9 @@ function fanHelp() {
   return h('div', { class: 'pc-guide' },
     h('h3', {}, 'Fan lights'),
     h('div', { class: 'pc-parts' },
-      row('Board', d.board || 'not read', null),
+      row('Board', d.board || 'Not read', null),
       ...(d.seen || []).map((c) => row(c.kind === 'hub' ? 'Fan hub' : 'Lighting chip', `${c.name} (USB ${c.id})`, seenHow(c))),
-      d.verdict && d.verdict.kind !== 'usb' ? row('So', d.verdict.kind === 'smbus' ? "on the board's SMBus" : 'no lighting controller found', d.verdict.line[0].toUpperCase() + d.verdict.line.slice(1) + '.') : null),
+      d.verdict && d.verdict.kind !== 'usb' ? row('Result', VERDICT_TITLE[d.verdict.kind] || 'Checked', d.verdict.line[0].toUpperCase() + d.verdict.line.slice(1) + '.') : null),
     ...(d.problems || []).map((p) => h('div', { class: 'gh-note', style: { margin: '8px 0 0' } }, h('b', {}, `${p.problem}. `), `${p.why} `, h('span', {}, `Fix: ${p.fix}`))),
     getHelp('lights', () => '', { area: 'lights' }));
 }
@@ -196,7 +199,7 @@ function pcLights() {
       const c = g[0], many = g.length > 1;
       const same = g.every((x) => x.same && x.color === c.color);
       return h('div', { class: 'pc-part' },
-        h('div', { class: 'pc-part-head' }, h('span', { class: 'muted' }, c.type), h('b', {}, many ? `${c.name} × ${g.length}` : c.name),
+        h('div', { class: 'pc-part-head' }, h('span', { class: 'muted' }, typeLabel(c.type)), h('b', {}, many ? `${c.name} × ${g.length}` : c.name),
           c.color ? h('span', { class: 'dot', style: { background: same ? c.color : 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)' }, title: same ? c.color : 'several colors' }) : null),
         h('small', { class: 'faint' }, [c.mode ? `Mode: ${c.mode}` : null, `${g.reduce((n, x) => n + (x.leds || 0), 0)} lights`, many ? `${g.length} sticks, one color for all` : null].filter(Boolean).join(' · ')),
         // the colors, for the whole part and per zone (an ARGB header is where fans plug in) (22 Oct 2026)
@@ -239,3 +242,6 @@ export function pcSection(onRedraw) {
   if (!st.pc && !st.loading) queueMicrotask(() => loadPc());
   return h('div', { class: 'grid two top' }, thisPc(), pcLights());
 }
+
+// OpenRGB's device type with a capital first letter ("motherboard" reads Motherboard; RAM and LED strip kept as words)
+function typeLabel(t) { const s = String(t || ''); return s === 'ram' ? 'RAM' : s === 'ledstrip' ? 'LED strip' : s.charAt(0).toUpperCase() + s.slice(1); }

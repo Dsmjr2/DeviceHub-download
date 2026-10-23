@@ -143,7 +143,8 @@ export default {
           h('div', { class: 'picker-row' }, h('span', { class: 'muted' }, 'Brightness'),
             slider({ value: ui.brightness, min: 5, max: 100, unit: '%', label: 'Brightness', onCommit: async (x) => { ui.brightness = x; } }))),
         h('div', { class: 'stack' },
-          card([h('h2', {}, 'Apply to')],
+          // Apply to all sits beside the title (23 Oct 2026, Shawn: "put this next to the apply to text")
+          card([h('h2', {}, 'Apply to'), h('span', { class: 'spacer' }), button('Apply to all', applyAll, { kind: 'primary small', ic: 'lighting' })],
             // only the devices this PC has, by their own names (23 Oct 2026, Shawn: a friend's PC showed his P75, HS80
             // and Pulsar whatever it had)
             h('div', { class: 'targets' },
@@ -158,8 +159,7 @@ export default {
               has('mouse') ? h('div', { class: 'target', style: { '--cc': 'var(--c-mouse)' } }, artOf(devices.mouse), h('div', { class: 'grow' }, h('b', {}, devices.mouse.adapter.title), h('small', {}, 'no lights DeviceHub can set on this mouse')), pill('n/a')) : null,
               h('div', { class: 'target lighting-preview', style: { '--cc': 'var(--signal)', '--pick': ui.hex } }, h('div', { class: 'target-ic' }, icon('lighting')),
                 h('div', { class: 'grow' }, h('b', {}, 'PC lights'), h('small', {}, pcIncluded() ? 'board, fans and more, through OpenRGB' : 'through OpenRGB, when it runs (PC lights, right)')),
-                toggle({ value: pcIncluded(), disabled: !pcAvailable(), label: 'include PC lights', onCommit: async (on) => { setPcIncluded(on); } })))),
-          h('div', { class: 'actions' }, button('Apply to all', applyAll, { kind: 'primary', ic: 'lighting' }))),
+                toggle({ value: pcIncluded(), disabled: !pcAvailable(), label: 'include PC lights', onCommit: async (on) => { setPcIncluded(on); } }))))),
         h('div', { class: 'light-pc' }, pcLightsCard(redraw))));
   },
 };

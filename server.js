@@ -760,7 +760,9 @@ async function api(req, res, url) {
       const c = String(published.commit).replace(/-modified$/, '');
       try { ahead = Number(require('child_process').execFileSync('git', ['rev-list', '--count', `${c}..HEAD`], { cwd: ROOT, windowsHide: true, timeout: 10000, encoding: 'utf8' }).trim()); } catch {}
     }
-    return send(res, 200, { owner: true, published, ahead });
+    let keyHere = null;
+    try { keyHere = (await import('./helpers/signing-key.mjs')).keyAvailable(); } catch {}
+    return send(res, 200, { owner: true, published, ahead, keyHere });
   }
   if (url.pathname === '/api/self-update/progress') return send(res, 200, require('./helpers/self-update').getProgress() || {});
   if (url.pathname === '/api/self-update') {
