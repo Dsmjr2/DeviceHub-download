@@ -57,7 +57,9 @@ function diagnose({ pc = null, orgb = null } = {}) {
     reason, ...(reason ? openrgbFix(reason) : {}),
     usbOnly: !!orgb?.running && !!orgb.bundled,
   };
-  const found = (orgb?.controllers || []).map((c) => ({ name: c.name, type: c.type, leds: c.leds, id: idsIn(c.location) }));
+  // each part's zones too (23 Oct 2026: a friend's fans were "not found" with the board reached; the report must say which
+  // headers OpenRGB lists, how many lights each has and what color they are)
+  const found = (orgb?.controllers || []).map((c) => ({ name: c.name, type: c.type, leds: c.leds, id: idsIn(c.location), zones: (c.zones || []).map((z) => ({ name: z.name, leds: z.leds, color: z.color || null, hidden: !!z.hidden })) }));
   const foundIds = new Set(found.map((c) => c.id).filter(Boolean));
   // known lighting controllers plugged in (by USB id; OpenRGB's own table)
   const seen = (pc?.usb || []).map((u) => ({ u, c: BY_ID.get(String(u.id || `${u.vid}:${u.pid}`).toLowerCase()) })).filter((x) => x.c)
@@ -80,6 +82,7 @@ function diagnose({ pc = null, orgb = null } = {}) {
     `- OpenRGB: ${openrgb.version || 'none'}, ${openrgb.state}${openrgb.usbOnly ? ' (USB lights only)' : ''}${reason && openrgb.state !== 'not started yet' ? `; ${reason}` : ''}`,
     `- Last Find lights: ${last ? `${last.at.slice(0, 16).replace('T', ' ')}, ${last.ok ? `found ${last.found}` : 'failed'}` : 'not pressed since DeviceHub started'}`,
     `- Lights OpenRGB found: ${found.length ? found.map((c) => `${c.name} (${c.type}${c.id ? `, USB ${c.id}` : ''})`).join('; ') : 'none'}`,
+    ...found.filter((c) => c.zones.length > 1).map((c) => `- ${c.name} zones: ${c.zones.map((z) => `${z.name} (${z.leds} lights${z.color ? `, ${z.color}` : ''}${z.hidden ? ', hidden' : ''})`).join('; ')}`),
     `- Board: ${board || 'not read'}${pc?.smbus?.length ? ` (SMBus: ${pc.smbus.join(', ')})` : ''}`,
     `- Lighting controllers on USB: ${seen.length ? seen.map((s) => `${s.name} (${s.id})${s.found === true ? ', found' : s.found === false ? ', NOT found by OpenRGB' : ''}`).join('; ') : 'none known'}`,
     `- So: ${verdict ? verdict.line : 'the PC was not read yet'}`,

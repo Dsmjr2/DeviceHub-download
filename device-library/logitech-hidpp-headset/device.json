@@ -59,5 +59,5 @@
   "status": "untested",
   "tested": [],
   "source": "Solaar lib/logitech_receiver (settings_templates.py, hidpp20.py, hidpp20_constants.py, descriptors.py) @ e7304c4c451cc9bb4f206a914844525e67856a28; HeadsetControl lib/devices (logitech_g633_g933_935.hpp, logitech_gpro.hpp, logitech_g535.hpp, logitech_gpro_x2_lightspeed.hpp, protocols/hidpp_protocol.hpp, protocols/logitech_centurion_protocol.hpp) @ 91ee690a5e302a10a6f4f75a46be05846a38a3b0; docs/brands/logitech.md; HeadsetControl lib/devices/logitech_g522_lightspeed.hpp, logitech_g432.hpp, protocols/logitech_centurion_protocol.hpp @ a8120a62bcbb45a9766d9060dfd21ae18f8550a5; Solaar lib/logitech_receiver/base.py, centurion.py, descriptors.py, lib/hidapi/udev_impl.py @ e7304c4c451cc9bb4f206a914844525e67856a28 (the G522)",
-  "updated": "2026-10-23T12:00:00Z"
+  "updated": "2026-10-23T18:00:00Z"
 }

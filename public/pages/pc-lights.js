@@ -27,7 +27,8 @@ const DEMO_PC = {
 // demo: OpenRGB running with a pretend board and lit RAM (colors change on the page only; nothing is sent)
 const DEMO_ORGB = () => ({ running: true, protocol: 3, bundled: false, board: { setUp: true }, controllers: [
   { index: 0, name: 'B450 AORUS PRO WIFI-CF', vendor: 'Gigabyte', type: 'motherboard', zones: [{ name: 'Motherboard', leds: 5 }, { name: 'D_LED1 header', leds: 30 }], leds: 35, mode: 'Static', color: '#ff6a1a', same: true },
-  { index: 1, name: 'Trident Z RGB', vendor: 'G.Skill', type: 'ram', zones: [{ name: 'DRAM', leds: 8 }], leds: 8, mode: 'Rainbow', color: '#ff0000', same: false }] });
+  { index: 1, name: 'Trident Z RGB', vendor: 'G.Skill', type: 'ram', zones: [{ name: 'DRAM', leds: 8 }], leds: 8, mode: 'Rainbow', color: '#ff0000', same: false },
+  { index: 2, name: 'Trident Z RGB', vendor: 'G.Skill', type: 'ram', zones: [{ name: 'DRAM', leds: 8 }], leds: 8, mode: 'Static', color: '#3a7bff', same: true }] });
 const DEMO_BT = [{ name: 'Xbox Wireless Controller', le: true, connected: true, battery: 80 }, { name: 'AirPods Pro', le: false, connected: false, battery: null }];
 // demo: why fans may be missing (helpers/lights-diagnose.js answers the real one)
 const DEMO_DIAG = { board: 'Gigabyte B450 AORUS PRO WIFI-CF', openrgb: { state: 'running', usbOnly: false }, found: [], verdict: { kind: 'usb', line: 'reachable over USB: should show after Find lights' },
@@ -201,9 +202,11 @@ function pcLights() {
       return h('div', { class: 'pc-part' },
         h('div', { class: 'pc-part-head' }, h('span', { class: 'muted' }, typeLabel(c.type)), h('b', {}, many ? `${c.name} × ${g.length}` : c.name),
           c.color ? h('span', { class: 'dot', style: { background: same ? c.color : 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)' }, title: same ? c.color : 'several colors' }) : null),
-        h('small', { class: 'faint' }, [c.mode ? `Mode: ${c.mode}` : null, `${g.reduce((n, x) => n + (x.leds || 0), 0)} lights`, many ? `${g.length} sticks, one color for all` : null].filter(Boolean).join(' · ')),
+        h('small', { class: 'faint' }, [c.mode ? `Mode: ${c.mode}` : null, `${g.reduce((n, x) => n + (x.leds || 0), 0)} lights`, many ? `${g.length} sticks` : null].filter(Boolean).join(' · ')),
         // the colors, for the whole part and per zone (an ARGB header is where fans plug in) (22 Oct 2026)
         colorRow('All', same ? c.color : null, async (hex) => { for (const x of g) await setPcColor(x.index, hex, null); }),
+        // and each stick on its own (23 Oct 2026, Shawn: "Let him be able to change the colors for each ram stick")
+        many ? h('div', { class: 'pc-zones' }, ...g.map((x, i) => colorRow(`Stick ${i + 1}`, x.same ? x.color : null, (hex) => setPcColor(x.index, hex, null)))) : null,
         !many && c.zones.length > 1 && shownZones(c).length ? h('div', { class: 'pc-zones' }, ...shownZones(c).map(([z, i]) => colorRow(/^\?+$/.test(z.name || '') ? `Unnamed ${i + 1}` : z.name, z.color, (hex) => setPcColor(c.index, hex, i)))) : null,
         !many && c.zones.length > 1 && hiddenZoneCount(c) ? h('small', { class: 'faint' }, `${hiddenZoneCount(c)} more part${hiddenZoneCount(c) === 1 ? '' : 's'}: All colors them; Find my lights shows which is which and names them.`) : null);
     }))

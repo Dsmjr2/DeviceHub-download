@@ -169,7 +169,10 @@ const readNames = () => {
   return namesCache;
 };
 const savedFor = (c) => readNames().boards[c.name || ''] || null;
-const zoneName = (c, i, name) => savedFor(c)?.names?.[i] || ZONE_NAMES.find((z) => z.board.test(c.name || ''))?.names[i] || name;
+// a board's ARGB / D_LED header is where case fans plug in, so it says so (23 Oct 2026, Shawn: "I cant seem to find the
+// case fans on his app"; his board listed "ARGB Header 1" and "ARGB Header 2")
+const fanHeader = (name) => { const m = /^(?:ARGB Header|D_LED|Addressable Header|ARGB)\s*_?(\d*)$/i.exec(String(name || '').trim()); return m ? `Fan header (ARGB)${m[1] ? ` ${m[1]}` : ''}` : name; };
+const zoneName = (c, i, name) => savedFor(c)?.names?.[i] || ZONE_NAMES.find((z) => z.board.test(c.name || ''))?.names[i] || fanHeader(name);
 const zoneHidden = (c, i) => !!savedFor(c)?.hidden?.includes(i);
 const shapeOut = (c) => ({
   index: c.index, name: c.name, vendor: c.vendor, type: TYPES[c.type] || 'other', location: c.location,
