@@ -121,16 +121,25 @@ export function soundRows(tool, eq) {
     rows.push(off.length
       ? { key: 'eq-on', title: `EQ on ${who}`, status: 'needs', line: `Not on for ${off.join(' and ')} yet, so the EQ is not heard. Turn it on, tick ${off.length > 1 ? 'them' : 'it'}, click OK, then restart the PC.`, action: { kind: 'eq-on' } }
       : { key: 'eq-on', title: `EQ on ${who}`, status: 'done', line: `On for ${who}.`, action: { kind: 'open', page: 'headset' } });
+    // Reset sound to normal (22 Oct 2026, Shawn: "make a revert to default in the app so he can easily do it")
+    rows.push({ key: 'eq-reset', title: 'Reset sound to normal', status: 'optional', line: 'If the sound got quieter or sounds odd: takes every EQ and sound effect off. Your presets are kept.', action: { kind: 'eq-reset' } });
   }
   return rows;
 }
 
-// Lights: the OpenRGB inside DeviceHub (GET /api/openrgb), and Windows Dynamic Lighting from the summary
-export function lightRows(orgb, summary) {
+// Lights: the OpenRGB inside DeviceHub (GET /api/openrgb), why nothing was found (GET /api/lights/diagnose,
+// helpers/lights-diagnose.js), and Windows Dynamic Lighting from the summary
+const NO_LIGHTS = {
+  smbus: { status: 'needs', line: 'Found no lights: your board keeps its fan and RGB lights on its own chip (SMBus), which the OpenRGB inside DeviceHub cannot reach. The Lighting page shows how to add them.' },
+  none: { status: 'none', line: 'Found no lights: no lighting controller is plugged in. The fans may be plain 3-pin RGB or on a hub with a remote, which no app can change.' },
+  usb: { status: 'needs', line: 'A lighting controller is plugged in but OpenRGB did not list it. The maker\'s lighting app may be holding it: close it, then Find lights again.' },
+};
+export function lightRows(orgb, summary, diag = null) {
   const rows = [];
   if (orgb) {
     const n = orgb.controllers?.length || 0;
-    if (orgb.running) rows.push({ key: 'openrgb', title: 'PC lights', status: n ? 'done' : 'none', line: n ? `${n} light${n === 1 ? '' : 's'} found through OpenRGB${orgb.bundled ? ' (USB lights only)' : ''}.` : 'OpenRGB runs but found no lights.', action: { kind: 'open', page: 'lighting' } });
+    if (orgb.running) rows.push({ key: 'openrgb', title: 'PC lights', status: n ? 'done' : 'none', line: n ? `${n} light${n === 1 ? '' : 's'} found through OpenRGB${orgb.bundled ? ' (USB lights only)' : ''}.` : (NO_LIGHTS[diag?.verdict?.kind]?.line || 'OpenRGB runs but found no lights.'), action: { kind: 'open', page: 'lighting' } });
+    if (orgb.running && !n && NO_LIGHTS[diag?.verdict?.kind]) rows[rows.length - 1].status = NO_LIGHTS[diag.verdict.kind].status;
     else if (orgb.bundle?.canStart) rows.push({ key: 'openrgb', title: 'PC lights', status: 'optional', line: `Find lights starts the OpenRGB ${orgb.bundle.version || ''} inside DeviceHub, hidden, for USB lights. The board and RAM need your own OpenRGB.`.replace('  ', ' '), action: { kind: 'find-lights' } });
     else rows.push({ key: 'openrgb', title: 'PC lights', status: 'optional', line: 'Board, fan and RAM lights need the free OpenRGB app. The Lighting page shows how.', action: { kind: 'open', page: 'lighting' } });
   }

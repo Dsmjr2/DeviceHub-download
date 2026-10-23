@@ -60,6 +60,7 @@ function load() {
   loadTools();
   if (isDemo()) { st.orgb = st.orgb || DEMO_ORGB; st.bt = DEMO_BT; st.ar = st.ar || { on: true, configured: true, owner: false }; return; }
   get('/api/openrgb').then((o) => { st.orgb = o; redraw(); }, () => {});
+  get('/api/lights/diagnose').then((d) => { st.lightsDiag = d; redraw(); }, () => {});  // why no lights were found
   get('/api/bluetooth').then((b) => { st.bt = Array.isArray(b) ? b : []; redraw(); }, () => { st.bt = []; redraw(); });
   get('/api/auto-report').then((a) => { st.ar = a; redraw(); }, () => {});
 }
@@ -154,6 +155,10 @@ async function runOne(r) {
     } else if (a.kind === 'eq-on') {
       if (isDemo()) return demoDone(k, "Equalizer APO's device list would open: tick the headset, click OK, then restart the PC.");
       await post('/api/eq/turn-on').then(() => noteOf(k, "Equalizer APO's device list is open. Tick the headset, click OK, then restart the PC."), (e) => noteOf(k, `Not opened: ${e.message}`));
+    } else if (a.kind === 'eq-reset') {
+      st.confirm[k] = false;
+      if (isDemo()) return demoDone(k, 'Demo mode: every sound effect would be turned off. Nothing was changed.');
+      await post('/api/eq/reset', {}).then(() => noteOf(k, 'Done: the sound plays as it does without the EQ.'), (e) => noteOf(k, `Not reset: ${e.message}`));
     } else if (a.kind === 'find-lights') {
       noteOf(k, 'Looking for lights…');
       if (isDemo()) { st.orgb = { running: true, bundled: true, controllers: [{ name: 'Razer Basilisk V3' }, { name: 'Corsair HS80 receiver' }] }; return noteOf(k, 'Demo mode: 2 pretend lights found. Nothing was changed.'); }
@@ -235,6 +240,12 @@ function control(r) {
         button('Yes, close it', () => runOne(r), { kind: 'primary small', disabled: busy }),
         button('Cancel', () => { st.confirm[k] = false; redraw(); }, { kind: 'ghost small' }));
     }
+    case 'eq-reset': {
+      if (!st.confirm[k]) return button('Reset', () => { st.confirm[k] = true; redraw(); }, { kind: 'ghost small' });
+      return h('div', { class: 'su-confirm' }, h('small', {}, 'Turn every sound effect off?'),
+        button('Yes, reset', () => runOne(r), { kind: 'primary small', disabled: busy }),
+        button('Cancel', () => { st.confirm[k] = false; redraw(); }, { kind: 'ghost small' }));
+    }
     default: return null;
   }
 }
@@ -280,7 +291,7 @@ export default {
 
     const devRows = st.summary === undefined ? null : applyOver(deviceRows(st.summary, { live, diag: st.diag, layouts: st.layouts, isVia }));
     const sound = applyOver(soundRows(st.tools?.find((t) => t.id === 'eqapo'), st.eq));
-    const lights = applyOver(lightRows(st.orgb, st.summary));
+    const lights = applyOver(lightRows(st.orgb, st.summary, st.lightsDiag));
     const bats = batteryRows(st.bt);
     const learn = applyOver(learnRows(st.tools?.find((t) => t.id === 'usbpcap'), devRows || []));
     const help = applyOver(helpRows(st.ar));

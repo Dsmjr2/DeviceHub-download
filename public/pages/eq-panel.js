@@ -202,9 +202,19 @@ export function eqPanel(redraw) {
             if (!(await modal(`Delete "${p.name}"?`, APO() ? 'The preset is removed.' : 'The preset is removed from iCUE.', [{ label: 'Cancel', value: false, kind: 'ghost' }, { label: 'Delete', value: true, kind: 'danger' }]))) return;
             await persist(ui.eq.presets.filter((x) => x.id !== p.id), `"${p.name}" deleted`);
           }, { kind: 'ghost small', ic: 'trash', disabled: ui.saving }) : null),
-        APO() ? h('div', { class: 'srow', style: { marginTop: '10px' } },
+        APO() ? h('div', {}, h('div', { class: 'srow', style: { marginTop: '10px' } },
           h('div', {}, h('div', { class: 'srow-title' }, 'Prevent distortion'), h('div', { class: 'srow-desc' }, 'Stops loud sounds from crackling. Slightly quieter.')),
-          h('div', { class: 'srow-ctl' }, toggle({ value: ui.eq.headroom, label: 'Prevent distortion', onCommit: async (on) => { try { ui.eq = await env.api('/api/eq/headroom', { on }); rerender(); } catch (e) { toast('Not changed', 'bad', { detail: e.message }); } } })))
+          h('div', { class: 'srow-ctl' }, toggle({ value: ui.eq.headroom, label: 'Prevent distortion', onCommit: async (on) => { try { ui.eq = await env.api('/api/eq/headroom', { on }); rerender(); } catch (e) { toast('Not changed', 'bad', { detail: e.message }); } } }))),
+          // Reset sound to normal (22 Oct 2026, Shawn: "make a revert to default in the app so he can easily do it"):
+          // every effect off, asked once in place; presets are kept
+          h('div', { class: 'srow' },
+            h('div', {}, h('div', { class: 'srow-title' }, 'Reset sound to normal'),
+              h('div', { class: 'srow-desc' }, ui.resetAsk ? 'Turn every sound effect off, so it plays as it did before? Your presets are kept.' : ui.resetDone || 'Takes every EQ and sound effect off. Your presets are kept.')),
+            h('div', { class: 'srow-ctl' }, ui.resetAsk
+              ? h('div', { class: 'actions' },
+                button('Yes, reset', async () => { try { ui.eq = await env.api('/api/eq/reset', {}); ui.resetDone = 'Done: the sound plays as it does without the EQ.'; } catch (e) { ui.resetDone = `Not reset: ${e.message}`; } ui.resetAsk = false; rerender(); }, { kind: 'primary small' }),
+                button('Cancel', () => { ui.resetAsk = false; rerender(); }, { kind: 'ghost small' }))
+              : button('Reset', () => { ui.resetAsk = true; ui.resetDone = null; rerender(); }, { kind: 'ghost small' }))))
           : h('p', { class: 'faint', style: { fontSize: '12.5px', marginBottom: 0 } }, 'Pick which preset is active in iCUE (or with a short press on the headset\'s volume wheel). Saving restarts iCUE for about 10 seconds.'))));
 }
 

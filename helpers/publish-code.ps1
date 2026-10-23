@@ -13,7 +13,7 @@ function G { $ErrorActionPreference = 'Continue'; $out = & git -C $Clone @args 2
 
 Push-Location $root
 try {
-  if (git status --porcelain --untracked-files=no) { Write-Host '   code not published: there are uncommitted changes' -ForegroundColor Yellow; exit 0 }
+  # the committed version is published (git archive below), so changes still open in the folder do not block it or go out
   $private = (git rev-parse --short=12 HEAD).Trim()
   $files = @(git ls-files | Where-Object { $_ -ne 'JOURNAL.md' -and $_ -notmatch '^public/preview-' -and $_ -notmatch '^screenshots/' })
 } finally { Pop-Location }
@@ -26,11 +26,18 @@ if ($hasApp) { G checkout -q -f -B app origin/app | Out-Null } else { G checkout
 # the branch's files become exactly this version's
 & git -C $Clone rm -rq --cached --ignore-unmatch . 2>&1 | Out-Null
 Get-ChildItem -LiteralPath $Clone -Force | Where-Object { $_.Name -ne '.git' } | Remove-Item -Recurse -Force
-foreach ($f in $files) {
-  $from = Join-Path $root $f; $to = Join-Path $Clone $f
-  if (-not (Test-Path -LiteralPath $from -PathType Leaf)) { continue }
-  New-Item -ItemType Directory -Force (Split-Path $to -Parent) | Out-Null
-  Copy-Item -LiteralPath $from $to -Force
+# exactly the committed files (not the folder's copies, which may hold work in progress)
+$tar = Join-Path ([IO.Path]::GetTempPath()) "devicehub-publish-$private.tar"
+& git -C $root archive --format=tar -o $tar HEAD
+if ($LASTEXITCODE) { throw 'git archive failed' }
+& tar.exe -xf $tar -C $Clone
+if ($LASTEXITCODE) { throw 'unpacking the committed files failed' }
+Remove-Item -LiteralPath $tar -Force
+# the private parts stay out
+$keep = @{}; foreach ($f in $files) { $keep[$f.Replace('/', '\')] = $true }
+Get-ChildItem -LiteralPath $Clone -Recurse -File -Force | Where-Object { $_.FullName -notmatch '\\\.git\\' } | ForEach-Object {
+  $rel = $_.FullName.Substring($Clone.Length).TrimStart('\')
+  if (-not $keep.ContainsKey($rel)) { Remove-Item -LiteralPath $_.FullName -Force }
 }
 G add -A | Out-Null
 if (G status --porcelain) {

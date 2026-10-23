@@ -206,7 +206,27 @@ function extrasFrom(body, old) {
   return x;
 }
 
+// Equalizer APO's own starting config.txt (its installer writes "Preamp: -6 dB" and "Include: example.txt") makes every
+// sound device 6 dB quieter with an example EQ (22 Oct 2026, a friend's headset "is now very low and he cant make it
+// higher"; Shawn: "I dont want it changing anything unless he wants to in the app"). While the file is still exactly
+// that untouched default, DeviceHub replaces it with an empty one (the old one backed up first), so nothing changes
+// until the person uses DeviceHub's EQ.
+const APO_DEFAULT = new Set(['preamp: -6 db', 'include: example.txt']);
+function clearApoDefault(backupDir) {
+  try {
+    if (!installed()) return false;
+    const t = fs.readFileSync(CONFIG, 'utf8');
+    const lines = t.split(/\r?\n/).map((l) => l.trim().toLowerCase()).filter((l) => l && !l.startsWith('#'));
+    if (!lines.length || !lines.every((l) => APO_DEFAULT.has(l))) return false;   // DeviceHub's or the person's own
+    if (backupDir) try { fs.copyFileSync(CONFIG, path.join(backupDir, `eqapo-config-default-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`)); } catch {}
+    const empty = '# Written by DeviceHub: Equalizer APO\'s own starting settings (6 dB quieter, an example EQ) were taken out,\r\n# so nothing changes until you use the EQ in DeviceHub. The old file is in DeviceHub\'s backups.\r\n';
+    fs.writeFileSync(CONFIG, empty);
+    return fs.readFileSync(CONFIG, 'utf8') === empty;
+  } catch { return false; }
+}
+
 module.exports = (icueEq, allDevices, backupDir) => {
+  let cleared = clearApoDefault(backupDir);   // at start, and after DeviceHub installs Equalizer APO (installed() below re-checks)
   // the headset picked on the Headset page, when two or more are plugged in (helpers/headset-pick-eq.js)
   const devices = require('./headset-pick-eq').withPick(allDevices);
   const state = async () => load() || first(icueEq);
@@ -225,7 +245,7 @@ module.exports = (icueEq, allDevices, backupDir) => {
     write(text(s, draft ? draft.stages : p.stages, draft ? `${p.name} (not saved)` : p.name, ctx), backupDir);
   };
   const api = {
-    installed,
+    installed: () => { const on = installed(); if (on && !cleared) cleared = clearApoDefault(backupDir) || cleared; return on; },  // catches an install made while DeviceHub runs
     devices,  // the sound devices the EQ is written for, with the Headset page's pick applied
     async read() {
       const s = await state(); const p = s.presets.find((x) => x.id === s.activeId); const ctx = await devices();
@@ -285,6 +305,20 @@ module.exports = (icueEq, allDevices, backupDir) => {
     },
     async setHeadroom({ on }) { const s = await state(); s.headroom = !!on; store(s); await apply(s); return api.read(); },
     async setExtras(body) { const s = await state(); s.extras = extrasFrom(body || {}, s.extras); store(s); await apply(s); return api.read(); },
+    // Reset sound to normal (22 Oct 2026, Shawn: "make a revert to default in the app so he can easily do it"): every
+    // effect off, so sound plays as it does without Equalizer APO. The presets are kept (Flat made active, added if
+    // missing); each speaker's bands are kept but switched off; the old config.txt is backed up first.
+    async resetToNormal() {
+      const s = await state();
+      lastBackup = 0;   // always back up the file being replaced
+      let flat = s.presets.find((p) => p.stages.every((v) => v === 0));
+      if (!flat) { flat = { id: `{${crypto.randomUUID()}}`, name: 'Flat', stages: Array(10).fill(0), builtIn: true }; s.presets = [flat, ...s.presets]; }
+      s.activeId = flat.id;
+      const speakers = Object.fromEntries(Object.entries(s.extras.speakers || {}).map(([g, v]) => [g, { ...v, on: false, gate: false, level: false }]));
+      s.extras = { ...EXTRAS(), speakers };   // extra filters and the mic effects off too
+      draft = null; store(s); await apply(s);
+      return api.read();
+    },
   };
   return api;
 };

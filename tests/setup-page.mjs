@@ -59,6 +59,8 @@ check(L.soundRows({ installed: true }, { engine: 'eqapo', headsetModel: 'HS80', 
 check(L.lightRows({ running: false, bundle: { canStart: true, version: '1.1' } }, null)[0].action.kind === 'find-lights', 'OpenRGB inside DeviceHub: Find lights');
 check(L.lightRows({ running: true, controllers: [{}, {}] }, null)[0].status === 'done', 'lights found: done');
 check(L.lightRows(null, D.DEMO_SUMMARY).some((r) => r.key === 'lamparrays'), 'Dynamic Lighting shows under Lights');
+{ const r = L.lightRows({ running: true, controllers: [] }, null, { verdict: { kind: 'smbus' } })[0]; check(r.status === 'needs' && /SMBus/.test(r.line), 'no lights on an SMBus board: needs you, says why'); }
+{ const r = L.lightRows({ running: true, controllers: [] }, null, { verdict: { kind: 'none' } })[0]; check(r.status === 'none' && /3-pin/.test(r.line), 'no lighting controller: not needed, says why'); }
 check(L.batteryRows([{ name: 'A', connected: true, battery: 50 }, { name: 'B', connected: false, battery: 90 }]).length === 1, 'only connected batteries');
 check(L.batteryRows([])[0].status === 'none', 'no batteries: not needed');
 check(L.learnRows({ installed: false }, rows)[0]?.action?.kind === 'tool', 'USBPcap offered when a device needs learning');

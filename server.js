@@ -386,7 +386,7 @@ async function api(req, res, url) {
       for (const [k, type] of Object.entries({ autoSwitch: 'boolean', defaultProfile: 'string', artStyle: 'string', themeAccent: 'string', themeBg: 'string', ankerGuard: 'boolean', batterySaver: 'boolean', settingsSync: 'boolean', lightWindow: 'boolean', batteryCare: 'boolean', oneDriveCopy: 'boolean', autoReport: 'boolean' }))if (typeof b[k] === type) cur[k] = type === 'string' ? b[k].slice(0, 100) : b[k];
       // the theme (Settings > Appearance): an accent color as #rrggbb and one of the backdrops
       if (cur.themeAccent && !/^#[0-9a-f]{6}$/i.test(cur.themeAccent)) delete cur.themeAccent;
-      if (cur.themeBg && !['graphite', 'black', 'ocean', 'midnight', 'espresso', 'old-school', 'verde', 'taco-night', 'slate', 'plum', 'forest', 'cream', 'paper'].includes(cur.themeBg)) delete cur.themeBg;
+      if (cur.themeBg && !['graphite', 'black', 'ocean', 'midnight', 'espresso', 'old-school', 'verde', 'milk', 'coral-reef', 'taco-night', 'slate', 'plum', 'forest', 'cream', 'paper'].includes(cur.themeBg)) delete cur.themeBg;
       if (cur.artStyle && !['photo', 'frosted', 'blueprint', 'neon', 'duo', 'pop', 'arctic', 'live', 'studio', 'glow', 'matte', 'night'].includes(cur.artStyle)) delete cur.artStyle;  // Settings > Appearance
       // a name for a headset (the Headset page's Rename; 22 Oct 2026, Shawn: the wired Audio-Technica): { key, name },
       // key a USB id or a wired headset's JACK_ key; an empty name puts Windows' name back
@@ -508,7 +508,7 @@ async function api(req, res, url) {
   }
   if (url.pathname.startsWith('/api/eq') && eqapo.installed()) {
     const act = url.pathname.slice('/api/eq'.length);
-    const ops = { '': 'read', '/save': 'save', '/activate': 'activate', '/preview': 'preview', '/headroom': 'setHeadroom', '/extras': 'setExtras' };
+    const ops = { '': 'read', '/save': 'save', '/activate': 'activate', '/preview': 'preview', '/headroom': 'setHeadroom', '/extras': 'setExtras', '/reset': 'resetToNormal' };
     if (!(act in ops) || (act === '' ? req.method !== 'GET' : req.method !== 'POST')) return send(res, 404, { error: 'not found' });
     try { return send(res, 200, await eqapo[ops[act]](act === '' ? {} : await readBody(req))); } catch (e) { return send(res, 400, { error: e.message }); }
   }
