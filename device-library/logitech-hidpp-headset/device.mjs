@@ -134,7 +134,8 @@ export function adcPercent(mv) {
 const s8 = (b) => (b > 127 ? b - 256 : b);
 
 // G HUB (sheet section 5 "Windows note": it holds the same HID collection; two programs writing one headset fight)
-export const VENDOR_APPS = /^lghub(_agent|_system_tray|_updater)?\.exe$/i;
+// lghub_updater.exe is left out: it is a service that runs with G HUB closed (23 Oct 2026, support #13)
+export const VENDOR_APPS = /^lghub(_agent|_system_tray)?\.exe$/i;
 async function defaultVendorApp() {
   if (typeof process === 'undefined' || !process.versions?.node || process.platform !== 'win32') return null;
   const { execFile } = await import('node:child_process');

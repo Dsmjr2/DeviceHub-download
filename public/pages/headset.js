@@ -6,7 +6,7 @@ import { batteryChart } from '../ui/battery-chart.js';
 import { devices, write, prepare, isDemo, isRemote, connect, markMissing } from '../core/devices.js';
 import { env } from '../core/env.js';
 import { showPicker, isJack } from '../core/headset-pick.js';
-import { headsetArt } from '../ui/art.js';
+import { headsetArt, genericArtFor } from '../ui/art.js';
 import { meter, micState } from '../ui/gauges.js';
 import { topbar, connectState, deviceActions, vendorNote, kv, statusPill, isAway, awayBanner, undoButton, deviceHelp } from './common.js';
 import { setGlow } from '../core/theme.js';
@@ -111,7 +111,7 @@ export default {
             meter({ ic: 'ear', pct: v.sidetoneOn === false ? 0 : v.sidetone, value: v.sidetone == null ? '—' : v.sidetoneOn === false ? 'Off' : `${v.sidetone}%`, label: 'sidetone', big: true })))
         : h('div', { class: 'hero-off' }, icon('sleep'), h('div', {}, h('b', {}, 'Headset off'))),
         // another headset: a plain headset outline in its color, not the HS80's picture
-        generic ? h('div', { class: 'hero-art generic-art' }, icon('headset')) : h('div', { class: `hero-art${v['prop:micEnabled'] === false ? ' mic-muted' : ''}`, style: v.led ? { '--glowc': v.led } : null }, headsetArt())),
+        generic ? h('div', { class: 'hero-art generic-art' }, genericArtFor.headset('headset')) : h('div', { class: `hero-art${v['prop:micEnabled'] === false ? ' mic-muted' : ''}`, style: v.led ? { '--glowc': v.led } : null }, headsetArt())),
       h('div', { class: 'grid two' },
         // Sound: the sliders first, then the on/off switches
         card([h('h2', {}, 'Sound')],

@@ -162,18 +162,34 @@ function pickStep() {
   const pickable = list.filter((d) => !d.refused);
   const only = wanted && !wanted.refused ? wanted : pickable.length === 1 ? pickable[0] : null;
   if (st.autoStart && wanted && !wanted.refused && !st.busy) { st.autoStart = null; setTimeout(() => startAuto(wanted), 0); }
-  return card([h('h2', {}, 'Pick the device'), h('span', { class: 'spacer' }), stepNo('pick')],
-    p('These are plugged in and DeviceHub does not run them yet. Learn it for me does the rest: it opens the maker\'s app, changes each setting there and listens, and asks you only for what it cannot change itself.'),
+  // three groups (23 Oct 2026, Shawn on a friend's PC: "the learn a device area doesnt seem to help" when every row was a
+  // long refusal): what can be learned, what already works with a driver (nothing to learn), and what cannot be learned
+  const works = (d) => d.refused && (d.driver || d.library || (d.vendor && /ready-made|driver written as code|already has a driver/i.test(d.refused)));
+  const learnable = list.filter((d) => !d.refused), working = list.filter(works), cannot = list.filter((d) => d.refused && !works(d));
+  const short = (d) => {
+    if (d.driver) return `Works through its driver (${d.driver.name}). Nothing to learn: its page has its settings.`;
+    const brand = /No learning needed for ([^:]+):/.exec(d.refused || '')?.[1];
+    if (brand) return `Works through DeviceHub's ${brand} driver. Nothing to learn: close ${brand === 'Logitech' ? 'G HUB' : `the ${brand} app`} and turn its settings on from its page or Setup.`;
+    return 'Works through a driver DeviceHub already has. Nothing to learn.';
+  };
+  const why = (d) => (genericDongle({ ...d, name: /^USB device /.test(d.name) ? null : d.name })?.line || (!d.vendor ? 'It has no settings channel, so there is nothing to learn.' : String(d.refused || '').split(/(?<=\.)\s/)[0]));
+  const learnRow = (d) => row(d.title || d.name, [d === wanted ? 'the one you picked on This PC' : null, `USB ${d.vid}:${d.pid}`, d.seems ? `its USB interfaces say: ${d.seems}` : null, kindOf(d) ? `you said: a ${kindOf(d)}` : null, d.vendor ? 'has a settings channel' : 'no maker settings channel seen', d.library && !d.note ? 'a shared driver exists for it: install it from Set up on the Overview' : null, d.note || null].filter(Boolean).join(' · '),
+    // its USB interfaces say both a keyboard and a mouse: asked once, before anything is learned
+    d.askKind && !kindOf(d) ? h('span', { class: 'actions', style: { margin: 0 } }, h('span', { class: 'muted' }, d.askKind.line),
+      ...d.askKind.options.map((o) => button(o.label, () => { st.kindFor[`${d.vid}:${d.pid}`] = o.value; redrawPage(); }, { kind: 'ghost small' })))
+      : h('span', { class: 'actions', style: { margin: 0 } },
+        button('Learn it for me', () => startAuto(d), { kind: primary(d) || d === only ? 'primary small' : 'ghost small', ic: 'plug' }),
+        button('Choose the settings', () => pick(d), { kind: 'ghost small' })));
+  const head = (t) => h('h3', { class: 'learn-group' }, t);
+  return card([h('h2', {}, learnable.length ? 'Pick the device' : 'Nothing here needs learning'), h('span', { class: 'spacer' }), stepNo('pick')],
+    learnable.length ? p('Learn it for me does the rest: it opens the maker\'s app, changes each setting there and listens, and asks you only for what it cannot change itself.')
+      : p(list.length ? 'Every device plugged in either works already or cannot be learned. Plug in another device to learn it, then press Look again.' : 'No device to learn was found. Plug it in, then press Look again.'),
     st.want && !wanted ? faint(`USB ${st.want.toLowerCase()} is not in this list: DeviceHub may run it already, or it has nothing DeviceHub can learn.`) : null,
-    list.length ? list.map((d) => row(d.title || d.name, [d === wanted ? 'the one you picked on This PC' : null, `USB ${d.vid}:${d.pid}`, d.seems ? `its USB interfaces say: ${d.seems}` : null, kindOf(d) ? `you said: a ${kindOf(d)}` : null, d.vendor ? 'has a settings channel' : 'no maker settings channel seen', d.library && !d.note ? 'a shared driver exists for it: install it from Set up on the Overview' : null, genericDongle({ ...d, name: /^USB device /.test(d.name) ? null : d.name })?.line || d.refused || d.note || null].filter(Boolean).join(' · '),
-      // its USB interfaces say both a keyboard and a mouse: asked once, before anything is learned
-      !d.refused && d.askKind && !kindOf(d) ? h('span', { class: 'actions', style: { margin: 0 } }, h('span', { class: 'muted' }, d.askKind.line),
-        ...d.askKind.options.map((o) => button(o.label, () => { st.kindFor[`${d.vid}:${d.pid}`] = o.value; redrawPage(); }, { kind: 'ghost small' })))
-      : d.refused ? (genericDongle({ ...d, name: /^USB device /.test(d.name) ? null : d.name }) ? getHelp(`request:${d.vid.toLowerCase()}:${d.pid.toLowerCase()}`, null, { label: 'Request support', request: { vid: d.vid, pid: d.pid, name: '' }, kind: 'ghost small' }) : null)
-        : h('span', { class: 'actions', style: { margin: 0 } },
-          button('Learn it for me', () => startAuto(d), { kind: primary(d) || d === only ? 'primary small' : 'ghost small', ic: 'plug' }),
-          button('Choose the settings', () => pick(d), { kind: 'ghost small' }))))
-      : faint('No device to learn was found. Plug it in, then look again.'),
+    learnable.length ? [head('Can be learned'), ...learnable.map(learnRow)] : null,
+    working.length ? [head('Already works'), ...working.map((d) => row(d.title || d.name, `${short(d)} · USB ${d.vid}:${d.pid}`, null)),
+      h('div', { class: 'actions', style: { margin: '4px 0 8px' } }, button('Open Setup', () => { location.hash = '#/setup'; }, { kind: 'ghost small' }))] : null,
+    cannot.length ? [head('Cannot be learned here'), ...cannot.map((d) => row(d.title || d.name, `${why(d)} · USB ${d.vid}:${d.pid}`,
+      genericDongle({ ...d, name: /^USB device /.test(d.name) ? null : d.name }) || d.vendor ? getHelp(`request:${d.vid.toLowerCase()}:${d.pid.toLowerCase()}`, null, { label: 'Request support', request: { vid: d.vid, pid: d.pid, name: '' }, kind: 'ghost small' }) : null))] : null,
     problems(),
     checkResult(),
     h('div', { class: 'actions', style: { marginTop: '12px' } }, button('Look again', loadDevices, { kind: 'ghost small', ic: 'refresh' }),

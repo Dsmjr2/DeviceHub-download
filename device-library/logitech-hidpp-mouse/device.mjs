@@ -220,7 +220,8 @@ export const DPI_SLOTS = 5;
 // + 22 Oct 2026, the other ids whose libratbag file carries Quirk=INDEX_OFFSET: G502 HERO, G502 Proteus Spectrum, G604 (Bluetooth)
 export const PROFILE_READ_1BASED = [0xc098, 0xc095, 0xc099, 0xc08b, 0xc332, 0xb024];
 // G HUB (sheet section 5 "Windows note": lghub_agent.exe holds the same HID++ collection; writing beside it fights)
-export const VENDOR_APPS = /^lghub(_agent|_system_tray|_updater)?\.exe$/i;
+// lghub_updater.exe is left out: it is a service that runs with G HUB closed (23 Oct 2026, support #13)
+export const VENDOR_APPS = /^lghub(_agent|_system_tray)?\.exe$/i;
 
 // HITS (0x1B0C) settings: key -> [button, field]. field: act = actuation point (record byte 1), rt = rapid trigger
 // (byte 2, bit 0 kept), hap = click haptics (byte 3). The documented ranges (S AnalogButtonTuning RangeValidator

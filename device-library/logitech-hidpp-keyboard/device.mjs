@@ -151,7 +151,8 @@ export function halvingMarks(max, steps) {
   return [...new Set([0, ...Array.from({ length: steps - 1 }, (_, i) => Math.ceil(max / (1 << i)))])].sort((a, b) => a - b);
 }
 // G HUB (sheet section 5 "Windows note")
-export const VENDOR_APPS = /^lghub(_agent|_system_tray|_updater)?\.exe$/i;
+// lghub_updater.exe is left out: it is a service that runs with G HUB closed (23 Oct 2026, support #13)
+export const VENDOR_APPS = /^lghub(_agent|_system_tray)?\.exe$/i;
 async function defaultVendorApp() {
   if (typeof process === 'undefined' || !process.versions?.node || process.platform !== 'win32') return null;
   const { execFile } = await import('node:child_process');

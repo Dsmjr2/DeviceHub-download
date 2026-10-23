@@ -30,7 +30,7 @@ export const FRAMES = Object.freeze({
 });
 export const REPLY_MS = 2000;
 // G HUB talks to the same base (process names: lghub.exe, lghub_agent.exe, lghub_updater.exe)
-export const VENDOR_APPS = [/^lghub/i];
+export const VENDOR_APPS = [/^lghub(_agent|_system_tray)?\.exe$/i];   // not lghub_updater.exe: a service that runs with G HUB closed
 const APP_CHECK_MS = 15000;
 
 class Refused extends Error { constructor(m) { super(m); this.refused = true; } }

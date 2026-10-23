@@ -149,7 +149,12 @@ function settingRow(d, s) {
     r.classList.add('stack');
     return r;
   }
-  return row(s.label, desc, control(d, s, off));
+  // a choice whose options are long ("Onboard (the profiles stored in the mouse)") takes its own line under the name and
+  // description, so neither is squeezed into a narrow column (23 Oct 2026, a friend's Logitech page)
+  const wide = s.type === 'choice' && (s.options || []).reduce((n, o) => n + String(o.label ?? o.value).length, 0) > 32;
+  const r = row(s.label, desc, control(d, s, off));
+  if (wide) r.classList.add('stack');
+  return r;
 }
 
 function control(d, s, off = false) {

@@ -55,7 +55,20 @@ if (DEMO) for (const a of adapters) if (a.demoHistory) { useDemoHistory(a.id, a.
 
 const PAGES = [overview, setupPage, mousePage, headsetPage, keyboardPage, lightingPage, monitorsPage, fansPage, wallpapersPage, profilesPage, backupsPage, settingsPage, learnPage, supportedPage];
 // devices added on this PC (my-devices/, 21 Oct 2026): a page each, after the built-in devices
-if (REMOTE || DEMO) for (const d of Object.values(devices)) if (d.adapter?.plugin) PAGES.splice(PAGES.indexOf(lightingPage), 0, devicePage(d.id));
+// A device whose driver arrives after the window opened (installed from the library, loaded a moment late, plugged in)
+// gets its page and sidebar entry then (23 Oct 2026, a friend's HyperX headset: its tile did nothing, as no page had
+// been made for it, and a click fell back to the Overview)
+function ensureDevicePages() {
+  if (!(REMOTE || DEMO)) return false;
+  let added = false;
+  for (const d of Object.values(devices)) {
+    if (!d.adapter?.plugin || PAGES.some((p) => p.id === d.id)) continue;
+    PAGES.splice(PAGES.indexOf(lightingPage), 0, devicePage(d.id));
+    added = true;
+  }
+  return added;
+}
+ensureDevicePages();
 let current = null;
 
 // ---------- hover tilt ----------
@@ -187,6 +200,7 @@ let transitioning = false;
 let seq = 0; // render counter: a late swap from an older render never replaces a newer page
 function render(fresh) {
   const id = location.hash.replace(/^#\//, '') || 'overview';
+  if (ensureDevicePages()) buildRail();
   const page = PAGES.find((p) => p.id === id) || PAGES[0];
   const changed = page !== current;
   current = page;
@@ -233,6 +247,7 @@ document.addEventListener('pointercancel', letGo, true);
 
 // Re-render the visible page when a device it shows changes (coalesced to one per frame).
 onChange((id) => {
+  if (ensureDevicePages()) buildRail();
   paintLive();
   // another VIA keyboard: its drawing from its own layout (ui/art.js)
   if (id === 'keyboard') setKeyboardLayout(devices.keyboard?.adapter?.session?.layout);

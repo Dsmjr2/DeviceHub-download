@@ -4,7 +4,7 @@
 // line in the same place. Routes, file formats and the restore itself are unchanged: restorePlan below, core/setup.js.
 import { h, icon } from '../ui/dom.js';
 import { button, card } from '../ui/controls.js';
-import { devices, writeBatch, isDemo } from '../core/devices.js';
+import { devices, writeBatch, isDemo, shownDevices } from '../core/devices.js';
 import { topbar } from './common.js';
 import { PulsarMouse } from '../devices/pulsar.js';
 import { SETTINGS as MOUSE_SETTINGS } from '../devices/mouse-adapter.js';
@@ -339,7 +339,9 @@ export default {
       setTimeout(() => (p.pick ? pickSetupFile() : askSetup('file', p.file, p.when, p.pc)), 0);
     }
     const groups = new Map();
-    for (const id of ['mouse', 'keyboard', 'headset']) if (devices[id]) groups.set(id, []);
+    // an empty card only for a device this PC has (23 Oct 2026, Shawn: a friend's Backups showed his mouse and headset);
+    // a device with backups always has its card
+    for (const d of shownDevices()) groups.set(d.id, []);
     const ids = Object.keys(devices);
     for (const f of files || []) { const g = groupOf(f.name, ids); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(f); }
     const cards = [...groups].map(([id, list]) => (list.length ? deviceCard(id, list)

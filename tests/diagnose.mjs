@@ -20,6 +20,9 @@ check(mk('ghub') && mk('ghub').closable.join() === 'lghub_agent.exe', 'G HUB fou
 check(mk('armoury') && mk('armoury').closable.length === 0, "Armoury Crate's LightingService found but never closed (a service)");
 check(mk('pulsar') && !mk('synapse') && !mk('gg'), 'Pulsar found; apps not running are not listed');
 check(parseTasklist('').length === 0 && runningMakers([]).length === 0, 'empty tasklist -> nothing');
+// G HUB's updater is a service that runs with G HUB closed (support #13): it is not "G HUB open"; the agent is
+check(runningMakers(['lghub_updater.exe', 'svchost.exe']).length === 0, 'lghub_updater.exe alone is not G HUB open');
+check(runningMakers(['lghub_updater.exe', 'lghub_agent.exe']).some((m) => m.key === 'ghub'), 'lghub_agent.exe is G HUB open');
 check(Object.keys(MAKER_APPS).length === 11, 'eleven makers known');
 
 // ---- server.log

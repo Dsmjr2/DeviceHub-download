@@ -53,6 +53,7 @@ export const MAKER_APPS = {
   epomaker: { name: 'the Epomaker driver', detect: [/epomaker/i], vids: ['342d'] },
   wootility: { name: 'Wootility', detect: [/^wootility/i], vids: ['31e3', '03eb'] },
 };
+export const BACKGROUND = /updater|update\.exe$|crashpad|crash_?handler|crashreport/i;
 const NEVER_CLOSE = /service|updater|crashpad|^lightingservice\.exe$/i;
 
 // tasklist /fo csv /nh -> image names
@@ -63,7 +64,9 @@ export function parseTasklist(text) {
 export function runningMakers(images) {
   const out = [];
   for (const [key, app] of Object.entries(MAKER_APPS)) {
-    const hit = images.filter((i) => app.detect.some((re) => re.test(i)));
+    // an updater or crash reporter is not the app (23 Oct 2026, a friend's PC: lghub_updater.exe, a service that runs
+    // with G HUB closed, held a Logitech mouse's settings read-only for good)
+    const hit = images.filter((i) => app.detect.some((re) => re.test(i)) && !BACKGROUND.test(i));
     if (hit.length) out.push({ key, name: app.name, images: hit, closable: hit.filter((i) => !NEVER_CLOSE.test(i)) });
   }
   return out;

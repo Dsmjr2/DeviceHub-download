@@ -21,7 +21,7 @@ async function uninstall() {
 }
 import { env } from '../core/env.js';
 import { ART_STYLES, saveArtStyle, THEME_ACCENTS, THEME_BGS, SKIN_SILVER_NAME, currentTheme, saveTheme, hasPicture, removePicture } from '../core/theme.js';
-import { artFor } from '../ui/art.js';
+import { slotArt } from '../ui/art.js';
 import { copyDownloadLink, copyShortReport } from '../core/share.js';
 import { installerButton, installerStatus, installing } from '../ui/installer-button.js';
 import { getHelp } from '../ui/get-help.js';
@@ -179,6 +179,21 @@ const setupFileRow = () => (isDemo() ? null : row('Move to another PC', 'Your wh
 // Setup's row: "Everything is set up" when nothing needs the person (then it is only reached from here and Search), else
 // how many things need them (23 Oct 2026, Shawn: "put the set up area in settings when its fully set up")
 let setupWatch = null;
+// Publish to friends (23 Oct 2026): the owner's PC only (server.js /api/publish-release); how far this copy is ahead of
+// the version friends get, and one button that opens helpers/publish-release.ps1 in its own window
+let pub = null, pubAt = 0;
+function publishRow() {
+  if (isDemo()) return null;
+  if (!pub && Date.now() - pubAt > 60000) { pubAt = Date.now(); fetch('/api/publish-release').then((r) => r.json()).then((j) => { pub = j; rerender(); }).catch(() => {}); }
+  if (!pub?.owner) return null;
+  const when = pub.published?.builtAt ? new Date(pub.published.builtAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : null;
+  const text = pub.ahead > 0 ? `Friends have the version from ${when}; this PC has ${pub.ahead} newer change${pub.ahead === 1 ? '' : 's'}.` : when ? `Friends have this PC's version (${when}).` : 'Builds, signs and uploads this PC\'s version for friends.';
+  return row('Publish to friends', text, button('Publish', async () => {
+    try { await env.api('/api/publish-release', {}); toast('Publishing in its own window', 'busy', { detail: 'Building, signing and uploading take a few minutes. Friends then see Update in Settings.', ms: 12000 }); }
+    catch (e) { toast('Not started', 'bad', { detail: e.message }); }
+    pub = null; pubAt = Date.now() + 5 * 60000;
+  }, { kind: pub.ahead > 0 ? 'primary small' : 'ghost small', ic: 'external' }));
+}
 function setupRow() {
   if (!setupWatch) setupWatch = watchSetup(() => { if (location.hash === '#/settings') rerender(); });
   const n = setupNeeds();
@@ -373,7 +388,7 @@ function appearanceCard() {
   return card([h('h2', {}, 'Appearance')],
     h('div', { class: 'art-styles' }, ...ART_STYLES.map(([key, name]) => h('button', { class: `art-style${key === cur ? ' sel' : ''}`, 'aria-pressed': String(key === cur), dataset: { look: key },
       onclick: async () => { await saveArtStyle(key); toast(`Drawings: ${name}`, 'good', { ms: 1400 }); rerender(); } },
-      h('div', { class: 'art-preview', dataset: { artPreview: key } }, artFor.mouse(), artFor.headset(), artFor.keyboard()),
+      h('div', { class: 'art-preview', dataset: { artPreview: key } }, slotArt('mouse', devices.mouse), slotArt('headset', devices.headset), slotArt('keyboard', devices.keyboard)),
       h('span', {}, name)))),
     themeControls());
 }
@@ -485,6 +500,7 @@ export default {
           // column taller than it was)
           card([h('h2', {}, 'DeviceHub')], ...tight(
             row('Share DeviceHub', 'Download link to send to people.', button('Copy link', copyDownloadLink, { kind: 'small', ic: 'external' })),
+            publishRow(),
             // the devices DeviceHub runs and what each gets (pages/supported.js, 22 Oct 2026): a page of its own, not a dialog
             // Setup lives here once nothing needs the person (its sidebar entry goes away then; app.js paintSetupNav)
             setupRow(),

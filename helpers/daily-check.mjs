@@ -37,7 +37,12 @@ export async function run({ all = false } = {}) {
   try {
     const now = Date.now();
     const put = (name, res) => { r.items[name] = { ...res, at: new Date().toISOString() }; };
+    // only the devices this PC has had (23 Oct 2026, a friend's PC listed Shawn's Pulsar and HS80): one never seen here
+    // and not connected now is left out, and a line saved for it before goes
+    let seenHere = new Set();
+    try { seenHere = new Set(JSON.parse(fs.readFileSync(path.join(path.dirname(file), 'seen-devices.json'), 'utf8'))); } catch {}
     for (const d of Object.values(core.devices)) {
+      if (seenHere && !seenHere.has(d.id) && !['connected', 'asleep'].includes(d.status)) { delete r.items[d.adapter.title]; continue; }
       const last = r.items[d.adapter.title];
       if (!all && last && last.at && now - new Date(last.at) < DAY && last.ok !== null) continue;
       if (d.status !== 'connected') {

@@ -192,14 +192,18 @@ function pcLights() {
   return card([...head, h('span', { class: 'spacer' }), pill(`${o.controllers.length} found`, 'good')],
     !o.bundled && o.board?.setUp ? h('p', { class: 'faint', style: { fontSize: '12.5px' } }, 'Through the OpenRGB inside DeviceHub, as administrator: board, fan and RAM lights too.') : null,
     o.bundled ? h('p', { class: 'faint', style: { fontSize: '12.5px' } }, `Through the OpenRGB inside DeviceHub: USB lights only${o.readOnly ? '; read only for now (this OpenRGB version numbers lights wrongly for DeviceHub)' : ''}.`) : null,
-    o.controllers.length ? h('div', { class: 'pc-parts' }, ...o.controllers.map((c) => h('div', { class: 'pc-part' },
-      h('div', { class: 'pc-part-head' }, h('span', { class: 'muted' }, c.type), h('b', {}, nameOf(o.controllers, c)),
-        c.color ? h('span', { class: 'dot', style: { background: c.same ? c.color : 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)' }, title: c.same ? c.color : 'several colors' }) : null),
-      h('small', { class: 'faint' }, [c.mode ? `Mode: ${c.mode}` : null, `${c.leds} light${c.leds === 1 ? '' : 's'}`].filter(Boolean).join(' · ')),
-      // the colors, for the whole device and per zone (an ARGB header is where fans plug in) (22 Oct 2026)
-      colorRow('All', c.same ? c.color : null, (hex) => setPcColor(c.index, hex, null)),
-      c.zones.length > 1 && shownZones(c).length ? h('div', { class: 'pc-zones' }, ...shownZones(c).map(([z, i]) => colorRow(/^\?+$/.test(z.name || '') ? `Unnamed ${i + 1}` : z.name, z.color, (hex) => setPcColor(c.index, hex, i)))) : null,
-      c.zones.length > 1 && hiddenZoneCount(c) ? h('small', { class: 'faint' }, `${hiddenZoneCount(c)} more part${hiddenZoneCount(c) === 1 ? '' : 's'}: All colors them; Find my lights shows which is which and names them.`) : null)))
+    o.controllers.length ? h('div', { class: 'pc-parts' }, ...groups(o.controllers).map((g) => {
+      const c = g[0], many = g.length > 1;
+      const same = g.every((x) => x.same && x.color === c.color);
+      return h('div', { class: 'pc-part' },
+        h('div', { class: 'pc-part-head' }, h('span', { class: 'muted' }, c.type), h('b', {}, many ? `${c.name} × ${g.length}` : c.name),
+          c.color ? h('span', { class: 'dot', style: { background: same ? c.color : 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)' }, title: same ? c.color : 'several colors' }) : null),
+        h('small', { class: 'faint' }, [c.mode ? `Mode: ${c.mode}` : null, `${g.reduce((n, x) => n + (x.leds || 0), 0)} lights`, many ? `${g.length} sticks, one color for all` : null].filter(Boolean).join(' · ')),
+        // the colors, for the whole part and per zone (an ARGB header is where fans plug in) (22 Oct 2026)
+        colorRow('All', same ? c.color : null, async (hex) => { for (const x of g) await setPcColor(x.index, hex, null); }),
+        !many && c.zones.length > 1 && shownZones(c).length ? h('div', { class: 'pc-zones' }, ...shownZones(c).map(([z, i]) => colorRow(/^\?+$/.test(z.name || '') ? `Unnamed ${i + 1}` : z.name, z.color, (hex) => setPcColor(c.index, hex, i)))) : null,
+        !many && c.zones.length > 1 && hiddenZoneCount(c) ? h('small', { class: 'faint' }, `${hiddenZoneCount(c)} more part${hiddenZoneCount(c) === 1 ? '' : 's'}: All colors them; Find my lights shows which is which and names them.`) : null);
+    }))
       : h('p', { class: 'faint' }, 'OpenRGB runs but found no lights.'),
     // Find my lights: one color per zone, the person names what lit (ui/find-lights.js)
     findLights(o, redraw),
@@ -214,8 +218,16 @@ function pcLights() {
 // PC lights on its own, as the Lighting page's third column (23 Oct 2026, Shawn: "remove this [the More fold], I want
 // the lighting area non scrollable"); This PC's parts list is no longer on Lighting (Setup lists the devices that need
 // something, with the same Learn it and Request support)
-// two parts with the same name (two RAM sticks) are told apart by number
-const nameOf = (all, c) => { const same = all.filter((x) => x.name === c.name); return same.length > 1 ? `${c.name} (${same.indexOf(c) + 1})` : c.name; };
+// parts with the same name and kind (four RAM sticks) are one part with one color (23 Oct 2026, Shawn: "Put the 4 sticks of
+// ram in one area instead of split out"); a board or anything else with zones stays on its own
+const groups = (all) => {
+  const out = [];
+  for (const c of all) {
+    const g = c.type === 'ram' && out.find((x) => x[0].type === 'ram' && x[0].name === c.name);
+    if (g) g.push(c); else out.push([c]);
+  }
+  return out;
+};
 
 export function pcLightsCard(onRedraw) {
   redraw = onRedraw;

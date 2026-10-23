@@ -204,7 +204,7 @@ function isolatedApi(req, res, url) {
     '/api/setups': [], '/api/monitors': [], '/api/cameras': [], '/api/power': { saver: false, isolated: true },
     '/api/startup': { enabled: false, isolated: true }, '/api/processes': [], '/api/games': [],
     '/api/battery-estimate': {}, '/api/helper-calls': { uptimeS: Math.round(process.uptime()), calls: {} },
-    '/api/settings-sync': { isolated: true, on: false }, '/api/auto-report': { isolated: true, on: true, configured: false, owner: false, active: false }, '/api/self-update': { isolated: true, count: 0 }, '/api/self-update/progress': {},
+    '/api/settings-sync': { isolated: true, on: false }, '/api/auto-report': { isolated: true, on: true, configured: false, owner: false, active: false }, '/api/self-update': { isolated: true, count: 0 }, '/api/publish-release': { owner: false }, '/api/self-update/progress': {},
     '/api/updates': { isolated: true, apps: [] }, '/api/openrgb': { running: false, isolated: true, controllers: [] }, '/api/openrgb/find': { running: false, isolated: true },
     '/api/board-lights': { isolated: true, pawnio: { installed: false, version: null }, setUp: false, task: false, copy: false, canSetUp: false, why: 'DeviceHub is in isolated test mode', partial: null, before: '', remove: '', busy: false },
     '/api/lights/diagnose': { isolated: true, board: null, openrgb: { state: 'unknown' }, found: [], seen: [], verdict: null, problems: [], lines: [] },
@@ -743,6 +743,25 @@ async function api(req, res, url) {
   // how far an update has got, for Settings' loading bar (helpers/self-update.js)
   // what the server has asked the device helper for, by kind, since it started (diagnosis of a part that keeps asking more)
   if (url.pathname === '/api/helper-calls') return send(res, 200, { uptimeS: Math.round(process.uptime()), calls: require('./helpers/native').callCounts() });
+  // Publish to friends (23 Oct 2026, Shawn: "I tried to update on his but it didnt work" - nothing newer was published):
+  // on the owner's PC only, how far this copy is ahead of the version on the download page, and a button that opens
+  // helpers/publish-release.ps1 in its own window (build, sign, upload; its output and any question stay visible)
+  if (url.pathname === '/api/publish-release') {
+    const owner = await (await import('./helpers/auto-report.mjs')).isOwnerPc(ROOT).catch(() => false);
+    if (!owner) return send(res, 200, { owner: false });
+    if (req.method === 'POST') {
+      const script = path.join(ROOT, 'helpers', 'publish-release.ps1');
+      require('child_process').spawn('cmd.exe', ['/c', 'start', '"Publish DeviceHub"', 'powershell', '-NoExit', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', `"${script}"`], { cwd: ROOT, detached: true, stdio: 'ignore', windowsVerbatimArguments: true }).unref();
+      return send(res, 200, { owner: true, started: true });
+    }
+    let published = null, ahead = null;
+    try { const v = await require('./helpers/self-update').releaseInfo(); published = { commit: v.commit, builtAt: v.builtAt }; } catch {}
+    if (published?.commit) {
+      const c = String(published.commit).replace(/-modified$/, '');
+      try { ahead = Number(require('child_process').execFileSync('git', ['rev-list', '--count', `${c}..HEAD`], { cwd: ROOT, windowsHide: true, timeout: 10000, encoding: 'utf8' }).trim()); } catch {}
+    }
+    return send(res, 200, { owner: true, published, ahead });
+  }
   if (url.pathname === '/api/self-update/progress') return send(res, 200, require('./helpers/self-update').getProgress() || {});
   if (url.pathname === '/api/self-update') {
     const su = require('./helpers/self-update');

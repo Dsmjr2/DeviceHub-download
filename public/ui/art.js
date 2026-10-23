@@ -11,6 +11,7 @@
 // hidden unless a look shows them (22 Oct 2026, style.css "The drawn looks, made beautiful").
 import { svgEl } from './dom.js';
 import { ART_STYLES } from '../core/theme.js';
+import { isDemo } from '../core/devices.js';
 const ART_LOOKS = ART_STYLES.map(([k]) => k);
 
 // the lit gradients every drawing uses (dhb-<device> the body, dhs-<device> the soft parts), once per page; the stop
@@ -286,8 +287,19 @@ export const genericArtFor = { mouse: genericMouseArt, headset: genericHeadsetAr
 // artOf(d) is what pages call for any device. An added device that reports a battery (22 Oct 2026) gets the generic
 // drawing of its kind (a plain tile for any other kind) with the Live look's liquid for its own battery.
 const kindOf = (kind) => { const k = String(kind || '').toLowerCase(); return /mouse/.test(k) ? 'mouse' : /headset|headphone|earbud/.test(k) ? 'headset' : /keyboard/.test(k) ? 'keyboard' : null; };
+// Shawn's own drawings only where his own devices are (23 Oct 2026, Shawn: "These appearences need to be just the
+// generic ones ... when someone else is using a different set up"): the mouse slot's Pulsar once that mouse has been on
+// this PC, the headset slot's HS80 only when it is an HS80 (any other USB headset runs there in sound-only mode), the
+// keyboard slot once a keyboard has been (it draws that keyboard's own layout). Anything else: the generic drawing.
+export function isOwn(kind, d) {
+  if (isDemo()) return true;   // demo mode shows Shawn's own devices
+  if (!d || !(d.seen || ['connected', 'asleep'].includes(d.status))) return false;
+  if (kind === 'headset') return /HS80/i.test(String(d.adapter?.title || ''));
+  return true;
+}
+export const slotArt = (kind, d) => (isOwn(kind, d) ? artFor[kind]() : genericArtFor[kind](d?.id));
 export const artOf = (d) => {
-  if (artFor[d.id]) return artFor[d.id]();
+  if (artFor[d.id]) return slotArt(d.id, d);
   if (d.adapter?.plugin && d.adapter.battery) { const k = kindOf(d.adapter.kind); return k ? genericArtFor[k](d.id) : plainArt(d.id); }
   return plainArt();
 };

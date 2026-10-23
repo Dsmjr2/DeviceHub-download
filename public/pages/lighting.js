@@ -2,7 +2,7 @@
 import { h, icon } from '../ui/dom.js';
 import { card, slider, button, toggle, pill } from '../ui/controls.js';
 import { devices, write, writeBatch, log, stillLooking, shownDevices } from '../core/devices.js';
-import { artFor } from '../ui/art.js';
+import { artOf } from '../ui/art.js';
 import { topbar } from './common.js';
 import { setGlow, getGlow } from '../core/theme.js';
 import { toast } from '../ui/overlay.js';
@@ -128,7 +128,7 @@ export default {
       const ok = d.status === 'connected' && d.adapter.hasLighting?.();
       const looking = !ok && d.status !== 'connected' && stillLooking();
       return h('div', { class: `target lighting-preview${looking ? ' ghost' : ''}`, style: { '--cc': `var(--c-${id})`, '--pick': ui.hex } },
-        artFor[id](),
+        artOf(devices[id]),
         h('div', { class: 'grow' }, h('b', {}, d.adapter.title), h('small', {}, ok ? note : d.status === 'connected' ? 'no lighting channel' : looking ? 'looking…' : 'not connected')),
         toggle({ value: ui.include[id] && ok, disabled: !ok, label: `include ${id}`, onCommit: async (on) => { ui.include[id] = on; } }));
     };
@@ -155,7 +155,7 @@ export default {
                   h('div', { class: 'grow' }, h('b', {}, d.adapter.title), h('small', {}, ok ? s.label : d.status !== 'connected' ? 'not connected' : `${s.label}: read-only until Turn on settings on its page`)),
                   toggle({ value: ui.include[d.id] !== false && ok, disabled: !ok, label: `include ${d.adapter.title}`, onCommit: async (on) => { ui.include[d.id] = on; } }));
               }),
-              has('mouse') ? h('div', { class: 'target', style: { '--cc': 'var(--c-mouse)' } }, artFor.mouse(), h('div', { class: 'grow' }, h('b', {}, devices.mouse.adapter.title), h('small', {}, 'no lights DeviceHub can set on this mouse')), pill('n/a')) : null,
+              has('mouse') ? h('div', { class: 'target', style: { '--cc': 'var(--c-mouse)' } }, artOf(devices.mouse), h('div', { class: 'grow' }, h('b', {}, devices.mouse.adapter.title), h('small', {}, 'no lights DeviceHub can set on this mouse')), pill('n/a')) : null,
               h('div', { class: 'target lighting-preview', style: { '--cc': 'var(--signal)', '--pick': ui.hex } }, h('div', { class: 'target-ic' }, icon('lighting')),
                 h('div', { class: 'grow' }, h('b', {}, 'PC lights'), h('small', {}, pcIncluded() ? 'board, fans and more, through OpenRGB' : 'through OpenRGB, when it runs (PC lights, right)')),
                 toggle({ value: pcIncluded(), disabled: !pcAvailable(), label: 'include PC lights', onCommit: async (on) => { setPcIncluded(on); } })))),

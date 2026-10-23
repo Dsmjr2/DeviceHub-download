@@ -17,7 +17,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { APPS as FILE_APPS, bases as baseDirs, scan as vendorScan } from './vendor-files.mjs';
-import { MAKER_APPS, parseTasklist } from './diagnose.mjs';
+import { MAKER_APPS, parseTasklist, BACKGROUND } from './diagnose.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
@@ -101,7 +101,7 @@ export async function findMaker(vid, { env = process.env, list = tasklist, names
   if (!installed && m.uninstall) { try { installed = (await names()).some((n) => m.uninstall.test(n)); } catch {} }
   const detect = m.detect || MAKER_APPS[m.key]?.detect || [];
   let running = false;
-  try { running = parseTasklist(await list()).some((i) => detect.some((re) => re.test(i))); } catch {}
+  try { running = parseTasklist(await list()).some((i) => detect.some((re) => re.test(i)) && !BACKGROUND.test(i)); } catch {}
   return { known: true, key: m.key, name: m.name, page: m.page, installed: installed || running, running, window: m.window };
 }
 

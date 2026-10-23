@@ -134,6 +134,9 @@ function fanLightsCard() {
         ...SWATCHES.map((x) => h('button', { class: `swatch${c.same && c.color === x ? ' on' : ''}`, style: { '--s': x }, 'aria-label': `${c.name}: ${x}`, disabled: lightsBusy || !!o.readOnly, onclick: () => setFan(c, x) })),
         h('input', { type: 'color', class: 'swatch-custom', 'aria-label': `${c.name}: pick a colour`, value: c.color || '#ffffff', disabled: lightsBusy || !!o.readOnly, onchange: (e) => setFan(c, e.target.value) }))))
       : whyNone(o)),
+    // only the board itself (no fan hub or cooler on USB): where case fans must be plugged for the colour to reach them
+    // (23 Oct 2026, a friend's Corsair case: "cannot see his case fans")
+    list.length && list.every((c) => c.type === 'motherboard') ? h('p', { class: 'faint fan-why' }, "Case fans show here only through the board's fan headers (ARGB / D_LED) or a USB fan hub. If changing the board's colour does not change your fans, they are on the case's own hub (the one with a button): plug that hub's 3-pin ARGB lead into the board's ARGB header, then their colours change here with the board.") : null,
     row('Fan speed', "CPU and case fans follow the board's BIOS curve (guide: docs\\FANS.md).", pill('BIOS')));
 }
 
