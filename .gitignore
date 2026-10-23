@@ -53,6 +53,8 @@ background-picture.*
 wallpaper-previous/
 # problem reports already sent today (helpers/auto-report.mjs)
 auto-report-state.json
+# zone names from Find my lights (helpers/find-lights.js), this PC's own
+lights-names.json
 
 # the tools the installer ships (Equalizer APO, OpenRGB), copied in from bundled-cache/ on a development copy
 tools/

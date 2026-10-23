@@ -60,6 +60,7 @@ export const options = {
 let started = false;
 export function start(o = {}) { Object.assign(options, o); started = true; ownerCache = null; }
 export function stop() { started = false; }
+export const isStarted = () => started;   // Get help offers Send to Shawn only then (helpers/get-help.mjs canSend)
 
 const file = (n) => path.join(options.root, n);
 const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8').replace(/^﻿/, '')); } catch { return d; } };

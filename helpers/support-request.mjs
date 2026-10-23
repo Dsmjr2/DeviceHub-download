@@ -108,6 +108,40 @@ export async function build(q) {
   return { ok: true, title: f.title, body: fin.body, version, fingerprint: fingerprint(vid, pid) };
 }
 
+// ---------- Get help's Send to Shawn (22 Oct 2026; docs/handoff/get-help-everywhere.md) ----------
+// The report the page already showed (get-help reportFor(token): stripped, checked), sent through the same relay path
+// as the requests above. Fingerprint "support:help-<area>[:<device>]:<hour>" (UTC hour), so the relay labels it
+// `support` and each area (a device page: each device) sends at most once an hour; the relay's own once-a-day key
+// includes the hour, so a later hour is a new issue. The owner's PC, reports off, no relay: { fallback } (GitHub).
+export const HELP_SENT_LINE = 'Sent to Shawn.';
+const part = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+export function helpFingerprint(area, device, now = ar.options.now()) {
+  const hour = new Date(now).toISOString().slice(11, 13);
+  return `${`support:help-${part(area) || 'devicehub'}${device ? `:${part(device)}` : ''}`.slice(0, 76)}:${hour}`;
+}
+const FIRST = '**What I was doing, and what went wrong:** (write it here)';
+const LAST = "Made with DeviceHub's Get help button. DeviceHub sent nothing; the person who opened this pressed Submit.";
+export async function sendHelp(token) {
+  const { reportFor } = await import('./get-help.mjs');
+  const rep = reportFor(token);
+  if (!rep) return { sent: false, error: 'That report is too old: press Get help again.' };
+  const st = await ar.status();
+  if (!st.active) return { sent: false, fallback: true, why: !st.configured ? 'no relay set up' : st.owner ? "the owner's own PC" : 'problem reports are off' };
+  const fp = helpFingerprint(rep.area, rep.device);
+  if (ar.sentToday(fp)) return { sent: true, already: true, line: HELP_SENT_LINE };
+  const names = personalNames([...(ar.options.names || []), ...(options.names || [])]);
+  const title = rep.title.replace(/\s+/g, ' ').trim().slice(0, 120);
+  let body = rep.body.replace(FIRST, '**The person pressed Get help on this page and sent it.**')
+    .replace(LAST, 'Sent by DeviceHub when the person pressed Send on this page. Anything personal was taken out first.');
+  if (body.length > 12000) body = `${body.slice(0, 11960)}\n\n(Cut to fit.)`;
+  const fin = ar.finalCheck(findPersonal, title, body, names);
+  if (!fin.ok) return { sent: false, fallback: true, why: fin.why };
+  const r = await ar.sendNow({ fingerprint: fp, title, body: fin.body, version: String(devicehubVersion(ar.options.root)).slice(0, 40) });
+  if (r.sent) return { sent: true, already: !!r.already, line: HELP_SENT_LINE };
+  if (r.queued) return { sent: false, queued: true, line: QUEUED_LINE };
+  return { sent: false, fallback: true, why: r.why };
+}
+
 // one click: { sent, queued, fallback, line, why }
 export async function send(q) {
   const st = await ar.status();

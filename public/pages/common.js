@@ -4,7 +4,7 @@ import { button, pill } from '../ui/controls.js';
 import { connect, refresh, backupNow, isDemo, isRemote, undo } from '../core/devices.js';
 import { toast } from '../ui/overlay.js';
 import { artOf } from '../ui/art.js';
-import { getHelp } from '../ui/get-help.js';
+import { helpHere } from '../ui/get-help.js';
 
 export const STATUS = {
   connected: ['Connected', 'good'], asleep: ['Asleep', 'warn'], connecting: ['Connecting', 'accent'],
@@ -37,9 +37,14 @@ export function undoButton(d) {
 
 // the page title alone (21 Oct 2026, Shawn: remove the small line above it and other unneeded wording); the eyebrow
 // and lede the pages pass are no longer shown
-export function topbar(eyebrow, title, lede, right) {
-  return h('div', { class: 'topbar' }, h('div', {}, h('h1', {}, title)), right || null);
+// help: the screen's Get help (deviceHelp below, or ui/get-help.js helpHere), one small button at the top right; it
+// opens below the title across the page (style.css .topbar > .get-help), so a closed one adds no height
+export function topbar(eyebrow, title, lede, right, help) {
+  return h('div', { class: `topbar${help ? ' has-help' : ''}` }, h('div', {}, h('h1', {}, title)), right || null, help || null);
 }
+// a device page's Get help (22 Oct 2026, docs/handoff/get-help-everywhere.md): the device's own report plus what the
+// page shows; the same one whether the device is connected or not
+export const deviceHelp = (d) => helpHere('device', { device: d.id, context: () => ({ status: d.status === 'connected' ? 'connected' : d.status }) });
 
 const VENDOR_NAMES = { pulsar: 'the Pulsar app', icue: 'iCUE', epomaker: "Epomaker's web driver", via: 'VIA' };
 export async function openVendor(app) {
@@ -127,9 +132,8 @@ function diagnosis(d) {
       h('div', { class: 'actions', style: { margin: '8px 0 0', justifyContent: 'flex-start' } }, diagAction(d, top.action, done)),
       note,
       rest.length ? h('details', { style: { marginTop: '8px' } }, h('summary', { style: { cursor: 'pointer', color: 'var(--muted)' } }, `More (${rest.length})`),
-        ...rest.map((f) => h('div', {}, line(f, false), f.action ? h('div', { class: 'actions', style: { margin: '6px 0 0', justifyContent: 'flex-start' } }, diagAction(d, f.action, done)) : null))) : null,
-      // Get help (helpers/get-help.mjs): the report shown here first; GitHub opens only on the person's click
-      getHelp(d.id)));
+        ...rest.map((f) => h('div', {}, line(f, false), f.action ? h('div', { class: 'actions', style: { margin: '6px 0 0', justifyContent: 'flex-start' } }, diagAction(d, f.action, done)) : null))) : null));
+      // Get help is at the top right of the device page (deviceHelp), one per screen
   };
   const key = `${d.status}|${d.error || ''}`;
   let c = diagCache[d.id];

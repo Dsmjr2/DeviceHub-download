@@ -151,9 +151,29 @@ async function readAll({ proto, ask }) {
   }
   return list;
 }
+// Zone names checked by eye on a real board, by board name and slot (0-based): OpenRGB's Gigabyte RGB Fusion 2 SMBus
+// controller gives every board the same generic list ("CPU", "???", "Motherboard Logo", ...; its own TODO says only the
+// logo is verified). Each entry was lit one slot at a time and named for what lit.
+const ZONE_NAMES = [
+  // Shawn's board, 22 Oct 2026: slot 1 lit the top logo, slot 3 the bottom logo (case lights unplugged at the time)
+  { board: /B450 AORUS PRO WIFI/i, names: { 0: 'Top logo', 2: 'Bottom logo' } },
+];
+// Names the person gave with Find my lights (helpers/find-lights.js, docs/handoff/find-lights.md), per board name, in
+// lights-names.json beside DeviceHub (this PC's own; gitignored and never in the zip): read before ZONE_NAMES.
+let namesFile = null, namesCache = null;
+const readNames = () => {
+  if (namesCache) return namesCache;
+  try { namesCache = namesFile ? JSON.parse(fs.readFileSync(namesFile, 'utf8')) : {}; } catch { namesCache = {}; }
+  if (!namesCache || typeof namesCache !== 'object') namesCache = {};
+  if (!namesCache.boards || typeof namesCache.boards !== 'object') namesCache.boards = {};
+  return namesCache;
+};
+const savedFor = (c) => readNames().boards[c.name || ''] || null;
+const zoneName = (c, i, name) => savedFor(c)?.names?.[i] || ZONE_NAMES.find((z) => z.board.test(c.name || ''))?.names[i] || name;
+const zoneHidden = (c, i) => !!savedFor(c)?.hidden?.includes(i);
 const shapeOut = (c) => ({
   index: c.index, name: c.name, vendor: c.vendor, type: TYPES[c.type] || 'other', location: c.location,
-  zones: c.zones.map((z) => ({ name: z.name, leds: z.leds })), leds: c.colors.length,
+  zones: (() => { let at = 0; return c.zones.map((z) => { const i = c.zones.indexOf(z), o = { name: zoneName(c, i, z.name), leds: z.leds, color: c.colors[at] || null }; if (savedFor(c)?.names?.[i]) o.named = true; if (zoneHidden(c, i)) o.hidden = true; at += z.leds; return o; }); })(), leds: c.colors.length,
   mode: c.modes[c.activeMode]?.name || null, color: c.colors[0] || null,
   same: c.colors.every((x) => x === c.colors[0]),
 });
@@ -319,7 +339,7 @@ const bundleReadOnly = () => {
 const bundleInfo = () => { const c = bundleCheck(); return { shipped: !!bundle.table, version: bundle.table?.version || null, canStart: c.ok, why: c.ok ? null : c.why, running: bundleAlive(), writes: c.ok ? c.writes : null }; };
 
 async function status(fresh = false) {
-  if (!fresh && cache.value && Date.now() - cache.at < 10000) return cache.value;
+  if (!fresh && cache.value && Date.now() - cache.at < 10000) return { ...cache.value, findTest: find.state() };
   let value;
   try {
     value = await serial(() => withOpenRGB(fresh, async (s) => ({ running: true, protocol: s.proto, bundled: s.bundled, readOnly: s.bundled ? bundleReadOnly() : null, controllers: (await readAll(s)).filter((c) => usable(s, c)).map(shapeOut) })));
@@ -332,6 +352,7 @@ async function status(fresh = false) {
   value.lastFind = lastFind;
   value.bundle = bundleInfo();
   value.board = { setUp: deps.boardSetUp() };
+  value.findTest = find.state();   // a Find my lights test still showing its colors (helpers/find-lights.js)
   cache = { at: Date.now(), value };
   return value;
 }
@@ -344,13 +365,12 @@ const keyOf = (c) => `${c.name}|${c.location}|${c.colors.length}`;
 const PER_LED = 1;   // a mode's color_mode: MODE_COLORS_PER_LED (OpenRGB's RGBController.h)
 // what each light was before DeviceHub first changed it, kept until DeviceHub stops (and in backups/)
 const saved = new Map();
+// one light's backup entry: its mode (whole) and every LED color
+const entryOf = (c) => { const m = c.modes[c.activeMode]; return { key: keyOf(c), name: c.name, location: c.location, activeMode: c.activeMode, modeName: m?.name || null, mode: m?.raw || null, perLed: m?.colorMode === PER_LED, colors: c.colors, proto: WANT }; };
 function backupNew(list) {
   const fresh = list.filter((c) => !saved.has(keyOf(c)));
   if (!fresh.length) return null;
-  for (const c of fresh) {
-    const m = c.modes[c.activeMode];
-    saved.set(keyOf(c), { key: keyOf(c), name: c.name, location: c.location, activeMode: c.activeMode, modeName: m?.name || null, mode: m?.raw || null, perLed: m?.colorMode === PER_LED, colors: c.colors, proto: WANT });
-  }
+  for (const c of fresh) saved.set(keyOf(c), entryOf(c));
   if (!backupDir) return null;
   const file = path.join(backupDir, `openrgb-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
   writeAtomic(file, JSON.stringify({ takenAt: new Date().toISOString(), why: 'before the first change through OpenRGB', protocol: WANT, controllers: fresh.map((c) => saved.get(keyOf(c))) }, null, 1));
@@ -366,8 +386,23 @@ const leds = (n, hexes) => {
   return body;
 };
 
+// Direct mode and every LED's color in one send per light, then read back soon (once more a little later if OpenRGB has
+// not caught up yet): { list, failed: [names] }
+async function sendColors(s, chosen, wanted) {
+  for (const c of chosen) { s.send(c.index, ID.customMode); s.send(c.index, ID.updateLeds, leds(c.colors.length, wanted.get(keyOf(c)))); }
+  const check = async (ms) => {
+    await new Promise((r) => setTimeout(r, ms));
+    const list = await readAll(s), after = new Map(list.map((c) => [keyOf(c), c]));
+    return { list, failed: chosen.filter((c) => { const a = after.get(keyOf(c)); return !a || a.modes[a.activeMode]?.colorMode !== PER_LED || a.colors.join() !== wanted.get(keyOf(c)).join(); }).map((c) => c.name) };
+  };
+  let r = await check(80);
+  if (r.failed.length) r = await check(250);
+  cache.at = 0;
+  return r;
+}
+
 // Set one light (or all) to one color. Custom mode is OpenRGB's "Direct" (colors set from the PC).
-async function setColor(target, hexColor) {
+async function setColor(target, hexColor, zone = null) {
   if (!/^#[0-9a-f]{6}$/i.test(hexColor)) throw new Error('color must look like #rrggbb');
   return serial(() => withOpenRGB('write', async (s) => {
     writable(s);
@@ -376,13 +411,13 @@ async function setColor(target, hexColor) {
     if (!chosen.length) throw new Error(target === 'all' ? 'no OpenRGB lights to set' : 'no such OpenRGB device');
     const file = backupNew(chosen);
     const want = hexColor.toLowerCase();
-    for (const c of chosen) { s.send(c.index, ID.customMode); s.send(c.index, ID.updateLeds, leds(c.colors.length, want)); }
-    await new Promise((r) => setTimeout(r, 250));
-    const after = new Map((await readAll(s)).map((c) => [keyOf(c), c]));
-    cache.at = 0;
-    const failed = chosen.filter((c) => { const a = after.get(keyOf(c)); return !a || a.modes[a.activeMode]?.colorMode !== PER_LED || !a.colors.every((x) => x === want); }).map((c) => c.name);
-    if (failed.length) throw new Error(`OpenRGB reports another color or mode on ${failed.join(', ')}`);
-    return { changed: chosen.map((c) => c.name), backup: file };
+    // one zone (an ARGB fan header): only its lights change, the rest keep the colors read just before
+    const z = zone === null || zone === undefined ? null : Number(zone);
+    if (z !== null && (chosen.length !== 1 || !Number.isInteger(z) || z < 0 || z >= chosen[0].zones.length)) throw new Error('no such zone');
+    const wantOf = (c) => { if (z === null) return c.colors.map(() => want); const out = c.colors.slice(); let at = 0; for (let i = 0; i < z; i++) at += c.zones[i].leds; for (let i = 0; i < c.zones[z].leds; i++) out[at + i] = want; return out; };
+    const r = await sendColors(s, chosen, new Map(chosen.map((c) => [keyOf(c), wantOf(c)])));
+    if (r.failed.length) throw new Error(`OpenRGB reports another color or mode on ${r.failed.join(', ')}`);
+    return { changed: chosen.map((c) => c.name), backup: file, controllers: r.list.filter((c) => usable(s, c)).map(shapeOut) };
   }));
 }
 
@@ -393,9 +428,16 @@ async function restore() {
   if (!saved.size) throw new Error('nothing changed through OpenRGB yet');
   return serial(() => withOpenRGB('write', async (s) => {
     writable(s);
+    const { done } = await putBack(s, [...saved.values()]);
+    for (const b of done) saved.delete(b.key);
+    return { restored: done.map((b) => b.name) };
+  }));
+}
+// put these backup entries back (restore() and Find my lights); throws naming what did not go back
+async function putBack(s, entries) {
     const now = new Map((await readAll(s)).map((c) => [keyOf(c), c]));
     const missing = [], done = [];
-    for (const b of saved.values()) {
+    for (const b of entries) {
       const c = now.get(b.key);
       if (!c) { missing.push(b.name); continue; }
       if (b.proto !== s.proto) { missing.push(`${b.name} (another protocol)`); continue; }
@@ -409,11 +451,13 @@ async function restore() {
     cache.at = 0;
     const off = done.filter((b) => { const a = after.get(b.key); return !a || a.activeMode !== b.activeMode || (b.perLed && a.colors.join() !== b.colors.join()); }).map((b) => b.name);
     if (off.length || missing.length) throw new Error([off.length ? `not put back: ${off.join(', ')}` : null, missing.length ? `not found now: ${missing.join(', ')}` : null].filter(Boolean).join('; '));
-    for (const b of done) saved.delete(b.key);
-    return { restored: done.map((b) => b.name) };
-  }));
+    return { done, list: [...after.values()] };
 }
 
 // forget the last reading (board lights were just set up or removed)
 const forget = () => { cache.at = 0; };
-module.exports = { start: (dir, opts = {}) => { backupDir = dir; ownDevice = opts.ownDevice || null; }, status, setColor, restore, stop: stopBundled, forget, BOARD, _test: { parseController, PORT, bundle, deps, bundleCheck, buildOf, FIXED_BUILD } };
+// Find my lights (helpers/find-lights.js): one color per zone, then the person's names saved and the lights put back
+const find = require('./find-lights').create({ serial, withOpenRGB, writable, readAll, usable, isOwn, keyOf, entryOf, backupNew, sendColors, putBack, shapeOut,
+  forget: () => { cache.at = 0; }, names: { read: readNames, file: () => namesFile, reload: () => { namesCache = null; } } });
+module.exports = { start: (dir, opts = {}) => { backupDir = dir; ownDevice = opts.ownDevice || null; namesFile = opts.namesFile || null; namesCache = null; }, status, setColor, restore,
+  findStart: find.start, findSave: find.save, findCancel: find.cancel, findState: find.state, stop: stopBundled, forget, BOARD, _test: { parseController, PORT, bundle, deps, bundleCheck, buildOf, FIXED_BUILD } };

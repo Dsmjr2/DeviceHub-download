@@ -7,6 +7,7 @@ import { isDemo } from '../core/devices.js';
 import { topbar } from './common.js';
 import { toast } from '../ui/overlay.js';
 import { cameraCards } from './camera-card.js';
+import { helpHere } from '../ui/get-help.js';
 
 let list = null, error = null, loading = false;
 let rerender = () => {};
@@ -83,10 +84,11 @@ export default {
   watches: [],  // monitors and the camera are read by the page itself; device readings do not redraw it (21 Oct 2026)
   render() {
     rerender = () => { const el = document.querySelector('#main .page'); if (el && location.hash === '#/monitors') el.replaceWith(Object.assign(this.render(), { className: 'page no-anim' })); };
-    if (isDemo()) return h('div', {}, topbar('Displays and camera', 'Monitors', null), card([h('h2', {}, 'Monitors')], h('p', { class: 'faint' }, 'In the installed app, your monitors\' brightness, contrast and speakers are here.')));
+    if (isDemo()) return h('div', {}, topbar('Displays and camera', 'Monitors', null, null, helpHere('monitors')), card([h('h2', {}, 'Monitors')], h('p', { class: 'faint' }, 'In the installed app, your monitors\' brightness, contrast and speakers are here.')));
     if (!list && !error) load(false);
     return h('div', {},
-      topbar('Displays and camera', 'Monitors', null),
+      // Get help (area monitors: each monitor's DDC/CI answer and the camera's settings), top right
+      topbar('Displays and camera', 'Monitors', null, null, helpHere('monitors')),
       error ? card([h('h2', {}, 'Monitors')], h('p', { class: 'faint' }, `Couldn't read the monitors: ${error}`))
         // while they are read: two monitor cards with shimmering rows (21 Oct 2026)
         : !list ? h('div', { class: 'grid two top' }, loadingCard('Monitor', 4, 'monitor'), loadingCard('Monitor', 4, 'monitor'))

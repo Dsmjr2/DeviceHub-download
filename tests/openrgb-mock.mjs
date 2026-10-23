@@ -76,6 +76,7 @@ const tmp = path.join(os.tmpdir(), `devicehub-openrgb-${process.pid}`);
 fs.mkdirSync(tmp, { recursive: true });
 fs.writeFileSync(path.join(tmp, 'openrgb.js'), src);
 fs.copyFileSync(new URL('../helpers/safe-write.js', import.meta.url), path.join(tmp, 'safe-write.js'));
+fs.copyFileSync(new URL('../helpers/find-lights.js', import.meta.url), path.join(tmp, 'find-lights.js'));
 const orgb = require(path.join(tmp, 'openrgb.js'));
 orgb.start(tmp, { ownDevice: /vid_1b1c&pid_0a6b/i });
 

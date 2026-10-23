@@ -8,6 +8,7 @@ import { isDemo } from '../core/devices.js';
 import { env } from '../core/env.js';
 import { modal, promptText, toast } from '../ui/overlay.js';
 import { installerButton } from '../ui/installer-button.js';
+import { helpHere } from '../ui/get-help.js';
 
 const BANDS = ['32', '64', '125', '250', '500', '1k', '2k', '4k', '8k', '16k'];
 const DEMO_EQ = () => ({ available: true, icueRunning: true, slots: [{ slot: 2, id: 'c1' }], presets: [
@@ -144,7 +145,14 @@ function watch() {
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshSoon(); });
 }
 
+// the Equalizer card with its Get help at the bottom (area eq: the EQ engine, presets, sound tools, which sound devices
+// Equalizer APO is on for; one for the EQ and the sound tools, 22 Oct 2026)
 export function eqPanel(redraw) {
+  const c = eqCard(redraw);
+  c.append(helpHere('eq', { device: 'headset', context: () => ({ detail: `editing: ${ui.target === 'headset' ? 'the headset' : 'a speaker'}` }) }));
+  return c;
+}
+function eqCard(redraw) {
   rerender = redraw;
   if (!isDemo()) watch();
   // read iCUE's presets again when the page is drawn and the list is older than 15 s (a preset added in iCUE or by

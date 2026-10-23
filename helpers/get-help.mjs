@@ -101,9 +101,14 @@ function compose(f, { logs, whyMax = 400, findingsMax = 8 }) {
   } else if (f.lights) {
     // Get help for PC lights (area "lights", helpers/lights-diagnose.js): OpenRGB, what it found, the board, the RGB ids
     L.push('### PC lights', ...f.lights, '');
+  } else if (f.section) {
+    // an area's Get help (Monitors, Fans, EQ, Learn, ...; AREAS below): what DeviceHub read there
+    L.push(`### ${f.section.title}`, ...f.section.lines, '');
   } else if (f.devices?.length) {
     L.push('### Devices', ...f.devices.map((x) => `- ${x.title} (${x.id}): ${x.status}${x.error ? `, ${x.error}` : ''}`), '');
   }
+  // where the person pressed Get help: the page, the last error it showed, the step they were on (CONTEXT_KEYS)
+  if (f.context?.length) L.push('### On the page', ...f.context.map(([k, v]) => `- ${k}: ${v}`), '');
   if (f.findings?.length) {
     L.push('### What DeviceHub found');
     f.findings.slice(0, findingsMax).forEach((x, i) => {
@@ -138,6 +143,8 @@ export function makeIssue(f, { names = [], max = MAX_URL } = {}) {
   }
   for (const x of g.devices || []) for (const k of ['title', 'status', 'error']) if (x[k]) x[k] = add(s(x[k]));
   if (g.lights) g.lights = g.lights.map((l) => add(s(l)));
+  if (g.section) g.section = { title: add(s(g.section.title)), lines: g.section.lines.map((l) => add(s(l))) };
+  if (g.context) g.context = g.context.map(([k, v]) => [k, add(s(v))]);
   g.version = add(s(g.version)); g.windows = add(s(g.windows));
 
   let logs = g.log.length, body = compose(g, { logs }), url = issueUrl(title, body), cut = false;
@@ -190,14 +197,18 @@ const WIDE = /^\[(helper|watchdog)\]|^\[launcher\] .* exited with code (?!-1;)|^
 export function relevantLog(lines, d) {
   const terms = [];
   if (d) {
-    terms.push(new RegExp(`\\[${esc(d.id)}\\]|\\b${esc(d.id)}\\b`, 'i'));
+    for (const re of d.terms || []) terms.push(re);
+    if (d.id) terms.push(new RegExp(`\\[${esc(d.id)}\\]|\\b${esc(d.id)}\\b`, 'i'));
     if (d.plugin) terms.push(new RegExp(esc(d.plugin), 'i'));
     if (d.title && d.title.length >= 4) terms.push(new RegExp(esc(d.title), 'i'));
     for (const v of d.vids || []) terms.push(new RegExp(`(VID_|\\b)${esc(v)}\\b`, 'i'));
   }
   // for a device: its own lines and DeviceHub-wide trouble (the helper, crashes); in general: every problem line
-  const keep = d ? (l) => WIDE.test(l) || terms.some((re) => re.test(l)) : (l) => PROBLEM.test(l);
-  return lines.map((l) => l.trimEnd()).filter((l) => l && !NOISE.test(l) && keep(l))
+  // an area (d.area): its problem lines and DeviceHub-wide trouble; a routine line is left out unless it is a problem
+  const keep = d?.area ? (l) => WIDE.test(l) || (PROBLEM.test(l) && terms.some((re) => re.test(l)))
+    : d ? (l) => WIDE.test(l) || terms.some((re) => re.test(l)) : (l) => PROBLEM.test(l);
+  const noise = d?.area ? (l) => NOISE.test(l) && !PROBLEM.test(l) : (l) => NOISE.test(l);
+  return lines.map((l) => l.trimEnd()).filter((l) => l && !noise(l) && keep(l))
     .map((l) => (l.length > LINE_MAX ? `${l.slice(0, LINE_MAX - 1)}…` : l))
     // a line seen more than once is kept once, where it was last seen, with how many times
     .reduceRight((out, l) => { const seen = out.find((x) => x.l === l); if (seen) seen.n++; else out.unshift({ l, n: 1 }); return out; }, [])
@@ -257,7 +268,18 @@ async function bluetoothNames(deps) {
 // is installed only for a USB id this PC has, so its state always matters). DeviceHub's own slots for the Pulsar, the
 // HS80 and the P75 are left out on a PC that has never had them, instead of showing "missing".
 export const shownInReport = (x) => !!x && (x.seen === true || ['connected', 'asleep', 'connecting'].includes(x.status) || !!x.adapter?.plugin);
-export async function gather(id, deps = {}) {
+// gather(id, deps, { area, context }): a device's facts (area '' or 'device'), the Lighting page's ('lights'), or an
+// area's (AREAS), plus what the page itself showed (context, pageContext below)
+export async function gather(id, deps = {}, { area = '', context = null } = {}) {
+  const f = AREAS[area]?.facts ? await gatherArea(area, id ? String(id) : '', deps) : await gatherFacts(area === LIGHTS ? LIGHTS : id, deps);
+  const ctx = pageContext(context);
+  if (ctx.length) {
+    const bt = await bluetoothNames(deps);
+    f.context = ctx.map(([k, v]) => [k, dropBluetooth([v], bt)[0]]).filter(([, v]) => v);
+  }
+  return f;
+}
+async function gatherFacts(id, deps = {}) {
   const root = deps.root || options.root;
   const port = deps.port || PORT;
   const [ver, windows, state] = await Promise.all([
@@ -310,6 +332,194 @@ export async function gather(id, deps = {}) {
   return f;
 }
 
+// ---------- Get help on every screen (22 Oct 2026, docs/handoff/get-help-everywhere.md) ----------
+// Shawn: "put the get help area on every screen that needs it so I can fix it and they can send the request right from
+// where they are working on fixing something". Each area reads what its page reads (GET routes of this DeviceHub only,
+// read-only, only when the person presses Get help), plus its recent problem lines from Activity and the log. Nothing
+// that names one unit or one person: no monitor or camera ids, no profile, file or folder names.
+const on = (x) => (x ? 'on' : 'off');
+const num = (n, one, many) => plural(Number(n) || 0, one, many);
+const RECENT = 5;   // at most this many of the area's recent problem lines from Activity
+const list = (x) => (Array.isArray(x) ? x : []);
+async function deviceLine(get, id) {
+  if (!id) return null;
+  const st = await get('/api/agent/state');
+  const x = st?.devices?.find((d) => d.id === id);
+  return x ? `- Device: ${x.adapter?.title || x.id} (${x.id}): ${x.status}${x.error ? `, ${x.error}` : ''}` : null;
+}
+export const AREAS = {
+  device: { title: 'Device' },          // a device page: the device's own report (gather above)
+  [LIGHTS]: { title: 'PC lights' },     // the Lighting page: the lights check (gather above)
+  monitors: {
+    title: 'Monitors and camera', terms: [/monitor|ddc|display|brightness|camera|webcam/i],
+    async facts({ get }) {
+      const [mons, cams] = await Promise.all([get('/api/monitors', 30000), get('/api/cameras', 30000)]);
+      const lines = [], findings = [];
+      if (!Array.isArray(mons)) lines.push('- Monitors: the list could not be read');
+      else if (!mons.length) lines.push('- Monitors: none found');
+      for (const m of list(mons)) {
+        const ctl = [['brightness', 'brightness'], ['contrast', 'contrast'], ['volume', 'speaker volume'], ['colorPreset', 'color preset'], ['red', 'color balance']].filter(([k]) => m[k]).map(([, l]) => l);
+        const how = m.builtin ? 'built-in screen, brightness through Windows' : m.ddc ? 'answers over DDC/CI' : 'no DDC/CI answer (takes no settings from the PC)';
+        lines.push(`- Monitor: ${m.name || 'no name'}${m.model && m.model !== m.name ? ` (${m.model})` : ''}: ${how}${ctl.length ? `; controls ${ctl.join(', ')}` : ''}${m.away ? '; off or not answering' : ''}${list(m.waiting).length ? `; waiting: ${list(m.waiting).join(', ')}` : ''}${m.error ? `; error: ${m.error}` : ''}${list(m.supports).length ? `; lists ${list(m.supports).length} settings` : ''}`);
+        if (!m.builtin && !m.ddc) findings.push({ problem: `${m.name || 'A monitor'} takes no settings from the PC`, why: 'It did not answer over DDC/CI.', fix: "Turn on DDC/CI in the monitor's own menu, then open Monitors again." });
+      }
+      if (!Array.isArray(cams)) lines.push('- Camera: the list could not be read');
+      else if (!cams.length) lines.push('- Camera: none found');
+      for (const c of list(cams)) { const k = Object.keys(c.controls || {}); lines.push(`- Camera: ${c.name || 'no name'}: ${k.length ? `${num(k.length, 'picture setting')} (${k.join(', ')})` : 'lists no picture settings'}${c.error ? `; error: ${c.error}` : ''}`); }
+      return { short: Array.isArray(mons) ? `${num(mons.length, 'monitor')}, ${num(list(cams).length, 'camera')}` : 'not read', lines, findings };
+    },
+  },
+  fans: {
+    title: 'Fans', terms: [/\bgpu\b|nvidia|\bfans?\b|openrgb|lights?\b|pawnio/i],
+    async facts({ get, deps }) {
+      const [gpu, d] = await Promise.all([get('/api/gpu', 20000), deps.lights ? deps.lights() : get('/api/lights/diagnose', 60000)]);
+      const lines = [];
+      if (gpu?.available && list(gpu.gpus).length) for (const g of gpu.gpus) lines.push(`- Graphics card: ${g.name}: ${g.tempC ?? '?'} °C, fan ${g.fanPct ?? '?'}%, load ${g.loadPct ?? '?'}%`);
+      else lines.push(`- Graphics card: not read (${gpu?.reason || 'no answer'})`);
+      lines.push("- Fan speed: CPU and case fans follow the board's BIOS curve; DeviceHub does not set them");
+      lines.push(...(list(d?.lines).length ? d.lines : ['- The lights check did not answer.']));
+      return { short: d?.board || null, lines, findings: list(d?.problems).map((x) => ({ problem: x.problem, why: x.why, fix: x.fix })) };
+    },
+  },
+  eq: {
+    title: 'Sound and EQ', terms: [/\beq\b|equali[sz]er|eqapo|\bapo\b|mic (?:boost|level|filter)|sidetone|sound|speaker/i],
+    async facts({ get, device }) {
+      const e = await get('/api/eq', 20000);
+      const lines = [], findings = [];
+      const dl = await deviceLine(get, device);
+      if (dl) lines.push(dl);
+      if (!e) { lines.push('- The sound settings could not be read'); return { short: 'not read', lines, findings }; }
+      const presets = list(e.presets), active = presets.find((p) => p.id === e.activeId);
+      lines.push(`- Engine: ${e.engine === 'eqapo' ? 'Equalizer APO' : e.engine || 'none'}${e.available === false ? `, not available${e.reason ? ` (${e.reason})` : ''}` : ''}`);
+      lines.push(`- Headset: ${e.headsetModel || 'none found'}; mic ${e.micFound ? 'found' : 'not found'}`);
+      // the person's own preset names are left out: built-in ones are named
+      lines.push(`- Presets: ${presets.length} (${presets.filter((p) => !p.builtIn).length} of your own); in use: ${!active ? 'none' : active.builtIn ? active.name : 'one of your own'}${e.unsaved ? '; a change is not saved' : ''}`);
+      if (e.headroom !== undefined) lines.push(`- Prevent distortion: ${on(e.headroom)}`);
+      const x = e.extras || {};
+      if (Object.keys(x).length) lines.push(`- Sound tools: correction ${on(x.correction)}, loudness ${on(x.loudness)}, balance ${x.balance ?? 0}, ${num(list(x.filters).length, 'extra filter')}; mic boost ${x.micBoost ?? 0} dB, rumble ${on(x.micRumble)}, clarity ${on(x.micClarity)}, de-ess ${on(x.micDeEss)}, level ${on(x.micLevel)}`);
+      if (list(e.speakers).length) lines.push(`- Speakers with their own EQ: ${e.speakers.map((s) => `${s.name} (${on(s.on)})`).join(', ')}`);
+      const notOn = [...new Set(list(e.notOn).map((d) => d?.name).filter(Boolean))];
+      if (notOn.length) lines.push(`- Equalizer APO is not switched on for: ${notOn.join(', ')}`);
+      if (e.engine !== 'eqapo' && e.needsApo) findings.push({ problem: 'Equalizer APO is not installed', why: 'The EQ, mic boost and mic filters need it.', fix: "Install it from the Equalizer card's button on the Headset page, then restart the PC." });
+      if (notOn.length) findings.push({ problem: 'Equalizer APO is not on for the headset', why: 'Its sound devices are not ticked in Equalizer APO, so the EQ is not heard.', fix: 'Press Turn on in the Equalizer card, tick them, click OK, then restart the PC.' });
+      return { short: e.engine === 'eqapo' ? 'Equalizer APO' : e.engine || 'no EQ engine', lines, findings };
+    },
+  },
+  profiles: {
+    title: 'Profiles', terms: [/profile|auto-?switch/i],
+    async facts({ get }) {
+      const [p, s] = await Promise.all([get('/api/profiles'), get('/api/settings')]);
+      const lines = [];
+      if (!Array.isArray(p)) lines.push('- Profiles: the list could not be read');
+      else {
+        // the person's profile and game names are left out: what each one holds, by number
+        lines.push(`- Profiles: ${p.length}`);
+        p.slice(0, 10).forEach((x, i) => {
+          const holds = [...Object.keys(x.devices || {}), ...(x.monitors && Object.keys(x.monitors).length ? ['monitors'] : []), ...Object.keys(x.added || {})];
+          lines.push(`- Profile ${i + 1}: ${holds.length ? holds.join(', ') : 'no settings'}${list(x.games).length ? `; switches for ${num(x.games.length, 'game')}` : ''}${x.savedAt ? `; saved ${String(x.savedAt).slice(0, 10)}` : ''}`);
+        });
+      }
+      if (s && typeof s === 'object') lines.push(`- Switch profiles when games start: ${on(s.autoSwitch)}`);
+      return { short: Array.isArray(p) ? num(p.length, 'profile') : 'not read', lines, findings: [] };
+    },
+  },
+  backups: {
+    title: 'Backups', terms: [/backup|restore|go back|put back|setup file|undo/i],
+    async facts({ get }) {
+      const b = await get('/api/backups');
+      const lines = [];
+      if (!Array.isArray(b)) lines.push('- Backups: the list could not be read');
+      else {
+        const groups = new Map();
+        for (const x of b) { const k = String(x?.name || '').replace(/-\d{4}-\d\d-\d\d.*$/, '').replace(/\.json$/i, '').slice(0, 40) || 'other'; const g = groups.get(k) || { n: 0, at: '' }; g.n++; if (String(x.at || '') > g.at) g.at = String(x.at || ''); groups.set(k, g); }
+        lines.push(`- Copies: ${b.length} in all`);
+        for (const [k, g] of [...groups].sort((x, y) => y[1].n - x[1].n).slice(0, 10)) lines.push(`- ${k}: ${g.n}${g.at ? `, newest ${g.at.slice(0, 16).replace('T', ' ')} UTC` : ''}`);
+      }
+      return { short: Array.isArray(b) ? num(b.length, 'copy', 'copies') : 'not read', lines, findings: [] };
+    },
+  },
+  setup: {
+    title: 'Setup', terms: [/\[setup\]|install|library|turn on settings|self-check|layout/i],
+    async facts({ get, device }) {
+      const s = await get('/api/setup', 30000);
+      const lines = [];
+      const dl = await deviceLine(get, device);
+      if (dl) lines.push(dl);
+      if (!s) { lines.push('- The setup list could not be read'); return { short: 'not read', lines, findings: [] }; }
+      if (s.found) lines.push(`- Found: ${num(s.found.usb, 'USB device')}, ${num(s.found.library, 'library match', 'library matches')}`);
+      const items = ['installed', 'works', 'optional', 'learn'].flatMap((k) => list(s[k]).map((x) => ({ ...x, group: k })));
+      const open = items.filter((x) => x.state !== 'ready');
+      lines.push(`- Items: ${items.length}, ${open.length} not ready`);
+      for (const x of open.slice(0, 12)) lines.push(`- ${x.name || x.what || 'item'}${x.usb ? ` (USB ${x.usb})` : ''}: ${x.state || 'unknown'}${x.short || x.line ? `, ${String(x.short || x.line).slice(0, 160)}` : ''}`);
+      return { short: `${open.length} not ready`, lines, findings: [] };
+    },
+  },
+  learn: {
+    title: 'Learn a device', terms: [/learn|usbpcap|capture|app-ui|wizard|driver\.json/i],
+    async facts({ get }) {
+      const s = await get('/api/learn/state');
+      const lines = [];
+      if (!s) { lines.push('- The learning wizard did not answer'); return { short: 'no answer', lines, findings: [] }; }
+      lines.push(`- USBPcap: ${s.usbpcap ? 'installed' : 'not installed'}`);
+      if (!s.active) { lines.push('- No learning session is open'); return { short: 'no session', lines, findings: [] }; }
+      const d = s.device || {};
+      lines.push(`- Device: ${d.name || 'no name'} (USB ${d.vid}:${d.pid})${s.addsTo ? `; adds to the driver ${s.addsTo.name}` : ''}`);
+      if (s.maker) lines.push(`- Maker's app: ${s.maker.name || 'not known'}${s.maker.known ? `, ${s.maker.installed ? 'installed' : 'not installed'}${s.maker.running ? ', open' : ''}` : ''}`);
+      lines.push(`- Listening: ${s.listener}${s.listenerError ? `: ${s.listenerError}` : ''}${s.recording ? '; recording now' : ''}`);
+      if (s.setting) lines.push(`- Setting being learned: ${s.setting.label || '?'} (${s.setting.kind || '?'}${s.setting.role ? `, ${s.setting.role}` : ''})`);
+      // what it heard so far: each recording's value and how many messages the device and the app sent
+      if (list(s.takes).length) lines.push(`- Recordings: ${s.takes.map((t) => `${t.value} (${num(t.heard, 'message')})`).join(', ')}`);
+      if (list(s.learned).length) lines.push(`- Learned so far: ${s.learned.map((x) => `${x.label} (${x.kind}${x.role ? `, ${x.role}` : ''})`).join(', ')}`);
+      if (s.second) lines.push(`- Other USB id: ${s.second.of}, ${s.second.done} of ${s.second.total} learned`);
+      if (s.saved) lines.push(`- Saved: ${typeof s.saved === 'object' ? s.saved.name || 'yes' : 'yes'}`);
+      return { short: `${d.vid}:${d.pid}, ${s.listener}`, lines, findings: [] };
+    },
+  },
+  wallpapers: {
+    title: 'Wallpapers', terms: [/wallpaper/i],
+    async facts({ get }) {
+      const w = await get('/api/wallpapers');
+      const lines = [];
+      if (!w) lines.push('- The wallpaper folder could not be read');
+      else {
+        // no folder or file names: they are the person's own
+        lines.push(`- Pictures: ${list(w.items).length} (${Math.round((Number(w.totalBytes) || 0) / 1e5) / 10} MB)`);
+        lines.push(`- Windows wallpaper can be set from here: ${w.windows ? 'yes' : 'no'}; the previous one kept: ${w.previousKept ? 'yes' : 'no'}`);
+        if (w.error) lines.push(`- Error: ${w.error}`);
+      }
+      return { short: w ? num(list(w.items).length, 'picture') : 'not read', lines, findings: [] };
+    },
+  },
+};
+// the page's own context: these keys only, short plain strings (public/ui/get-help.js sends them on the click)
+export const CONTEXT_KEYS = { page: 'Page', error: 'Shown on the page', step: 'Step', progress: 'Progress', heard: 'Heard so far', results: 'Settings so far', item: 'Row', status: 'Status shown', detail: 'Detail' };
+export function pageContext(c) {
+  if (!c || typeof c !== 'object' || Array.isArray(c)) return [];
+  return Object.entries(CONTEXT_KEYS).filter(([k]) => typeof c[k] === 'string' && c[k].trim())
+    .map(([k, label]) => [label, c[k].replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, k === 'results' || k === 'error' ? 600 : 300)]);
+}
+async function gatherArea(area, device, deps) {
+  const A = AREAS[area];
+  const root = deps.root || options.root, port = deps.port || PORT;
+  const get = deps.get || ((p, ms) => getJson(port, p, ms));
+  const [ver, windows] = await Promise.all([deps.version ? deps.version() : getJson(port, '/api/version', 5000).then((v) => v?.version || null), deps.windows ? deps.windows() : windowsVersion()]);
+  const f = { version: `${devicehubVersion(root)}${ver ? ` (build ${ver})` : ''}`, windows, at: new Date().toISOString() };
+  let r;
+  try { r = await within(A.facts({ get, deps, device }), 90000); } catch (e) { r = { lines: [`- It could not be read: ${e.message}`] }; }
+  r = r || { lines: ['- It did not answer in time.'] };
+  const bt = await bluetoothNames(deps);
+  // the area's recent problems from Activity (what the app showed in red), newest last
+  const act = await get('/api/activity', 5000);
+  const recent = list(act).filter((x) => x?.kind === 'bad' && typeof x.text === 'string' && A.terms.some((re) => re.test(x.text)))
+    .sort((x, y) => String(x.at).localeCompare(String(y.at))).slice(-RECENT)
+    .map((x) => `- Recently (${String(x.at || '').slice(0, 16).replace('T', ' ')} UTC): ${x.text.slice(0, 200)}`);
+  f.title = `Help: ${A.title}${r.short ? ` (${r.short})` : ''}`.slice(0, 120);
+  f.section = { title: A.title, lines: dropBluetooth([...list(r.lines), ...recent], bt) };
+  f.findings = list(r.findings);
+  f.log = dropBluetooth(relevantLog(deps.log ? await deps.log() : logTail(root), { area: true, terms: A.terms }), bt);
+  return f;
+}
+
 // ---------- Request support (22 Oct 2026, Shawn: "as simple as possible"): a device DeviceHub has no driver for ----------
 // One click builds a short request: the device's USB id, the name Windows gives it, its maker from the brand guide when
 // known, DeviceHub's and Windows' versions. It goes through the same personal-data check and the same open path as Get
@@ -352,18 +562,35 @@ const KEEP_MS = 30 * 60e3;
 // exported for "Works on my device" (helpers/works-report.mjs): its link opens through the same open() below
 // check(text, names) -> [{ why }]: its own personal-data check for open() (works-report: a firmware version is not an IP)
 export function rememberLink(url, check = null) { return remember(url, check); }
-function remember(url, check = null) {
+// issue: { title, body, area, device } of a Get help report, for Send to Shawn (helpers/support-request.mjs sendHelp)
+function remember(url, check = null, issue = null) {
   const now = Date.now();
   for (const [k, v] of made) if (now - v.at > KEEP_MS || made.size > 20) made.delete(k);
   const token = crypto.randomBytes(12).toString('hex');
-  made.set(token, { url, at: now, check: typeof check === 'function' ? check : null });
+  made.set(token, { url, at: now, check: typeof check === 'function' ? check : null, issue });
   return token;
 }
+// the report a token was made for, while it is fresh (null when unknown or too old)
+export function reportFor(token) {
+  const m = typeof token === 'string' ? made.get(token) : null;
+  return m && m.issue && Date.now() - m.at <= KEEP_MS ? m.issue : null;
+}
+// Send to Shawn is offered where this copy sends problem reports (helpers/auto-report.mjs: started, relay set up, on,
+// not the owner's PC); anywhere else the report opens on GitHub as before
+export async function canSend() {
+  try { const ar = await import('./auto-report.mjs'); return ar.isStarted() && (await ar.status()).active; } catch { return false; }
+}
 
-export async function report(id, deps = {}) {
-  const f = await gather(id ? String(id) : '', deps);
+// how: { area, context } (POST /api/help/report): an area's report (AREAS) and what the page showed
+export async function report(id, deps = {}, how = {}) {
+  const area = AREAS[how.area] ? how.area : '';
+  id = id ? String(id).slice(0, 80) : '';
+  const f = await gather(id, deps, { area, context: how.context });
   const r = makeIssue(f, { names: personalNames([...(options.names || []), ...(deps.names || [])]) });
-  return r.ok ? { ...r, token: remember(r.url) } : r;
+  if (!r.ok) return r;
+  const where = area && area !== 'device' ? { area, device: area === LIGHTS ? null : id || null }
+    : id === LIGHTS ? { area: LIGHTS, device: null } : id ? { area: 'device', device: id } : { area: 'devicehub', device: null };
+  return { ...r, canSend: deps.canSend ? await deps.canSend() : await canSend(), token: remember(r.url, null, { title: r.title, body: r.body, ...where }) };
 }
 
 // only a link this module made, to GitHub's new-issue page, within the limit, plain URL characters, checked again
@@ -398,6 +625,10 @@ export async function handle(url, req, res, send, readBody) {
   const port = req.socket?.localPort || PORT;
   try {
     if (url.pathname === '/api/help/report' && req.method === 'GET') { send(res, 200, await report(url.searchParams.get('id'), { port })); return true; }
+    // Get help on a page (public/ui/get-help.js): { id, area, context }; built only on the person's click
+    if (url.pathname === '/api/help/report' && req.method === 'POST') { const b = (await readBody(req)) || {}; send(res, 200, await report(typeof b.id === 'string' ? b.id : '', { port }, { area: typeof b.area === 'string' ? b.area : '', context: b.context })); return true; }
+    // Send to Shawn: that report through the relay (helpers/support-request.mjs sendHelp); else it opens on GitHub
+    if (url.pathname === '/api/help/send' && req.method === 'POST') { const b = (await readBody(req)) || {}; send(res, 200, await (await import('./support-request.mjs')).sendHelp(b.token)); return true; }
     // "Works on my device" (helpers/works-report.mjs): the record to show; it opens through /api/help/open like a report
     if (url.pathname === '/api/help/works' && req.method === 'GET') { const r = await (await import('./works-report.mjs')).report(url.searchParams.get('id'), { port }); send(res, 200, r); return true; }
     if (url.pathname === '/api/help/request' && req.method === 'GET') { send(res, 200, await requestSupport({ vid: url.searchParams.get('vid'), pid: url.searchParams.get('pid'), name: url.searchParams.get('name') })); return true; }

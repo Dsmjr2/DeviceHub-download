@@ -18,7 +18,7 @@ import { installerButton } from '../ui/installer-button.js';
 import { isDemo } from '../core/devices.js';
 import { topbar } from './common.js';
 import { genericDongle } from '../core/generic-dongle.js';
-import { getHelp } from '../ui/get-help.js';
+import { getHelp, helpHere } from '../ui/get-help.js';
 
 // the state of the page (kept across redraws)
 const newForm = () => ({ label: '', kind: 'number', role: 'battery', unit: '', a: '', b: '' });
@@ -605,6 +605,19 @@ function otherStep() {
       button('Done', () => { Object.assign(st, { step: 'pick', devices: null, server: null, error: null, why: null, other: null }); redrawPage(); }, { kind: 'ghost small' })));
 }
 
+const STEP_NAMES = { pick: 'pick the device', plan: 'the settings to learn', ready: 'ready to listen', starting: 'starting to listen', take: 'recording', found: 'what it found', driver: 'the driver', saved: 'saved', other: 'its other USB id', driving: "changing it in the maker's app", change: 'change it in the app' };
+function learnContext() {
+  const it = st.queue?.[st.qi];
+  const f = st.found;
+  return {
+    step: STEP_NAMES[st.step] || st.step,
+    progress: st.queue ? `setting ${st.qi + 1} of ${st.queue.length}${it ? `: ${it.label}` : ''}` : st.form?.label ? `setting: ${st.form.label} (${st.form.kind})` : '',
+    heard: [st.heard != null ? `the last recording heard ${st.heard} messages` : '', f ? (f.ok === false || f.error ? `not found: ${(f.why || [f.error]).filter(Boolean).join('; ')}` : f.needMore ? 'needs one more recording' : 'found it') : ''].filter(Boolean).join('; '),
+    results: (st.log || []).map((l) => `${l.label}: ${l.ok ? 'learned' : `skipped (${l.why})`}`).join('; '),
+    detail: [st.error, ...(Array.isArray(st.why) ? st.why : st.why ? [st.why] : [])].filter(Boolean).join(' '),
+  };
+}
+
 const STYLE_ID = 'learn-css';
 // a few lines of style for this page only (the look files belong to another job)
 function style() {
@@ -635,7 +648,9 @@ export default {
   render({ redraw }) {
     redrawPage = redraw;
     style();
-    const head = topbar('', 'Learn a device', null, null);
+    // Get help on every step (area learn): the step, the setting being learned, what each one came to, the problem shown;
+    // the server adds the session (device id, recordings and how many messages each heard). Nothing typed by hand.
+    const head = topbar('', 'Learn a device', null, null, helpHere('learn', { context: learnContext }));
     const body = { pick: pickStep, plan: planStep, ready: readyStep, starting: startingStep, take: takeStep, found: foundStep, driver: driverStep, saved: savedStep, other: otherStep, driving: drivingStep, change: changeStep }[st.step] || pickStep;
     return h('div', {}, head,
       p('DeviceHub learns a device by listening while each setting is changed in the maker\'s app. It never sends the device anything while learning, never touches firmware, and only ever sends bytes it heard the app send.', 'faint'),

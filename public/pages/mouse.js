@@ -6,7 +6,7 @@ import { devices, write, isDemo, prepare } from '../core/devices.js';
 import { toast, modal } from '../ui/overlay.js';
 import { mouseArt } from '../ui/art.js';
 import { dots, signal } from '../ui/gauges.js';
-import { topbar, connectState, deviceActions, kv, statusPill, isAway, awayBanner, undoButton } from './common.js';
+import { topbar, connectState, deviceActions, kv, statusPill, isAway, awayBanner, undoButton, deviceHelp } from './common.js';
 import { POLLING, LIFT_OFF, DPI_SLOTS, DPI_MAX, snapDpi, BUTTONS, ACTIONS } from '../devices/mouse-adapter.js';
 import { parseKeys, MAX_COMBO_KEYS } from '../devices/pulsar.js';
 import { batteryChart } from '../ui/battery-chart.js';
@@ -164,7 +164,7 @@ export default {
     loadBatteryEstimates(() => redraw());
     const dev = d();
     const a = dev.adapter;
-    const head = topbar('Pulsar · 8K wireless mouse', a.title, null, h('div', { class: 'chips' }, undoButton(dev), statusPill(dev)));
+    const head = topbar('Pulsar · 8K wireless mouse', a.title, null, h('div', { class: 'chips' }, undoButton(dev), statusPill(dev)), deviceHelp(dev));
     if (dev.status !== 'connected' && !isAway(dev)) {
       return h('div', {}, head, connectState(dev, 'Plug in the Pulsar 8K dongle, press Connect and pick "Pulsar 8K Dongle". Close the Pulsar app first: both use the same channel.'));
     }

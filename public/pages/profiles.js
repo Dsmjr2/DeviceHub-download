@@ -13,6 +13,7 @@ import { USES, useOf, planUse, namedGames } from '../core/profile-use.js';
 import { LIFT_OFF } from '../devices/pulsar.js';
 import { EFFECTS } from '../devices/keycodes.js';
 import { modal, toast } from '../ui/overlay.js';
+import { helpHere } from '../ui/get-help.js';
 
 let list = null;
 let rerender = () => {};
@@ -391,7 +392,7 @@ export default {
     if (ui.focusNew) { ui.focusNew = false; setTimeout(() => document.querySelector('#main [data-newname]')?.focus(), 0); }
 
     return h('div', {},
-      topbar('Setups', 'Profiles', 'Switch every device at once.'),
+      topbar('Setups', 'Profiles', 'Switch every device at once.', null, helpHere('profiles')),
       h('div', { style: { marginBottom: '18px' } }, autoPanel()),
       h('div', { class: 'profiles' }, newTile(), ...(list || []).map((p) => profileCard(p))));
   },

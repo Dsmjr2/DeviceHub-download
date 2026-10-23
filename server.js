@@ -94,7 +94,7 @@ let pointerBackupAt = 0;   // when the Windows pointer settings were last backed
 const pcMap = require('./helpers/pc-map');
 const openrgb = require('./helpers/openrgb');
 // DeviceHub's own devices are never written through OpenRGB as well (its location names their vendor:product)
-if (!ISOLATED) openrgb.start(BACKUPS, { ownDevice: new RegExp(Object.keys(pcMap.RUNS).map((id) => { const [v, p] = id.split(':'); return `vid_${v}&pid_${p}`; }).join('|'), 'i') });
+if (!ISOLATED) openrgb.start(BACKUPS, { ownDevice: new RegExp(Object.keys(pcMap.RUNS).map((id) => { const [v, p] = id.split(':'); return `vid_${v}&pid_${p}`; }).join('|'), 'i'), namesFile: path.join(ROOT, 'lights-names.json') });
 const eqapo = require('./helpers/eqapo')(icueEq, eqDevices, path.join(__dirname, 'backups'));
 let eqBusy = false;
 const updates = require('./helpers/updates');
@@ -205,7 +205,7 @@ function isolatedApi(req, res, url) {
     '/api/startup': { enabled: false, isolated: true }, '/api/processes': [], '/api/games': [],
     '/api/battery-estimate': {}, '/api/helper-calls': { uptimeS: Math.round(process.uptime()), calls: {} },
     '/api/settings-sync': { isolated: true, on: false }, '/api/auto-report': { isolated: true, on: true, configured: false, owner: false, active: false }, '/api/self-update': { isolated: true, count: 0 }, '/api/self-update/progress': {},
-    '/api/updates': { isolated: true, apps: [] }, '/api/openrgb': { running: false, isolated: true, controllers: [] },
+    '/api/updates': { isolated: true, apps: [] }, '/api/openrgb': { running: false, isolated: true, controllers: [] }, '/api/openrgb/find': { running: false, isolated: true },
     '/api/board-lights': { isolated: true, pawnio: { installed: false, version: null }, setUp: false, task: false, copy: false, canSetUp: false, why: 'DeviceHub is in isolated test mode', partial: null, before: '', remove: '', busy: false },
     '/api/lights/diagnose': { isolated: true, board: null, openrgb: { state: 'unknown' }, found: [], seen: [], verdict: null, problems: [], lines: [] },
   };
@@ -707,12 +707,28 @@ async function api(req, res, url) {
     try { const { findLampArrays } = await import('./helpers/lamparray.mjs'); return send(res, 200, { lamparrays: (await findLampArrays()).map(({ fields, ...d }) => d) }); } catch (e) { return send(res, 500, { error: e.message }); }
   }
   if (url.pathname === '/api/openrgb/color' && req.method === 'POST') {
-    const { target, hex } = await readBody(req);
-    try { const r = await openrgb.setColor(target ?? 'all', String(hex)); serverLog({ kind: 'good', text: `PC lights (${r.changed.join(', ')}) → ${hex}` }); return send(res, 200, r); }
+    const { target, hex, zone } = await readBody(req);
+    try { const r = await openrgb.setColor(target ?? 'all', String(hex), zone ?? null); serverLog({ kind: 'good', text: `PC lights (${r.changed.join(', ')}) → ${hex}` }); return send(res, 200, r); }
     catch (e) { serverLog({ kind: 'bad', text: `PC lights: ${e.message}` }); return send(res, 400, { error: e.message }); }
   }
   if (url.pathname === '/api/openrgb/restore' && req.method === 'POST') {
     try { const r = await openrgb.restore(); serverLog({ kind: 'good', text: 'PC lights put back as they were' }); return send(res, 200, r); }
+    catch (e) { return send(res, 400, { error: e.message }); }
+  }
+  // Find my lights (helpers/find-lights.js): one color per zone, the person's names saved, the lights put back
+  if (url.pathname === '/api/openrgb/find' && req.method === 'GET') return send(res, 200, openrgb.findState());
+  if (url.pathname === '/api/openrgb/find-start' && req.method === 'POST') {
+    const { target } = await readBody(req);
+    try { const r = await openrgb.findStart(target); serverLog({ kind: 'good', text: `PC lights: Find my lights on ${r.name} (${r.zones.filter((z) => z.color).length} colors)` }); return send(res, 200, r); }
+    catch (e) { serverLog({ kind: 'bad', text: `PC lights: ${e.message}` }); return send(res, 400, { error: e.message }); }
+  }
+  if (url.pathname === '/api/openrgb/find-save' && req.method === 'POST') {
+    const { target, names, hidden } = await readBody(req);
+    try { const r = await openrgb.findSave({ target, names, hidden }); serverLog({ kind: 'good', text: `PC lights: names saved for ${r.name}, lights put back` }); return send(res, 200, r); }
+    catch (e) { serverLog({ kind: 'bad', text: `PC lights: ${e.message}` }); return send(res, 400, { error: e.message }); }
+  }
+  if (url.pathname === '/api/openrgb/find-cancel' && req.method === 'POST') {
+    try { const r = await openrgb.findCancel(); serverLog({ kind: 'good', text: 'PC lights: light test canceled, put back' }); return send(res, 200, r); }
     catch (e) { return send(res, 400, { error: e.message }); }
   }
   if (url.pathname === '/api/monitors/set' && req.method === 'POST') {

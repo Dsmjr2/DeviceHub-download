@@ -3,7 +3,11 @@ import { h, icon, $ } from './dom.js';
 
 // ---------- toasts ----------
 const tray = () => $('#toasts');
+// the last red message and the page it was shown on: Get help puts it in the report (ui/get-help.js), nothing else
+export const lastBad = { hash: '', text: '', at: 0 };
+const noteBad = (msg, detail) => { if (typeof msg === 'string') Object.assign(lastBad, { hash: location.hash, text: detail ? `${msg}: ${detail}` : msg, at: Date.now() }); };
 export function toast(msg, kind = 'info', { detail, ms = 3800 } = {}) {
+  if (kind === 'bad') noteBad(msg, detail);
   const el = h('div', { class: `toast ${kind}`, role: 'status' },
     icon(kind === 'good' ? 'check' : kind === 'bad' ? 'alert' : kind === 'busy' ? 'refresh' : 'shield', `ic ${kind === 'busy' ? 'spin' : ''}`),
     h('div', {}, h('div', { class: 'toast-msg' }, msg), detail ? h('div', { class: 'toast-detail' }, detail) : null));
@@ -14,6 +18,7 @@ export function toast(msg, kind = 'info', { detail, ms = 3800 } = {}) {
   return {
     close,
     update(m, k, d) {
+      if (k === 'bad') noteBad(m, d);
       el.className = `toast ${k} in`;
       el.querySelector('.toast-msg').textContent = m;
       el.querySelector('.ic').replaceWith(icon(k === 'good' ? 'check' : k === 'bad' ? 'alert' : 'shield'));

@@ -82,6 +82,7 @@ check(/^Find lights has not run yet/.test(fx('not running').why) && /OpenRGB sai
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-lights-'));
 fs.writeFileSync(path.join(tmp, 'openrgb.js'), fs.readFileSync(path.join(ROOT, 'helpers', 'openrgb.js'), 'utf8').replace('PORT = 6742', 'PORT = 46745'));
 fs.copyFileSync(path.join(ROOT, 'helpers', 'safe-write.js'), path.join(tmp, 'safe-write.js'));
+fs.copyFileSync(path.join(ROOT, 'helpers', 'find-lights.js'), path.join(tmp, 'find-lights.js'));
 fs.copyFileSync(path.join(ROOT, 'helpers', 'bundled-tools.json'), path.join(tmp, 'bundled-tools.json'));
 const orgb = require(path.join(tmp, 'openrgb.js'));
 const { bundle, deps: od } = orgb._test;
@@ -118,7 +119,7 @@ check(!/zorblax/.test(r.body) && /PC lights/.test(r.body.split('### Log')[1] || 
 // 9. the page: the fan section and its Get help (no pop-ups or tooltips in it)
 const page = fs.readFileSync(path.join(ROOT, 'public', 'pages', 'pc-lights.js'), 'utf8');
 const fan = page.slice(page.indexOf('function fanHelp()'), page.indexOf('function pcLights()'));
-check(fan.length > 100 && fan.includes("getHelp('lights', () => 'lights')") && !/toast\(|title:|confirm\(|alert\(/.test(fan), 'the fan section has Get help for lights and no pop-ups or tooltips');
+check(fan.length > 100 && fan.includes("getHelp('lights', () => '', { area: 'lights' })") && !/toast\(|title:|confirm\(|alert\(/.test(fan), 'the fan section has Get help for lights and no pop-ups or tooltips');
 check((page.match(/fanHelp\(\)/g) || []).length === 3 && page.includes("env.api('/api/lights/diagnose')"), 'shown before and after Find lights, read from /api/lights/diagnose');
 const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
 check(/pathname === '\/api\/lights\/diagnose'[\s\S]{0,200}openrgb\.status\(false\)/.test(server) && server.includes("'/api/lights/diagnose': { isolated: true"), 'the route reads OpenRGB without starting it, and isolated mode answers a stand-in');

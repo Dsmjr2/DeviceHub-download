@@ -5,12 +5,11 @@
 import { h, icon } from '../ui/dom.js';
 import { card, row, slider, toggle, segmented, pill, readout, colorRow, lineList, remapSelect } from '../ui/controls.js';
 import { devices, write, prepare, connect } from '../core/devices.js';
-import { topbar, deviceActions, kv, statusPill, isAway, awayBanner, undoButton, checkAnswer } from './common.js';
+import { topbar, deviceActions, kv, statusPill, isAway, awayBanner, undoButton, checkAnswer, deviceHelp } from './common.js';
 import { artOf } from '../ui/art.js';
 import { button } from '../ui/controls.js';
 import { modal, toast } from '../ui/overlay.js';
 import { isDemo } from '../core/devices.js';
-import { getHelp } from '../ui/get-help.js';
 import { worksReport, offersWorks } from '../ui/works-report.js';
 import { loadBatteryEstimates, batteryLeft } from '../ui/controls.js';
 import { batteryChart } from '../ui/battery-chart.js';
@@ -170,13 +169,12 @@ export function devicePage(id) {
       const d = devices[id];
       const a = d.adapter;
       if (a.battery) loadBatteryEstimates(() => ctx.redraw?.());
-      const head = topbar(`${a.kind} · added on this PC`, a.title, null, h('div', { class: 'chips' }, undoButton(d), statusPill(d)));
+      const head = topbar(`${a.kind} · added on this PC`, a.title, null, h('div', { class: 'chips' }, undoButton(d), statusPill(d)), deviceHelp(d));
       if (d.status !== 'connected' && !isAway(d)) {
         return h('div', {}, head, h('div', { class: 'panel empty' }, artOf(d),
           h('h2', {}, d.status === 'error' ? `Couldn't reach the ${a.kind.toLowerCase()}` : `Waiting for the ${a.kind.toLowerCase()}`),
           h('p', {}, d.error || `Plug in the ${a.title}; DeviceHub finds it within a few seconds.`),
-          h('div', { class: 'actions' }, button('Look again', () => connect(id, false), { kind: 'primary', ic: 'plug' })),
-          getHelp(id)));
+          h('div', { class: 'actions' }, button('Look again', () => connect(id, false), { kind: 'primary', ic: 'plug' }))));
       }
       const shown = (a.settings || []).filter((s) => d.values?.[s.key] !== undefined);
       return h('div', {}, head, awayBanner(d),

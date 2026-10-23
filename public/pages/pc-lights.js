@@ -14,6 +14,7 @@ import { brandForUsb, brandNamed, ROUTE } from '../core/brands.js';
 import { learnThis } from './learn.js';
 import { getHelp } from '../ui/get-help.js';
 import { boardLights } from '../ui/board-lights.js';
+import { findLights, shownZones } from '../ui/find-lights.js';
 import { genericDongle } from '../core/generic-dongle.js';
 import { viaFileNote, isViaKeyboard } from './keyboard.js';
 
@@ -47,6 +48,25 @@ export async function loadPc(fresh = false, after) {
   finally { st.loading = false; redraw(); if (after) after(); }
 }
 
+// a row of color swatches and a color box; the current color has a ring
+const SWATCHES = ['#ffffff', '#ff2a2a', '#ff7a1a', '#ffd21a', '#35e06b', '#1ad0ff', '#2a5bff', '#a64dff', '#ff3fb4', '#000000'];
+function colorRow(label, current, set) {
+  const cur = (current || '').toLowerCase();
+  return h('div', { class: 'pc-color-row', style: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '6px' } },
+    h('span', { class: 'muted', style: { minWidth: '110px', fontSize: '12.5px' } }, label),
+    ...SWATCHES.map((hx) => h('button', { class: 'swatch', 'aria-label': hx === '#000000' ? 'Off' : hx, style: { width: '20px', height: '20px', borderRadius: '50%', background: hx, border: hx === cur ? '2px solid var(--text)' : '1px solid var(--line2)', cursor: 'pointer', padding: 0 }, onclick: () => set(hx) })),
+    h('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(cur) ? cur : '#ffffff', 'aria-label': `${label} color`, style: { width: '28px', height: '22px', padding: 0, border: 'none', background: 'none' }, onchange: (e) => set(e.target.value) }));
+}
+async function setPcColor(index, hex, zone) {
+  if (isDemo()) { const c = st.orgb.controllers.find((x) => x.index === index); if (c) { if (zone === null) { c.color = hex; c.same = true; c.zones.forEach((z) => { z.color = hex; }); } else { c.zones[zone].color = hex; c.same = false; } } redraw(); return; }
+  // shown at once; the answer then carries the lights' new state (no rescan of the PC)
+  const c = st.orgb?.controllers?.find((x) => x.index === index), was = c ? JSON.parse(JSON.stringify(c)) : null;
+  if (c) { if (zone === null) { c.color = hex; c.same = true; c.zones.forEach((z) => { z.color = hex; }); } else if (c.zones[zone]) { c.zones[zone].color = hex; c.same = c.zones.every((z) => z.color === hex); } redraw(); }
+  try {
+    const r = await env.api('/api/openrgb/color', { target: index, hex, zone });
+    if (Array.isArray(r?.controllers) && st.orgb) { st.orgb.controllers = r.controllers; redraw(); }
+  } catch (e) { if (c && was) Object.assign(c, was); redraw(); toast('Not changed', 'bad', { detail: e.message }); }
+}
 // one color on every OpenRGB light (used by "Apply to all" when PC lights are included)
 export async function applyPc(hex) {
   if (!st.include || !st.orgb?.running || !st.orgb.controllers.length) return null;
@@ -151,7 +171,7 @@ function fanHelp() {
       ...(d.seen || []).map((c) => row(c.kind === 'hub' ? 'Fan hub' : 'Lighting chip', `${c.name} (USB ${c.id})`, seenHow(c))),
       d.verdict && d.verdict.kind !== 'usb' ? row('So', d.verdict.kind === 'smbus' ? "on the board's SMBus" : 'no lighting controller found', d.verdict.line[0].toUpperCase() + d.verdict.line.slice(1) + '.') : null),
     ...(d.problems || []).map((p) => h('div', { class: 'gh-note', style: { margin: '8px 0 0' } }, h('b', {}, `${p.problem}. `), `${p.why} `, h('span', {}, `Fix: ${p.fix}`))),
-    getHelp('lights', () => 'lights'));
+    getHelp('lights', () => '', { area: 'lights' }));
 }
 
 function pcLights() {
@@ -175,8 +195,13 @@ function pcLights() {
     o.controllers.length ? h('div', { class: 'pc-parts' }, ...o.controllers.map((c) => h('div', { class: 'pc-part' },
       h('div', { class: 'pc-part-head' }, h('span', { class: 'muted' }, c.type), h('b', {}, c.name),
         c.color ? h('span', { class: 'dot', style: { background: c.same ? c.color : 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)' }, title: c.same ? c.color : 'several colors' }) : null),
-      h('small', { class: 'faint' }, [c.mode ? `Mode: ${c.mode}` : null, `${c.leds} light${c.leds === 1 ? '' : 's'}`, c.zones.length > 1 ? c.zones.map((z, i) => (/^\?+$/.test(z.name || '') ? `unnamed ${i + 1}` : z.name)).join(', ') : null].filter(Boolean).join(' · ')))))
+      h('small', { class: 'faint' }, [c.mode ? `Mode: ${c.mode}` : null, `${c.leds} light${c.leds === 1 ? '' : 's'}`].filter(Boolean).join(' · ')),
+      // the colors, for the whole device and per zone (an ARGB header is where fans plug in) (22 Oct 2026)
+      colorRow('All', c.same ? c.color : null, (hex) => setPcColor(c.index, hex, null)),
+      c.zones.length > 1 ? h('div', { class: 'pc-zones' }, ...shownZones(c).map(([z, i]) => colorRow(/^\?+$/.test(z.name || '') ? `Unnamed ${i + 1}` : z.name, z.color, (hex) => setPcColor(c.index, hex, i)))) : null)))
       : h('p', { class: 'faint' }, 'OpenRGB runs but found no lights.'),
+    // Find my lights: one color per zone, the person names what lit (ui/find-lights.js)
+    findLights(o, redraw),
     h('div', { class: 'actions' },
       button('Undo', async () => { if (isDemo()) { st.orgb = DEMO_ORGB(); redraw(); toast('PC lights undone', 'good'); return; } try { await env.api('/api/openrgb/restore', {}); toast('PC lights undone', 'good'); } catch (e) { toast('Nothing to undo', 'bad', { detail: e.message }); } loadPc(true); }, { kind: 'small', ic: 'undo' }),
       button('Look again', () => loadPc(true), { kind: 'ghost small', ic: 'refresh' })),

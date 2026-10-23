@@ -394,9 +394,12 @@ stand-in server written from OpenRGB's protocol document.
   test window on the second screen).
 - `node helpers/soak-test.mjs [rounds]`: every writable setting written with the value it already has, read back.
 - Settings > Self-test inside the app, and Settings > Health.
-- Someone without Claude presses **Get help** (device page's troubleshooting panel, or Settings > Get help):
-  helpers/get-help.mjs shows a short report with anything personal taken out, then opens a filled-in GitHub issue on
-  their click (docs/handoff/get-help.md).
+- Someone without Claude presses **Get help** (top right of each device page, Monitors, Fans, Learn a device,
+  Profiles, Backups, Wallpapers; the Equalizer card; each Setup row that needs them; Lighting's PC lights card;
+  Settings > Get help): helpers/get-help.mjs builds a short report about that screen with anything personal taken out;
+  on a friend's PC Send to Shawn files it through the relay (label `support`, once per screen per hour), on this PC it
+  opens a filled-in GitHub issue (docs/handoff/get-help-everywhere.md). **Find my lights** (Lighting > PC lights)
+  names a board's zones by giving each its own color (docs/handoff/find-lights.md).
 - **When a device does not work, call `GET http://127.0.0.1:5577/api/diagnose?id=<device>` first** (or
   `node helpers/diagnose.mjs <device>`): it names the likeliest cause, the fix, and what it already checked
   (docs/handoff/diagnose.md). The same answer shows on the device's page, with a fix button.

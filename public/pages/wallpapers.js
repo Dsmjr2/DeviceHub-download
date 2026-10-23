@@ -9,6 +9,7 @@ import { card, button, loadingCard } from '../ui/controls.js';
 import { isDemo } from '../core/devices.js';
 import { loadPicture, hasPicture, removePicture } from '../core/theme.js';
 import { topbar } from './common.js';
+import { helpHere } from '../ui/get-help.js';
 
 const IMAGE_EXT = /\.(png|jpe?g|webp|gif|bmp)$/i;
 let data = null, error = null, query = '', rerender = () => {};
@@ -280,7 +281,7 @@ export default {
       `Kept in ${data.dir}`, ' · ', items.length ? `${plural(items.length, 'picture')} · ${mb(total)}` : 'none yet',
       data.demo ? ' · demo: the starter wallpapers, nothing is saved' : '') : null;
     const page = h('div', { class: 'wp-page' },
-      topbar('Setup', 'Wallpapers', null),
+      topbar('Setup', 'Wallpapers', null, null, helpHere('wallpapers')),
       where,
       error ? card([h('h2', {}, 'Wallpapers')], h('p', { class: 'faint' }, `Could not read the folder: ${error}`))
         : !data ? loadingCard('Wallpapers', 3)

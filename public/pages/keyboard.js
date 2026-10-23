@@ -3,7 +3,7 @@ import { P75, grid } from '../devices/via-layout.js';
 import { h, icon } from '../ui/dom.js';
 import { card, row, slider, stepper, button, toggle } from '../ui/controls.js';
 import { devices, write, writeBatch, isDemo, prepare } from '../core/devices.js';
-import { topbar, connectState, deviceActions, vendorNote, kv, statusPill, isAway, awayBanner, undoButton } from './common.js';
+import { topbar, connectState, deviceActions, vendorNote, kv, statusPill, isAway, awayBanner, undoButton, deviceHelp } from './common.js';
 import { modal } from '../ui/overlay.js';
 import { keyName, shortName, isSpecialKey, isDangerous, pickerGroups, hex, CODE_TO_HID, EFFECTS } from '../devices/keycodes.js';
 import { hsv255ToHex, rgbToHsv255 } from '../devices/keyboard-adapter.js';
@@ -309,7 +309,7 @@ export default {
     const dev = d();
     const a = dev.adapter;
     rerender = () => { const el = document.querySelector('#main .page'); if (el) el.replaceWith(Object.assign(this.render(), { className: 'page no-anim' })); };
-    const head = topbar('Epomaker · 75% wireless keyboard', a.title, null, h('div', { class: 'chips' }, undoButton(dev), statusPill(dev)));
+    const head = topbar('Epomaker · 75% wireless keyboard', a.title, null, h('div', { class: 'chips' }, undoButton(dev), statusPill(dev)), deviceHelp(dev));
     if ((dev.status !== 'connected' && !isAway(dev)) || !a.session) {
       return h('div', {}, head, connectState(dev, 'Connect the keyboard with its USB cable and press Connect. Close VIA and the maker\'s app first.'), viaHelp());
     }

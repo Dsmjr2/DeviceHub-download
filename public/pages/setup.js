@@ -19,7 +19,7 @@ import { topbar, checkAnswer } from './common.js';
 import { learnThis } from './learn.js';
 import { isViaKeyboard } from './keyboard.js';
 import { brandForUsb } from '../core/brands.js';
-import { getHelp } from '../ui/get-help.js';
+import { getHelp, helpHere } from '../ui/get-help.js';
 import { worksReport, offersWorks } from '../ui/works-report.js';
 import { installerInline, installerStatus } from '../ui/installer-button.js';
 import { boardLights, boardLightsStatus } from '../ui/board-lights.js';
@@ -242,7 +242,13 @@ function control(r) {
 function rowEl(r) {
   return h('li', { class: `su-item su-${r.status}`, dataset: { key: r.key } },
     h('div', { class: 'su-text' }, h('b', {}, r.title), h('small', {}, st.note[r.key] || r.line)),
-    h('div', { class: 'su-ctl' }, control(r)));
+    h('div', { class: 'su-ctl' }, control(r), rowHelp(r)));
+}
+// Get help on a row that needs you (area setup, 22 Oct 2026): the row, what it says now, and its device when it has one;
+// not on a Request support row (that is its own one-click request)
+function rowHelp(r) {
+  if (r.status !== 'needs' || r.action?.kind === 'request') return null;
+  return helpHere('setup', { key: `help:setup:${r.key}`, device: r.id || '', context: () => ({ item: r.title, status: st.note[r.key] || r.line || '' }) });
 }
 // the demo's answers stay on their rows
 const applyOver = (rows) => rows.map((r) => { const o = st.over[r.key]; if (!o) return r; const x = { ...r, ...o }; if (o.action === null) delete x.action; delete x.live; return x; });

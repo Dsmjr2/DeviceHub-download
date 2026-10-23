@@ -14,6 +14,7 @@ import { splitMacros, decodeMacro } from '../devices/macros.js';
 import { saveSetup, planSetup, loadSetup } from '../core/setup.js';
 import { SHOWN, friendlyWhen, whenInSentence, weeklyWhen, whyText, groupOf, OTHER_NAMES, contentLines } from '../core/backup-words.js';
 import { demoBackups } from '../devices/demo-backups.js';
+import { helpHere } from '../ui/get-help.js';
 
 
 // Turn a backup into the list of writes that would put the device back. `allow` says which settings may be written
@@ -344,7 +345,8 @@ export default {
     const cards = [...groups].map(([id, list]) => (list.length ? deviceCard(id, list)
       : card([icon(devices[id] ? id : 'backups'), h('h2', {}, devName(id))], h('div', { class: 'feed-empty' }, 'None yet. One is saved before the first change.'))));
     return h('div', {},
-      topbar('Safety net', 'Backups'),
+      // Get help (area backups): a go-back that failed shows its red line here, and the report carries it
+      topbar('Safety net', 'Backups', null, null, helpHere('backups')),
       h('p', { class: 'lede bk-intro' }, 'Saved before every change. Click a date to see what is in it.'),
       h('div', { class: 'bk-top' }, setupCard()),
       files === null ? h('div', { class: 'faint' }, 'Reading…') : h('div', { class: 'grid three top bk-grid' }, ...cards),

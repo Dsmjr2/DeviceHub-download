@@ -159,6 +159,69 @@ try {
   ok(gd && gd.usb === '258a:1007' && gd.state === 'ready' && gd.short === dongleLine('Sinowealth') && /Learn a device does not learn/.test(gd.line), `the Set up card has the plain line (${JSON.stringify(gd)})`);
   ok(!(s.learn || []).some((i) => i.usb === '258a:1007') && (s.learn || []).some((i) => i.usb === '258a:0036'), 'the generic receiver is not offered for learning; a real Glorious id still is listed as before');
   ok(s.show, 'the card shows for it');
+
+  // ---- Get help on every screen: Send to Shawn (docs/handoff/get-help-everywhere.md). The report the page showed goes
+  // through the relay, labeled support, once per area per hour; the owner's PC never sends.
+  const gh = await import('../helpers/get-help.mjs');
+  const API = {
+    '/api/monitors': [{ name: 'AOC AGON OLED', ddc: false, error: 'C:\\Users\\zorblax\\x.log' }], '/api/cameras': [],
+    '/api/gpu': { available: false, reason: 'no NVIDIA card' }, '/api/lights/diagnose': { lines: ['- OpenRGB: 1.1'] },
+    '/api/eq': { engine: 'eqapo', presets: [] }, '/api/profiles': [], '/api/settings': {}, '/api/backups': [],
+    '/api/setup': { works: [] }, '/api/learn/state': { usbpcap: false, active: false }, '/api/wallpapers': { items: [] },
+    '/api/activity': [{ at: '2026-10-22T10:00:00Z', kind: 'bad', text: 'Profile not applied for zorblax' }],
+    '/api/agent/state': { devices: [{ id: 'mouse', status: 'connected', adapter: { title: 'Pulsar X-Lite' } }] },
+  };
+  const hdeps = { version: async () => 'b1', windows: async () => 'Windows 11', get: async (p) => API[p] ?? null, log: async () => ['Error: monitor failed for zorblax on QUUXPC-7'], bluetooth: async () => [], names: NAMES, canSend: async () => true };
+  const NOW = Date.parse('2026-10-22T14:20:00Z');
+  root = folder(); fresh(root, { now: () => NOW });
+  ok(sr.helpFingerprint('monitors', null, NOW) === 'support:help-monitors:14' && sr.helpFingerprint('device', 'My Mouse!', NOW) === 'support:help-device:my-mouse:14', `fingerprint support:help-<area>[:<device>]:<hour> (${sr.helpFingerprint('device', 'My Mouse!', NOW)})`);
+  ok(sr.helpFingerprint('x'.repeat(200), 'y'.repeat(200), NOW).length <= 80, 'a long fingerprint still fits the relay');
+  for (const area of ['monitors', 'fans', 'eq', 'profiles', 'backups', 'setup', 'learn', 'wallpapers']) {
+    const rep = await gh.report(area === 'eq' ? 'headset' : '', hdeps, { area, context: { page: area, error: 'not changed: zorb.lax@gmail.com' } });
+    ok(rep.ok && rep.canSend && rep.token, `${area}: report made with Send to Shawn offered`);
+    calls = [];
+    const r1 = await sr.sendHelp(rep.token);
+    ok(r1.sent && r1.line === 'Sent to Shawn.' && calls.length === 1, `${area}: Send to Shawn sends once, then one plain line (${JSON.stringify(r1)})`);
+    const p1 = calls[0]?.payload || {};
+    ok(checkReport(p1) === null, `${area}: the payload passes relay/worker.js checkReport (${checkReport(p1)})`);
+    ok(p1.fingerprint === `support:help-${area}${area === 'eq' ? ':headset' : ''}:14` && p1.fingerprint.startsWith('support:'), `${area}: fingerprint gets the relay's support label (${p1.fingerprint})`);
+    ok(!/zorblax|QUUXPC|gmail|C:\\Users/i.test(JSON.stringify(p1)) && findPersonal(`${p1.title}\n${p1.body}`, NAMES).length === 0, `${area}: nothing personal in what was sent:\n${p1.body}`);
+    ok(p1.body.includes('The person pressed Get help on this page and sent it.') && !p1.body.includes('(write it here)') && p1.body.includes('Sent by DeviceHub when the person pressed Send on this page.'), `${area}: the body says how it was sent`);
+    const r2 = await sr.sendHelp((await gh.report(area === 'eq' ? 'headset' : '', hdeps, { area })).token);
+    ok(r2.sent && r2.already && calls.length === 1, `${area}: a second click in the same hour sends nothing new`);
+  }
+  // the next hour the same area can send again; a device page is its own
+  fresh(root, { now: () => NOW + 3600e3 });
+  let rep = await gh.report('', hdeps, { area: 'monitors' });
+  let r3 = await sr.sendHelp(rep.token);
+  ok(r3.sent && !r3.already && calls.length === 1 && calls[0].payload.fingerprint === 'support:help-monitors:15', 'the next hour the same area sends again');
+  // the relay's own once-a-day key holds the fingerprint, so a new hour is a new issue there too
+  rep = await gh.report('mouse', { ...hdeps, specs: [], diagnose: async () => ({ findings: [] }), usb: async () => [] }, { area: 'device', context: { page: 'Mouse' } });
+  r3 = await sr.sendHelp(rep.token);
+  ok(r3.sent && calls.length === 2 && calls[1].payload.fingerprint === 'support:help-device:mouse:15' && checkReport(calls[1].payload) === null, `a device page sends its own (${calls[1]?.payload.fingerprint})`);
+  // an unknown or old token sends nothing
+  calls = [];
+  ok((await sr.sendHelp('nope')).sent === false && calls.length === 0, 'an unknown token sends nothing');
+  // the owner's PC: nothing sent, the GitHub way instead
+  root = folder(); fresh(root, { owner: true, now: () => NOW });
+  rep = await gh.report('', hdeps, { area: 'fans' });
+  r3 = await sr.sendHelp(rep.token);
+  ok(r3.fallback && calls.length === 0, `the owner's PC sends nothing and falls back to GitHub (${JSON.stringify(r3)})`);
+  ok((await gh.report('', { ...hdeps, canSend: undefined }, { area: 'fans' })).canSend === false, "the owner's PC is not offered Send to Shawn");
+  root = folder({ settings: { autoReport: false } }); fresh(root, { now: () => NOW });
+  r3 = await sr.sendHelp((await gh.report('', hdeps, { area: 'fans' })).token);
+  ok(r3.fallback && calls.length === 0, 'reports switched off: nothing sent');
+  // no network: queued with the plain line
+  root = folder(); fresh(root, { now: () => NOW }); answer = 'throw';
+  r3 = await sr.sendHelp((await gh.report('', hdeps, { area: 'learn' })).token);
+  ok(r3.queued && /tries again/.test(r3.line), 'no network: a plain "tries again" line');
+  await ar.settle();
+  // the route
+  root = folder(); fresh(root, { now: () => NOW });
+  rep = await gh.report('', hdeps, { area: 'backups' });
+  sent = null;
+  await handle(new URL('http://127.0.0.1/api/help/send'), { method: 'POST', socket: {} }, {}, (rs, code, body) => { sent = { code, body }; }, async () => ({ token: rep.token }));
+  ok(sent?.code === 200 && sent.body.sent && calls.length === 1, `POST /api/help/send sends it (${JSON.stringify(sent)})`);
 } finally { ar.stop(); }
 
 if (fails.length) { console.log(`support-request: ${fails.length} failed\n - ${fails.join('\n - ')}`); process.exit(1); }

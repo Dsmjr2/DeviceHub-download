@@ -9,7 +9,7 @@ import { h } from '../ui/dom.js';
 import { card, row, loadingCard, button, pill } from '../ui/controls.js';
 import { toast } from '../ui/overlay.js';
 import { SWATCHES } from './headset.js';
-import { getHelp } from '../ui/get-help.js';
+import { helpHere } from '../ui/get-help.js';
 import { boardLights } from '../ui/board-lights.js';
 import { env } from '../core/env.js';
 import { isDemo } from '../core/devices.js';
@@ -116,8 +116,7 @@ function whyNone(o) {
   return [h('p', { class: 'faint fan-why' }, head),
     ...(d?.problems || []).map((x) => h('p', { class: 'faint fan-why' }, h('b', {}, `${x.problem}. `), `${x.why} Fix: ${x.fix}`)),
     fix,
-    h('p', { class: 'faint fan-why' }, "Fans on a hub with its own button or remote have no link to the PC: plug the hub's ARGB lead into the board's D_LED header instead. 3-pin ARGB fans go on D_LED (5 V), never on the 4-pin 12 V RGB header."),
-    isDemo() ? null : getHelp('lights', () => 'lights')];
+    h('p', { class: 'faint fan-why' }, "Fans on a hub with its own button or remote have no link to the PC: plug the hub's ARGB lead into the board's D_LED header instead. 3-pin ARGB fans go on D_LED (5 V), never on the 4-pin 12 V RGB header.")];
 }
 function fanLightsCard() {
   if (!lightsAsked) queueMicrotask(() => loadLights());
@@ -147,7 +146,8 @@ export default {
     keepFresh();
     const gpus = gpu?.available ? gpu.gpus : [];
     return h('div', {},
-      topbar('Cooling', 'Fans', null),
+      // Get help (area fans: the graphics card, the lights check, the page's red lines), top right
+      topbar('Cooling', 'Fans', null, null, helpHere('fans')),
       h('div', { class: 'grid two top' },
         error ? card([h('h2', {}, 'Graphics card')], h('p', { class: 'faint' }, `Could not read it: ${error}`))
           : !gpu ? loadingCard('Graphics card', 4)

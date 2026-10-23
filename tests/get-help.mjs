@@ -141,6 +141,67 @@ try {
   ok(new URL(cut.url).searchParams.get('body') === cut.body, 'a cut link still decodes to the body shown');
   ok(MAX_URL === 8000 && issueUrl('a b', 'c+d').includes('title=a%20b') && issueUrl('a', 'c+d').includes('c%2Bd'), 'same limit and encoding as Share');
   ok(relevantLog(['x'.repeat(500)], null).length === 0 && relevantLog([`Error: ${'y'.repeat(500)}`], null)[0].length <= 200, 'long log lines cut to 200 characters');
+
+  // ---- Get help on every screen (22 Oct 2026, docs/handoff/get-help-everywhere.md): each area builds its report from
+  // its page's GET routes (stand-ins here, with personal bits planted in them), the page's own context goes in, and
+  // nothing personal comes out
+  const API = {
+    '/api/agent/state': STATE,
+    '/api/monitors': [{ id: 'AOCA610#5&3da353e&0&UID37121', name: 'AOC AGON OLED', model: 'AG276QZD2', ddc: true, brightness: { value: 50, max: 100 }, contrast: { value: 48, max: 100 }, red: { value: 50, max: 100 }, error: 'read failed at C:\\Users\\zorblax\\x.log', supports: [{}, {}] },
+      { id: 'X#1', name: 'Old screen', ddc: false }],
+    '/api/cameras': [{ id: '\\\\?\\usb#vid_291a&pid_3369&mi_00#7&3924ec', name: 'Anker PowerConf C200', controls: { brightness: {}, zoom: {} } }],
+    '/api/gpu': { available: true, gpus: [{ name: 'NVIDIA GeForce RTX 4070', tempC: 36, fanPct: 0, loadPct: 8 }] },
+    '/api/eq': { available: true, engine: 'eqapo', presets: [{ id: 'a', name: "Zorblax's secret mix", builtIn: false }, { id: 'b', name: 'Flat', builtIn: true }], activeId: 'a', headroom: true, extras: { correction: false, filters: [], micBoost: 6, micRumble: true }, micFound: true, headsetModel: 'HS80', speakers: [{ guid: 'g', name: 'OLED', on: true }], notOn: [{ name: 'Headset Earphone (HS80)' }] },
+    '/api/profiles': [{ name: "Zorblax's games", devices: { mouse: {}, headset: {} }, games: ['zorb.exe'], savedAt: '2026-10-19T05:31:30Z' }, { name: 'Work', devices: {}, monitors: { m: {} } }],
+    '/api/settings': { autoSwitch: true, reportInstall: 'abcdef', user: 'zorblax' },
+    '/api/backups': [{ name: 'mouse-2026-10-22T01-00-00-000Z.json', at: '2026-10-22T01:00:00Z' }, { name: 'mouse-2026-10-21T01-00-00-000Z.json', at: '2026-10-21T01:00:00Z' }, { name: 'openrgb-2026-10-23T02-29-54-233Z.json', at: '2026-10-23T02:29:54Z' }],
+    '/api/setup': { found: { usb: 6, library: 1 }, works: [{ what: 'mouse', name: 'Pulsar X-Lite', state: 'ready', short: 'Ready.' }], installed: [{ name: 'Acme Glide', usb: '1234:abcd', state: 'needs-turn-on', short: 'Press Turn on settings.' }], optional: [], learn: [] },
+    '/api/learn/state': { usbpcap: true, active: true, device: { vid: '1234', pid: 'ABCD', name: 'Acme Glide' }, listener: 'ready', listenerError: null, setting: { label: 'DPI', kind: 'number' }, takes: [{ value: 800, heard: 12 }, { value: 1600, heard: 14 }], learned: [{ label: 'Poll rate', kind: 'choice' }], maker: { known: true, name: 'Acme Hub', installed: true, running: true } },
+    '/api/wallpapers': { dir: 'C:\\Users\\zorblax\\Pictures\\DeviceHub Wallpapers', items: [{ name: 'zorblax-wedding.jpg' }, { name: 'b.png' }], totalBytes: 2500000, windows: true, previousKept: true, previous: 'C:\\Users\\zorblax\\OneDrive\\Desktop\\x.jpg' },
+    '/api/activity': [{ at: '2026-10-22T10:00:00Z', kind: 'bad', text: 'AOC AGON OLED: brightness not changed (no reply)' }, { at: '2026-10-22T10:01:00Z', kind: 'good', text: 'Profile applied' }, { at: '2026-10-22T10:02:00Z', kind: 'bad', text: 'Profile "x" failed on C:\\Users\\zorblax\\p.json' }],
+    '/api/lights/diagnose': { board: 'B450 AORUS PRO WIFI', lines: ['- OpenRGB: 1.1, running'], problems: [{ problem: 'No fan lights found', why: 'The board drives them over SMBus.', fix: 'Press Add board, fan and RAM lights.' }] },
+  };
+  const gets = [];
+  const adeps = { ...deps, get: async (p) => { gets.push(p); return API[p] ?? null; },
+    log: async () => [...LOG, 'Error: monitor DDC/CI read failed for AOC AGON OLED', '[setup] could not install the library driver', 'Error: wallpaper set failed', 'Error: learn capture failed: USBPcap stopped', 'Error: profile apply failed', 'Error: backup restore failed', 'Error: eqapo config not written'] };
+  const ctx = { page: 'Monitors', error: 'AGON: not changed: no reply from zorb.lax@gmail.com at 192.168.1.23', step: 'recording', progress: 'setting 2 of 3: DPI', heard: 'the last recording heard 12 messages', results: 'Poll rate: learned', item: 'Acme Glide', status: 'Press Turn on settings.', detail: 'x', bogus: 'not a key' };
+  const WANT = {
+    monitors: ['### Monitors and camera', 'Monitor: AOC AGON OLED (AG276QZD2): answers over DDC/CI; controls brightness, contrast, color balance', 'Old screen: no DDC/CI answer', 'Camera: Anker PowerConf C200: 2 picture settings', 'Recently (2026-10-22 10:00 UTC): AOC AGON OLED', 'monitor DDC/CI read failed', 'Old screen takes no settings from the PC'],
+    fans: ['### Fans', 'Graphics card: NVIDIA GeForce RTX 4070: 36 °C', 'OpenRGB: 1.1, running', 'No fan lights found'],
+    eq: ['### Sound and EQ', 'Device: Corsair', 'Engine: Equalizer APO', 'Presets: 2 (1 of your own); in use: one of your own', 'mic boost 6 dB', 'not switched on for: Headset Earphone (HS80)', 'Equalizer APO is not on for the headset', 'eqapo config not written'],
+    profiles: ['### Profiles', 'Profiles: 2', 'Profile 1: mouse, headset; switches for 1 game', 'Profile 2: monitors', 'Switch profiles when games start: on', 'profile apply failed'],
+    backups: ['### Backups', 'Copies: 3 in all', '- mouse: 2, newest 2026-10-22 01:00 UTC', '- openrgb: 1', 'backup restore failed'],
+    setup: ['### Setup', 'Found: 6 USB devices, 1 library match', 'Items: 2, 1 not ready', 'Acme Glide (USB 1234:abcd): needs-turn-on, Press Turn on settings.', '- Device: Acme Glide (acme-mouse): missing'],
+    learn: ['### Learn a device', 'USBPcap: installed', 'Device: Acme Glide (USB 1234:ABCD)', "Maker's app: Acme Hub, installed, open", 'Setting being learned: DPI (number)', 'Recordings: 800 (12 messages), 1600 (14 messages)', 'Learned so far: Poll rate (choice)', 'learn capture failed'],
+    wallpapers: ['### Wallpapers', 'Pictures: 2 (2.5 MB)', 'can be set from here: yes', 'wallpaper set failed'],
+  };
+  for (const [area, want] of Object.entries(WANT)) {
+    const dev = area === 'eq' ? 'headset' : area === 'setup' ? 'acme-mouse' : '';
+    const st2 = { devices: [...STATE.devices, { id: 'headset', status: 'connected', adapter: { title: 'Corsair HS80' } }] };
+    const rr = await report(dev, { ...adeps, get: async (p) => (p === '/api/agent/state' ? st2 : API[p] ?? null) }, { area, context: ctx });
+    ok(rr.ok && rr.token, `${area}: a report is built (${rr.refused ? JSON.stringify(rr.refused) : ''})`);
+    if (!rr.ok) continue;
+    for (const w of want) ok(rr.body.includes(w) || rr.title.includes(w), `${area}: has "${w}"\n${rr.body}`);
+    ok(rr.title.startsWith(`Help: ${want[0].slice(4)}`) && rr.title.length <= 120, `${area}: title (${rr.title})`);
+    ok(rr.body.includes('### On the page') && rr.body.includes('- Page: Monitors') && rr.body.includes('- Step: recording') && rr.body.includes('- Heard so far: the last recording heard 12 messages') && !rr.body.includes('not a key'), `${area}: the page's context is in it, only the known keys`);
+    ok(!/zorblax|zorb\.lax|gmail|192\.168|QUUXPC|3da353e|UID37121|3924ec|wedding|secret mix|zorb\.exe|reportInstall|abcdef/i.test(`${rr.title}\n${rr.body}`), `${area}: nothing personal in it:\n${rr.body}`);
+    ok(findPersonal(`${rr.title}\n${rr.body}`, NAMES).length === 0, `${area}: passes the personal-data check`);
+    ok(rr.canSend === false, `${area}: Send to Shawn is not offered where reports are not started (here)`);
+    ok(new URL(rr.url).searchParams.get('body') === rr.body && rr.length <= MAX_URL, `${area}: the GitHub link is the same report, within the limit`);
+  }
+  ok(!gets.some((p) => !p.startsWith('/api/')), 'areas read only DeviceHub routes');
+  // the device page and the Lighting page keep their own reports, with the page's context added
+  const dr = await report('acme-mouse', adeps, { area: 'device', context: { page: 'Acme Glide', error: 'Acme Glide: DPI not changed', status: 'missing' } });
+  ok(dr.ok && dr.title === 'Help: Acme Glide (1234:abcd), not connected' && dr.body.includes('- Shown on the page: Acme Glide: DPI not changed') && dr.body.includes('- Status shown: missing'), `device page: its own report plus the page's context\n${dr.body}`);
+  const lr = await report('', { ...adeps, lights: async () => API['/api/lights/diagnose'] }, { area: 'lights', context: { page: 'Lighting' } });
+  ok(lr.ok && lr.title.startsWith('Help: PC lights (B450') && lr.body.includes('- Page: Lighting'), `Lighting: the lights report plus the page (${lr.title})`);
+  // an unknown area is a device report (or DeviceHub in general), never an error
+  const ur = await report('', adeps, { area: 'nope', context: 'not an object' });
+  ok(ur.ok && ur.title.startsWith('Help: DeviceHub') && !ur.body.includes('### On the page'), 'an unknown area and a bad context fall back to the general report');
+  // the POST route
+  let pr = null;
+  await handle(new URL('http://127.0.0.1:5577/api/help/report'), { method: 'POST', socket: {} }, {}, (res, c, b) => { pr = { c, b }; }, async () => ({ id: 'nope-device', area: 'device', context: { page: 'x' } }));
+  ok(pr && pr.c >= 400 && pr.b.error, `POST /api/help/report answers in place (${JSON.stringify(pr)})`);
 } catch (e) {
   fails.push(`threw: ${e.stack || e}`);
 } finally {

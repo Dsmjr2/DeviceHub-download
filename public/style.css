@@ -1308,6 +1308,16 @@ select.text.kind-select { width: auto; min-width: 150px; font-size: 13px; paddin
 .gh-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .gh-line > .get-help { flex: 1 1 auto; min-width: 0; }
 .gh-line:has(.gh-card) > .get-help { flex-basis: 100%; }
+/* Get help on every screen (22 Oct 2026, docs/handoff/get-help-everywhere.md): one small button at the top right of the
+   page title; it opens below the title across the page, so closed it adds no height */
+.topbar.has-help { column-gap: 10px; }
+.topbar.has-help > :nth-child(2):not(.get-help) { margin-left: auto; }
+.topbar > .get-help { margin-top: 0 !important; }
+.topbar > .get-help:has(.gh-card, .gh-note) { flex: 1 1 100%; order: 3; }
+.topbar > .get-help .gh-card { max-width: 720px; }
+.su-ctl .gh-here { margin-left: 8px; }
+.su-ctl:has(.gh-here .gh-card, .gh-here .gh-note) { flex-wrap: wrap; gap: 8px; }
+.su-ctl:has(.gh-card, .gh-note) .gh-here:has(.gh-card, .gh-note) { margin-left: 0; flex-basis: 100%; }
 .ar-toggle { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); cursor: pointer; }
 select.text.gh-pick { width: auto; min-width: 170px; font-size: 13px; padding: 5px 30px 5px 12px; }
 
