@@ -2266,3 +2266,14 @@ html[data-skin="coral-reef"]:not([data-art="live"]) .art.mark { filter: sepia(.2
 }
 html[data-skin="old-school"] .su-fold > summary { color: var(--osrs-orange); }
 html[data-skin="verde"] .su-fold > summary { font-family: var(--chunky); color: #ffffff; }
+/* Fans page: fan lights (23 Oct 2026) */
+.fan-light { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.fan-light-name { display: grid; gap: 2px; min-width: 0; }
+.fan-light .swatch:disabled, .fan-light .swatch-custom:disabled { opacity: .45; cursor: default; }
+.fan-why { margin: 0 0 8px; font-size: 13px; line-height: 1.45; }
+.fan-steps { margin: 4px 0 10px; padding-left: 20px; display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+.fan-steps a, .fan-why a { color: var(--text); }
+.fan-fix { display: grid; gap: 6px; justify-items: start; margin: 2px 0 12px; }
+.board-lights { display: grid; gap: 6px; justify-items: start; margin: 10px 0 0; }
+.board-lights > small { line-height: 1.45; }
+.su-ctl:has(.board-lights) { flex: 1 1 100%; justify-content: flex-start; }

@@ -20,6 +20,7 @@
 //     { kind: 'tool', id }                   an optional tool's installer (ui/installer-button.js installerInline)
 //     { kind: 'eq-on' }                      Equalizer APO's device list, to tick the headset (POST /api/eq/turn-on)
 //     { kind: 'find-lights' }                start the OpenRGB inside DeviceHub and look (GET /api/openrgb?fresh=1)
+//     { kind: 'board-lights' }               Add board, fan and RAM lights, or Remove board lights (ui/board-lights.js)
 // Since 22 Oct 2026 (Shawn: "is currently overwhelming for a new user") the page shows only what needs the person
 // (planSetup), devices as small tiles, and folds the rest. Reset sound to normal is on the Headset page's EQ card
 // only; the problem reports switch and Get help are in Settings.
@@ -134,20 +135,31 @@ export function soundRows(tool, eq) {
 // Lights: the OpenRGB inside DeviceHub (GET /api/openrgb), why nothing was found (GET /api/lights/diagnose,
 // helpers/lights-diagnose.js), and Windows Dynamic Lighting from the summary
 const NO_LIGHTS = {
-  smbus: { status: 'needs', line: "Your board's lights (SMBus) need the full OpenRGB. Lighting shows how." },
+  smbus: { status: 'needs', line: "Your board's lights (SMBus) need board lights added. Lighting shows how." },
   none: { status: 'none', line: 'No lights to change: the fans are plain 3-pin RGB or on a hub with a remote.' },
   usb: { status: 'needs', line: "A light is plugged in but not found. Close its maker's app, then look again." },
 };
-export function lightRows(orgb, summary, diag = null) {
+// board: GET /api/board-lights (helpers/board-lights.mjs), or null when not read: with it, an SMBus board gets its own
+// row, "Board, fan and RAM lights", whose one control is Add board, fan and RAM lights (ui/board-lights.js)
+export function boardRow(board, diag) {
+  if (!board) return null;
+  if (board.setUp) return { key: 'board-lights', title: 'Board, fan and RAM lights', status: 'done', line: 'On: OpenRGB runs as administrator.', action: { kind: 'board-lights' } };
+  if (diag?.verdict?.kind !== 'smbus') return null;
+  return { key: 'board-lights', title: 'Board, fan and RAM lights', status: board.canSetUp ? 'needs' : 'optional', line: "They sit on your board's lighting chip (SMBus).", action: { kind: 'board-lights' } };
+}
+export function lightRows(orgb, summary, diag = null, board = null) {
   const rows = [];
+  const own = boardRow(board, diag);
   if (orgb) {
     const n = orgb.controllers?.length || 0;
     if (orgb.running) rows.push({ key: 'openrgb', title: 'PC lights', status: n ? 'done' : 'none', line: n ? `${n} light${n === 1 ? '' : 's'} found.` : (NO_LIGHTS[diag?.verdict?.kind]?.line || 'No lights found.'), action: { kind: 'open', page: 'lighting' } });
-    if (orgb.running && !n && NO_LIGHTS[diag?.verdict?.kind]) rows[rows.length - 1].status = NO_LIGHTS[diag.verdict.kind].status;
+    // an SMBus board with its own row: that row needs you, not this one too
+    if (orgb.running && !n && NO_LIGHTS[diag?.verdict?.kind]) rows[rows.length - 1].status = own && diag.verdict.kind === 'smbus' ? 'none' : NO_LIGHTS[diag.verdict.kind].status;
     else if (orgb.running) { /* found, or no reason known */ }
     else if (orgb.bundle?.canStart) rows.push({ key: 'openrgb', title: 'PC lights', status: 'optional', line: 'Find lights looks for USB lights.', action: { kind: 'find-lights' } });
     else rows.push({ key: 'openrgb', title: 'PC lights', status: 'optional', line: 'Board and fan lights need the free OpenRGB. Lighting shows how.', action: { kind: 'open', page: 'lighting' } });
   }
+  if (own) rows.push(own);
   const lamps = (summary?.works || []).find((i) => i.what === 'lamparrays');
   if (lamps) rows.push({ key: 'lamparrays', title: lamps.name, status: 'done', line: 'Works in Windows Dynamic Lighting.', action: { kind: 'settings', page: 'lighting', label: 'Open Dynamic Lighting' } });
   return rows;

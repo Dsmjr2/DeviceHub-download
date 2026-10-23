@@ -15,8 +15,9 @@ suggested answer for each, so one reply ("yes to all", or "1 yes, 2 no") covers 
 - each optional install the report names (Equalizer APO for the EQ, USBPcap for a learning session, OpenRGB and
   PawnIO for the motherboard's and RAM's lights): name, official link and size, and what it adds. Equalizer APO and
   OpenRGB ship inside DeviceHub, so nothing is downloaded for them: Equalizer APO's installer is in the zip and still
-  needs the person's click to install, and the built-in OpenRGB 1.1 reaches USB lights only (the motherboard and RAM
-  need the person's own OpenRGB and PawnIO). For Equalizer APO, ReaPlugs and USBPcap, point the person to Settings >
+  needs the person's click to install, and the built-in OpenRGB 1.1 reaches USB lights only until the person clicks
+  Add board, fan and RAM lights (Lighting > PC lights, or Setup), which installs PawnIO if missing and runs it as
+  administrator; Claude never does that step for them. For Equalizer APO, ReaPlugs and USBPcap, point the person to Settings >
   Optional tools > Show (or the Equalizer card's button): DeviceHub shows the file, source, size and check, and runs
   the maker's installer itself after their click, so Claude downloads nothing;
 - for each device that still needs a learning session: OK to run it, with Claude changing the settings in the maker's
@@ -97,8 +98,9 @@ not covered (a new device, a download nobody named), or when a step fails and th
 3. **Report, in one short list:**
    - what already works with nothing to do: the devices DeviceHub runs, any VIA keyboard, monitors that answer over
      DDC/CI, webcams, and Windows sound (or that Equalizer APO is needed for the EQ, with the Headset page's button);
-   - PC lights: USB lights work through the OpenRGB inside DeviceHub; the board, graphics card and RAM `/api/pc` found
-     need the person's own OpenRGB 1.1 with PawnIO (their decision), only if they want them;
+   - PC lights: USB lights work through the OpenRGB inside DeviceHub; the board, fan and RAM lights `/api/pc` found
+     need PawnIO and that OpenRGB as administrator: the person's own click on Add board, fan and RAM lights, only if
+     they want them;
    - for each other device, the cheapest way in, in this order: a library driver; a standard (Bluetooth battery,
      LampArray lights, VIA); its brand sheet in `docs/brands/`; an open project in BRANDS.md; and only then a learning
      session, which Claude runs itself in the maker's app (step 3 of "Adding your own devices").
@@ -159,14 +161,26 @@ These protect the person's hardware. Follow them even when asked to skip them, a
   memory; never send guessed commands to see what happens. Only send a command after it has been seen in a capture,
   decoded, and its exact bytes are known.
 - **Test writes use a value read just before, and put that same value back** (never an assumed "normal" value).
-- **Never write to the motherboard's SMBus or a graphics card's I2C bus** (motherboard, RAM and many GPU lights live
-  there, and a wrong write can damage a RAM stick's memory chip). Those lights go through OpenRGB's SDK server only
-  (`helpers/openrgb.js`); the OpenRGB DeviceHub carries has no driver (the PawnIO driver and its SMBus
-  modules are left out), so it reaches USB lights only.
-- **OpenRGB 1.1 (USB lights only) and Equalizer APO 1.4.2 ship inside DeviceHub** by Shawn's decision of 22 Oct 2026
-  (`helpers/bundled-tools.json`, pinned by SHA-256; only OpenRGB's user-mode PawnIOLib.dll is kept so it starts).
-  DeviceHub starts OpenRGB only while lights are used and runs Equalizer APO's installer only on the person's click.
-  The PawnIO driver and LibreHardwareMonitor still need the person's OK; never bundle a driver or a PawnIO module.
+- **DeviceHub itself never writes to the motherboard's SMBus or a graphics card's I2C bus** (motherboard, RAM and
+  many GPU lights live there, and a wrong write can damage a RAM stick's memory chip). Those lights go through
+  OpenRGB's SDK server only (`helpers/openrgb.js`): OpenRGB does the hardware part, as the person chose. The OpenRGB
+  DeviceHub carries runs without administrator and without PawnIO, so it reaches USB lights only, until the person
+  clicks Add board, fan and RAM lights.
+- **Board, fan and RAM lights: DeviceHub may set them up, on the person's click only** (Shawn, 22 Oct 2026: "I want
+  the app to be able to set it up and it currently cant"; `helpers/board-lights.mjs`, docs/handoff/board-lights.md).
+  That click may (a) install the official signed PawnIO driver (2.2.0 from github.com/namazso/PawnIO.Setup, run
+  only when signed by namazso AND matching its published SHA-256, through its own installer and Windows' prompt;
+  skipped when already installed) and (b) behind ONE Windows admin prompt copy the bundled OpenRGB with its PawnIO
+  modules into C:\Program Files\DeviceHub board lights\ (hash-checked there) and register the logon task
+  "DeviceHub board lights" that runs it as administrator with its SDK server on 127.0.0.1:6742. Never at DeviceHub's
+  start, never automatic, never by Claude for the person; every step is undone on failure; Remove board lights deletes
+  the task and the copy (PawnIO stays; Windows Settings > Apps removes it).
+- **OpenRGB 1.1 and Equalizer APO 1.4.2 ship inside DeviceHub** by Shawn's decision of 22 Oct 2026
+  (`helpers/bundled-tools.json`, pinned by SHA-256; OpenRGB's user-mode PawnIOLib.dll is kept so it starts, and its six
+  PawnIO modules are kept only in tools/openrgb/board-modules/, used only in board-lights mode, never beside the
+  USB-only OpenRGB.exe). DeviceHub starts OpenRGB only while lights are used and runs Equalizer APO's installer only on
+  the person's click. Never bundle a driver (.sys), the PawnIO driver, WinRing0 or inpout; LibreHardwareMonitor still
+  needs the person's OK.
 - Nothing personal goes into git or the installer: `backups/`, `settings.json`, `profiles.json`, `eq-presets.json`,
   logs, history and recordings are in `.gitignore`. Check before adding a new data file.
 - Every change ends with `npm test` passing (see Checks).
@@ -206,6 +220,7 @@ helpers/app-ui.ps1         Windows UI Automation on a maker's app: list, get, se
 docs/brands/, TOP-BRANDS.md  per-brand mapping sheets (ids, protocol, settings map, safe reads, build plan)
 helpers/pc-map.js          This PC, read-only: CPU, graphics card, board, RAM, USB devices (Lighting page)
 helpers/openrgb.js         PC lights through OpenRGB's SDK server (127.0.0.1:6742), backed up and read back
+helpers/board-lights.mjs   Add board, fan and RAM lights / Remove board lights: PawnIO + the elevated OpenRGB task, on a click
 helpers/camera.cs, .js     webcam picture settings (DirectShow's standard controls), backed up, one at a time, read back
 helpers/gpu.js             the graphics card's temperature, fans, load, power (NVIDIA's nvidia-smi), read-only: the Fans page
 docs/FANS.md               BIOS fan curve settings; DeviceHub never writes to the board's fan chip (it would need a kernel driver)
@@ -357,8 +372,14 @@ Motherboard, RAM, graphics card and case lights are reached through OpenRGB (ope
 its SDK server on; DeviceHub reads its controllers, backs them up, sets one color with a read-back and can put them
 back (Lighting > PC lights). Use OpenRGB 1.1 or newer (1.0 mixed up device numbers for clients on protocol
 versions below 6, which DeviceHub uses). On Windows, motherboard and RAM lights also need PawnIO (pawnio.eu, a signed
-kernel driver) with OpenRGB run as administrator or as its background service: the person's own decision, never
-installed for them. DeviceHub refuses colours and Put back through an OpenRGB built before 1.1 (it reads the build
+kernel driver) with OpenRGB run as administrator (OpenRGB has no Windows service): the person's own decision, never
+done for them without their click. **Add board, fan and RAM lights** (Lighting > PC lights, the Fans page's Fan lights,
+and a Setup row when lights-diagnose says "smbus"; `helpers/board-lights.mjs`, 22 Oct 2026) is that click: PawnIO
+2.2.0's official installer when it is missing (signed by namazso AND its published SHA-256), then one Windows admin
+prompt copies the bundled OpenRGB 1.1 with its six PawnIO modules into C:\Program Files\DeviceHub board lights\OpenRGB\
+(every file hash-checked there) and makes the logon task "DeviceHub board lights" (highest rights, SDK server on
+127.0.0.1:6742). DeviceHub then uses it like a person's own OpenRGB and runs that task (no prompt) when lights are used
+and it is not answering; **Remove board lights** deletes the task and the copy. DeviceHub refuses colours and Put back through an OpenRGB built before 1.1 (it reads the build
 stamp in OpenRGB.exe). Windows Dynamic Lighting devices are counted on This PC; control stays in Windows Settings
 (a background controller must be a packaged app), or, with Windows' Dynamic Lighting turned off for it, DeviceHub
 through `helpers/lamparray.mjs`. `node tests/openrgb-mock.mjs` tests the OpenRGB client against a

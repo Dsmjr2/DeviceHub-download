@@ -22,6 +22,7 @@ import { brandForUsb } from '../core/brands.js';
 import { getHelp } from '../ui/get-help.js';
 import { worksReport, offersWorks } from '../ui/works-report.js';
 import { installerInline, installerStatus } from '../ui/installer-button.js';
+import { boardLights, boardLightsStatus } from '../ui/board-lights.js';
 import { DEMO_SUMMARY, DEMO_LIVE, DEMO_DIAG, DEMO_TOOLS, DEMO_EQ, DEMO_ORGB, DEMO_BT } from '../core/setup-demo.js';
 import { deviceRows, doAllSteps, soundRows, lightRows, batteryRows, learnRows, summaryLine, planSetup } from '../core/setup-list.js';
 
@@ -59,9 +60,10 @@ function load() {
   st.loadedAt = Date.now();
   loadSummary();
   loadTools();
-  if (isDemo()) { st.orgb = st.orgb || DEMO_ORGB; st.bt = DEMO_BT; return; }
+  if (isDemo()) { st.orgb = st.orgb || DEMO_ORGB; st.bt = DEMO_BT; boardLightsStatus().then((b) => { st.board = b; }); return; }
   get('/api/openrgb').then((o) => { st.orgb = o; redraw(); }, () => {});
   get('/api/lights/diagnose').then((d) => { st.lightsDiag = d; redraw(); }, () => {});  // why no lights were found
+  boardLightsStatus(true).then((b) => { st.board = b; redraw(); });  // board, fan and RAM lights set up or not (helpers/board-lights.mjs)
   get('/api/bluetooth').then((b) => { st.bt = Array.isArray(b) ? b : []; redraw(); }, () => { st.bt = []; redraw(); });
 }
 
@@ -224,6 +226,7 @@ function control(r) {
     case 'eq-on': return button('Turn it on', () => runOne(r), { kind: 'primary small' });
     case 'find-lights': return button('Find lights', () => runOne(r), { kind: 'small', ic: 'refresh', disabled: busy });
     case 'tool': return installerInline(a.id, { redraw, onDone: () => loadTools() });
+    case 'board-lights': return boardLights({ redraw, onDone: () => { boardLightsStatus(true).then((b) => { st.board = b; redraw(); }); if (!isDemo()) get('/api/openrgb').then((o) => { st.orgb = o; redraw(); }, () => {}); } });
     case 'close-app': {
       // asked once more, in place (the same action as the device page's)
       if (!st.confirm[k]) return button(a.label, () => { st.confirm[k] = true; redraw(); }, { kind: 'primary small' });
@@ -281,7 +284,7 @@ export default {
     const all = [
       ...devRows,
       ...applyOver(soundRows(st.tools?.find((t) => t.id === 'eqapo'), st.eq)),
-      ...applyOver(lightRows(st.orgb, st.summary, st.lightsDiag)),
+      ...applyOver(lightRows(st.orgb, st.summary, st.lightsDiag, st.board)),
       ...batteryRows(st.bt),
       ...applyOver(learnRows(st.tools?.find((t) => t.id === 'usbpcap'), devRows)),
     ];

@@ -11,11 +11,20 @@
 // every LED color).
 //
 // The bundled OpenRGB (22 Oct 2026, the owner's decision to ship it inside DeviceHub): tools\openrgb\OpenRGB.exe, the
-// official 1.1 portable build with the PawnIO driver's modules and every driver left out (helpers/bundled-tools.json;
-// only its 4 KB user-mode PawnIOLib.dll is kept, which OpenRGB.exe needs to start), so it reaches USB lights only.
+// official 1.1 portable build with every driver left out (helpers/bundled-tools.json; its 4 KB user-mode PawnIOLib.dll
+// is kept, which OpenRGB.exe needs to start; its PawnIO modules sit apart in tools\openrgb\board-modules\, and OpenRGB
+// loads modules only from its own folder, so this copy never loads them), so it reaches USB lights only.
 // Any OpenRGB built before 1.1 (FIXED_BUILD) numbers devices wrongly for protocol 3, so through it DeviceHub only reads. DeviceHub starts it hidden as an SDK server on a free port on 127.0.0.1 only when lights are used (a fresh
 // read, a color, Put back), never when another OpenRGB is running or installed, and never at boot beyond DeviceHub's own
 // start; it stops it when DeviceHub quits. Through it DeviceHub lists and writes USB (HID) lights only.
+//
+// Board lights (22 Oct 2026, Shawn: "I want the app to be able to set it up"): after the person's click on Add board,
+// fan and RAM lights (helpers/board-lights.mjs), a protected copy of the same OpenRGB with its PawnIO modules sits in
+// C:\Program Files\DeviceHub board lights\OpenRGB\ and a logon task "DeviceHub board lights" runs it as administrator
+// with its SDK server on 127.0.0.1:6742. DeviceHub then talks to it like a person's own OpenRGB (every light, backed up
+// and read back; DeviceHub's own devices left alone) and never starts the USB-only copy beside it. When lights are
+// used and it is not answering, DeviceHub runs that task (no prompt; the person set it up). DeviceHub itself still
+// never writes the SMBus or a graphics card's I2C bus: OpenRGB does, as the person chose.
 const net = require('net');
 const fs = require('fs');
 const os = require('os');
@@ -161,6 +170,9 @@ const bundle = {
   pidFile: path.join(os.tmpdir(), 'DeviceHub-openrgb.json'),
   proc: null, pid: null, port: null, starting: null, hooked: false,
 };
+// board-lights mode (helpers/board-lights.mjs makes and removes it; this only reads it and runs its task)
+const BOARD_DIR = path.join(process.env.ProgramFiles || 'C:\\Program Files', 'DeviceHub board lights');
+const BOARD = { dir: BOARD_DIR, app: path.join(BOARD_DIR, 'OpenRGB'), exe: path.join(BOARD_DIR, 'OpenRGB', 'OpenRGB.exe'), config: path.join(BOARD_DIR, 'config'), task: 'DeviceHub board lights', port: PORT, starting: null };
 // the parts that touch Windows, swappable for tests (tests/bundled-tools.mjs)
 const deps = {
   exists: (f) => fs.existsSync(f),
@@ -171,7 +183,11 @@ const deps = {
   })),
   // an OpenRGB the person installed (its MSI's folder, or a per-user install)
   installed: () => [process.env.ProgramFiles, process.env['ProgramFiles(x86)'], process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Programs')]
-    .filter(Boolean).map((d) => path.join(d, 'OpenRGB', 'OpenRGB.exe')).find((f) => fs.existsSync(f)) || null,
+    .filter(Boolean).map((d) => path.join(d, 'OpenRGB', 'OpenRGB.exe')).concat(BOARD.exe).find((f) => fs.existsSync(f)) || null,
+  // board-lights mode is set up (its protected OpenRGB copy is there)
+  boardSetUp: () => fs.existsSync(BOARD.exe),
+  // run its logon task now (the person's own task: Windows asks nothing)
+  runTask: (name) => new Promise((resolve) => execFile('schtasks.exe', ['/Run', '/TN', name], { windowsHide: true, timeout: 15000 }, (err) => resolve(!err))),
   freePort: () => new Promise((resolve, reject) => { const s = net.createServer(); s.unref(); s.on('error', reject); s.listen(0, HOST, () => { const p = s.address().port; s.close(() => resolve(p)); }); }),
   // the files of the OpenRGB.exe processes running now (Windows may not name one running as administrator)
   openrgbExes: () => new Promise((resolve) => execFile('powershell.exe', ['-NoProfile', '-Command', "Get-CimInstance Win32_Process -Filter \"Name='OpenRGB.exe'\" | ForEach-Object { $_.ExecutablePath }"], { windowsHide: true, timeout: 15000 }, (err, out) => {
@@ -232,6 +248,13 @@ async function startBundled() {
   stopBundled();
   throw Object.assign(new Error('the OpenRGB inside DeviceHub did not start its SDK server'), { notRunning: true, bundleWhy: true });
 }
+// board-lights mode: its task runs the protected OpenRGB as administrator; checked a few times while it starts, then never
+async function startBoard() {
+  if (!(await deps.runTask(BOARD.task))) throw Object.assign(new Error('the board-lights task "DeviceHub board lights" could not be started (press Add board, fan and RAM lights again)'), { notRunning: true, bundleWhy: true });
+  for (let i = 0; i < 50; i++) { if (await knock(port, 300)) return port; await new Promise((r) => setTimeout(r, 300)); }
+  throw Object.assign(new Error('the OpenRGB for board lights did not start its SDK server'), { notRunning: true, bundleWhy: true });
+}
+const ensureBoard = () => { if (!BOARD.starting) BOARD.starting = startBoard().finally(() => { BOARD.starting = null; }); return BOARD.starting; };
 const ensureBundled = () => { if (bundleAlive()) return Promise.resolve(bundle.port); if (!bundle.starting) bundle.starting = startBundled().finally(() => { bundle.starting = null; }); return bundle.starting; };
 
 // ---- OpenRGB before 1.1 is read only ----
@@ -276,7 +299,10 @@ async function withOpenRGB(start, job) {
   if (bundleAlive()) return session((s) => job({ ...s, bundled: true }), 4000, bundle.port);
   try { return await session((s) => job({ ...s, bundled: false }), 4000, port); }
   catch (e) {
-    if (!e.notRunning || !start || !bundle.table) throw e;
+    if (!e.notRunning || !start) throw e;
+    // board-lights mode set up: its own OpenRGB (as administrator, on 6742), never the USB-only copy beside it
+    if (deps.boardSetUp()) { const at = await ensureBoard(); return session((s) => job({ ...s, bundled: false }), 4000, at); }
+    if (!bundle.table) throw e;
     const at = await ensureBundled();
     return session((s) => job({ ...s, bundled: true }), 4000, at);
   }
@@ -305,6 +331,7 @@ async function status(fresh = false) {
   if (fresh) lastFind = { at: new Date().toISOString(), ok: value.running, reason: value.running ? null : value.reason, found: value.controllers.length };
   value.lastFind = lastFind;
   value.bundle = bundleInfo();
+  value.board = { setUp: deps.boardSetUp() };
   cache = { at: Date.now(), value };
   return value;
 }
@@ -387,4 +414,6 @@ async function restore() {
   }));
 }
 
-module.exports = { start: (dir, opts = {}) => { backupDir = dir; ownDevice = opts.ownDevice || null; }, status, setColor, restore, stop: stopBundled, _test: { parseController, PORT, bundle, deps, bundleCheck, buildOf, FIXED_BUILD } };
+// forget the last reading (board lights were just set up or removed)
+const forget = () => { cache.at = 0; };
+module.exports = { start: (dir, opts = {}) => { backupDir = dir; ownDevice = opts.ownDevice || null; }, status, setColor, restore, stop: stopBundled, forget, BOARD, _test: { parseController, PORT, bundle, deps, bundleCheck, buildOf, FIXED_BUILD } };

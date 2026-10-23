@@ -4,8 +4,11 @@
 // For each tool in helpers/bundled-tools.json it downloads the ONE pinned file from that project's official source into
 // bundled-cache/ (outside git), following redirects only over HTTPS and only to that tool's own hosts, and refuses the
 // file unless its size and SHA-256 are the pinned ones. For OpenRGB's zip it then takes out only the kept files (each
-// with its own pinned SHA-256) and never one that matches neverKeep (a .sys driver, PawnIO's driver and .bin modules,
-// WinRing0, inpout; only OpenRGB's user-mode PawnIOLib.dll is allowed), whatever the table says. Nothing downloaded is ever run or opened here.
+// with its own pinned SHA-256) and never one that matches neverKeep (a .sys driver, PawnIO's driver, WinRing0, inpout;
+// only OpenRGB's user-mode PawnIOLib.dll is allowed), whatever the table says. OpenRGB's six PawnIO modules (.bin) are
+// the one exception (22 Oct 2026, Shawn: "I want the app to be able to set it up"): each named in the table's
+// boardModules with its own SHA-256, they go only into tools/openrgb/board-modules/, never beside OpenRGB.exe, so the
+// USB-only OpenRGB never loads them (helpers/board-lights.mjs uses them). Nothing downloaded is ever run or opened here.
 //
 //   node helpers/fetch-bundled.mjs [--cache <dir>] [--manifest <file>]
 // prints (and with --manifest writes) the list of files for the zip: [{ src, dest }], dest relative to the zip's
@@ -22,6 +25,12 @@ export const TABLE = JSON.parse(fs.readFileSync(path.join(ROOT, 'helpers', 'bund
 const NEVER = TABLE.neverKeep.map((s) => new RegExp(s, 'i'));
 // a driver, PawnIO (except its user-mode PawnIOLib.dll), WinRing0, inpout: never kept, never extracted, never put in the zip
 export const neverKept = (name) => NEVER.some((r) => r.test(String(name).replace(/\\/g, '/').split('/').pop()) || r.test(String(name)));
+
+// OpenRGB's PawnIO modules for board lights: a plain file name the table lists in boardModules, only ever placed in
+// <folder>/<boardModulesFolder>/ (never beside OpenRGB.exe)
+const MODULE_NAME = /^[A-Za-z0-9_]+\.bin$/;
+export const boardModule = (t, rel) => MODULE_NAME.test(String(rel)) && !!t.boardModules && Object.prototype.hasOwnProperty.call(t.boardModules, rel);
+export const boardDest = (t, name) => `${t.folder}/${t.boardModulesFolder}/${name}`;
 
 export const hostOk = (t, u) => {
   let x; try { x = new URL(u); } catch { return false; }
@@ -52,6 +61,11 @@ export function checkTable(t) {
   if (!/^[0-9a-f]{64}$/.test(t.sha256 || '')) throw new Error(`${t.name}: no pinned SHA-256`);
   if (!(t.size > 0)) throw new Error(`${t.name}: no pinned size`);
   if (!hostOk(t, t.url)) throw new Error(`${t.name}: its URL is not on its own hosts`);
+  if (t.boardModules) {
+    const bad = Object.entries(t.boardModules).filter(([k, v]) => !MODULE_NAME.test(k) || !/^[0-9a-f]{64}$/.test(v || '') || (t.keep || {})[k]).map(([k]) => k);
+    if (bad.length) throw new Error(`${t.name}: board modules must be plain .bin names with a pinned SHA-256, never in keep: ${bad.join(', ')}`);
+    if (!/^[a-z-]+$/.test(t.boardModulesFolder || '') || neverKept(t.boardModulesFolder)) throw new Error(`${t.name}: the board modules need their own folder (boardModulesFolder)`);
+  }
 }
 
 // download t.url to dest: HTTPS, redirects only to t.hosts, exactly t.size bytes, then the pinned SHA-256
@@ -115,15 +129,16 @@ export function readZip(buf) {
   return out;
 }
 
-// which of a zip's files are taken: every file under zipRoot must be named in keep or dropped (a changed zip is
-// refused, never guessed at); neverKept wins over everything
+// which of a zip's files are taken: every file under zipRoot must be named in keep, boardModules or dropped (a changed
+// zip is refused, never guessed at); neverKept wins over everything except a listed board module (its own folder)
 export function planZip(t, entries) {
-  const take = [], left = [], unknown = [];
+  const take = [], board = [], left = [], unknown = [];
   for (const e of entries) {
     if (e.name.endsWith('/')) continue;
     if (!e.name.startsWith(t.zipRoot)) { unknown.push(e.name); continue; }
     const rel = e.name.slice(t.zipRoot.length);
     if (!rel || rel.split('/').some((p) => p === '..' || p === '' || /[:*?"<>|]/.test(p))) { unknown.push(e.name); continue; }
+    if (boardModule(t, rel)) { board.push({ rel, entry: e, sha256: t.boardModules[rel] }); continue; }
     if (neverKept(rel)) { left.push(rel); continue; }
     if (t.keep[rel]) take.push({ rel, entry: e, sha256: t.keep[rel] });
     else if (t.dropped?.[rel]) left.push(rel);
@@ -131,8 +146,9 @@ export function planZip(t, entries) {
   }
   if (unknown.length) throw new Error(`refused: ${t.file} holds files the table does not name: ${unknown.join(', ')}`);
   const missing = Object.keys(t.keep).filter((k) => !neverKept(k) && !take.some((x) => x.rel === k));
-  if (missing.length) throw new Error(`refused: ${t.file} lacks ${missing.join(', ')}`);
-  return { take, left };
+  const lacking = Object.keys(t.boardModules || {}).filter((k) => !board.some((x) => x.rel === k));
+  if (missing.length || lacking.length) throw new Error(`refused: ${t.file} lacks ${[...missing, ...lacking].join(', ')}`);
+  return { take, board, left };
 }
 
 export function readme(tools) {
@@ -146,8 +162,10 @@ export function readme(tools) {
     '- Equalizer APO: its own installer, run only when you click Install (Settings > Optional tools, or the',
     '  Headset page\'s Equalizer card); Windows asks for permission first. Uninstall it in Windows Settings > Apps.',
     '- OpenRGB: started by DeviceHub, hidden, only while you use PC lights, for USB lights only, and stopped when',
-    '  DeviceHub quits. The PawnIO driver, its modules and every kernel driver were left out, so motherboard, RAM',
-    '  and graphics card lights are not reached through it.',
+    '  DeviceHub quits. The PawnIO driver and every kernel driver were left out. OpenRGB\'s own PawnIO modules are in',
+    '  tools/openrgb/board-modules/, where OpenRGB never loads them. Only when you click "Add board, fan and RAM lights"',
+    '  does DeviceHub copy them with OpenRGB into C:\\Program Files\\DeviceHub board lights\\ (one Windows prompt), so',
+    '  OpenRGB, as administrator, can reach the board\'s lights. "Remove board lights" takes that away again.',
     '',
   ];
   for (const t of tools) {
@@ -155,7 +173,8 @@ export function readme(tools) {
       `  Official page: ${t.page}`, `  Downloaded from: ${t.url}`, `  File: ${t.file}, ${t.size} bytes, SHA-256 ${t.sha256}`,
       `  License: ${t.license} (${t.licenseNote}); the license text is beside it.`,
       `  Source code: ${t.sourceCode}`);
-    if (t.dropped) lines.push(`  Left out of OpenRGB's zip: ${Object.keys(t.dropped).join(', ')} (PawnIO modules; the PawnIO driver is not bundled).`);
+    if (t.boardModules) lines.push(`  PawnIO modules, used only for board lights: ${Object.keys(t.boardModules).join(', ')} (in tools/openrgb/${t.boardModulesFolder}/; the PawnIO driver is not bundled).`);
+    if (t.dropped) lines.push(`  Left out of its zip: ${Object.keys(t.dropped).join(', ')}.`);
     lines.push('');
   }
   return lines.join('\r\n');
@@ -174,7 +193,17 @@ export async function fetchAll({ cache = path.join(ROOT, 'bundled-cache'), log =
     if (t.kind === 'installer') files.push({ src: dl, dest: `${t.folder}/${t.file}` });
     else if (t.kind === 'zip') {
       const out = path.join(cache, `${t.id}-${t.version}`);
-      const { take, left } = planZip(t, readZip(fs.readFileSync(dl)));
+      const { take, board, left } = planZip(t, readZip(fs.readFileSync(dl)));
+      for (const k of board) {
+        const f = path.join(out, t.boardModulesFolder, k.rel);
+        if (!fs.existsSync(f) || (await sha256File(f)) !== k.sha256) {
+          const d = k.entry.data();
+          if (sha(d) !== k.sha256) throw new Error(`refused: ${k.rel} in ${t.file} does not match its pinned SHA-256`);
+          fs.mkdirSync(path.dirname(f), { recursive: true });
+          fs.writeFileSync(f, d);
+        }
+        files.push({ src: f, dest: boardDest(t, k.rel), board: true });
+      }
       for (const k of take) {
         const f = path.join(out, ...k.rel.split('/'));
         if (!fs.existsSync(f) || (await sha256File(f)) !== k.sha256) {
@@ -192,7 +221,9 @@ export async function fetchAll({ cache = path.join(ROOT, 'bundled-cache'), log =
   const rm = path.join(cache, 'README.txt');
   fs.writeFileSync(rm, readme(TABLE.tools));
   files.push({ src: rm, dest: 'tools/README.txt' });
-  const bad = files.filter((f) => neverKept(f.dest));
+  // never a driver; a .bin only as a listed board module in its own folder
+  const okModule = (f) => f.board && TABLE.tools.some((t) => boardModule(t, f.dest.split('/').pop()) && f.dest === boardDest(t, f.dest.split('/').pop()));
+  const bad = files.filter((f) => neverKept(f.dest) && !okModule(f));
   if (bad.length) throw new Error(`refused: ${bad.map((f) => f.dest).join(', ')} would go into the zip`);
   return files;
 }

@@ -15,7 +15,7 @@ One Windows app for a mouse, a headset and a keyboard, instead of three vendor a
 | **Epomaker P75**, or any **VIA keyboard** (wired) | every key on every layer, the knob, macros, lights on/off, effect, color, brightness and speed (layouts from VIA's library of about 1,500 keyboards; Keychron Pro, Max, HE and 8K boards need Keychron's VIA file, see ADD-YOUR-DEVICES.md) |
 | **Monitors** (DDC/CI) | brightness, contrast, speaker volume, color preset and color balance (when the monitor lists them) |
 | **Webcams** | brightness, contrast, color, sharpness, white balance, exposure, focus, zoom |
-| **PC lights** (USB lights; motherboard, its RGB headers, lit RAM, many graphics cards) | one color, through OpenRGB. USB lights work through the OpenRGB 1.1 built into DeviceHub; the motherboard and RAM need your own OpenRGB (openrgb.org) and its PawnIO driver. DeviceHub never writes to that hardware itself |
+| **PC lights** (USB lights; motherboard, its RGB headers, lit RAM, many graphics cards) | one color, through OpenRGB. USB lights work through the OpenRGB 1.1 built into DeviceHub; the motherboard, its fan headers and RAM need one click on Add board, fan and RAM lights (it installs the signed PawnIO driver if missing and runs that OpenRGB as administrator, behind one Windows prompt; Remove board lights undoes it). DeviceHub never writes to that hardware itself: OpenRGB does |
 | **Windows sound** (Equalizer APO) | headset and monitor EQ, Natural sound, mic filters |
 
 Plug in any of them and DeviceHub shows just the ones you have. Other devices come from the shared device library

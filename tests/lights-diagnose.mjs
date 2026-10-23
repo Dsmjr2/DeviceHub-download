@@ -50,10 +50,13 @@ check(d.lines.some((l) => /NOT found by OpenRGB/.test(l)), 'the report says it w
 d = diagnose({ pc: PC('Gigabyte Technology Co., Ltd.', 'B550 AORUS ELITE', [usb('048d:5702')]), orgb: { running: false, reason: 'not running', controllers: [], bundle: { ...bundleOk, running: false }, lastFind: null } });
 check(d.verdict.kind === 'usb' && d.seen[0].found === null && d.problems.length === 0 && d.openrgb.state === 'not started yet', `before Find lights: ${JSON.stringify({ v: d.verdict, s: d.seen, p: d.problems, o: d.openrgb })}`);
 
-// 4. an ASUS board with no USB controller: on the board's SMBus, needs PawnIO, which DeviceHub does not install
+// 4. an ASUS board with no USB controller: on the board's SMBus, needs PawnIO; Add board, fan and RAM lights sets it up
 d = diagnose({ pc: PC('ASUSTeK COMPUTER INC.', 'PRIME B450M-A', [usb('046d:c232')]), orgb: ORGB([]) });
-check(d.verdict.kind === 'smbus' && d.verdict.line === 'on the board\'s SMBus: needs OpenRGB with PawnIO, which DeviceHub does not install' && /ENESMBusController/.test(d.verdict.source), `SMBus: ${JSON.stringify(d.verdict)}`);
-check(d.problems.length === 1 && /SMBus/.test(d.problems[0].problem) && /PawnIO/.test(d.problems[0].fix) && /your choice/.test(d.problems[0].fix), `the SMBus fix: ${JSON.stringify(d.problems)}`);
+check(d.verdict.kind === 'smbus' && d.verdict.line === 'on the board\'s SMBus: needs OpenRGB with PawnIO as administrator (Add board, fan and RAM lights sets it up)' && /ENESMBusController/.test(d.verdict.source), `SMBus: ${JSON.stringify(d.verdict)}`);
+check(d.problems.length === 1 && /SMBus/.test(d.problems[0].problem) && /PawnIO/.test(d.problems[0].fix) && /Your choice/.test(d.problems[0].fix) && /Add board, fan and RAM lights/.test(d.problems[0].fix), `the SMBus fix: ${JSON.stringify(d.problems)}`);
+// board lights set up (helpers/board-lights.mjs) and its OpenRGB serving: named, and no setup advice
+d = diagnose({ pc: PC('ASUSTeK COMPUTER INC.', 'PRIME B450M-A', []), orgb: ORGB([ctl('ASUS PRIME B450M-A', 'motherboard', '0000:0000')], { bundled: false, board: { setUp: true } }) });
+check(d.problems.length === 0 && /as administrator for board lights/.test(d.openrgb.version), `board lights set up: ${d.openrgb.version}`);
 // the person's own OpenRGB (with PawnIO) already serving: no "use your own OpenRGB" advice
 d = diagnose({ pc: PC('ASUSTeK COMPUTER INC.', 'PRIME B450M-A', []), orgb: ORGB([ctl('ASUS PRIME B450M-A', 'motherboard', '0000:0000')], { bundled: false }) });
 check(d.verdict.kind === 'smbus' && d.problems.length === 0 && d.openrgb.version === 'your own OpenRGB', 'own OpenRGB running: no PawnIO advice');

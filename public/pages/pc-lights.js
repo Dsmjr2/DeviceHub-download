@@ -13,6 +13,7 @@ import { toast } from '../ui/overlay.js';
 import { brandForUsb, brandNamed, ROUTE } from '../core/brands.js';
 import { learnThis } from './learn.js';
 import { getHelp } from '../ui/get-help.js';
+import { boardLights } from '../ui/board-lights.js';
 import { genericDongle } from '../core/generic-dongle.js';
 import { viaFileNote, isViaKeyboard } from './keyboard.js';
 
@@ -23,7 +24,7 @@ const DEMO_PC = {
   lampArrays: 0, smbus: ['AMD SMBus'],
 };
 // demo: OpenRGB running with a pretend board and lit RAM (colors change on the page only; nothing is sent)
-const DEMO_ORGB = () => ({ running: true, protocol: 3, controllers: [
+const DEMO_ORGB = () => ({ running: true, protocol: 3, bundled: false, board: { setUp: true }, controllers: [
   { index: 0, name: 'B450 AORUS PRO WIFI-CF', vendor: 'Gigabyte', type: 'motherboard', zones: [{ name: 'Motherboard', leds: 5 }, { name: 'D_LED1 header', leds: 30 }], leds: 35, mode: 'Static', color: '#ff6a1a', same: true },
   { index: 1, name: 'Trident Z RGB', vendor: 'G.Skill', type: 'ram', zones: [{ name: 'DRAM', leds: 8 }], leds: 8, mode: 'Rainbow', color: '#ff0000', same: false }] });
 const DEMO_BT = [{ name: 'Xbox Wireless Controller', le: true, connected: true, battery: 80 }, { name: 'AirPods Pro', le: false, connected: false, battery: null }];
@@ -126,20 +127,14 @@ export async function copyPrompt(u) {
 
 const openDynamicLighting = () => env.api('/api/diagnose/action', { kind: 'settings', page: 'lighting' }).catch((e) => toast('Could not open Windows Settings', 'bad', { detail: e.message }));
 
-// How to add the board, fan and RAM lights (22 Oct 2026, Shawn: "as simple as possible"): they need the person's own
-// OpenRGB, and for the board and RAM the PawnIO driver. DeviceHub never installs either (CLAUDE.md); this only says how.
-function boardGuide(open = false, again = 'Look again') {
-  const step = (n, ...text) => h('li', {}, h('span', { class: 'gh-num' }, String(n)), h('span', {}, ...text));
-  const link = (href, text) => h('a', { href, target: '_blank', rel: 'noopener' }, text);
-  return h('details', { class: 'pc-guide', open: open || null },
-    h('summary', {}, 'Add your board, fan and RAM lights'),
-    h('ol', { class: 'gh-steps' },
-      step(1, 'Download OpenRGB 1.1 or newer, free, from ', link('https://openrgb.org', 'openrgb.org'), '.'),
-      step(2, 'For the motherboard and RAM: install PawnIO from ', link('https://pawnio.eu', 'pawnio.eu'), '. It is a signed Windows driver, so it is your choice. Graphics cards and USB lights work without it.'),
-      step(3, 'Open OpenRGB as administrator (right-click it, Run as administrator) and let it find your lights.'),
-      step(4, 'In OpenRGB, open the SDK Server tab and press Start Server.'),
-      step(5, `Come back here and press ${again}. The lights show here and in Apply to all.`)),
-    h('p', { class: 'faint', style: { fontSize: '12px', margin: '8px 0 0' } }, 'DeviceHub never writes to the board or RAM itself: everything goes through OpenRGB.'));
+// Board, fan and RAM lights (22 Oct 2026, Shawn: "I want the app to be able to set it up"): one button sets up PawnIO
+// and runs the OpenRGB inside DeviceHub as administrator (helpers/board-lights.mjs, ui/board-lights.js), and Remove
+// board lights takes it away. DeviceHub never writes to the board or RAM itself: OpenRGB does, as the person chose.
+function boardSection() {
+  return h('div', { class: 'pc-guide' },
+    h('h3', {}, 'Board, fan and RAM lights'),
+    boardLights({ redraw, onDone: (r) => { if (r?.ok) loadPc(true); } }),
+    h('p', { class: 'faint', style: { fontSize: '12px', margin: '8px 0 0' } }, 'Graphics cards and USB lights work without it. DeviceHub never writes to the board or RAM itself: everything goes through OpenRGB.'));
 }
 
 // What was found and why fan lights may be missing (helpers/lights-diagnose.js), in place: no pop-ups or tooltips.
@@ -172,9 +167,10 @@ function pcLights() {
       o.reason && o.reason !== 'not running' && !st.diag?.problems?.length ? h('p', { class: 'faint', style: { fontSize: '12.5px' } }, o.reason) : null,
       h('div', { class: 'actions' }, button(b?.canStart ? 'Find lights' : 'Look again', () => loadPc(true), { kind: 'small', ic: 'refresh' })),
       fanHelp(),
-      boardGuide(!b?.canStart, b?.canStart ? 'Find lights' : 'Look again'));
+      boardSection());
   }
   return card([...head, h('span', { class: 'spacer' }), pill(`${o.controllers.length} found`, 'good')],
+    !o.bundled && o.board?.setUp ? h('p', { class: 'faint', style: { fontSize: '12.5px' } }, 'Through the OpenRGB inside DeviceHub, as administrator: board, fan and RAM lights too.') : null,
     o.bundled ? h('p', { class: 'faint', style: { fontSize: '12.5px' } }, `Through the OpenRGB inside DeviceHub: USB lights only${o.readOnly ? '; read only for now (this OpenRGB version numbers lights wrongly for DeviceHub)' : ''}.`) : null,
     o.controllers.length ? h('div', { class: 'pc-parts' }, ...o.controllers.map((c) => h('div', { class: 'pc-part' },
       h('div', { class: 'pc-part-head' }, h('span', { class: 'muted' }, c.type), h('b', {}, c.name),
@@ -186,7 +182,7 @@ function pcLights() {
       button('Look again', () => loadPc(true), { kind: 'ghost small', ic: 'refresh' })),
     // the built-in OpenRGB reaches USB lights only: the way to the board and RAM stays one click away
     fanHelp(),
-    o.bundled ? boardGuide() : null);
+    o.bundled || o.board?.setUp ? boardSection() : null);
 }
 
 export function pcSection(onRedraw) {

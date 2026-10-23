@@ -86,7 +86,8 @@ try {
     # ---- BUNDLED TOOLS (22 Oct 2026, the owner's decision; helpers/bundled-tools.json, docs/handoff/bundled-tools.md) ----
     # Equalizer APO's installer and OpenRGB's portable build, each the official file checked against its pinned SHA-256
     # by helpers/fetch-bundled.mjs (it downloads into bundled-cache\, outside git, and leaves out every driver and PawnIO
-    # file), go in under tools\equalizerapo\ and tools\openrgb\ with their license text and tools\README.txt.
+    # file except OpenRGB's six PawnIO modules, which go only into tools\openrgb\board-modules\ for board lights), go in
+    # under tools\equalizerapo\ and tools\openrgb\ with their license text and tools\README.txt.
     # -NoTools: a test build without them.
     if ($args -notcontains '-NoTools') {
       $manifest = Join-Path $env:TEMP "DeviceHub-bundled-$PID.json"
@@ -136,11 +137,20 @@ try {
     # helpers/bin holds exactly the pre-built helper and the hash of its sources
     $bin = @($names | Where-Object { $_ -like 'helpers/bin/*' } | Sort-Object)
     if (($bin -join ',') -ne 'helpers/bin/DeviceHubHelper.exe,helpers/bin/helper-sources.sha256') { throw "helpers/bin in the zip is not the pre-built helper and its hash: $($bin -join ', ')" }
-    # never a driver or anything PawnIO, WinRing0 or inpout (helpers/bundled-tools.json neverKeep), anywhere in the zip
-    $never = (Get-Content (Join-Path $PSScriptRoot 'bundled-tools.json') -Raw | ConvertFrom-Json).neverKeep
-    $drv = $names | Where-Object { $n = $_.Split('/')[-1]; $_ -like 'tools/*' -and ($never | Where-Object { $n -match $_ }) }
+    # never a driver or anything PawnIO, WinRing0 or inpout (helpers/bundled-tools.json neverKeep), anywhere in the zip,
+    # except OpenRGB's listed PawnIO modules (boardModules), and those only in tools/openrgb/board-modules/, never
+    # beside OpenRGB.exe (it loads modules from its own folder only; helpers/board-lights.mjs copies them for board lights)
+    $tbl = Get-Content (Join-Path $PSScriptRoot 'bundled-tools.json') -Raw | ConvertFrom-Json
+    $never = $tbl.neverKeep
+    $orgbT = $tbl.tools | Where-Object { $_.id -eq 'openrgb' }
+    $modules = @($orgbT.boardModules.PSObject.Properties.Name | ForEach-Object { "$($orgbT.folder)/$($orgbT.boardModulesFolder)/$_" })
+    $drv = $names | Where-Object { $n = $_.Split('/')[-1]; $_ -like 'tools/*' -and $modules -notcontains $_ -and ($never | Where-Object { $n -match $_ }) }
     if ($drv) { throw "a driver or PawnIO file got into the zip: $($drv -join ', ')" }
+    $loose = $names | Where-Object { $_ -like 'tools/*' -and $_ -match '\.bin$' -and $modules -notcontains $_ }
+    if ($loose) { throw "a PawnIO module is outside tools/openrgb/board-modules: $($loose -join ', ')" }
     if ($args -notcontains '-NoTools' -and ($names -notcontains 'tools/equalizerapo/EqualizerAPO-x64-1.4.2.exe' -or $names -notcontains 'tools/openrgb/OpenRGB.exe' -or $names -notcontains 'tools/README.txt')) { throw 'the bundled tools are missing from the zip' }
+    $noMod = $modules | Where-Object { $names -notcontains $_ }
+    if ($args -notcontains '-NoTools' -and $noMod) { throw "the board-lights modules are missing from the zip: $($noMod -join ', ')" }
     $mb = [math]::Round((Get-Item $zip).Length / 1MB, 1)
     "built $zip ($($names.Count) files, $mb MB, Node.js $ver included); checked: none of this PC's data is in it"
   } finally { $z.Dispose() }

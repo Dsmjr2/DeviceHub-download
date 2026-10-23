@@ -1,5 +1,5 @@
 {
-  "about": "Tools shipped INSIDE the DeviceHub zip (owner's decision 22 Oct 2026: 'Yes why would we not want to ship them in it?'). Each file is downloaded once from its project's official source by helpers/fetch-bundled.mjs when the zip is built, refused unless its SHA-256 is the one pinned here, and put in the zip under tools/<id>/ by helpers/make-installer.ps1. Binaries never go into git (bundled-cache/ is ignored). The PawnIO driver, its .bin modules, WinRing0, inpout and every kernel driver are never bundled; OpenRGB's 4 KB user-mode PawnIOLib.dll is kept (OpenRGB.exe cannot start without it; it does nothing without the PawnIO driver). A new version: change version, url, file, size and sha256 (and for a zip, every kept file's sha256), after the owner's OK.",
+  "about": "Tools shipped INSIDE the DeviceHub zip (owner's decision 22 Oct 2026: 'Yes why would we not want to ship them in it?'). Each file is downloaded once from its project's official source by helpers/fetch-bundled.mjs when the zip is built, refused unless its SHA-256 is the one pinned here, and put in the zip under tools/<id>/ by helpers/make-installer.ps1. Binaries never go into git (bundled-cache/ is ignored). The PawnIO driver, WinRing0, inpout and every kernel driver (.sys) are never bundled. OpenRGB's 4 KB user-mode PawnIOLib.dll is kept (OpenRGB.exe cannot start without it; it does nothing without the PawnIO driver). OpenRGB's six PawnIO modules (.bin) are kept since 22 Oct 2026 (Shawn: 'I want the app to be able to set it up') but only in tools/openrgb/board-modules/, never beside OpenRGB.exe (OpenRGB loads them only from its own folder), so the USB-only OpenRGB never loads them; only Add board, fan and RAM lights (helpers/board-lights.mjs) copies them beside a protected copy of OpenRGB.exe. A new version: change version, url, file, size and sha256 (and for a zip, every kept file's sha256), after the owner's OK.",
   "neverKeep": [
     "\\.sys$",
     "\\.bin$",
@@ -69,14 +69,16 @@
         "platforms/qwindows.dll": "d858a41e1617052f113442ea755696bc6dbe8030e64266e3ff3dc27fddea6bef",
         "styles/qmodernwindowsstyle.dll": "518118bbe1eba484b431a5eff1a212a1ffe8b92305db18a3476a6a6217a78c9f"
       },
-      "dropped": {
-        "LedsValve.bin": "a PawnIO module",
-        "LpcIO.bin": "a PawnIO module (Super I/O chip access)",
-        "SmbusI801.bin": "a PawnIO module (Intel SMBus)",
-        "SmbusIntelSkylakeIMC.bin": "a PawnIO module (Intel memory controller SMBus)",
-        "SmbusNCT6793.bin": "a PawnIO module (Nuvoton SMBus)",
-        "SmbusPIIX4.bin": "a PawnIO module (AMD SMBus)"
+      "boardModules": {
+        "LedsValve.bin": "1c1809281ae6f3e3c5b362f1536c0e6706013e6e33bfba66cad74636e61436d6",
+        "LpcIO.bin": "b3896a1cab0d808fca31fe2ebcae045d59dac690da87b17c858bb8da357eb45e",
+        "SmbusI801.bin": "a0f7d066e7efda28c0e754c1f52dbd8dc280d388ba8575b514a80cb67490530c",
+        "SmbusIntelSkylakeIMC.bin": "2e2d6c1e541fdfe598aa8df4d334e11c491c8a84f23e8256dd18119dd420dbd2",
+        "SmbusNCT6793.bin": "db068c6a87c0066ebfb7f691d88422fee8af350898e7a7f0db100fd6632bab17",
+        "SmbusPIIX4.bin": "91f9b4b1c39e3d399ce48477a89d8f6bd3e58a2241064a4daec3a1513dff56e5"
       },
+      "boardModulesFolder": "board-modules",
+      "boardModulesNote": "OpenRGB 1.1's own PawnIO modules from the same pinned zip (each SHA-256 read from it 22 Oct 2026; SmbusI801.bin also equals the copy in OpenRGB's source, dependencies/PawnIO/modules). Shipped in tools/openrgb/board-modules/ and used only in board-lights mode: helpers/board-lights.mjs copies them, with OpenRGB.exe and its DLLs, into C:\\Program Files\\DeviceHub board lights\\OpenRGB\\ (only administrators can change files there) behind one Windows admin prompt and checks every copied file against these hashes there. OpenRGB loads PawnIO modules only from its exe's own folder (i2c_smbus/Windows/i2c_smbus_pawnio.cpp, release_1.1), so the USB-only OpenRGB in tools/openrgb never loads them.",
       "needs": [
         "libusb-1.0.dll",
         "hidapi-hotplug.dll",

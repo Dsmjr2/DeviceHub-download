@@ -32,7 +32,16 @@ check(eqT && /sourceforge\.net$/.test(new URL(eqT.url).hostname) && eqT.version 
 check(orgbT && new URL(orgbT.url).hostname === 'codeberg.org' && orgbT.version === '1.1' && orgbT.sdkWrites === true, 'OpenRGB 1.1 from its official Codeberg release, colors allowed');
 check(!Object.keys(orgbT.keep).some(fb.neverKept), 'the table keeps no driver and no PawnIO module');
 check(orgbT.keep['PawnIOLib.dll'] && orgbT.needs.includes('PawnIOLib.dll'), 'the user-mode PawnIOLib.dll is kept (OpenRGB.exe needs it to start)');
-check(Object.keys(orgbT.dropped).length === 6 && Object.keys(orgbT.dropped).every((f) => f.endsWith('.bin')), 'the six PawnIO modules are dropped');
+// the six PawnIO modules: kept since 22 Oct 2026, but only for board lights, in their own folder, each pinned
+const mods = Object.entries(orgbT.boardModules || {});
+check(mods.length === 6 && mods.every(([f, h]) => /^[A-Za-z0-9]+\.bin$/.test(f) && /^[0-9a-f]{64}$/.test(h) && !orgbT.keep[f]) && orgbT.boardModulesFolder === 'board-modules' && !orgbT.dropped, 'the six PawnIO modules are kept apart (board-modules), pinned, never in keep');
+check(mods.every(([f]) => fb.boardModule(orgbT, f) && fb.boardDest(orgbT, f) === `tools/openrgb/board-modules/${f}`) && !fb.boardModule(orgbT, 'PawnIO.sys') && !fb.boardModule(orgbT, 'x/SmbusI801.bin') && !fb.boardModule(eqT, 'SmbusI801.bin'), 'a board module is a listed plain .bin name, only ever in tools/openrgb/board-modules/');
+for (const bad of [{ 'PawnIO.sys': '0'.repeat(64) }, { 'SmbusI801.bin': 'nothash' }, { 'OpenRGB.exe': orgbT.keep['OpenRGB.exe'] }]) {
+  let t2 = null; try { fb.checkTable({ ...orgbT, boardModules: bad }); } catch (e) { t2 = e.message; }
+  check(/board modules must be/.test(t2 || ''), `a bad board-module entry is refused (${Object.keys(bad)[0]})`);
+}
+{ let t2 = null; try { fb.checkTable({ ...orgbT, boardModulesFolder: 'pawnio' }); } catch (e) { t2 = e.message; }
+check(/own folder/.test(t2 || ''), 'the board modules folder may not be a never-kept name'); }
 
 // ---------- never kept ----------
 for (const n of ['pawnio.sys', 'PawnIO.dll', 'PawnIOLib.dll.sys', 'x/PawnIO/PawnIOLib.dll', 'WinRing0x64.sys', 'WinRing0x64.dll', 'inpoutx64.dll', 'SmbusI801.bin', 'drivers/thing.SYS', 'sub\\PawnIO\\x.dll']) check(fb.neverKept(n), `never kept: ${n}`);
@@ -114,8 +123,20 @@ threw = null; try { fb.planZip(zt, fb.readZip(makeZip(zipFiles.filter((f) => !f.
 check(/lacks platforms\/qwindows\.dll/.test(threw || ''), 'a kept file missing from the zip is refused');
 threw = null; try { fb.planZip(zt, fb.readZip(makeZip([...zipFiles, { name: `${R}../evil.dll`, data: Buffer.from('e') }]))); } catch (e) { threw = e.message; }
 check(/evil\.dll/.test(threw || ''), 'a path leaving the folder is refused');
+// board modules (22 Oct 2026): a listed module is taken apart from the kept files, with its own hash; a .sys never
+const mod = Buffer.from('pretend SmbusPIIX4 module');
+const zb = { ...zt, folder: 'tools/openrgb', boardModulesFolder: 'board-modules', dropped: undefined, boardModules: { 'SmbusPIIX4.bin': sha(mod) } };
+const zbFiles = zipFiles.map((f) => (f.name.endsWith('SmbusPIIX4.bin') ? { ...f, data: mod } : f));
+plan = fb.planZip(zb, fb.readZip(makeZip(zbFiles)));
+check(plan.board.length === 1 && plan.board[0].rel === 'SmbusPIIX4.bin' && plan.board[0].sha256 === sha(mod) && plan.board[0].entry.data().equals(mod), 'a listed board module is taken, with its pinned hash');
+check(!plan.take.some((x) => x.rel.endsWith('.bin')) && plan.left.join() === 'WinRing0x64.sys', `board modules never sit with the kept files; the .sys is still left out (${plan.left})`);
+threw = null; try { fb.planZip(zb, fb.readZip(makeZip(zbFiles.filter((f) => !f.name.endsWith('.bin'))))); } catch (e) { threw = e.message; }
+check(/lacks SmbusPIIX4\.bin/.test(threw || ''), 'a listed board module missing from the zip is refused');
+plan = fb.planZip(zb, fb.readZip(makeZip([...zbFiles, { name: `${R}SmbusI801.bin`, data: Buffer.from('x') }, { name: `${R}sub/SmbusPIIX4.bin`, data: mod }])));
+check(plan.board.length === 1 && plan.left.includes('SmbusI801.bin') && plan.left.includes('sub/SmbusPIIX4.bin') && !plan.take.some((x) => x.rel.endsWith('.bin')), `a module the table does not list, or one in a sub-folder, is left out (${plan.left})`);
 const rm = fb.readme(T);
 check(/Equalizer APO 1\.4\.2/.test(rm) && /OpenRGB 1\.1/.test(rm) && /GPL-2\.0/.test(rm) && rm.includes(eqT.sha256) && /PawnIO driver is not bundled/.test(rm), 'tools/README.txt names source, version, hash and license');
+check(/board-modules/.test(rm) && /Add board, fan and RAM lights/.test(rm) && /SmbusI801\.bin/.test(rm), 'tools/README.txt says where the modules are and when they are used');
 
 // ---------- Equalizer APO from the bundle (helpers/installers.mjs) ----------
 const eq = inst.TOOLS.find((t) => t.id === 'eqapo');

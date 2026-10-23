@@ -1,5 +1,12 @@
 # Tools shipped inside DeviceHub: Equalizer APO and OpenRGB (22 Oct 2026)
 
+**Changed later on 22 Oct 2026 (Shawn: "I want the app to be able to set it up"; docs/handoff/board-lights.md):** the six
+PawnIO `.bin` modules from the same pinned OpenRGB zip are now shipped too, each with its own SHA-256
+(`boardModules` in bundled-tools.json), but only in `tools\openrgb\board-modules\`, never beside OpenRGB.exe (OpenRGB
+loads modules only from its own folder), and used only in board-lights mode. `.sys` files, the PawnIO driver, WinRing0
+and inpout are still never shipped. What follows describes the first version; where it says the modules are dropped,
+read "kept apart".
+
 The owner, 22 Oct 2026: ship Equalizer APO and OpenRGB inside DeviceHub so nobody downloads them separately ("Yes why
 would we not want to ship them in it?"). Only those two, from their official sources. The PawnIO driver, its .bin
 modules, WinRing0, inpout and every kernel driver are never downloaded, bundled or installed. Decided the same day (the

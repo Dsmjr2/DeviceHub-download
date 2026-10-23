@@ -282,7 +282,7 @@ export function summary({ root = ROOT, sources = {} } = {}) {
   }
   // optional extras
   if (sources.eqapo === false) optional.push({ what: 'eqapo', title: 'Headset EQ', state: 'optional', short: 'EQ, mic boost and mic filters for any headset. Equalizer APO comes inside DeviceHub: Install, then Windows asks once.', page: 'settings', line: 'Equalizer APO: needed for the headset EQ, mic boost and mic filters (the Headset page has the button; ask before installing)' });
-  if (sources.openrgb && !sources.openrgb.running && sources.pcLights !== false) optional.push({ what: 'openrgb', title: 'Board, fan and RAM lights', state: 'optional', short: 'Need the free OpenRGB app. Lighting > PC lights shows how.', page: 'lighting', line: 'PC lights (board, graphics card, RAM): through OpenRGB 1.1 or newer with its SDK server on, only if wanted (board and RAM also need PawnIO)' });
+  if (sources.openrgb && !sources.openrgb.running && sources.pcLights !== false) optional.push({ what: 'openrgb', title: 'Board, fan and RAM lights', state: 'optional', short: 'Lighting > PC lights adds them in one click (Add board, fan and RAM lights).', page: 'lighting', line: 'PC lights (board, graphics card, RAM): through OpenRGB 1.1 or newer with its SDK server on, only if wanted (board and RAM also need PawnIO and OpenRGB as administrator: Add board, fan and RAM lights on Lighting > PC lights sets that up on a click)' });
   const signature = attention.length ? hash(attention.join('\n')) : null;
   const found = { usb: (sources.usb || []).length, library: installed.length + works.filter((w) => w.what === 'library').length };
   return {

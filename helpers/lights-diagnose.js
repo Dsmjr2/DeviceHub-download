@@ -8,8 +8,8 @@
 // - on a USB lighting controller: the board's own (ASUS Aura USB, MSI Mystic Light, Gigabyte RGB Fusion 2, ASRock
 //   Polychrome USB) or a fan hub (Corsair, Lian Li, NZXT, Thermaltake, Cooler Master). The OpenRGB inside DeviceHub
 //   reaches these: they should show after Find lights.
-// - on the board's SMBus (or its Super I/O chip): only an OpenRGB with the PawnIO driver reaches them, which DeviceHub
-//   never installs (CLAUDE.md).
+// - on the board's SMBus (or its Super I/O chip): only an OpenRGB with the PawnIO driver, as administrator, reaches
+//   them; Add board, fan and RAM lights sets that up on the person's click (helpers/board-lights.mjs, CLAUDE.md).
 // - nowhere a PC can reach: 3-pin 12 V RGB fans, or a hub run by its own remote or button.
 //
 //   diagnose({ pc, orgb }) -> { board, openrgb, found, seen, verdict, problems, lines }
@@ -19,7 +19,7 @@ const BY_ID = new Map(TABLE.controllers.map((c) => [c.id, c]));
 const SOURCE = `${TABLE.source.repo}/src/commit/${TABLE.source.commit}`;
 const KIND = {
   usb: 'reachable over USB: should show after Find lights',
-  smbus: 'on the board\'s SMBus: needs OpenRGB with PawnIO, which DeviceHub does not install',
+  smbus: 'on the board\'s SMBus: needs OpenRGB with PawnIO as administrator (Add board, fan and RAM lights sets it up)',
   none: 'no lighting controller found: the fans may be on a non-addressable or remote-controlled hub',
 };
 // the maker's own lighting apps that hold these controllers while they run
@@ -51,7 +51,7 @@ function diagnose({ pc = null, orgb = null } = {}) {
   const reason = orgb && !orgb.running ? (last && !last.ok ? last.reason : orgb.reason) || (b.canStart === false ? b.why : 'not running') : null;
   const tried = !!last || !!orgb?.running;
   const openrgb = {
-    version: orgb?.running && !orgb.bundled ? 'your own OpenRGB' : b.version ? `${b.version} (inside DeviceHub)` : null,
+    version: orgb?.running && !orgb.bundled ? (orgb.board?.setUp ? `${b.version || '1.1'} (inside DeviceHub, as administrator for board lights)` : 'your own OpenRGB') : b.version ? `${b.version} (inside DeviceHub)` : null,
     state: !orgb ? 'unknown' : orgb.running ? 'running' : b.canStart === false ? 'cannot start' : tried ? 'could not start' : 'not started yet',
     reason, ...(reason ? openrgbFix(reason) : {}),
     usbOnly: !!orgb?.running && !!orgb.bundled,
@@ -70,7 +70,7 @@ function diagnose({ pc = null, orgb = null } = {}) {
   const problems = [];
   if (reason && openrgb.state !== 'not started yet') problems.push({ problem: 'OpenRGB could not start', why: openrgb.why, fix: openrgb.fix });
   for (const s of seen) if (s.found === false) problems.push({ problem: `${s.name} was not found by OpenRGB`, why: `It is plugged in (USB ${s.id}), but OpenRGB did not list it. The maker's lighting app (${MAKER_APPS}) may be holding it, or it needs an OpenRGB newer than ${b.version || '1.1'}.`, fix: 'Quit the maker\'s lighting app (also from the tray), then press Find lights again.' });
-  if (kind === 'smbus' && !(orgb?.running && !orgb.bundled)) problems.push({ problem: 'The fan headers are likely on the board\'s SMBus', why: `No USB lighting controller is plugged in, and ${smbus.maker} boards without one keep their lights on the SMBus. The OpenRGB inside DeviceHub has no driver, so it cannot reach them.`, fix: 'Use your own OpenRGB 1.1 with the PawnIO driver (both free; your choice to install), turn on its SDK server, then press Look again. Steps are under "Add your board, fan and RAM lights".' });
+  if (kind === 'smbus' && !(orgb?.running && !orgb.bundled) && !orgb?.board?.setUp) problems.push({ problem: 'The fan headers are likely on the board\'s SMBus', why: `No USB lighting controller is plugged in, and ${smbus.maker} boards without one keep their lights on the SMBus. The OpenRGB inside DeviceHub runs without administrator and without PawnIO, so it reaches USB lights only.`, fix: 'Press Add board, fan and RAM lights (Lighting > PC lights, or Setup): it installs the signed PawnIO driver if it is missing and runs the OpenRGB inside DeviceHub as administrator, behind Windows\' own prompt. Your choice; Remove board lights undoes it.' });
   if (kind === 'none') problems.push({ problem: 'No lighting controller found', why: 'Nothing on USB is a known lighting controller, and the board is not one whose lights sit on the SMBus.', fix: 'Check how the fans are wired: 3-pin (12 V) RGB fans cannot be addressed, and a hub with its own remote or button is not reachable from the PC. A 3-pin ARGB (5 V) cable on a board ARGB header would be.' });
 
   const lines = [
