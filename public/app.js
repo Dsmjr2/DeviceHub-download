@@ -29,6 +29,7 @@ import wallpapersPage from './pages/wallpapers.js';
 import { devicePage } from './pages/my-device.js';
 import { commands } from './core/commands.js';
 import { startAutoSwitch, loadSettings, auto } from './core/autoswitch.js';
+import { firstStart } from './core/first-run.js';
 
 // Demo mode: ?demo on the local server, or always in the shareable build (index sets window.DEVICEHUB_DEMO).
 const DEMO = new URLSearchParams(location.search).has('demo') || window.DEVICEHUB_DEMO === true;
@@ -215,6 +216,9 @@ loadArtStyle();  // the chosen drawing style (Settings > Appearance)
 setCommands((q) => commands(q, { go, pages: PAGES }));
 buildRail();
 setGlow();
+// the first time the window opens on this PC: Setup instead of the Overview (core/first-run.js; never on a PC with
+// devices seen before or saved profiles). ?demo&first shows it in demo mode.
+if ((await firstStart({ demo: DEMO, ready: REMOTE || LOCAL, search: location.search, hash: location.hash, devices: Object.values(devices) })).setup) history.replaceState(null, '', '#/setup');
 render(true);
 
 if (REMOTE) {

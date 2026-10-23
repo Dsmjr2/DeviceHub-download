@@ -2287,3 +2287,20 @@ html[data-skin="verde"] .su-fold > summary { font-family: var(--chunky); color: 
 .board-lights { display: grid; gap: 6px; justify-items: start; margin: 10px 0 0; }
 .board-lights > small { line-height: 1.45; }
 .su-ctl:has(.board-lights) { flex: 1 1 100%; justify-content: flex-start; }
+/* ---------- First start (22 Oct 2026, pages/setup.js, docs/handoff/first-run.md): Set it all up's one question about
+   the makers' apps, and "You're all set" with each device and what it can do now. Theme tokens only. */
+.su-ask { margin: 12px 0 0 36px; }
+.su-can { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; margin: 14px 0 0 36px; }
+.su-can-tile { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 12px; border-radius: var(--r-sm); border: 1px solid var(--line); background: var(--sunk); color: var(--text); font: 500 13px var(--ui); text-align: left; cursor: pointer; }
+.su-can-tile:hover { border-color: var(--line2); }
+.su-can-tile > .ic { width: 18px; height: 18px; flex: none; color: var(--muted); }
+.su-can-text { display: grid; gap: 2px; min-width: 0; }
+.su-can-text b, .su-can-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.su-can-text small { color: var(--muted); font-size: 12px; }
+@media (max-width: 640px) {
+  .su-ask, .su-can { margin-left: 0; }
+  .su-can { grid-template-columns: 1fr; }
+}
+html[data-skin="old-school"] .su-can-tile { border-radius: 4px; border-color: var(--edge); background: rgba(0, 0, 0, .25); }
+html[data-skin="old-school"] .su-can-text b { color: var(--osrs-white); }
+html[data-skin="verde"] .su-can-text b { color: #ffffff; }

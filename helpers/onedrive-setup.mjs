@@ -47,7 +47,7 @@ export async function compose(core, extras) {
   }
   out.sound = {};
   const eq = readJson(path.join(ROOT, 'eq-presets.json'), null); if (eq) out.sound.eq = eq;
-  const { oneDriveSeen, ...settings } = readJson(SETTINGS, {});   // which offers were put away stays on each PC
+  const { oneDriveSeen, setupSeen, ...settings } = readJson(SETTINGS, {});   // which offers were put away, and Setup's first start, stay on each PC
   out.sound.settings = settings;
   out.extras = extras.gather({ withWallpapers: false });
   return out;

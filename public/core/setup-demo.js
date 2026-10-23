@@ -1,6 +1,7 @@
-// The Setup page's demo mode (?demo): a PC where 2 things need you (one Set it all up does, one needs its own click),
+// The Setup page's demo mode (?demo): a PC where 2 things need you (one Set it all up does, one it asks about first: Close SteelSeries GG),
 // and a few optional and done things folded under them (public/pages/setup.js). Nothing here is sent anywhere. Every
-// other kind of row is in tests/setup-page.mjs's own pretend answers.
+// other kind of row is in tests/setup-page.mjs's own pretend answers. settings and battery: what each added device can
+// do (the "You're all set" view, core/setup-list.js canDo). ?demo&first opens Setup by itself, as a first start does.
 export const DEMO_SUMMARY = {
   works: [
     { what: 'mouse', state: 'ready', name: 'Pulsar X-Lite', short: 'Ready on the Mouse page.', page: 'mouse' },
@@ -20,9 +21,9 @@ export const DEMO_SUMMARY = {
   optional: [{ what: 'unknown-vendor', usb: ['25a7:fa61', '1a2c:4094'], title: '2 other USB devices', state: 'optional', short: '25a7:fa61, 1a2c:4094: Learn a device can try.' }],
 };
 export const DEMO_LIVE = {
-  'demo-razer': { title: 'Razer DeathAdder V3', kind: 'Mouse', status: 'connected', plugin: true, library: true, turnOn: true },
-  'demo-aerox': { title: 'SteelSeries Aerox 3', kind: 'Mouse', status: 'missing', seen: true, plugin: true, library: true },
-  'demo-learned': { title: 'Redragon K552', kind: 'Keyboard', status: 'connected', plugin: true, library: true, learned: true, works: true },
+  'demo-razer': { title: 'Razer DeathAdder V3', kind: 'Mouse', status: 'connected', plugin: true, library: true, turnOn: true, settings: [{ label: 'DPI' }, { label: 'Polling rate' }, { label: 'Lights' }], battery: true },
+  'demo-aerox': { title: 'SteelSeries Aerox 3', kind: 'Mouse', status: 'missing', seen: true, plugin: true, library: true, settings: [{ label: 'DPI' }, { label: 'Lights' }], battery: true },
+  'demo-learned': { title: 'Redragon K552', kind: 'Keyboard', status: 'connected', plugin: true, library: true, learned: true, works: true, settings: [{ label: 'Lights' }, { label: 'Effect' }, { label: 'Brightness' }] },
 };
 export const DEMO_DIAG = { 'demo-aerox': { code: 'maker-app', problem: 'SteelSeries GG is running', fix: 'Close SteelSeries GG; DeviceHub connects within a few seconds. It stays installed for firmware updates.', action: { kind: 'close-app', app: 'gg', label: 'Close SteelSeries GG', confirm: 'Close SteelSeries GG now?' } } };
 export const DEMO_TOOLS = [{ id: 'eqapo', name: 'Equalizer APO', installed: true, version: '1.4.2' }, { id: 'usbpcap', name: 'USBPcap', installed: false }];

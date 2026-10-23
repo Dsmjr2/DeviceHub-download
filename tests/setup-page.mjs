@@ -5,6 +5,7 @@
 // Run: node tests/setup-page.mjs
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -118,6 +119,80 @@ check(!plan.devices.some((r) => r.key === 'unknown' || r.key === '1b1c:1b8b'), '
   const p = L.planSetup(shawn);
   check(p.needs.length === 0 && L.summaryLine(p.needs.length) === 'All set' && L.doAllSteps(shawn).length === 0, 'nothing needs you: All set, no button');
   check(p.done.length === 7 && p.extras.length === 1, `nothing needs you: the rest folds (${p.done.length} done, ${p.extras.length} optional)`);
+}
+
+// ---------- first start (public/core/first-run.js): Setup opens by itself only the first time, never on Shawn's PC ----------
+{
+  const F = await import(pathToFileURL(path.join(ROOT, 'public/core/first-run.js')).href);
+  const fresh = { settings: {}, profiles: [], devices: [{ id: 'mouse', seen: false }, { id: 'headset' }, { id: 'keyboard' }], hash: '' };
+  check(F.isFirstStart(fresh) === true, 'first start: a new PC opens Setup');
+  check(F.isFirstStart({ ...fresh, hash: '#/overview' }) === true, 'first start: #/overview counts as the start');
+  check(F.isFirstStart({ ...fresh, settings: { setupSeen: true } }) === false, 'after that: the Overview (setupSeen)');
+  check(F.isFirstStart({ ...fresh, hash: '#/mouse' }) === false, 'a page asked for: left there');
+  check(F.isFirstStart({ ...fresh, settings: null }) === false && F.isFirstStart({ ...fresh, profiles: null }) === false, 'settings or profiles not read: no guess');
+  check(F.isFirstStart({ ...fresh, profiles: [{ name: 'Game' }] }) === false, 'any saved profile: not a first start');
+  check(F.isFirstStart({ ...fresh, devices: [{ id: 'demo-razer', seen: true }] }) === false, 'any device seen before: not a first start');
+  // Shawn's PC as it is (read 22 Oct 2026): settings without setupSeen (an older copy never wrote it), 3 profiles, his
+  // three devices seen
+  const shawn = { settings: { autoSwitch: true, defaultProfile: 'Work', artStyle: 'live', ankerGuard: true, themeAccent: '#4ea1ff', themeBg: 'graphite', oneDriveCopy: true }, profiles: [{ name: 'Work' }, { name: 'Game' }, { name: 'Quiet' }], devices: [{ id: 'mouse', seen: true }, { id: 'headset', seen: true }, { id: 'keyboard', seen: true }], hash: '' };
+  check(F.isFirstStart(shawn) === false, "Shawn's PC is not a first start");
+  check(F.isFirstStart({ ...shawn, profiles: [] }) === false && F.isFirstStart({ ...shawn, devices: [] }) === false, "Shawn's PC: seen devices alone, or profiles alone, are enough");
+  // the window's side: what it reads and writes (pretend server; nothing is sent)
+  const server = (settings, profiles) => { const posts = []; return { posts, fetch: async (url, o = {}) => { if (o.method === 'POST') { posts.push([url, JSON.parse(o.body)]); return { ok: true, json: async () => ({}) }; } return { ok: true, json: async () => (url === '/api/settings' ? settings : profiles) }; } }; };
+  { const s = server({}, []); const r = await F.firstStart({ fetch: s.fetch, devices: fresh.devices }); check(r.setup && s.posts.length === 1 && s.posts[0][0] === '/api/settings' && s.posts[0][1].setupSeen === true && Object.keys(s.posts[0][1]).length === 1, 'first start: Setup, and setupSeen saved (that key only)'); }
+  { const s = server(shawn.settings, shawn.profiles); const r = await F.firstStart({ fetch: s.fetch, devices: shawn.devices }); check(!r.setup, "Shawn's PC: the Overview as today"); }
+  { const s = server({ setupSeen: true }, []); const r = await F.firstStart({ fetch: s.fetch, devices: fresh.devices }); check(!r.setup && !s.posts.length, 'setupSeen there: nothing opened, nothing saved'); }
+  { const s = server({}, []); const r = await F.firstStart({ fetch: s.fetch, devices: fresh.devices, hash: '#/mouse' }); check(!r.setup && !s.posts.length, 'a page asked for: nothing saved, so the real first start still opens Setup'); }
+  { const s = server({}, []); const r = await F.firstStart({ fetch: s.fetch, ready: false }); check(!r.setup && !s.posts.length, "the background part not answering yet: no decision"); }
+  { const r = await F.firstStart({ fetch: async () => { throw new Error('down'); } }); check(!r.setup && !r.save, 'DeviceHub not answering: the Overview'); }
+  { const a = await F.firstStart({ demo: true, search: '?demo' }), b = await F.firstStart({ demo: true, search: '?demo&first' }); check(!a.setup && b.setup && !b.save, 'demo: only with ?demo&first, nothing saved'); }
+}
+
+// ---------- one question for the makers' apps inside Set it all up ----------
+{
+  const held = (id, app, label, title) => ({ key: id, id, title, status: 'needs', device: true, action: { kind: 'close-app', id, app, label, confirm: `${label} now?` } });
+  const rowsQ = [held('mouse', 'ghub', 'Close Logitech G HUB', 'Logitech G502 X'), held('kb', 'ghub', 'Close Logitech G HUB', 'Logitech G915'), held('rz', 'synapse', 'Close Razer Synapse', 'Razer Viper'),
+    { key: 'demo-razer', id: 'demo-razer', title: 'Razer DeathAdder V3', status: 'needs', action: { kind: 'turn-on', id: 'demo-razer' } }, { ...held('x', 'icue', 'Close iCUE', 'Done one'), status: 'done' }];
+  const apps = L.makerApps(rowsQ);
+  check(apps.length === 2 && apps[0].app === 'ghub' && apps[0].ids.join() === 'mouse,kb' && apps[1].app === 'synapse', `one entry per app, every device it holds (${apps.map((a) => a.app)})`);
+  check(L.askLine(apps) === 'Close G HUB and Synapse so DeviceHub can set your devices up?', `one question, the apps named (${L.askLine(apps)})`);
+  check(L.askLine(L.makerApps([held('a', 'gg', 'Close SteelSeries GG', 'Aerox')])) === 'Close SteelSeries GG so DeviceHub can set your device up?', 'one app, one device');
+  check(L.askLine(L.makerApps([held('a', 'gg', 'Close SteelSeries GG', 'A'), held('b', 'icue', 'Close iCUE', 'B'), held('c', 'pulsar', 'Close the Pulsar app', 'C')])) === 'Close SteelSeries GG, iCUE and the Pulsar app so DeviceHub can set your devices up?', 'three apps: commas and "and"');
+  check(L.makerApps([held('a', 'zzz', 'Close Some App', 'A')])[0].name === 'Some App', 'an app without a short name: its own name');
+  check(L.leftLine(apps[1]).join() === 'Razer Viper: left as it is (Synapse is open).', 'Not now: each of its devices left as it is');
+  check(!L.doAllSteps(rowsQ).some((s) => s.kind === 'close-app'), 'the close is not a step: it waits for the Yes');
+  check(L.makerApps(L.planSetup(rowsQ).needs).length === 2, 'asked from the rows that need you only');
+  // the close goes through diagnose's own action: only known makers' apps, never a service or updater, confirm flag
+  const Dg = await import(pathToFileURL(path.join(ROOT, 'helpers/diagnose.mjs')).href);
+  check(apps.every((a) => Dg.MAKER_APPS[a.app]), 'only known makers\' apps are asked about');
+  check(Dg.runningMakers(['lghub.exe', 'lghub_updater.exe', 'LGHUB Service.exe'])[0]?.closable.join() === 'lghub.exe', 'never an updater or a Windows service');
+  try { await Dg.action({ kind: 'close-app', app: 'ghub' }); check(false, 'close-app without the confirm flag refuses'); } catch (e) { check(/confirm/.test(e.message), `close-app without the confirm flag refuses (${e.message})`); }
+  const page = fs.readFileSync(path.join(ROOT, 'public/pages/setup.js'), 'utf8');
+  check(/kind: 'close-app', app: a\.app, confirm: true/.test(page) && /'Yes, close them'/.test(page) && /'Not now'/.test(page), 'the page asks once (Yes, close them / Not now) and closes with the confirm flag');
+  // the demo: Set it all up asks about SteelSeries GG first
+  const demoRows = L.deviceRows(D.DEMO_SUMMARY, { live: D.DEMO_LIVE, diag: D.DEMO_DIAG, isVia });
+  check(L.askLine(L.makerApps(L.planSetup(demoRows).needs)) === 'Close SteelSeries GG so DeviceHub can set your device up?', 'demo: asks about SteelSeries GG');
+}
+
+// ---------- "You're all set": each device with what it can do now ----------
+{
+  check(L.canDo({ id: 'mouse', kind: 'mouse' }, { values: { pollingRate: 4000, dpi0: 800, btn0: 'left' }, battery: true }) === 'DPI, polling, buttons, battery', `mouse from its readings (${L.canDo({ id: 'mouse' }, { values: { pollingRate: 4000, dpi0: 800, btn0: 'left' }, battery: true })})`);
+  check(L.canDo({ id: 'mouse', kind: 'mouse' }, { values: { pollingRate: 1, dpi0: 1 }, battery: true }) === 'DPI, polling, battery', 'Pulsar X-Lite: DPI, polling, battery');
+  check(L.canDo({ id: 'headset', kind: 'headset' }, { values: { 'vol:playback': 40, 'prop:micEnabled': true, 'prop:equalizerPreset': 2 }, battery: true, lights: true }) === 'volume, mic, EQ, battery and more', 'headset: at most four words, battery last');
+  check(L.canDo({ id: 'keyboard', kind: 'keyboard' }, { values: { brightness: 200 }, keys: ['key:'] }) === 'keys, backlight', 'keyboard: keys from its keymap');
+  check(L.canDo({ id: 'mouse', kind: 'mouse' }, null) === 'DPI, polling, buttons', 'a built-in not read yet: what its page has');
+  check(L.canDo({ id: 'demo-razer', kind: 'mouse' }, D.DEMO_LIVE['demo-razer']) === 'DPI, polling rate, lights, battery', "an added driver: its own settings list");
+  check(L.canDo({ key: 'monitors', kind: 'monitor' }, null) === 'brightness, contrast', 'monitors');
+  check(L.canDo({ key: 'x', kind: 'gadget' }, null) === 'Open it to see its settings', 'nothing known: a plain line');
+  // Shawn's PC: nothing needs him, every device tile says what it can do
+  const shawnRows = L.deviceRows({ works: D.DEMO_SUMMARY.works.filter((i) => ['mouse', 'headset', 'keyboard', 'monitors', 'cameras'].includes(i.what)) }, {});
+  const p = L.planSetup(shawnRows);
+  check(p.needs.length === 0 && p.devices.length === 5 && p.devices.every((r) => L.canDo(r, null).length > 0 && L.canDo(r, null).length <= 50), "Shawn's PC: 5 tiles, each with a short line");
+  const page = fs.readFileSync(path.join(ROOT, 'public/pages/setup.js'), 'utf8');
+  check(page.includes("\"You're all set\"") && page.includes("'Open a device to change its settings.'"), "the done view's title and its one line");
+  // the demo after Set it all up (Yes): nothing needs you, so the done view shows
+  const after = L.deviceRows(D.DEMO_SUMMARY, { live: { ...D.DEMO_LIVE, 'demo-razer': { ...D.DEMO_LIVE['demo-razer'], turnOn: false }, 'demo-aerox': { ...D.DEMO_LIVE['demo-aerox'], status: 'connected' } }, isVia });
+  check(L.planSetup(after).needs.length === 0, 'demo: after Yes, close them and Set it all up, nothing needs you');
 }
 
 if (fails.length) { console.log(`setup page: ${fails.length} failed:\n- ${fails.join('\n- ')}`); process.exit(1); }

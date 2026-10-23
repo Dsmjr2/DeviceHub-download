@@ -102,7 +102,7 @@ export function deviceRows(summary, { live = {}, diag = {}, layouts = {}, isVia 
 }
 
 // Set it all up (it was Do all): every safe next step, in order (installs, Turn on settings for all, Get the layout).
-// Never closes a maker's app and never starts learning: those need their own click.
+// Never closes a maker's app (the page asks about those once first: makerApps) and never starts learning.
 export function doAllSteps(rows) {
   const installs = rows.filter((r) => r.status === 'needs' && r.action?.kind === 'install');
   const turnOn = rows.some((r) => r.action?.kind === 'turn-on');
@@ -203,4 +203,63 @@ export function planSetup(rows) {
     extras: shown.filter((r) => r.status === 'optional'),
     done: shown.filter((r) => r.status === 'done'),
   };
+}
+
+// ---------- one question for the makers' apps (22 Oct 2026, docs/handoff/first-run.md) ----------
+// Set it all up asks once, in place, before it closes any maker's app: "Close G HUB and Synapse so DeviceHub can set
+// your devices up?" Yes closes each one through diagnose's own close-app action (helpers/diagnose.mjs: only a known
+// maker's app, never a Windows service or an updater, the confirm flag); Not now leaves those devices as they are.
+// The short names people know the apps by (helpers/diagnose.mjs MAKER_APPS keys)
+const SHORT_APP = { ghub: 'G HUB', synapse: 'Synapse', icue: 'iCUE', gg: 'SteelSeries GG', ngenuity: 'NGENUITY', armoury: 'Armoury Crate', swarm: 'Swarm II', glorious: 'Glorious CORE', pulsar: 'the Pulsar app', epomaker: 'the Epomaker driver', wootility: 'Wootility' };
+// every app that holds a device that needs you, once each: [{ app, name, ids, keys, titles }]
+export function makerApps(rows) {
+  const out = [];
+  for (const r of rows) {
+    if (r.status !== 'needs' || r.action?.kind !== 'close-app' || !r.action.app) continue;
+    let a = out.find((x) => x.app === r.action.app);
+    if (!a) out.push(a = { app: r.action.app, name: SHORT_APP[r.action.app] || String(r.action.label || r.action.app).replace(/^Close /, ''), ids: [], keys: [], titles: [] });
+    if (r.id) a.ids.push(r.id);
+    a.keys.push(r.key); a.titles.push(r.title);
+  }
+  return out;
+}
+const joinAnd = (list) => (list.length < 2 ? list.join('') : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`);
+export function askLine(apps) {
+  const n = apps.reduce((s, a) => s + a.keys.length, 0);
+  return `Close ${joinAnd(apps.map((a) => a.name))} so DeviceHub can set your device${n === 1 ? '' : 's'} up?`;
+}
+// Not now: one line for each device left as it is
+export const leftLine = (a) => a.titles.map((t) => `${t}: left as it is (${a.name} is open).`);
+
+// ---------- what each device can do now (the "You're all set" view) ----------
+// From its driver's own settings and readings, in plain words: "DPI, polling, battery". dev (may be null): { values
+// (its readings by key), settings ([{ label }], an added or library driver's list), battery, lights, keys }
+const BUILT_IN_CAN = {
+  mouse: [[/^dpi\d$/, 'DPI'], [/^pollingRate$/, 'polling'], [/^btn\d$/, 'buttons'], [/^liftOff$/, 'lift-off'], [/^(color\d|dpiEffect)$/, 'lights']],
+  headset: [[/^vol:playback$/, 'volume'], [/^prop:micEnabled$|^vol:recording$/, 'mic'], [/^prop:equalizerPreset$/, 'EQ'], [/^prop:sidetoneEnabled$/, 'sidetone'], [/^led$/, 'lights']],
+  keyboard: [[/^key:/, 'keys'], [/^brightness$/, 'backlight'], [/^effect$/, 'effects'], [/^macro:/, 'macros']],
+};
+// a built-in device not read yet: what its page always has
+const BUILT_IN_DEFAULT = { mouse: ['DPI', 'polling', 'buttons'], headset: ['volume', 'mic', 'EQ'], keyboard: ['keys', 'backlight'] };
+const OTHER_CAN = { monitor: ['brightness', 'contrast'], camera: ['picture settings'], keyboard: ['keys', 'lights'] };
+const MAX_CAN = 4;
+export function canDo(row, dev) {
+  const out = [];
+  const add = (w) => { if (w && !out.some((x) => x.toLowerCase() === w.toLowerCase())) out.push(w); };
+  const id = row?.id || row?.key;
+  const keys = [...Object.keys(dev?.values || {}), ...(dev?.keys || [])];
+  if (BUILT_IN_CAN[id]) {
+    for (const [re, word] of BUILT_IN_CAN[id]) if (keys.some((k) => re.test(k))) add(word);
+    if (!out.length) BUILT_IN_DEFAULT[id].forEach(add);
+  } else if (dev?.settings?.length) {
+    for (const s of dev.settings) add(/^(DPI|EQ|RGB)$/.test(s.label) ? s.label : String(s.label || s.key || '').toLowerCase());
+  } else if (dev?.values) for (const k of Object.keys(dev.values)) add(k.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase());
+  if (!out.length) (OTHER_CAN[row?.kind] || []).forEach(add);
+  if (dev?.lights) add('lights');
+  // at most four words, battery last when it has one
+  const room = dev?.battery ? MAX_CAN - 1 : MAX_CAN;
+  const more = out.length > room;
+  const list = out.slice(0, room);
+  if (dev?.battery) list.push('battery');
+  return list.length ? `${list.join(', ')}${more ? ' and more' : ''}` : 'Open it to see its settings';
 }

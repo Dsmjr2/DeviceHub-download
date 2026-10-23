@@ -1,7 +1,8 @@
 // Setup (22 Oct 2026, Shawn: "I want the setup to all be on one page"; docs/handoff/setup-page.md). Made simpler the
 // same day (Shawn: "is currently overwhelming for a new user"; docs/handoff/setup-simpler.md):
-//   1. one status line: "2 things need you" and Set it all up (the safe steps only: installs, Turn on settings for
-//      all, Get the layout; closing a maker's app or learning needs its own click), or "All set" with a check
+//   1. one status line: "2 things need you" and Set it all up (installs, Turn on settings for all, Get the layout;
+//      a maker's app holding a device is asked about once first, all apps in one question; never learning), or, with
+//      nothing to do, "You're all set" with each device and what it can do now (docs/handoff/first-run.md)
 //   2. To do: only the rows that need you, in the order to do them, one short line and one button each
 //   3. Your devices: small tiles (icon, name, a check or "Needs you"); a tile that needs you opens its one button here
 //   4. Optional extras and Everything that is done (N), both folded; rows that are not needed are left out
@@ -24,7 +25,7 @@ import { worksReport, offersWorks } from '../ui/works-report.js';
 import { installerInline, installerStatus } from '../ui/installer-button.js';
 import { boardLights, boardLightsStatus } from '../ui/board-lights.js';
 import { DEMO_SUMMARY, DEMO_LIVE, DEMO_DIAG, DEMO_TOOLS, DEMO_EQ, DEMO_ORGB, DEMO_BT } from '../core/setup-demo.js';
-import { deviceRows, doAllSteps, soundRows, lightRows, batteryRows, learnRows, summaryLine, planSetup } from '../core/setup-list.js';
+import { deviceRows, doAllSteps, soundRows, lightRows, batteryRows, learnRows, summaryLine, planSetup, makerApps, askLine, leftLine, canDo } from '../core/setup-list.js';
 
 // ---------- what the page knows (kept across redraws) ----------
 const st = {
@@ -32,6 +33,7 @@ const st = {
   diag: {}, diagKey: {}, layouts: {}, layoutAsked: {},
   note: {}, over: {}, busy: {}, confirm: {}, all: null, loadedAt: 0,
   tile: null, fold: { extras: false, done: false },
+  ask: false,  // Set it all up's one question about the makers' apps is showing
 };
 let redrawPage = () => {};
 const redraw = () => redrawPage();
@@ -167,9 +169,34 @@ async function runOne(r) {
 }
 
 // Set it all up (it was Do all): the safe steps in order, one line per device (core/setup-list.js doAllSteps)
-async function doAll(steps, rows) {
+// close: the makers' apps the person said Yes to (makerApps); left: the ones they said Not now to
+async function doAll(steps, rows, { close = [], left = [] } = {}) {
   st.all = { busy: true, lines: ['Working, one step at a time…'] }; redraw();
-  const lines = [];
+  const lines = left.flatMap(leftLine);
+  if (close.length) {
+    steps = [...steps];
+    for (const a of close) {
+      if (isDemo()) {
+        lines.push(`${a.name}: closed (demo).`);
+        for (const k of a.keys) { st.confirm[k] = false; st.over[k] = { live: { status: 'connected' } }; st.note[k] = 'Demo mode: closed, so it connected. Nothing was changed.'; }
+        continue;
+      }
+      try {
+        // diagnose's own action: only a known maker's app, never a Windows service or an updater, with the confirm flag
+        const j = await post('/api/diagnose/action', { kind: 'close-app', app: a.app, confirm: true });
+        lines.push(j.note ? `${a.name}: ${j.note}.` : `${a.name}: closed.`);
+      } catch (e) { lines.push(`${a.name}: not closed: ${e.message}`); }
+      for (const id of a.ids) { delete st.diag[id]; delete st.diagKey[id]; st.confirm[id] = false; }
+      st.all = { busy: true, lines: [...lines, 'Working…'] }; redraw();
+    }
+    if (!isDemo()) {
+      const ids = close.flatMap((a) => a.ids);
+      setTimeout(() => ids.forEach((id) => connect(id, false).catch(() => {})), 3000);
+      await connected(ids, 15000);
+      // a closed app's device that waits for Turn on settings gets it too
+      if (ids.some((id) => devices[id]?.adapter?.library?.turnOn === true) && !steps.some((s) => s.kind === 'turn-on-all')) steps.push({ kind: 'turn-on-all' });
+    }
+  }
   for (const s of steps) {
     if (s.kind === 'install') {
       if (isDemo()) { lines.push(`${s.title}: installed (demo).`); st.note[s.key] = 'Demo mode: installed. Nothing was changed.'; st.over[s.key] = { status: 'done', action: null }; continue; }
@@ -206,6 +233,32 @@ async function doAll(steps, rows) {
   if (!isDemo()) loadSummary();
   askLayouts(st.summary);
   redraw();
+}
+
+// the devices an app held, connected again (or the time is up): checked twice a second, only after the Yes click
+async function connected(ids, ms) {
+  const end = Date.now() + ms;
+  while (Date.now() < end && ids.some((id) => devices[id] && devices[id].status !== 'connected')) await new Promise((r) => setTimeout(r, 500));
+}
+
+// what each device can do now, from its driver's settings and readings (core/setup-list.js canDo)
+function devInfo(id, live) {
+  const d = devices[id];
+  if (!d?.adapter) return live?.[id] || null;
+  const a = d.adapter;
+  let lights = false;
+  try { lights = !!a.hasLighting?.(); } catch {}
+  const keys = [];
+  if (a.session?.keymap) keys.push('key:');
+  if (a.session?.macros?.list?.length) keys.push('macro:');
+  return { values: d.values, settings: Array.isArray(a.settings) ? a.settings : null, battery: d.battery?.percent != null || !!(a.plugin && a.battery), lights, keys };
+}
+// the "You're all set" view: each device as a tile with what it can do now; a tile opens its page
+function canTile(r, live) {
+  const page = r.action?.kind === 'open' ? r.action.page : r.id;
+  return h('button', { class: 'su-can-tile', dataset: { key: r.key }, onclick: () => { if (page) location.hash = `#/${page}`; } },
+    icon(TILE_ICON[r.kind] || 'plug'),
+    h('span', { class: 'su-can-text' }, h('b', {}, r.title), h('small', {}, canDo(r, devInfo(r.id, live)))));
 }
 
 // the one control a row has
@@ -301,21 +354,38 @@ export default {
 
     // the status line, and Set it all up only when there is a safe step to take
     const steps = doAllSteps(devRows);
-    const status = h('section', { class: `panel su-status${n ? '' : ' all-set'}` },
+    // the makers' apps holding a device: Set it all up asks about them once, in place, before anything else
+    const apps = makerApps(plan.needs);
+    if (!apps.length) st.ask = false;
+    const can = steps.length || apps.length;
+    const lines = st.all ? h('div', { class: 'su-lines' }, ...st.all.lines.map((l) => h('small', {}, l))) : null;
+    const ask = st.ask && !st.all?.busy ? h('div', { class: 'su-confirm su-ask' }, h('small', {}, askLine(apps)),
+      button('Yes, close them', () => { st.ask = false; doAll(steps, devRows, { close: apps }); }, { kind: 'primary small' }),
+      button('Not now', () => { st.ask = false; doAll(steps, devRows, { left: apps }); }, { kind: 'ghost small' })) : null;
+    const status = n ? h('section', { class: 'panel su-status' },
       h('div', { class: 'su-status-top' },
-        icon(n ? 'plug' : 'check'),
+        icon('plug'),
         h('div', { class: 'su-text' },
           h('h2', {}, summaryLine(n)),
-          st.all?.busy ? h('small', {}, 'Working…') : n ? h('small', {}, steps.length ? 'Set it all up does the safe steps. It never closes an app or starts learning.' : 'Each one has its own button below.') : null),
-        n && steps.length && !st.all?.busy ? button('Set it all up', () => doAll(steps, devRows), { kind: 'primary', ic: 'check' }) : null),
-      st.all ? h('div', { class: 'su-lines' }, ...st.all.lines.map((l) => h('small', {}, l))) : null);
+          h('small', {}, st.all?.busy ? 'Working…' : !can ? 'Each one has its own button below.'
+            : apps.length ? 'Set it all up asks once before it closes an app. It never starts learning.'
+              : 'Set it all up does the safe steps. It never closes an app or starts learning.')),
+        can && !st.all?.busy && !st.ask ? button('Set it all up', () => { if (apps.length) { st.ask = true; redraw(); } else doAll(steps, devRows); }, { kind: 'primary', ic: 'check' }) : null),
+      ask, lines)
+      // nothing needs you: You're all set, each device with what it can do now (no button needed)
+      : h('section', { class: 'panel su-status all-set su-allset' },
+        h('div', { class: 'su-status-top' }, icon('check'),
+          h('div', { class: 'su-text' }, h('h2', {}, "You're all set"),
+            h('small', {}, plan.devices.length ? 'Open a device to change its settings.' : 'No devices to set up yet.'))),
+        plan.devices.length ? h('div', { class: 'su-can' }, ...plan.devices.map((r) => canTile(r, live))) : null,
+        lines);
 
     return h('div', { class: 'setup-page' },
       topbar('', 'Setup', null),
       demo,
       status,
       n ? h('section', { class: 'panel su-section su-todo' }, h('ul', { class: 'su-list' }, ...plan.needs.map(rowEl))) : null,
-      plan.devices.length ? h('section', { class: 'panel su-section su-devices' },
+      n && plan.devices.length ? h('section', { class: 'panel su-section su-devices' },
         h('header', { class: 'panel-head' }, h('h2', {}, 'Your devices')),
         h('div', { class: 'su-tiles' }, ...plan.devices.map(tile)),
         openTile ? h('ul', { class: 'su-list su-tile-open' }, rowEl(openTile)) : null) : null,
