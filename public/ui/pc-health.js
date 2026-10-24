@@ -6,8 +6,9 @@
 //   restart (helpers/pc-check.js), read when the page opens and on Check again. Compact (Shawn, 24 Oct 2026: the page
 //   fits the window): what needs a look and the graphics driver as short rows in two columns, everything fine in one
 //   line that opens to show it. Not Settings > Health (that one is about DeviceHub itself).
-import { h } from './dom.js';
-import { card, button, loadingCard } from './controls.js';
+import { h, lowerFirst } from './dom.js';
+import { card, button, loadingCard, row } from './controls.js';
+import { meter } from './gauges.js';
 import { env } from '../core/env.js';
 import { isDemo } from '../core/devices.js';
 import { cpuSensors, cpuSensorsSetUp } from './cpu-sensors.js';
@@ -28,6 +29,7 @@ const DEMO_TEMPS = () => {
     ],
     notReadable: lhm ? [] : [{ what: 'CPU temperature', why: 'Needs the add-on below.', need: '' }, { what: 'CPU and case fan speeds', why: "They sit on the board's fan chip (SuperIO).", need: '' }],
     cpuSensors: { setUp: lhm, state: lhm ? 'ok' : null, idleFans: lhm ? 2 : 0 },
+    cpu: { name: 'AMD Ryzen 7 5800X3D 8-Core Processor', tempC: lhm ? j(48) : null, coresMaxC: lhm ? j(52) : null, loadPct: j(14), clockMHz: 4300 + j(100), fanRpm: lhm ? j(1180) : null, fanName: lhm ? 'CPU Fan' : null, sensors: lhm },
   };
 };
 let temps = null, tempsErr = null, tempsTimer = null, onScreen = false, observer = null, redrawTemps = () => {};
@@ -60,7 +62,8 @@ export function tempsCard(rerender, page = 'fans') {
   redrawTemps = rerender;
   if (!temps && !tempsErr) { queueMicrotask(() => { if (canRead(page) || typeof IntersectionObserver !== 'function') loadTemps(); }); const el = loadingCard('Temperatures and fans', 3); watchVisible(el, page); return el; }
   const cs = temps?.cpuSensors || {};
-  const rows = temps?.readings || [];
+  // the CPU's own readings are on the Processor card (cpuCard below); the rest stays here
+  const rows = (temps?.readings || []).filter((r) => r.kind !== 'cpu');
   const sources = [...new Set(rows.map((r) => srcName(r.source || '')).filter(Boolean))];
   const el = card([h('h2', {}, 'Temperatures and fans'), h('span', { class: 'sub' }, 'Read only')],
     tempsErr ? h('p', { class: 'faint' }, `Could not read them: ${tempsErr}`) : null,
@@ -77,15 +80,38 @@ export function tempsCard(rerender, page = 'fans') {
   return el;
 }
 
+// ---------- Processor ----------
+// The CPU as a card like the graphics card's (24 Oct 2026, Shawn): temperature, CPU fan and load as meters, then the
+// clock and the hottest core. Load and clock come from Windows; temperature and fan need the add-on (Temperatures and
+// fans card), so without it they read "—" with one line saying where to add them. Uses the same 5 s reading as that card.
+const shortCpu = (n) => String(n || 'Processor').replace(/\((R|TM)\)/gi, '').replace(/\s+\d+-Core Processor$/i, '').replace(/ CPU @ .*$/i, '').replace(/\s+/g, ' ').trim();
+export function cpuCard() {
+  if (!temps && !tempsErr) return loadingCard('Processor', 3);
+  const c = temps?.cpu;
+  if (!c) return card([h('h2', {}, 'Processor')], h('p', { class: 'faint' }, tempsErr ? `Not read: ${tempsErr}` : 'Not read on this PC.'));
+  const tempPct = c.tempC == null ? null : Math.min(100, Math.round((c.tempC / 95) * 100));
+  const fanPct = c.fanRpm == null ? null : Math.min(100, Math.round((c.fanRpm / 2500) * 100));
+  return card([h('h2', {}, 'Processor'), h('span', { class: 'sub' }, shortCpu(c.name))],
+    h('div', { class: 'hero-stats', style: { marginBottom: '8px' } },
+      meter({ ic: 'thermo', pct: tempPct, value: c.tempC == null ? '—' : `${c.tempC} °C`, label: 'temperature', big: true }),
+      meter({ ic: 'fan', pct: fanPct, value: c.fanRpm == null ? '—' : `${c.fanRpm} RPM`, label: 'CPU fan', big: true }),
+      meter({ ic: 'gauge', pct: c.loadPct, value: c.loadPct == null ? '—' : `${c.loadPct}%`, label: 'load', big: true })),
+    row('Clock', null, h('b', {}, c.clockMHz == null ? '—' : `${(c.clockMHz / 1000).toFixed(2)} GHz`)),
+    c.coresMaxC != null && c.coresMaxC !== c.tempC ? row('Hottest core', null, h('b', {}, `${c.coresMaxC} °C`)) : null,
+    c.sensors ? null : h('p', { class: 'faint tf-note' }, 'Temperature and fan: add the CPU reader in Temperatures and fans.'));
+}
+
 // ---------- PC check ----------
-const DEMO_CHECK = () => ({ at: new Date().toISOString(), summary: { warn: 1, info: 0, ok: 6 }, results: [
+const DEMO_CHECK = () => ({ at: new Date().toISOString(), summary: { warn: 3, info: 0, ok: 6 }, results: [
   { id: 'disk-space', title: 'Free space', level: 'ok', line: 'C: has 412 GB free of 1.8 TB (22%).' },
   { id: 'drive-health', title: 'Drive health', level: 'ok', line: 'Demo SSD (SSD): healthy.' },
   { id: 'gpu-driver', title: 'Graphics driver', level: 'ok', line: 'NVIDIA GeForce RTX 4070: driver 581.57, from Oct 10, 2026.', link: { text: 'Open NVIDIA App', app: 'nvidia' } },
   { id: 'ram-speed', title: 'RAM speed', level: 'warn', line: '2133 of 3200 MT/s. Turn on XMP/EXPO in the BIOS.' },
   { id: 'device-errors', title: 'Devices', level: 'ok', line: 'No device reports a problem.' },
   { id: 'crashes', title: 'Crashes', level: 'ok', line: 'No crashes in the last 30 days.' },
-  { id: 'restart', title: 'Restart', level: 'ok', line: 'No restart is waiting.' }] });
+  { id: 'restart', title: 'Restart', level: 'ok', line: 'No restart is waiting.' },
+  { id: 'power-plan', title: 'Power plan', level: 'warn', line: 'Balanced: the CPU slows down to save power. High performance keeps it fast in games.', link: { text: 'Switch to High performance', fix: 'power-plan' } },
+  { id: 'bg-record', title: 'Background recording', level: 'warn', line: 'Xbox Game Bar records the last minutes all the time, which costs frames. Turn off "Record what happened".', link: { text: 'Captures', settings: 'captures' } }] });
 let check = null, checkErr = null, checkAt = 0, checking = false, redrawCheck = () => {}, lastDrawn = 0, okOpen = false, appNote = null;
 async function runCheck(fresh) {
   if (checking) return; checking = true; redrawCheck();
@@ -99,7 +125,28 @@ async function openApp(l) {
   try { await env.api('/api/pc-check/open-app', { app: l.app }); appNote = null; } catch (e) { appNote = `Not opened: ${e.message}.`; }
   redrawCheck();
 }
-const resultLink = (l) => (!l ? null : l.app ? h('button', { class: 'pcc-link', onclick: () => openApp(l) }, l.text) : h('small', { class: 'pcc-src' }, link(l.text, l.url)));
+// a Windows Settings page (open-settings), DeviceHub's own one-click fix (the power plan), another page, or a web page
+async function openSettings(l) {
+  if (isDemo()) { appNote = `Demo mode: in the app this opens Windows ${l.text}.`; redrawCheck(); return; }
+  try { await env.api('/api/pc-check/open-settings', { page: l.settings }); appNote = null; } catch (e) { appNote = `Not opened: ${e.message}.`; }
+  redrawCheck();
+}
+let fixing = null;
+async function runFix(l) {
+  if (fixing) return;
+  if (isDemo()) { appNote = 'Demo mode: in the app this switches the power plan.'; redrawCheck(); return; }
+  fixing = l.fix; redrawCheck();
+  try { const r = await env.api('/api/pc-check/fix', { id: l.fix }); appNote = `Power plan: ${r.now} (was ${r.was}; Power Options switches it back).`; }
+  catch (e) { appNote = `Not changed: ${e.message}.`; }
+  fixing = null;
+  await runCheck(true);
+}
+const resultLink = (l) => (!l ? null
+  : l.app ? h('button', { class: 'pcc-link', onclick: () => openApp(l) }, l.text)
+    : l.settings ? h('button', { class: 'pcc-link', onclick: () => openSettings(l) }, l.text)
+      : l.fix ? h('button', { class: 'pcc-link', disabled: !!fixing, onclick: () => runFix(l) }, fixing === l.fix ? 'Switching…' : l.text)
+        : l.page ? h('a', { class: 'pcc-link', href: `#/${l.page}` }, l.text)
+          : h('small', { class: 'pcc-src' }, link(l.text, l.url)));
 const cell = (r) => h('div', { class: 'pcc-cell' },
   h('span', { class: `pcc-dot ${r.level}`, 'aria-label': r.level === 'warn' ? 'Look at this' : r.level === 'ok' ? 'Fine' : 'Note' }),
   h('div', {}, h('b', { class: 'pcc-title' }, r.title), h('span', { class: 'pcc-line' }, r.line), resultLink(r.link)));
@@ -107,7 +154,7 @@ const cell = (r) => h('div', { class: 'pcc-cell' },
 export function okSummary(results) {
   const t = [...new Set(results.map((r) => r.title))];
   if (!t.length) return null;
-  return `${t.map((x, i) => (i ? x.charAt(0).toLowerCase() + x.slice(1) : x)).join(', ')}: all fine.`;
+  return `${t.map((x, i) => (i ? lowerFirst(x) : x)).join(', ')}: all fine.`;
 }
 export function splitResults(results) {
   // shown: what needs a look, notes, and the graphics driver (it carries the driver app); the rest goes in the summary

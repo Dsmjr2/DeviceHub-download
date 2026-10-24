@@ -226,6 +226,15 @@ export function readout({ value, unit = '' }) {
   return h('output', { class: 'readout' }, text);
 }
 
+// Off (24 Oct 2026, Shawn: "an off for every area that shows a lighting change instead of black"): one round button
+// with a slash, beside every row of colour swatches. It sends black (#000000), which is how these lights go dark, but
+// it reads as Off, and a light that is black shows Off as chosen.
+export const OFF = '#000000';
+export const isOff = (hex) => String(hex || '').toLowerCase() === OFF;
+export function offSwatch({ on = false, onclick, label = 'Lights', disabled = false, cls = 'swatch' } = {}) {
+  return h('button', { class: `${cls} swatch-off${on ? ' on sel' : ''}`, title: 'Off', 'aria-label': `${label}: off`, 'aria-pressed': String(!!on), disabled, onclick });
+}
+
 // One RGB color: a row of swatches (the theme accent look) and a hex box. No color dialog. A swatch commits at once;
 // the hex box on Enter or when it loses focus (a typo puts the device's value back).
 export const COLOR_SWATCHES = [['#ffffff', 'White'], ['#ff0000', 'Red'], ['#ff8000', 'Orange'], ['#ffff00', 'Yellow'], ['#00ff00', 'Green'],
@@ -240,7 +249,7 @@ export function colorRow({ value, onCommit, label = 'color', disabled }) {
     run(el, () => onCommit(hex)).catch(() => {});
   };
   for (const [hex, name] of COLOR_SWATCHES) {
-    el.append(h('button', { class: `theme-swatch${cur === hex ? ' sel' : ''}`, style: { '--s': hex }, dataset: { hex }, disabled,
+    el.append(h('button', { class: `theme-swatch${hex === OFF ? ' swatch-off' : ''}${cur === hex ? ' sel' : ''}`, ...(hex === OFF ? { title: 'Off' } : {}), style: { '--s': hex }, dataset: { hex }, disabled,
       'aria-label': `${label}: ${name}`, 'aria-pressed': String(cur === hex), onclick: () => { if (hex !== cur) pick(hex); } }));
   }
   const box = h('input', { class: 'text hexbox', value: cur || '', placeholder: '#rrggbb', maxlength: 7, spellcheck: 'false', disabled, 'aria-label': `${label}, hex` });

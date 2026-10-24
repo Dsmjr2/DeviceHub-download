@@ -6,7 +6,7 @@
 // - PC lights: the lights OpenRGB controls (helpers/openrgb.js), when OpenRGB runs with its SDK server. DeviceHub
 //   never writes to the motherboard's SMBus itself.
 import { h } from '../ui/dom.js';
-import { card, button, pill, skeleton } from '../ui/controls.js';
+import { card, button, pill, skeleton, offSwatch, isOff, OFF } from '../ui/controls.js';
 import { env } from '../core/env.js';
 import { isDemo } from '../core/devices.js';
 import { toast } from '../ui/overlay.js';
@@ -50,13 +50,14 @@ export async function loadPc(fresh = false, after) {
 }
 
 // a row of color swatches and a color box; the current color has a ring
-const SWATCHES = ['#ffffff', '#ff2a2a', '#ff7a1a', '#ffd21a', '#35e06b', '#1ad0ff', '#2a5bff', '#a64dff', '#ff3fb4', '#000000'];
+const SWATCHES = ['#ffffff', '#ff2a2a', '#ff7a1a', '#ffd21a', '#35e06b', '#1ad0ff', '#2a5bff', '#a64dff', '#ff3fb4'];
 function colorRow(label, current, set) {
   const cur = (current || '').toLowerCase();
   return h('div', { class: 'pc-color-row', style: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '6px' } },
     h('span', { class: 'muted', style: { minWidth: '110px', fontSize: '12.5px' } }, label),
     ...SWATCHES.map((hx) => h('button', { class: 'swatch', 'aria-label': hx === '#000000' ? 'Off' : hx, style: { width: '20px', height: '20px', borderRadius: '50%', background: hx, border: hx === cur ? '2px solid var(--text)' : '1px solid var(--line2)', cursor: 'pointer', padding: 0 }, onclick: () => set(hx) })),
-    h('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(cur) ? cur : '#ffffff', 'aria-label': `${label} color`, style: { width: '28px', height: '22px', padding: 0, border: 'none', background: 'none' }, onchange: (e) => set(e.target.value) }));
+    h('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(cur) && !isOff(cur) ? cur : '#ffffff', 'aria-label': `${label} color`, style: { width: '28px', height: '22px', padding: 0, border: 'none', background: 'none' }, onchange: (e) => set(e.target.value) }),
+    offSwatch({ on: isOff(cur), label, onclick: () => set(OFF) }));
 }
 async function setPcColor(index, hex, zone) {
   if (isDemo()) { const c = st.orgb.controllers.find((x) => x.index === index); if (c) { if (zone === null) { c.color = hex; c.same = true; c.zones.forEach((z) => { z.color = hex; }); } else { c.zones[zone].color = hex; c.same = false; } } redraw(); return; }
@@ -201,7 +202,7 @@ function pcLights() {
       const same = g.every((x) => x.same && x.color === c.color);
       return h('div', { class: 'pc-part' },
         h('div', { class: 'pc-part-head' }, h('span', { class: 'muted' }, typeLabel(c.type)), h('b', {}, many ? `${c.name} × ${g.length}` : c.name),
-          c.color ? h('span', { class: 'dot', style: { background: same ? c.color : 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)' }, title: same ? c.color : 'several colors' }) : null),
+          c.color ? (same && isOff(c.color) ? h('small', { class: 'faint' }, 'Off') : h('span', { class: 'dot', style: { background: same ? c.color : 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)' }, title: same ? c.color : 'several colors' })) : null),
         h('small', { class: 'faint' }, [c.mode ? `Mode: ${c.mode}` : null, `${g.reduce((n, x) => n + (x.leds || 0), 0)} lights`, many ? `${g.length} sticks` : null].filter(Boolean).join(' · ')),
         // the colors, for the whole part and per zone (an ARGB header is where fans plug in) (22 Oct 2026)
         colorRow('All', same ? c.color : null, async (hex) => { for (const x of g) await setPcColor(x.index, hex, null); }),

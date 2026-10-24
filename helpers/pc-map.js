@@ -11,7 +11,7 @@ $o.gpus = @(Get-CimInstance Win32_VideoController | Where-Object { $_.PNPDeviceI
 $b = Get-CimInstance Win32_BaseBoard | Select-Object -First 1
 $o.board = [ordered]@{ maker = $b.Manufacturer; model = $b.Product }
 $o.ram = @(Get-CimInstance Win32_PhysicalMemory | ForEach-Object { [ordered]@{ part = ($_.PartNumber + '').Trim(); gb = [math]::Round($_.Capacity / 1GB); slot = $_.DeviceLocator; bank = $_.BankLabel } })
-$o.usb = @(Get-PnpDevice -PresentOnly | Where-Object { $_.InstanceId -match '^(USB|HID)\\\\VID_[0-9A-F]{4}&PID_[0-9A-F]{4}' } | ForEach-Object { if ($_.InstanceId -match 'VID_([0-9A-F]{4})&PID_([0-9A-F]{4})') { [ordered]@{ vid = $matches[1].ToLower(); pid = $matches[2].ToLower(); name = $_.FriendlyName; kb = [bool](@($_.HardwareID) -match 'UP:0001_U:0006'); mouse = [bool](@($_.HardwareID) -match 'UP:0001_U:0002') } } })
+$o.usb = @(Get-PnpDevice -PresentOnly | Where-Object { $_.InstanceId -match '^(USB|HID)\\\\VID_[0-9A-F]{4}&PID_[0-9A-F]{4}' } | ForEach-Object { if ($_.InstanceId -match 'VID_([0-9A-F]{4})&PID_([0-9A-F]{4})') { [ordered]@{ vid = $matches[1].ToLower(); pid = $matches[2].ToLower(); name = $_.FriendlyName; kb = [bool](@($_.HardwareID) -match 'UP:0001_U:0006'); mouse = [bool](@($_.HardwareID) -match 'UP:0001_U:0002'); onUsb = [bool]($_.InstanceId -match '^USB\\\\') } } })
 $o.lampArrays = @(Get-PnpDevice -PresentOnly | Where-Object { $_.InstanceId -match '^HID\\\\' -and ($_.HardwareID -match 'UP:0059') }).Count
 $o.smbus = @(Get-PnpDevice -PresentOnly | Where-Object { $_.FriendlyName -match 'SMBus' } | ForEach-Object { $_.FriendlyName })
 $o | ConvertTo-Json -Depth 4 -Compress
@@ -38,6 +38,7 @@ const RAM = [
 // own-device filter, the learning wizard, the library guards in my-devices.mjs, device-library.mjs, auto-setup.mjs);
 // which page runs a device is decided by its own driver, so the Headset page is unchanged. The HS80 RGB USB (0a88) is
 // another model DeviceHub's HS80 code does not open, so it is not listed.
+const VIRTUAL = new Set(['046d:c231', '046d:c232']);
 const RUNS = { '3710:5406': 'Mouse page', '3710:3506': 'Mouse page (its USB cable)', '1b1c:0a6b': 'Headset page', '1b1c:0a69': 'Headset page (its USB cable)', '1b1c:0a6a': 'Headset page (its USB cable, charging)', '1b1c:0a71': 'Headset page (behind its receiver)', '342d:e479': 'Keyboard page', '291a:3369': 'camera mic (Sound)' };
 
 let cache = { at: 0, value: null }, pending = null;
@@ -64,7 +65,12 @@ function shape(raw) {
   // one entry per vendor:product, named by its most telling part (not "USB Composite Device" or "HID Keyboard Device")
   const GENERIC = /^(USB (Composite|Input) Device|HID[- ]|HID Keyboard|USB Audio Device|Generic )/i;
   const byId = new Map();
+  // G HUB's own pretend devices (24 Oct 2026, Dsmjr2/DeviceHub-support#17: "a Logitech keyboard when there isnt"):
+  // 046D:C232 is the "Logitech G HUB Virtual Keyboard" and C231 its virtual mouse, made by G HUB's LGHUBDEVICE bus,
+  // so Windows lists only their HID part, never a USB\ entry. A real G813 (also C232) is on USB and stays.
+  const onUsb = new Set(arr(raw.usb).filter((u) => u.onUsb).map((u) => `${u.vid}:${u.pid}`));
   for (const u of arr(raw.usb)) {
+    if (VIRTUAL.has(`${u.vid}:${u.pid}`) && !onUsb.has(`${u.vid}:${u.pid}`)) continue;
     const k = `${u.vid}:${u.pid}`, cur = byId.get(k);
     // usages (23 Oct 2026): what the device's HID collections say it is, from Windows' own hardware ids
     // (HID_DEVICE_UP:0001_U:0006 keyboard, _U:0002 mouse), across all its collections; nothing is opened
@@ -118,4 +124,4 @@ function bluetooth(fresh = false) {
   return btPending;
 }
 
-module.exports = { get, bluetooth, RUNS, _test: { shape } };
+module.exports = { get, bluetooth, RUNS, VIRTUAL, _test: { shape } };

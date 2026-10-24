@@ -61,7 +61,22 @@ function zoneTemp(z) {
   return c == null ? null : Math.round(c * 10) / 10;
 }
 const LHM_SRC = 'LibreHardwareMonitor';
-function decide({ nvidia = null, kmt = [], zones = [], pawnio: hasPawnio = false, lhm = null } = {}) {
+// the CPU card (24 Oct 2026, Shawn: "make the cpu temperature and fans show a card like the graphics card"): Windows' own
+// load and clock (helpers/pc-sensors.ps1), and with LibreHardwareMonitor its temperature, hottest core and the CPU fan
+// (the board's header named CPU, else the pump)
+function cpuCard(win, lhm) {
+  const c = lhm?.setUp && lhm.state === 'ok' ? (lhm.cpu || [])[0] || null : null;
+  const fans = lhm?.setUp && lhm.state === 'ok' ? lhm.fans || [] : [];
+  const fan = fans.find((f) => /cpu/i.test(f.name) && !/opt/i.test(f.name)) || fans.find((f) => /cpu|pump|aio/i.test(f.name)) || null;
+  if (!win?.name && !c) return null;
+  return {
+    name: win?.name || c?.name || 'Processor',
+    tempC: c?.packageC ?? null, coresMaxC: c?.coresMaxC ?? null,
+    loadPct: win?.loadPct ?? null, clockMHz: win?.clockMHz ?? null,
+    fanRpm: fan?.rpm ?? null, fanName: fan?.name ?? null, sensors: !!c,
+  };
+}
+function decide({ nvidia = null, kmt = [], zones = [], pawnio: hasPawnio = false, lhm = null, cpu = null } = {}) {
   const readings = [];
   const lhmOk = lhm?.setUp && lhm.state === 'ok';
   if (lhmOk) {
@@ -99,7 +114,7 @@ function decide({ nvidia = null, kmt = [], zones = [], pawnio: hasPawnio = false
   }
   if (!nv.length && readings.some((r) => r.kind === 'gpu' && r.fanRpm == null)) notReadable.push({ what: 'Graphics card fan speed', why: 'Its driver reports the temperature but not the fan.', need: "The card maker's own app shows it." });
   const sensors = lhm ? { setUp: !!lhm.setUp, state: lhm.state || null, why: lhm.why || null, idleFans: lhm.idleFans || 0 } : { setUp: false, state: null, why: null, idleFans: 0 };
-  return { readings, notReadable, cpuSensors: sensors };
+  return { readings, notReadable, cpuSensors: sensors, cpu: cpuCard(cpu, lhm) };
 }
 
 // ---- the read ----
@@ -110,7 +125,7 @@ async function read({ gpu = require('./gpu'), cpuReader = require('./cpu-sensors
   pending = (async () => {
     if (process.platform !== 'win32') return { readings: [], notReadable: [], errors: ['only on Windows'] };
     const [nvidia, s, pw, lhm] = await Promise.all([gpu.read().catch(() => null), askSession(), pawnioInstalled(), cpuReader.read().catch((e) => ({ setUp: true, state: 'error', why: e.message }))]);
-    const v = { ...decide({ nvidia, kmt: s?.gpus || [], zones: s?.zones || [], pawnio: pw, lhm }), pawnio: pw, errors: s ? s.errors || [] : ['the sensor reader did not answer'], at: new Date().toISOString() };
+    const v = { ...decide({ nvidia, kmt: s?.gpus || [], zones: s?.zones || [], pawnio: pw, lhm, cpu: s?.cpu || null }), pawnio: pw, errors: s ? s.errors || [] : ['the sensor reader did not answer'], at: new Date().toISOString() };
     cache = { at: Date.now(), value: v };
     return v;
   })();
@@ -118,4 +133,4 @@ async function read({ gpu = require('./gpu'), cpuReader = require('./cpu-sensors
 }
 function stop() { if (proc) { try { proc.kill(); } catch {} proc = null; } }
 
-module.exports = { read, stop, _test: { decide, zoneTemp } };
+module.exports = { read, stop, _test: { decide, zoneTemp, cpuCard } };

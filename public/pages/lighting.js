@@ -1,6 +1,6 @@
 // Lighting: one color for every device with RGB.
 import { h, icon } from '../ui/dom.js';
-import { card, slider, button, toggle, pill } from '../ui/controls.js';
+import { card, slider, button, toggle, pill, offSwatch, OFF } from '../ui/controls.js';
 import { devices, write, writeBatch, log, stillLooking, shownDevices } from '../core/devices.js';
 import { artOf } from '../ui/art.js';
 import { topbar } from './common.js';
@@ -9,7 +9,8 @@ import { toast } from '../ui/overlay.js';
 import { SWATCHES } from './headset.js';
 import { pcLightsCard, applyPc, pcIncluded, pcAvailable, setPcIncluded } from './pc-lights.js';
 
-const ui = { hex: getGlow() || '#ff6a1a', brightness: 80, include: { keyboard: true, headset: true } };
+// off: the Off button was picked (every included light goes dark on Apply to all); any colour picked clears it
+const ui = { hex: getGlow() || '#ff6a1a', brightness: 80, off: false, include: { keyboard: true, headset: true } };
 
 const hexToRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 const rgbToHex = (r, g, b) => `#${[r, g, b].map((x) => Math.round(x).toString(16).padStart(2, '0')).join('')}`;
@@ -79,19 +80,21 @@ export async function applyColor(hex, brightness = ui.brightness) {
 }
 
 async function applyAll() {
-  const [r, g, b] = hexToRgb(ui.hex);
-  const k = ui.brightness / 100;
+  // Off: black everywhere (the keyboard: brightness 0, so its colour and effect stay for when it is turned back on)
+  const [r, g, b] = ui.off ? [0, 0, 0] : hexToRgb(ui.hex);
+  const k = ui.off ? 0 : ui.brightness / 100;
   const done = [];
-  const t = toast(`Applying ${ui.hex.toUpperCase()}`, 'busy', { ms: 0 });
+  const t = toast(ui.off ? 'Turning the lights off' : `Applying ${ui.hex.toUpperCase()}`, 'busy', { ms: 0 });
   for (const id of ['keyboard', 'headset']) {
     const d = devices[id];
     if (!ui.include[id] || d.status !== 'connected' || !d.adapter.hasLighting?.()) continue;
     try {
       if (id === 'keyboard') {
-        const res = await writeBatch(id, d.adapter.lightingKeys(r, g, b, ui.brightness).map(([key, val]) => ({ key, value: val, label: `Lighting ${key}`, display: val })), 'before lighting');
+        const keys = ui.off ? [['brightness', 0]] : d.adapter.lightingKeys(r, g, b, ui.brightness);
+        const res = await writeBatch(id, keys.map(([key, val]) => ({ key, value: val, label: `Lighting ${key}`, display: val })), 'before lighting');
         if (res.failed) throw new Error(`${res.failed} value(s) not set`);
       } else {
-        await write(id, 'led', rgbToHex(r * k, g * k, b * k), { label: 'LED color', display: ui.hex, silent: true });
+        await write(id, 'led', rgbToHex(r * k, g * k, b * k), { label: 'LED color', display: ui.off ? 'off' : ui.hex, silent: true });
       }
       done.push(d.adapter.title);
     } catch (e) { log(`lighting failed: ${e.message}`, 'bad', id); }
@@ -99,13 +102,13 @@ async function applyAll() {
   // added devices with one color (my-devices and library drivers), each through its own read-back write
   for (const { d, s } of addedColors()) {
     if (ui.include[d.id] === false || d.status !== 'connected' || s.readOnly) continue;
-    try { await write(d.id, s.key, rgbToHex(r * k, g * k, b * k), { label: s.label, display: ui.hex, silent: true }); done.push(d.adapter.title); }
+    try { await write(d.id, s.key, rgbToHex(r * k, g * k, b * k), { label: s.label, display: ui.off ? 'off' : ui.hex, silent: true }); done.push(d.adapter.title); }
     catch (e) { log(`lighting failed: ${e.message}`, 'bad', d.id); }
   }
   // the PC's own lights (board, fans, RAM, graphics card) through OpenRGB, when it runs
   try { const pc = await applyPc(rgbToHex(r * k, g * k, b * k)); if (pc) done.push(pc); } catch (e) { log(`PC lights failed: ${e.message}`, 'bad'); }
-  setGlow(ui.hex);
-  t.update(done.length ? `Lighting set on ${done.join(' + ')}` : 'No lit devices', done.length ? 'good' : 'bad', done.length ? undefined : 'Connect a device first.');
+  if (!ui.off) setGlow(ui.hex);
+  t.update(done.length && ui.off ? `Lights off on ${done.join(' + ')}` : done.length ? `Lighting set on ${done.join(' + ')}` : 'No lit devices', done.length ? 'good' : 'bad', done.length ? undefined : 'Connect a device first.');
 }
 
 // the devices this PC has, beyond the built-in three, that take one color (23 Oct 2026, a friend's PC listed Shawn's
@@ -119,7 +122,7 @@ export default {
   id: 'lighting', title: 'Lighting', icon: 'lighting', accent: 'var(--signal)', watches: ['keyboard', 'headset'],
   render() {
     const redraw = () => { const el = document.querySelector('#main .page'); if (el && location.hash === '#/lighting') el.replaceWith(Object.assign(this.render(), { className: 'page no-anim' })); };
-    const w = wheel((hex) => { ui.hex = hex; preview(hex); });
+    const w = wheel((hex) => { ui.hex = hex; ui.off = false; preview(hex); });
     queueMicrotask(() => { w.place(ui.hex); preview(ui.hex); });
     const shown = new Set(shownDevices().map((d) => d.id));
     const has = (id) => shown.has(id);
@@ -138,13 +141,14 @@ export default {
       // [More], I want the lighting area non scrollable")
       h('div', { class: 'grid light-cols top' },
         card([h('h2', {}, 'Color')], w.el,
-          h('div', { class: 'swatches' }, ...SWATCHES.map((c) => h('button', { class: 'swatch', style: { '--s': c }, 'aria-label': c, onclick: () => { ui.hex = c; w.place(c); preview(c); } }))),
+          h('div', { class: 'swatches' }, ...SWATCHES.map((c) => h('button', { class: 'swatch', style: { '--s': c }, 'aria-label': c, onclick: () => { ui.hex = c; ui.off = false; w.place(c); preview(c); redraw(); } })),
+            offSwatch({ on: ui.off, label: 'All lights', onclick: () => { ui.off = !ui.off; preview(ui.off ? OFF : ui.hex); redraw(); } })),
           h('div', { class: 'picker-row' }, h('span', { class: 'muted' }, 'Saturation'), w.sat),
           h('div', { class: 'picker-row' }, h('span', { class: 'muted' }, 'Brightness'),
             slider({ value: ui.brightness, min: 5, max: 100, unit: '%', label: 'Brightness', onCommit: async (x) => { ui.brightness = x; } }))),
         h('div', { class: 'stack' },
           // Apply to all sits beside the title (23 Oct 2026, Shawn: "put this next to the apply to text")
-          card([h('h2', {}, 'Apply to'), h('span', { class: 'spacer' }), button('Apply to all', applyAll, { kind: 'primary small', ic: 'lighting' })],
+          card([h('h2', {}, 'Apply to'), h('span', { class: 'spacer' }), button(ui.off ? 'Turn all off' : 'Apply to all', applyAll, { kind: 'primary small', ic: 'lighting' })],
             // only the devices this PC has, by their own names (23 Oct 2026, Shawn: a friend's PC showed his P75, HS80
             // and Pulsar whatever it had)
             h('div', { class: 'targets' },

@@ -1,5 +1,5 @@
 // Settings: appearance, startup and updates, Get help (with the safety line and the read-only self-test), health and files.
-import { h, icon } from '../ui/dom.js';
+import { h, icon, lowerFirst } from '../ui/dom.js';
 import { card, row, toggle, button, pill } from '../ui/controls.js';
 import { dropdown } from '../ui/dropdown.js';
 import { devices, isDemo, readNow, shownDevices } from '../core/devices.js';
@@ -216,7 +216,7 @@ function setupRow() {
 function selfRow() {
   if (isDemo()) return null;
   const s = self || {};
-  let text = s.checking && selfBar ? selfBar.el : !self || s.checking ? 'Checking…' : !s.git && !s.zip ? 'Not set up for this copy.' : s.error ? `Couldn't check: ${s.error}` : s.blocked ? `A new version is ready, but ${s.blocked.charAt(0).toLowerCase()}${s.blocked.slice(1)}` : s.behind ? (s.zip ? `Ready: ${s.latest}` : `${s.behind} new change${s.behind === 1 ? '' : 's'}: ${s.latest}`) : s.skipped ? 'The newest version did not start here, so this one stays. A fix will show here.' : 'Up to date.';
+  let text = s.checking && selfBar ? selfBar.el : !self || s.checking ? 'Checking…' : !s.git && !s.zip ? 'Not set up for this copy.' : s.error ? `Couldn't check: ${s.error}` : s.blocked ? `A new version is ready, but ${lowerFirst(s.blocked)}` : s.behind ? (s.zip ? `Ready: ${s.latest}` : `${s.behind} new change${s.behind === 1 ? '' : 's'}: ${s.latest}`) : s.skipped ? 'The newest version did not start here, so this one stays. A fix will show here.' : 'Up to date.';
   // while it looks or updates, the bar has the whole row (no button beside it: on a narrow window the two did not fit
   // and ran off the card, 22 Oct 2026)
   if ((selfBusy || s.checking) && selfBar) return row('DeviceHub updates', selfBar.el, null);

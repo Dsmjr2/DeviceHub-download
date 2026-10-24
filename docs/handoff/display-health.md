@@ -180,3 +180,25 @@ Read when the page opens (cached 60 s) and on Check again; never in the backgrou
 - Tests: `node tests/display-health.mjs` and `node tests/cpu-sensors.mjs` (in npm test and test:offline).
 - CPU sensors: the first real test is Add on Shawn's PC (one prompt, then readings within about 10 s), then Remove.
 - The running DeviceHub needs a restart for the new routes (/api/cpu-sensors, /api/pc-check/open-app).
+
+## 24 Oct 2026, later: game and network checks, the restart check, the Processor card, Off buttons
+
+- **PC check, only what can be changed** (Shawn: "ONLY if they can be done"). New checks in `helpers/pc-check.js`,
+  facts from `helpers/pc-check.ps1` `tune` (read only). Each returns nothing when already right, not on this PC, or
+  not read: power plan (desktops only; High/Ultimate, a maker's performance plan or Windows 11's Best performance mode
+  count as right), Resizable BAR (NVIDIA RTX 30/40/50: BAR1 of 256 MiB = off; legacy boot named), RAM sticks all on
+  one channel (bank/slot names only, never guessed), Game Mode off, background recording on, GPU scheduling off,
+  windowed-game optimisations turned off, Wi-Fi on 2.4 GHz when this adapter and the router both do 5 GHz here, weak
+  Wi-Fi, Wi-Fi power saving on mains, Ethernet below gigabit, mouse acceleration on, a screen below its refresh rate
+  (from the display read; the Monitors page fixes it). Wi-Fi uses netsh's English labels; other languages show nothing.
+- Fixes: Windows Settings pages from the fixed `PC_SETTINGS` list (POST /api/pc-check/open-settings), and one change
+  DeviceHub makes on the click: **Switch to High performance** (POST /api/pc-check/fix, `powercfg /setactive` with a
+  plan from this PC's own list; the answer names the plan before). Tests: `tests/pc-tune.mjs`.
+- **Restart** now asks Windows Update itself (Microsoft.Update.SystemInfo RebootRequired) and the servicing stack.
+  PendingFileRenameOperations no longer counts: installers leave files there, so it asked for a restart with no update.
+- **Processor card** (PC page, under the graphics card): load and clock from Windows' counters (pc-sensors.ps1), and
+  with the CPU reader its temperature, hottest core and CPU fan. The LibreHardwareMonitor reader is unchanged (it
+  passes temperatures and fans only; it is installed on the person's PC).
+- **Off** (`offSwatch` in `public/ui/controls.js`): beside every colour row (Lighting, PC lights, Fan lights, Headset,
+  added devices' colour settings). It sends black; Lighting's Off turns every included light off (the keyboard by
+  brightness 0, so its colour and effect stay).

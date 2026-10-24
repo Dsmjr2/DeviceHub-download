@@ -8,6 +8,8 @@
 //   GET  /api/temps                 temperatures and fans, read only (helpers/pc-sensors.js)
 //   GET  /api/pc-check[?fresh=1]    the PC check (helpers/pc-check.js)
 //   POST /api/pc-check/open-app     { app: 'nvidia' | 'amd' }: starts the maker's app the last check found, nothing else
+//   POST /api/pc-check/open-settings { page }: a Windows Settings page a check names (helpers/pc-check.js PC_SETTINGS)
+//   POST /api/pc-check/fix          { id: 'power-plan' }: the high performance plan, on the person's click
 const { spawn } = require('child_process');
 
 const SETTINGS = { display: 'ms-settings:display', nightlight: 'ms-settings:nightlight', hdr: 'ms-settings:display-advancedcolor' };
@@ -36,7 +38,17 @@ async function handle(req, res, url, { send, readBody, backups, log = () => {} }
       return send(res, 200, { ok: true });
     }
     if (p === '/api/temps' && req.method === 'GET') return send(res, 200, await require('./pc-sensors').read());
-    if (p === '/api/pc-check' && req.method === 'GET') return send(res, 200, await require('./pc-check').check(url.searchParams.has('fresh')));
+    if (p === '/api/pc-check' && req.method === 'GET') return send(res, 200, await require('./pc-check').check(url.searchParams.has('fresh'), { screens: () => ctl(backups, log).read() }));
+    if (p === '/api/pc-check/open-settings' && req.method === 'POST') {
+      const { page } = await readBody(req);
+      return send(res, 200, require('./pc-check').openSettings(String(page || '')));
+    }
+    if (p === '/api/pc-check/fix' && req.method === 'POST') {
+      const { id } = await readBody(req);
+      const r = await require('./pc-check').fix(String(id || ''));
+      log(`[pc-check] power plan: ${r.was} -> ${r.now}`);
+      return send(res, 200, r);
+    }
     if (p === '/api/pc-check/open-app' && req.method === 'POST') {
       const { app } = await readBody(req);
       return send(res, 200, require('./pc-check').openApp(String(app || '')));
@@ -45,6 +57,6 @@ async function handle(req, res, url, { send, readBody, backups, log = () => {} }
   } catch (e) { return send(res, 400, { error: e.message }); }
 }
 
-const handles = (p) => p === '/api/display' || p.startsWith('/api/display/') || p === '/api/temps' || p === '/api/pc-check' || p === '/api/pc-check/open-app';
+const handles = (p) => p === '/api/display' || p.startsWith('/api/display/') || p === '/api/temps' || p === '/api/pc-check' || p.startsWith('/api/pc-check/');
 
 module.exports = { handle, handles };

@@ -181,16 +181,136 @@ function crashes(f) {
 }
 
 // ---- restart waiting ----
+// Windows Update's own answer (what Settings > Windows Update shows) and the servicing stack's; files an installer left
+// to delete at the next start no longer count (24 Oct 2026, Shawn: "is the restart actually accurate?": it was not)
 function restartPending(f) {
   const r = f.restart;
   if (!r) return result('restart', 'Restart', 'info', 'Whether a restart is waiting was not read.');
-  if (r.cbs || r.wu) return result('restart', 'Restart', 'warn', 'Restart to finish an update.');
-  if (r.files > 0) return result('restart', 'Restart', 'info', 'Restart to finish an update.');
+  if (r.wu) return result('restart', 'Restart', 'warn', 'Windows Update installed an update that finishes on restart.', { text: 'Windows Update', settings: 'windows-update' });
+  if (r.cbs) return result('restart', 'Restart', 'warn', 'A Windows update or feature finishes on restart.', { text: 'Windows Update', settings: 'windows-update' });
   return result('restart', 'Restart', 'ok', 'No restart is waiting.');
 }
 
+// ---- what would make games and the network better (24 Oct 2026, Shawn: "even more things that could be optimized to
+// have better fps, wifi, etc ONLY if they can be done. For example if resizable bar is already on or high performance is
+// already on for power plan then dont show it") ----
+// Each returns nothing when it is already right, when it does not apply to this PC, or when Windows did not say: only
+// what can be changed is shown. Each has its fix: a Windows Settings page (open-settings, PC_SETTINGS), DeviceHub's
+// own one click (the power plan, POST /api/pc-check/fix), or where to change it (the BIOS, a cable).
+const PLAN = { high: '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c', ultimate: 'e9a42b02-d5df-448d-aa00-03f14749eb61', balanced: '381b4222-f694-41f0-9685-ff5bb260df2e', saver: 'a1841308-3541-4fab-bc81-f71556f20b4a' };
+const BEST_OVERLAY = 'ded574b5-45a0-4f42-8737-46345c09c238';
+// the plan the power-plan fix switches to: Ultimate, else High performance, else one named for performance; only from
+// the list this PC itself gave
+function fastPlan(t) {
+  const plans = t?.power?.plans || [];
+  return plans.find((p) => p.guid === PLAN.ultimate) || plans.find((p) => p.guid === PLAN.high) || plans.find((p) => /high perf|ultimate/i.test(p.name)) || null;
+}
+function powerPlan(f) {
+  const t = f.tune, pw = t?.power;
+  if (!pw?.active || t.battery !== false) return null;   // a laptop (or not known): its battery matters more
+  const cur = (pw.plans || []).find((p) => p.guid === pw.active);
+  if ([PLAN.high, PLAN.ultimate].includes(pw.active) || /high perf|ultimate|performance|ryzen|bitsum/i.test(cur?.name || '')) return null;
+  if (String(pw.overlay || '').toLowerCase() === BEST_OVERLAY) return null;   // Windows 11's power mode: Best performance
+  const name = cur?.name || 'Balanced';
+  const fast = fastPlan(t);
+  if (fast) return result('power-plan', 'Power plan', 'warn', `${name}: the CPU slows down to save power. ${fast.name} keeps it fast in games.`, { text: `Switch to ${fast.name}`, fix: 'power-plan' });
+  return result('power-plan', 'Power plan', 'warn', `${name}: set Power mode to Best performance for games.`, { text: 'Power mode', settings: 'power' });
+}
+function gameMode(f) {
+  if (f.tune?.gameMode !== 0) return null;   // missing = on (Windows' default)
+  return result('game-mode', 'Game Mode', 'warn', 'Off. Game Mode puts the game first and holds back Windows Update while you play.', { text: 'Game Mode', settings: 'game-mode' });
+}
+function backgroundRecording(f) {
+  if (f.tune?.bgRecord !== 1) return null;
+  return result('bg-record', 'Background recording', 'warn', 'Xbox Game Bar records the last minutes all the time, which costs frames. Turn off "Record what happened".', { text: 'Captures', settings: 'captures' });
+}
+function gpuScheduling(f) {
+  if (f.tune?.hags !== 1) return null;   // 2 = on; missing = the card or Windows does not offer it
+  return result('gpu-scheduling', 'GPU scheduling', 'info', 'Hardware-accelerated GPU scheduling is off. On, it lowers latency on most cards (needs a restart).', { text: 'Graphics settings', settings: 'graphics' });
+}
+function windowedGames(f) {
+  const t = f.tune;
+  if (!t || !(t.windowsBuild >= 22621) || !/SwapEffectUpgradeEnable=0/i.test(t.dxGlobal || '')) return null;
+  return result('windowed-games', 'Windowed games', 'info', 'Optimizations for windowed games is off. On, borderless games get lower latency.', { text: 'Graphics settings', settings: 'graphics' });
+}
+// NVIDIA RTX 30, 40 and 50 cards use it; BAR1 of 256 MiB means it is off (nvidia-smi)
+function resizableBar(f) {
+  const t = f.tune;
+  if (!t || t.bar1MiB == null || t.bar1MiB > 256) return null;
+  const card = (f.video || []).find((v) => /RTX\s*(30|40|50)\d0/i.test(v.name || ''));
+  if (!card) return null;
+  const [, url, maker] = BOARD_SUPPORT.find(([re]) => re.test(`${f.board?.maker || ''}`)) || [];
+  const legacy = t.firmware === 1 ? ' This PC starts in legacy (CSM) mode, which it cannot use: that needs the drive converted to GPT first (Windows\' MBR2GPT).' : '';
+  return result('rebar', 'Resizable BAR', 'warn', `Off for the ${card.name.replace(/^NVIDIA (GeForce )?/i, '')}. In the BIOS turn on Above 4G Decoding and Re-Size BAR (a BIOS update may add them); a few percent more fps in many games.${legacy}`, url ? { text: `${maker} BIOS updates`, url } : null);
+}
+// two or more sticks all on one memory channel: half the bandwidth (the board's manual names the dual-channel slots)
+const channelOf = (r) => {
+  const m = /channel\s*([A-H])\b/i.exec(r.bank || '') || /channel\s*([A-H])/i.exec(r.slot || '') || /^(?:DIMM[_ ]?)?([A-H])\d$/i.exec(String(r.slot || '').trim());
+  return m ? m[1].toUpperCase() : null;
+};
+function ramChannels(f) {
+  const sticks = (f.ram || []).filter((r) => r.gb > 0);
+  if (sticks.length < 2) return null;
+  const ch = sticks.map(channelOf);
+  if (ch.some((c) => !c) || new Set(ch).size > 1) return null;
+  return result('ram-channels', 'RAM slots', 'warn', `All ${sticks.length} sticks are on channel ${ch[0]}, so the RAM runs single channel. Move half to the other channel's slots (the board's manual names them; usually A2 and B2).`);
+}
+function wifi(f) {
+  const w = f.tune?.wifi;
+  if (!w) return null;
+  const out = [];
+  const signal = parseInt(w.signal, 10);
+  const on24 = /2\.4/.test(w.band || '') || (!w.band && parseInt(w.channel, 10) <= 14);
+  if (on24 && w.fiveNearby && /802\.11(a|ac|ax)\b/i.test(w.radios || '')) {
+    out.push(result('wifi-band', 'Wi-Fi', 'warn', `On 2.4 GHz${w.ssid ? ` (${w.ssid})` : ''}. Your router also has 5 GHz here and this adapter can use it: faster, with steadier ping.`, { text: 'Wi-Fi settings', settings: 'wifi' }));
+  }
+  if (signal > 0 && signal <= 50) out.push(result('wifi-signal', 'Wi-Fi signal', 'warn', `Weak (${signal}%). A cable, or the PC nearer the router, gives a steadier ping.`));
+  if (f.tune.power?.wifiSaveAc > 0 && f.tune.battery === false) out.push(result('wifi-power', 'Wi-Fi power saving', 'info', 'On while plugged in. Set Wireless Adapter Settings to Maximum Performance (Power Options, advanced settings).', { text: 'Power Options', settings: 'power-options' }));
+  return out.length ? out : null;
+}
+function ethernet(f) {
+  const slow = (f.tune?.wired || []).filter((a) => a.bps > 0 && a.bps < 1e9);
+  if (!slow.length) return null;
+  return slow.map((a) => result('ethernet', 'Ethernet', 'warn', `${a.name} runs at ${Math.round(a.bps / 1e6)} Mbps. Gigabit ports drop to this with an old or damaged cable or router port: try another cable.`));
+}
+function mouseAcceleration(f) {
+  if (f.tune?.mouseAccel !== '1') return null;
+  return result('mouse-accel', 'Mouse', 'info', '"Enhance pointer precision" (acceleration) is on. Most players turn it off for the same aim at any speed.', { text: 'Mouse settings', settings: 'mouse' });
+}
+// a screen below its highest refresh rate (helpers/display.js refreshFlag; the Monitors page has the one-click fix)
+function refreshRate(f) {
+  const flagged = (f.screens || []).filter((s) => s.flag);
+  if (!flagged.length) return null;
+  return flagged.map((s) => result('refresh', 'Refresh rate', 'warn', `${s.name}: ${s.flag.text}`, { text: 'Monitors', page: 'monitors' }));
+}
+
 // the checks, in the order shown
-const CHECKS = [diskSpace, driveHealth, graphicsDriver, ramSpeed, deviceErrors, crashes, restartPending];
+const CHECKS = [diskSpace, driveHealth, graphicsDriver, ramSpeed, deviceErrors, crashes, restartPending,
+  refreshRate, powerPlan, resizableBar, ramChannels, gameMode, backgroundRecording, gpuScheduling, windowedGames, wifi, ethernet, mouseAcceleration];
+
+// the Windows Settings pages a result may open (POST /api/pc-check/open-settings { page }); nothing else is started
+const PC_SETTINGS = {
+  'windows-update': ['explorer.exe', ['ms-settings:windowsupdate']], power: ['explorer.exe', ['ms-settings:powersleep']],
+  'game-mode': ['explorer.exe', ['ms-settings:gaming-gamemode']], captures: ['explorer.exe', ['ms-settings:gaming-gamedvr']],
+  graphics: ['explorer.exe', ['ms-settings:display-advancedgraphics']], wifi: ['explorer.exe', ['ms-settings:network-wifi']],
+  'power-options': ['control.exe', ['powercfg.cpl']], mouse: ['control.exe', ['main.cpl']],
+};
+function openSettings(page, { start = (cmd, args) => spawn(cmd, args, { detached: true, stdio: 'ignore' }).on('error', () => {}).unref() } = {}) {
+  const s = Object.prototype.hasOwnProperty.call(PC_SETTINGS, page) ? PC_SETTINGS[page] : null;
+  if (!s) throw new Error('unknown settings page');
+  start(s[0], s[1]);
+  return { ok: true };
+}
+// POST /api/pc-check/fix { id: 'power-plan' }: the one change DeviceHub makes itself, on the person's click. The plan
+// comes from this PC's own list (the last check), and it is the same switch as Power Options (powercfg /setactive, no
+// administrator). The plan it was on is said in the answer, to switch back from Power Options.
+function fix(id, { facts = cache.facts, run = (args) => new Promise((resolve, reject) => execFile('powercfg', args, { windowsHide: true, timeout: 15000 }, (e) => (e ? reject(new Error(String(e.message).split('\n')[0])) : resolve()))) } = {}) {
+  if (id !== 'power-plan') return Promise.reject(new Error('unknown fix'));
+  const fast = fastPlan(facts?.tune);
+  if (!fast || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(fast.guid)) return Promise.reject(new Error('no high performance plan on this PC; press Check again'));
+  const was = (facts.tune.power.plans || []).find((p) => p.guid === facts.tune.power.active)?.name || 'the plan before';
+  return run(['/setactive', fast.guid]).then(() => { cache.at = 0; return { ok: true, now: fast.name, was }; });
+}
 
 function runChecks(facts, now = Date.now(), checks = CHECKS) {
   const out = [];
@@ -227,11 +347,13 @@ function openApp(id, { start = (p) => spawn(p, [], { cwd: path.dirname(p), detac
   start(p);
   return { ok: true };
 }
-async function check(fresh = false) {
+// screens(): the display controller's read (helpers/pc-routes.js), for the refresh rate check; optional
+async function check(fresh = false, { screens = null } = {}) {
   if (!fresh && cache.value && Date.now() - cache.at < 60000) return cache.value;
   if (pending) return pending;
   pending = (async () => {
-    const facts = await gather();
+    const [facts, sc] = await Promise.all([gather(), screens ? screens().catch(() => null) : null]);
+    if (sc?.screens) facts.screens = sc.screens;
     const results = runChecks(facts);
     cache = { at: Date.now(), facts, value: { at: new Date().toISOString(), results, summary: summary(results) } };
     return cache.value;
@@ -239,4 +361,5 @@ async function check(fresh = false) {
   try { return await pending; } finally { pending = null; }
 }
 
-module.exports = { check, openApp, CHECKS, _test: { appPath, DRIVER_APPS, runChecks, summary, diskSpace, driveHealth, graphicsDriver, ramSpeed, deviceErrors, crashes, restartPending, nvidiaNumber, partSpeed, bugcheckCode } };
+module.exports = { check, openApp, openSettings, fix, CHECKS, PC_SETTINGS, _test: { appPath, DRIVER_APPS, runChecks, summary, diskSpace, driveHealth, graphicsDriver, ramSpeed, deviceErrors, crashes, restartPending, nvidiaNumber, partSpeed, bugcheckCode,
+  powerPlan, gameMode, backgroundRecording, gpuScheduling, windowedGames, resizableBar, ramChannels, channelOf, wifi, ethernet, mouseAcceleration, refreshRate, fastPlan, PLAN } };

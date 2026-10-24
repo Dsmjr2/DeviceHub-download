@@ -296,8 +296,11 @@ function adapterMeta(d) {
 }
 
 // absent: an added driver that found nothing of its own on this PC (helpers/my-devices.mjs isAbsent)
+// A driver that stepped aside (notMine) is forgotten as seen (24 Oct 2026, support#17): a keyboard driver recorded as
+// seen before it learned to step aside showed "Logitech keyboard, connecting" on every start and every retry.
 export function snapshot(id) {
   const d = core.devices[id];
+  if (d.adapter?.plugin && d.adapter.notMine && seen.has(id)) { seen.delete(id); try { writeAtomic(SEEN_FILE, JSON.stringify([...seen])); } catch {} }
   return { id, status: d.status, info: d.info, battery: d.battery, values: d.values, error: d.error, readAt: d.readAt, adapter: adapterMeta(d), seen: seen.has(id), absent: myDevices.isAbsent(d.adapter, d.status, seen.has(id)), waiting: d.waiting || [], undo: d.undo || null };
 }
 

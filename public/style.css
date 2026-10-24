@@ -650,6 +650,9 @@ html[data-art] .mic-muted .art.mark .led.mic { fill: #ff4d4d; filter: drop-shado
 .swatches.compact { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; max-width: 210px; }
 .swatches.compact .swatch { width: 22px; height: 22px; }
 .swatch.on { outline: 2px solid var(--text); outline-offset: 2px; }
+/* Off (24 Oct 2026): a dark disc with a slash, beside every row of colours (ui/controls.js offSwatch) */
+.swatch-off, .theme-swatch.swatch-off { --s: transparent; background: linear-gradient(135deg, transparent calc(50% - 1.2px), var(--muted) calc(50% - 1.2px), var(--muted) calc(50% + 1.2px), transparent calc(50% + 1.2px)), var(--panel-2) !important; outline: 1px solid var(--line2); outline-offset: -1px; cursor: pointer; }
+.swatch-off.on, .theme-swatch.swatch-off.sel { outline: 2px solid var(--text); outline-offset: 2px; }
 .swatch-custom { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 999px; cursor: pointer; background: conic-gradient(#ff4d4d, #ffd84d, #5dff6a, #4dffff, #4d6aff, #ff4dff, #ff4d4d); outline: 1px solid rgba(255,255,255,.12); outline-offset: -1px; }
 .swatch-custom::-webkit-color-swatch-wrapper { padding: 0; } .swatch-custom::-webkit-color-swatch { border: 0; opacity: 0; }
 .panel .swatches { justify-content: center; margin-top: 12px; }
@@ -2606,9 +2609,10 @@ select.text.disp-select { width: auto; min-width: 130px; font-size: 13px; paddin
 /* The PC page (24 Oct 2026, Shawn: it fits the window at 1650x950): the graphics card down the left, Fan lights and
    Temperatures beside it, the PC check across the two right columns. Two columns below 1180 px, one on a phone. */
 .grid.pc-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
-.pc-grid > .pc-gpu { grid-row: span 2; }
-.pc-grid > .pc-check { grid-column: 2 / span 2; }
-@media (max-width: 1180px) { .grid.pc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .pc-grid > .pc-gpu { grid-row: auto; } .pc-grid > .pc-check { grid-column: 1 / -1; } }
+.pc-grid > .pc-gpu { grid-column: 1; grid-row: 1; } .pc-grid > .pc-cpu { grid-column: 1; grid-row: 2; }
+.pc-grid > .pc-lights { grid-column: 2; grid-row: 1; } .pc-grid > .pc-temps { grid-column: 3; grid-row: 1; }
+.pc-grid > .pc-check { grid-column: 2 / span 2; grid-row: 2; }
+@media (max-width: 1180px) { .grid.pc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .pc-grid > :is(.pc-gpu, .pc-cpu, .pc-lights, .pc-temps, .pc-check) { grid-row: auto; grid-column: auto; } .pc-grid > .pc-check { grid-column: 1 / -1; } }
 @media (max-width: 760px) { .grid.pc-grid { grid-template-columns: minmax(0, 1fr); } .pc-grid > .pc-check { grid-column: auto; } }
 /* Temperatures and fans: one short row per reading */
 .tf-list { display: grid; }

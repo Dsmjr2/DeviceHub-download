@@ -6,7 +6,7 @@
 // fan hubs, coolers and the board's fan headers, each with a colour and Undo (the same backed-up, read-back path as
 // Lighting > PC lights, helpers/openrgb.js). When OpenRGB sees none, it says why for this PC and what fixes it.
 import { h } from '../ui/dom.js';
-import { card, row, loadingCard, button, pill } from '../ui/controls.js';
+import { card, row, loadingCard, button, pill, offSwatch, isOff, OFF } from '../ui/controls.js';
 import { toast } from '../ui/overlay.js';
 import { SWATCHES } from './headset.js';
 import { helpHere } from '../ui/get-help.js';
@@ -17,7 +17,7 @@ import { topbar } from './common.js';
 import { meter } from '../ui/gauges.js';
 // Temperatures and fans, and the PC check (24 Oct 2026, docs/handoff/display-health.md): this page became "PC" so the
 // readings, the fans and the check of the whole PC are one place in the sidebar (Settings > Health stays about DeviceHub)
-import { tempsCard, pcCheckCard } from '../ui/pc-health.js';
+import { tempsCard, pcCheckCard, cpuCard } from '../ui/pc-health.js';
 
 const DEMO = { available: true, gpus: [{ name: 'NVIDIA GeForce RTX 4070', tempC: 62, fanPct: 38, loadPct: 71, powerW: 142, powerLimitW: 200, memUsedMB: 6100, memTotalMB: 12282, clockMHz: 2610, headroomC: 22 }] };
 let gpu = null, error = null, timer = null, rerender = () => {};
@@ -89,7 +89,7 @@ async function setFan(c, hex) {
   if (lightsBusy) return;
   if (isDemo()) { c.color = hex; c.same = true; rerender(); return; }
   lightsBusy = true; rerender();
-  try { await env.api('/api/openrgb/color', { target: c.index, hex }); toast(`${c.name}: ${hex}`, 'good'); }
+  try { await env.api('/api/openrgb/color', { target: c.index, hex }); toast(`${c.name}: ${isOff(hex) ? 'off' : hex}`, 'good'); }
   catch (e) { toast('Fan lights not changed', 'bad', { detail: e.message }); }
   lightsBusy = false; loadLights(true);
 }
@@ -119,7 +119,7 @@ function whyNone(o) {
   return [h('p', { class: 'faint fan-why' }, head),
     ...(d?.problems || []).map((x) => h('p', { class: 'faint fan-why' }, h('b', {}, `${x.problem}. `), `${x.why} Fix: ${x.fix}`)),
     fix,
-    h('p', { class: 'faint fan-why' }, 'Hub with a button? Plug its 3-pin ARGB lead into the board (never the 4-pin 12 V header).')];
+    h('p', { class: 'faint fan-why' }, "Hub with a remote? Plug its 3-pin M/B cable into the board's D_LED header (never the 4-pin one), then press M/B.")];
 }
 function fanLightsCard() {
   if (!lightsAsked) queueMicrotask(() => loadLights());
@@ -135,7 +135,8 @@ function fanLightsCard() {
         h('small', { class: 'faint' }, c.type === 'motherboard' ? 'Board and fan headers, one color' : `${c.zones?.length || 1} ${c.zones?.length === 1 ? 'zone' : 'zones'} · ${c.leds} lights`)),
       h('div', { class: 'swatches compact' },
         ...SWATCHES.map((x) => h('button', { class: `swatch${c.same && c.color === x ? ' on' : ''}`, style: { '--s': x }, 'aria-label': `${c.name}: ${x}`, disabled: lightsBusy || !!o.readOnly, onclick: () => setFan(c, x) })),
-        h('input', { type: 'color', class: 'swatch-custom', 'aria-label': `${c.name}: pick a colour`, value: c.color || '#ffffff', disabled: lightsBusy || !!o.readOnly, onchange: (e) => setFan(c, e.target.value) }))))
+        h('input', { type: 'color', class: 'swatch-custom', 'aria-label': `${c.name}: pick a colour`, value: c.color && !isOff(c.color) ? c.color : '#ffffff', disabled: lightsBusy || !!o.readOnly, onchange: (e) => setFan(c, e.target.value) }),
+        offSwatch({ on: c.same && isOff(c.color), label: c.name, disabled: lightsBusy || !!o.readOnly, onclick: () => setFan(c, OFF) }))))
       : whyNone(o)),
     // only the board itself (no fan hub or cooler on USB): where case fans must be plugged for the colour to reach them
     // (23 Oct 2026, a friend's Corsair case: "cannot see his case fans")
@@ -156,12 +157,13 @@ export default {
     return h('div', {},
       // Get help (area fans: the graphics card, the lights check, the page's red lines), top right
       topbar('Temperatures, fans and checks', 'PC', null, null, helpHere('fans')),
-      // the whole page fits the window at 1650x950 (Shawn, 24 Oct 2026): the graphics card down the left, the PC check
-      // across the two right columns under Fan lights and Temperatures (style.css .pc-grid; one column on a phone)
+      // the whole page fits the window at 1650x950 (Shawn, 24 Oct 2026): the graphics card and the processor down the left,
+      // the PC check across the two right columns under Fan lights and Temperatures (style.css .pc-grid; one column on a phone)
       h('div', { class: 'grid pc-grid' },
         tag(error ? card([h('h2', {}, 'Graphics card')], h('p', { class: 'faint' }, `Not read: ${error}`))
           : !gpu ? loadingCard('Graphics card', 4)
             : gpus.length ? gpuCard(gpus[0]) : card([h('h2', {}, 'Graphics card')], h('p', { class: 'faint' }, gpu.reason || 'Not read on this PC.')), 'pc-gpu'),
+        tag(cpuCard(), 'pc-cpu'),
         tag(fanLightsCard(), 'pc-lights'),
         tag(tempsCard(rerender, 'fans'), 'pc-temps'),
         tag(pcCheckCard(rerender), 'pc-check')));

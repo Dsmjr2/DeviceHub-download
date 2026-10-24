@@ -1,6 +1,6 @@
 // Headset page: battery and iCUE status, Windows volume and mic, LED color.
 import { h, icon } from '../ui/dom.js';
-import { more, card, row, toggle, slider, button, pill, segmented } from '../ui/controls.js';
+import { more, card, row, toggle, slider, button, pill, segmented, offSwatch, isOff, OFF } from '../ui/controls.js';
 import { batteryCell, loadBatteryEstimates } from '../ui/controls.js';
 import { batteryChart } from '../ui/battery-chart.js';
 import { devices, write, prepare, isDemo, isRemote, connect, markMissing } from '../core/devices.js';
@@ -128,7 +128,8 @@ export default {
         h('div', { class: 'stack' }, generic ? genericCard(a) : card([h('h2', {}, 'Lights & power'), h('span', { class: 'sub' }, direct ? null : 'iCUE controls these while open')],
           row('Headset color', null, h('div', { class: 'swatches compact' },
             ...SWATCHES.map((c) => h('button', { class: 'swatch', style: { '--s': c }, title: c, 'aria-label': `color ${c}`, onclick: () => set('led', c, 'Headset Color', c).then(() => setGlow(c)) })),
-            h('input', { type: 'color', class: 'swatch-custom', title: 'Any color', value: v.led || '#ff6a1a', 'aria-label': 'custom color', onchange: (e) => set('led', e.target.value, 'Headset Color', e.target.value) }))),
+            h('input', { type: 'color', class: 'swatch-custom', title: 'Any color', value: v.led && !isOff(v.led) ? v.led : '#ff6a1a', 'aria-label': 'custom color', onchange: (e) => set('led', e.target.value, 'Headset Color', e.target.value) }),
+            offSwatch({ on: isOff(v.led), label: 'Headset lights', onclick: () => set('led', OFF, 'Headset Color', 'off') }))),
           direct && v.logoBrightness != null ? row('Logo brightness', '0 = off.', slider({ value: v.logoBrightness, min: 0, max: 100, unit: '%', accent: 'var(--c-headset)', grab: () => prepare('headset'), live: live('logoBrightness'), onCommit: (x) => set('logoBrightness', x, 'Ear Cup Logo', x ? `${x}%` : 'off') })) : null,
           direct && v.autoOff != null ? row('Sleep when silent', null, slider({ value: v.autoOff, min: 1, max: 120, unit: ' min', accent: 'var(--c-headset)', grab: () => prepare('headset'), onCommit: (x) => set('autoOff', x, 'Sleep after', `${x} min`) })) : null,
           direct && v.micLight != null ? row('Mic light', 'Red while muted.', toggle({ value: v.micLight, label: 'Mic light', onCommit: (on) => set('micLight', on, 'Mic light', on ? 'on when muted' : 'off') })) : null),

@@ -180,14 +180,14 @@ check(pc.crashes({ events: { bugchecks: [], shutdowns: [], whea: [] } })[0].leve
 check(/needs administrator/.test([].concat(pc.crashes({ events: null, denied: ['events'] }))[0].line), 'a log that needs admin is said so');
 check(pc.bugcheckCode('0x00000124 (0x0, ...)') === 0x124 && pc.bugcheckCode(0) === null && pc.bugcheckCode(278) === 278, 'stop codes read');
 
-check(pc.restartPending({ restart: { cbs: true, wu: false, files: 0 } }).line === 'Restart to finish an update.' && pc.restartPending({ restart: { cbs: false, wu: true, files: 0 } }).level === 'warn', 'a pending update restart warns');
-check(pc.restartPending({ restart: { cbs: false, wu: false, files: 2 } }).level === 'info', 'files waiting for a restart: a note');
-check(pc.restartPending({ restart: { cbs: false, wu: false, files: 0 } }).level === 'ok', 'nothing waiting: fine');
+check(pc.restartPending({ restart: { cbs: true, wu: false } }).level === 'warn' && pc.restartPending({ restart: { cbs: false, wu: true } }).line === 'Windows Update installed an update that finishes on restart.', 'a pending update restart warns');
+check(pc.restartPending({ restart: { cbs: false, wu: false, files: 2 } }).level === 'ok', 'files an installer left for the next start: no restart asked (24 Oct 2026)');
+check(pc.restartPending({ restart: { cbs: false, wu: false } }).level === 'ok', 'nothing waiting: fine');
 
 const all = pc.runChecks({ volumes: [] }, NOW, [pc.diskSpace, function broken() { throw new Error('boom'); }]);
 check(all.length === 2 && all[1].level === 'info' && /could not run: boom/.test(all[1].line), 'a check that fails is one plain line, not a crash');
 check(JSON.stringify(pc.summary([{ level: 'warn' }, { level: 'ok' }, { level: 'ok' }])) === '{"warn":1,"info":0,"ok":2}', 'summary counts');
-check(require('../helpers/pc-check.js').CHECKS.length === 7, 'seven checks in the list');
+check(require('../helpers/pc-check.js').CHECKS.length === 18, 'eighteen checks in the list');
 
 // ---------- temperatures ----------
 const t1 = sensors.decide({ nvidia: { available: true, gpus: [{ name: 'NVIDIA GeForce RTX 4070', tempC: 34.4, fanPct: 0 }] }, kmt: [{ name: 'NVIDIA GeForce RTX 4070', tempC: 33.9 }], zones: [{ name: '\\_TZ.UAD0', tenthsK: 2900 }], pawnio: true });
