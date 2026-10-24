@@ -15,11 +15,11 @@ import { shortName } from '../core/headset-pick.js';
 const ui = { on: false, peak: -90, hold: -90, holdAt: 0, error: null, label: null };
 let stream = null, ctx = null, raf = 0, stopTimer = 0;
 
-const zone = (db) => (db >= -1 ? ['clipping', 'bad', 'Turn Mic level or Mic Boost down: loud parts are cut off.']
-  : db >= -6 ? ['loud', 'warn', 'A little hot. Fine for quiet talk; lower it if you laugh or shout.']
-    : db >= -20 ? ['good', 'good', 'Good: clear and comfortable to listen to.']
-      : db >= -35 ? ['quiet', 'warn', 'A bit quiet. Raise Mic level, or move the mic slightly closer.']
-        : ['silent', '', 'Talk normally for a few seconds.']);
+const zone = (db) => (db >= -1 ? ['clipping', 'bad', 'Clipping. Lower Mic level or boost.']
+  : db >= -6 ? ['loud', 'warn', 'A little hot. Lower it if you shout.']
+    : db >= -20 ? ['good', 'good', 'Good.']
+      : db >= -35 ? ['quiet', 'warn', 'A bit quiet. Raise Mic level.']
+        : ['silent', '', 'Talk normally.']);
 
 async function start(redraw) {
   ui.error = null;
@@ -36,7 +36,7 @@ async function start(redraw) {
     if (!hs) throw new Error(`no ${other || 'HS80'} microphone in Windows (is the headset on?)`);
     stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: hs.deviceId }, echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
     ui.label = hs.label;
-  } catch (e) { ui.error = e.name === 'NotAllowedError' ? 'The window was not allowed to use the microphone.' : e.message; redraw(); return; }
+  } catch (e) { ui.error = e.name === 'NotAllowedError' ? 'Mic blocked. Allow it in site settings.' : e.message; redraw(); return; }
   ctx = new AudioContext();
   const an = ctx.createAnalyser(); an.fftSize = 2048;
   ctx.createMediaStreamSource(stream).connect(an);
@@ -81,7 +81,7 @@ export function micMeter(redraw) {
   const head = [h('h2', {}, 'Mic check'), h('span', { class: 'sub' }, 'nothing is saved'), h('span', { class: 'spacer' }),
     ui.on ? button('Stop', () => stop(redraw), { kind: 'ghost small' }) : button('Start', () => start(redraw), { kind: 'primary small', ic: 'mic' })];
   if (ui.error) return card(head, h('p', { class: 'faint' }, ui.error), testSection(redraw));
-  if (!ui.on) return card(head, h('p', { class: 'faint', style: { margin: 0 } }, 'Press Start and talk. Aim for the green band.'), testSection(redraw));
+  if (!ui.on) return card(head, h('p', { class: 'faint', style: { margin: 0 } }, 'Aim for the green band.'), testSection(redraw));
   const z = (from, to, c) => h('i', { style: { left: `${pct(from)}%`, width: `${pct(to) - pct(from)}%`, background: c } });
   return card(head,
     h('div', { id: 'mic-meter' },
@@ -128,7 +128,7 @@ async function recStop(redraw) {
   clearInterval(rec.poll);
   if (rec.state !== 'recording') return;
   rec.state = 'loading'; redraw();
-  if (isDemo()) { rec.state = 'idle'; toast('Recording works in the installed app', 'info'); redraw(); return; }
+  if (isDemo()) { rec.state = 'idle'; toast('Demo: not recorded', 'info'); redraw(); return; }
   try {
     await api('stop', {});
     const r = await fetch('/api/mictest/audio', { cache: 'no-store' });
@@ -201,7 +201,7 @@ function testSection(redraw) {
     : null;
   let desc, ctl, body = null;
   if (rec.state === 'idle') {
-    desc = rec.error ? `Couldn't record: ${rec.error}` : 'Record up to 30 seconds and hear how you sound.';
+    desc = rec.error ? `Couldn't record: ${rec.error}` : 'Up to 30 seconds.';
     ctl = h('div', { class: 'actions', style: { alignItems: 'center' } }, which, button('Record', () => recStart(redraw), { kind: 'primary small', ic: 'mic' }));
   } else if (rec.state === 'recording') {
     const g = devices.headset?.adapter?.generic;

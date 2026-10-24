@@ -6,6 +6,7 @@
 // Demo mode shows the six starter wallpapers read-only and never sends a change.
 import { h, icon } from '../ui/dom.js';
 import { card, button, loadingCard } from '../ui/controls.js';
+import { dropdown } from '../ui/dropdown.js';
 import { isDemo } from '../core/devices.js';
 import { loadPicture, hasPicture, removePicture } from '../core/theme.js';
 import { topbar } from './common.js';
@@ -92,7 +93,7 @@ async function load() {
     if (isDemo()) { const s = await getJson('/api/wallpapers/starters'); data = { dir: 'Pictures\\DeviceHub Wallpapers', items: s.items, windows: true, demo: true }; }
     else data = await getJson('/api/wallpapers');
     error = null;
-    if (data.previousKept && !windowsLine) windowsLine = { text: 'DeviceHub set your Windows wallpaper.', putBack: true };
+    if (data.previousKept && !windowsLine) windowsLine = { text: 'DeviceHub set your wallpaper.', putBack: true };
   } catch (e) { error = e.message; }
   rerender();
 }
@@ -101,7 +102,7 @@ async function load() {
 async function addFiles(files) {
   const pics = [...files].filter((f) => IMAGE_EXT.test(f.name) || /^image\/(png|jpeg|webp|gif|bmp)$/.test(f.type));
   const skipped = files.length - pics.length;
-  if (!pics.length) { addLine = { text: files.length ? 'None of those are pictures DeviceHub keeps (PNG, JPEG, WebP, GIF or BMP).' : 'Nothing to add.', bad: true }; rerender(); return; }
+  if (!pics.length) { addLine = { text: files.length ? 'Not pictures (PNG, JPEG, WebP, GIF, BMP).' : 'Nothing to add.', bad: true }; rerender(); return; }
   if (isDemo()) { addLine = { text: `Demo: nothing added (${plural(pics.length, 'picture')} picked).` }; rerender(); return; }
   adding = { i: 0, n: pics.length, added: 0, dup: 0, failed: [] };
   addLine = null;
@@ -117,9 +118,9 @@ async function addFiles(files) {
   }
   const a = adding; adding = null;
   const parts = [a.added ? `Added ${plural(a.added, 'picture')}.` : 'Nothing new added.'];
-  if (a.dup) parts.push(a.dup === 1 ? '1 was already here and skipped.' : `${a.dup} were already here and skipped.`);
-  if (skipped) parts.push(`${plural(skipped, 'file')} that ${skipped === 1 ? 'is' : 'are'} not a picture left out.`);
-  if (a.failed.length) parts.push(`${plural(a.failed.length, 'picture')} could not be added: ${a.failed.slice(0, 2).join('; ')}${a.failed.length > 2 ? '…' : ''}`);
+  if (a.dup) parts.push(a.dup === 1 ? '1 already here.' : `${a.dup} already here.`);
+  if (skipped) parts.push(`${plural(skipped, 'file')} skipped.`);
+  if (a.failed.length) parts.push(`${plural(a.failed.length, 'picture')} not added: ${a.failed.slice(0, 2).join('; ')}${a.failed.length > 2 ? '…' : ''}`);
   addLine = { text: parts.join(' '), bad: a.failed.length > 0 && !a.added };
   await load();
 }
@@ -209,7 +210,7 @@ async function useAsBackground(name) {
   await post('/api/wallpapers/use-as-background', { name });
   await loadPicture();
   rerender();
-  return 'Now behind DeviceHub. Remove DeviceHub background (above) undoes it.';
+  return 'Now behind DeviceHub.';
 }
 async function reveal(name) {
   if (isDemo()) return DEMO_SAID;
@@ -223,7 +224,7 @@ async function backupAll() {
     // one copy of each picture (helpers/wallpapers.js backup): say what was new, and that the rest were already there
     backupLine = !r.count ? { text: 'Nothing to back up yet.' }
       : { text: `${r.added ? `Backed up ${plural(r.added, 'new picture')} (${mb(r.addedBytes)})` : 'Already backed up: nothing new'}${r.added && r.count > r.added ? `; the other ${r.count - r.added} were already there` : ''}. ${plural(r.inBackup, 'picture')}, one of each, in ${r.dir}${r.folded ? `. ${plural(r.folded, 'older backup folder')} merged into it` : ''}.` };
-  } catch (e) { backupLine = { text: `Could not back up: ${e.message}`, bad: true }; }
+  } catch (e) { backupLine = { text: `Not backed up: ${e.message}`, bad: true }; }
   rerender();
 }
 
@@ -283,11 +284,11 @@ export default {
     const line = (x, cls = '') => x ? h('div', { class: `wp-line ${cls} ${x.bad ? 'bad' : ''}`, role: 'status' }, x.text) : null;
     const where = data ? h('p', { class: 'wp-where faint' },
       `Kept in ${data.dir}`, ' · ', items.length ? `${plural(items.length, 'picture')} · ${mb(total)}` : 'none yet',
-      data.demo ? ' · demo: the starter wallpapers, nothing is saved' : '') : null;
+      data.demo ? ' · demo' : '') : null;
     const page = h('div', { class: 'wp-page' },
       topbar('Setup', 'Wallpapers', null, null, helpHere('wallpapers')),
       where,
-      error ? card([h('h2', {}, 'Wallpapers')], h('p', { class: 'faint' }, `Could not read the folder: ${error}`))
+      error ? card([h('h2', {}, 'Wallpapers')], h('p', { class: 'faint' }, `Folder not read: ${error}`))
         : !data ? loadingCard('Wallpapers', 3)
           : card(null,
             h('div', { class: 'wp-tools' },
@@ -295,11 +296,11 @@ export default {
               items.length ? button('Back up all', backupAll, { ic: 'shield' }) : null,
               items.length && !data.demo ? button('Open folder', () => reveal().catch((e) => { addLine = { text: e.message, bad: true }; rerender(); }), { kind: 'ghost', ic: 'external' }) : null,
               // back to the plain backdrop behind DeviceHub (shown only while a picture is behind it)
-              hasPicture() ? button('Remove DeviceHub background', async () => { await removePicture(); tileLine = { text: 'DeviceHub is back to its plain backdrop.' }; rerender(); }, { kind: 'ghost', ic: 'x' }) : null,
+              hasPicture() ? button('Remove background', async () => { await removePicture(); tileLine = { text: 'Background removed.' }; rerender(); }, { kind: 'ghost', ic: 'x' }) : null,
               h('span', { class: 'spacer' }),
               items.length > 1 ? h('label', { class: 'wp-sort' }, h('span', { class: 'faint' }, 'Sort'),
-                h('select', { class: 'text', 'aria-label': 'Sort wallpapers', onchange: (e) => { sortBy = e.target.value; try { localStorage.setItem('wallpapers.sort', sortBy); } catch {} document.querySelector('.wp-grid, .wp-none')?.replaceWith(grid()); } },
-                  ...SORTS.map(([k, label]) => h('option', { value: k, selected: k === sortBy ? true : null }, label)))) : null,
+                dropdown({ label: 'Sort wallpapers', value: sortBy, options: SORTS.map(([k, label]) => ({ value: k, label })),
+                  onChange: (v) => { sortBy = v; try { localStorage.setItem('wallpapers.sort', sortBy); } catch {} document.querySelector('.wp-grid, .wp-none')?.replaceWith(grid()); } })) : null,
               items.length ? h('div', { class: 'seg compact wp-size', style: { '--n': 3, '--i': SIZES.findIndex(([k]) => k === tileSize) }, role: 'group', 'aria-label': 'Picture size' },
                 h('span', { class: 'seg-thumb' }),
                 ...SIZES.map(([k, label]) => h('button', { class: k === tileSize ? 'sel' : '', 'aria-pressed': String(k === tileSize), onclick: () => { tileSize = k; try { localStorage.setItem('wallpapers.size', k); } catch {} rerender(); } }, label))) : null,
@@ -311,8 +312,8 @@ export default {
             items.length ? grid()
               : h('div', { class: 'wp-empty' },
                 icon('wallpapers', 'ic wp-empty-ic'),
-                h('p', {}, 'Add pictures or a whole folder, or drop them on this page.'),
-                h('p', { class: 'faint' }, 'They stay in your Pictures folder, even if DeviceHub is removed.'))));
+                h('p', {}, 'Add or drop pictures here.'),
+                null)));
     // drop pictures or folders anywhere on the page
     page.addEventListener('dragover', (e) => { if ([...(e.dataTransfer?.types || [])].includes('Files')) { e.preventDefault(); page.classList.add('wp-drop'); } });
     page.addEventListener('dragleave', (e) => { if (!page.contains(e.relatedTarget)) page.classList.remove('wp-drop'); });

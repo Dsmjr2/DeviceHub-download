@@ -196,9 +196,9 @@ export function analyze(f) {
   if (f.makers) checked.push("the maker's app");
   if (notConnected) for (const m of makers) {
     const why = m.key === 'icue' && s.id === 'headset'
-      ? 'While iCUE runs, DeviceHub reaches the headset through iCUE, and iCUE is not handing it over right now.'
-      : `${m.name} talks to the same ${kind}, and two programs on one device get in each other's way.`;
-    add(10, 'maker-app', `${m.name} is running`, why, `Close ${m.name}; DeviceHub connects within a few seconds. It stays installed for firmware updates.`,
+      ? 'DeviceHub reaches the headset through iCUE, which is not handing it over.'
+      : `${m.name} talks to the same ${kind}; two programs on one device clash.`;
+    add(10, 'maker-app', `${m.name} is running`, why, `Close ${m.name}. It stays installed for firmware updates.`,
       m.closable?.length ? { kind: 'close-app', app: m.key, label: `Close ${m.name}`, confirm: `Close ${m.name} now?` } : null);
   }
 
@@ -209,9 +209,9 @@ export function analyze(f) {
   if (f.probe) checked.push("whether another program holds its channel");
   if (notConnected && heldErr && !makers.length) {
     add(12, 'held', `Another program holds the ${kind}'s channel`, heldErr === 'sharing'
-      ? `Windows refused to open it for DeviceHub (sharing violation): another program has it open for itself.`
-      : `Windows refused to open it for DeviceHub (access denied): another program, or one run as administrator, has it.`,
-      "Close any lighting, macro or overlay app, and VIA or the maker's page in your browser, then press Connect.", retry);
+      ? `Windows refused it (sharing violation): another program has it open.`
+      : `Windows refused it (access denied): another program has it.`,
+      'Close lighting, macro or overlay apps and VIA, then press Connect.', retry);
   }
 
   // on USB: the receiver or cable, and the device behind it
@@ -223,36 +223,36 @@ export function analyze(f) {
   if (notMine) {
     checked.push('what its driver found on the receiver or cable');
     add(5, 'not-mine', `What is on its receiver is not a ${kind} this driver runs`, `${notMine.charAt(0).toUpperCase()}${notMine.slice(1)}.`,
-      `Nothing is wrong and nothing needs doing: this ${kind} driver leaves that device alone. If you have a ${kind} paired to the same receiver, switch it on or move it; DeviceHub looks again by itself.`, retry);
+      `Nothing is wrong. If a ${kind} is paired to this receiver, switch it on.`, retry);
   }
   const labels = [...new Set(p.usb.map((u) => u.label))];
   if (notConnected && present && !present.length && !notMine) {
     add(20, 'unplugged', p.receiver ? `${p.receiver} is not plugged in` : `The ${kind} is not plugged in`,
-      p.usb.length > 3 ? `Windows lists none of the ${p.usb.length} USB ids its driver knows (${labels.join(' or ')}) among this PC's USB devices.`
-        : `Windows does not list ${labels.join(' or ')} among this PC's USB devices.`,
-      'Plug it in, straight into the PC rather than a hub or front port if you can; DeviceHub finds it within a few seconds.', retry);
+      p.usb.length > 3 ? `Windows lists none of the ${p.usb.length} USB ids its driver knows (${labels.join(' or ')}).`
+        : `Windows does not list ${labels.join(' or ')}.`,
+      'Plug it into the PC directly, not a hub.', retry);
   } else if (notMine) {
     // nothing more about plugs: the driver had the receiver open
   } else if (s.status === 'asleep') {
     const via = present?.[0]?.label || (p.receiver ? p.receiver.toLowerCase() : null);
-    add(25, 'asleep', `The ${kind} is asleep or switched off`, via ? `${via.replace(/^the/, 'The')} is plugged in, but the ${kind} itself is not answering through it.` : `DeviceHub has it, but the ${kind} itself is not answering.`,
-      s.id === 'headset' ? 'Switch the headset on; DeviceHub picks it up by itself.' : `Move it or switch it on; DeviceHub wakes with it.`, retry);
+    add(25, 'asleep', `The ${kind} is asleep or switched off`, via ? `${via.replace(/^the/, 'The')} is plugged in, but the ${kind} is not answering.` : `DeviceHub has it, but the ${kind} itself is not answering.`,
+      s.id === 'headset' ? 'Switch the headset on.' : 'Move it or switch it on.', retry);
   } else if (present && present.length && notConnected && !heldErr && !makers.length) {
     if (p.wireless && present.some((u) => !/cable/i.test(u.label))) add(26, 'off', `The ${kind} is not answering`, `${present[0].label.replace(/^the/, 'The')} is plugged in, but the ${kind} is switched off, asleep or out of range.`, s.id === 'headset' ? 'Switch the headset on and keep it near the receiver.' : 'Switch it on, move it, and keep it near the receiver.', retry);
-    else add(27, 'not-opened', `The ${kind} is plugged in but not connected yet`, 'Windows lists it and nothing else seems to hold it; DeviceHub had not opened it at its last look.', 'Press Connect. If that does not help, unplug it and plug it back in.', retry);
+    else add(27, 'not-opened', `The ${kind} is plugged in but not connected yet`, 'Windows lists it, but DeviceHub has not opened it yet.', 'Press Connect, or unplug it and plug it back in.', retry);
   }
 
   // Bluetooth
   if (f.bluetooth) {
     checked.push('Bluetooth');
     const b = bluetoothMatch(s, f.bluetooth);
-    if (b && !b.connected && notConnected) add(22, 'bt', `${b.name} is paired but not connected`, 'Windows knows it over Bluetooth but has no link to it right now.', 'Switch it on or bring it closer. If it stays, open Bluetooth settings and connect it there.', { kind: 'settings', page: 'bluetooth', label: 'Bluetooth settings' });
+    if (b && !b.connected && notConnected) add(22, 'bt', `${b.name} is paired but not connected`, 'Paired, but not linked right now.', 'Switch it on or bring it closer, or connect it in Bluetooth settings.', { kind: 'settings', page: 'bluetooth', label: 'Bluetooth settings' });
   }
 
   // Windows Dynamic Lighting
   if (f.lamp) {
     checked.push('Windows Dynamic Lighting');
-    if (f.lamp.isLampArray && f.lamp.dynamicLighting) add(15, 'dynamic-lighting', 'Windows Dynamic Lighting controls its lights', 'While Dynamic Lighting is on for it, Windows sets its lights and changes made here are overwritten.', 'In Settings > Personalization > Dynamic Lighting, turn it off for this device.', { kind: 'settings', page: 'lighting', label: 'Dynamic Lighting settings' });
+    if (f.lamp.isLampArray && f.lamp.dynamicLighting) add(15, 'dynamic-lighting', 'Windows Dynamic Lighting controls its lights', 'Windows overwrites lighting changes made here.', 'In Settings > Personalization > Dynamic Lighting, turn it off for this device.', { kind: 'settings', page: 'lighting', label: 'Dynamic Lighting settings' });
   }
 
   // read-only settings: a library driver's, and the mouse's that failed their read-back
@@ -263,8 +263,8 @@ export function analyze(f) {
     if (f.library.turnOn) {
       // safety round 2: a driver with no real-device record writes nothing, its check included, until the person's click
       add(60, 'read-only', 'Its settings are not turned on yet',
-        `This driver from the shared device library ("${f.library.status}") has not been run on a real device yet, so DeviceHub only reads it until you turn its settings on.`,
-        `Press Turn on settings. DeviceHub writes each setting's current value back once to make sure it works.`,
+        `This library driver ("${f.library.status}") is untested, so it only reads until you turn settings on.`,
+        'Press Turn on settings. It writes each current value back once to check it.',
         notConnected ? retry : { kind: 'turn-on', label: 'Turn on settings' });
     } else if (ro.length) {
       const failed = ro.filter((r) => r.failed), waiting = ro.filter((r) => r.waiting);
@@ -272,30 +272,30 @@ export function analyze(f) {
       const named = (why, m) => String(why).includes(m.name) || String(why).split(/[\s(),:;]+/).some((w) => m.detect.some((re) => re.test(w)));
       const appOpen = waiting.length ? Object.entries(MAKER_APPS).map(([key, m]) => ({ key, ...m })).find((m) => waiting.some((r) => named(r.why, m))) || null : null;
       add(60, 'read-only', `${ro.length === 1 ? 'One setting is' : `${ro.length} settings are`} read-only`,
-        failed.length ? `${failed.map((r) => r.label).join(', ')} did not pass DeviceHub's own check (write the same value, read it back): ${failed[0].why}.`
+        failed.length ? `${failed.map((r) => r.label).join(', ')} did not pass the read-back check: ${failed[0].why}.`
           : waiting.length ? `${waiting.map((r) => r.label).join(', ')} could not be checked yet: ${waiting[0].why}.`
-          : `This driver came from the shared device library marked "${f.library.status}"; ${ro.map((r) => r.label).join(', ')} stay read-only until each passes DeviceHub's check, which runs when it connects.`,
-        failed.length ? "They stay read-only to keep the device safe. DeviceHub tries again once a day when it connects; press Check again to try now." : waiting.length ? (appOpen ? `Close ${appOpen.name}: the check then runs when the device next connects (or press Check again).` : 'Fix that, then press Check again. DeviceHub also tries again by itself when the device connects.') : notConnected ? 'Connect the device; the check runs by itself.' : 'Press Check again to run the check now.',
-        notConnected ? retry : !failed.length && appOpen ? { kind: 'close-app', app: appOpen.key, label: `Close ${appOpen.name}`, confirm: `Close ${appOpen.name} now? DeviceHub then checks the settings.` } : again);
+          : `Library driver "${f.library.status}": ${ro.map((r) => r.label).join(', ')} stay read-only until checked on connect.`,
+        failed.length ? 'Retried daily. Press Check again to try now.' : waiting.length ? (appOpen ? `Close ${appOpen.name}, then press Check again.` : 'Fix that, then press Check again.') : notConnected ? 'Connect the device; the check runs by itself.' : 'Press Check again to run the check now.',
+        notConnected ? retry : !failed.length && appOpen ? { kind: 'close-app', app: appOpen.key, label: `Close ${appOpen.name}`, confirm: `Close ${appOpen.name} now?` } : again);
     }
   }
   // btn0 (left click) is never written (mouse-adapter.js), so its lock changes nothing
   const locked = Object.entries(s.adapter?.trusted || {}).filter(([k, ok]) => !ok && k !== 'btn0').map(([k]) => settingName(k));
   if (s.id === 'mouse' && s.adapter?.trusted) {
     checked.push("the mouse's setting checks");
-    if (locked.length) add(61, 'locked', `${locked.length === 1 ? 'One mouse setting is' : `${locked.length} mouse settings are`} locked`, `${locked.join(', ')} did not read back cleanly, so DeviceHub keeps ${locked.length === 1 ? 'it' : 'them'} locked rather than risk a wrong write.`, 'Press Re-read when the mouse is awake; a setting unlocks once it reads back cleanly.', retry);
+    if (locked.length) add(61, 'locked', `${locked.length === 1 ? 'One mouse setting is' : `${locked.length} mouse settings are`} locked`, `${locked.join(', ')} did not read back cleanly, so ${locked.length === 1 ? 'it stays' : 'they stay'} locked.`, 'Press Re-read when the mouse is awake.', retry);
   }
 
   // the battery when last read
   const bat = s.battery;
   if (bat && Number.isFinite(bat.percent)) {
     checked.push('the battery');
-    if (bat.percent <= 15 && !bat.charging) add(notConnected ? 18 : 55, 'battery-low', `The battery was low (${bat.percent}%)`, 'When last read it was nearly empty; a wireless device switches itself off when it runs out.', 'Charge it with its cable; it connects again by itself.');
-    else if (bat.charging && notConnected) add(70, 'charging', 'It is charging', 'On its charging cable it can show up as another USB device for a moment.', 'Wait a few seconds; DeviceHub moves to the cable by itself.');
+    if (bat.percent <= 15 && !bat.charging) add(notConnected ? 18 : 55, 'battery-low', `The battery was low (${bat.percent}%)`, 'It was nearly empty.', 'Charge it with its cable.');
+    else if (bat.charging && notConnected) add(70, 'charging', 'It is charging', 'On its cable it briefly shows as another device.', 'Wait a few seconds.');
   }
 
   // an error the device gave that nothing above explains
-  if (notConnected && errText && !out.some((x) => x.rank < 30) && s.status !== 'asleep' && !notMine) add(35, 'error', `DeviceHub could not read the ${kind}`, `It answered: "${errText.slice(0, 160)}".`, 'Press Connect. If it happens again, unplug it and plug it back in.', retry);
+  if (notConnected && errText && !out.some((x) => x.rank < 30) && s.status !== 'asleep' && !notMine) add(35, 'error', `DeviceHub could not read the ${kind}`, `It answered: "${errText.slice(0, 160)}".`, 'Press Connect, or unplug it and plug it back in.', retry);
 
   out.sort((a, b) => a.rank - b.rank);
   if (!out.length) out.push({ rank: 99, code: 'none', problem: notConnected ? 'Nothing wrong found' : `The ${kind} looks fine`, why: `Checked: ${checked.join(', ')}.`, fix: notConnected ? `Press Connect. If ${title} still does not show, unplug it and plug it back in.` : 'Nothing to do.', ...(notConnected ? { action: retry } : {}) });

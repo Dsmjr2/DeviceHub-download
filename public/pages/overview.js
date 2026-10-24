@@ -74,9 +74,9 @@ function firstRun(go, redraw) {
         h('div', { class: 'readouts' }, skeleton([80, 64, 72])))));
   }
   return h('div', { class: 'panel first-run' },
-    h('h2', {}, 'None of your devices are set up yet'),
-    h('p', {}, 'Known devices set themselves up and show here. Sound, monitors, webcams and most VIA keyboards need no setup.'),
-    h('p', {}, 'For any other mouse, headset or keyboard, use Learn a device.'),
+    h('h2', {}, 'No devices set up yet'),
+    h('p', {}, 'Known devices appear here by themselves.'),
+    null,
     // devices on this PC from a known brand, each with a ready prompt for Claude Code (the brand guide, docs/BRANDS.md)
     (() => {
       if (!pcLoaded()) { loadPc(false, redraw); return null; }
@@ -89,7 +89,7 @@ function firstRun(go, redraw) {
             gd ? h('small', { style: { display: 'block' } }, gd.line) : null),
           gd ? getHelp(`request:${u.vid}:${u.pid}`, null, { label: 'Request support', request: { vid: u.vid, pid: u.pid, name: u.name || '' }, kind: 'ghost small' })
             : button('Learn it', () => { learnThis(u.vid, u.pid); go('learn'); }, { kind: 'ghost small', ic: 'plug' }),
-          button('Copy a prompt for Claude', () => copyPrompt(u), { kind: 'ghost small' }));
+          button('Copy prompt', () => copyPrompt(u), { kind: 'ghost small' }));
         })) : null;
     })(),
     h('div', { class: 'actions' },
@@ -152,7 +152,7 @@ function bay(d, go, redraw) {
   const a = d.adapter;
   const ro = readouts(d, redraw);
   const bat = d.battery?.percent;
-  const sub = d.status === 'connected' ? (d.id === 'headset' && !d.values.headsetOn ? 'Receiver connected · headset off' : 'Ready') : d.status === 'asleep' ? 'Asleep, move it to wake' : d.error || (d.id === 'headset' ? 'Plug in the receiver or its cable' : isRemote() ? 'Not plugged in' : d.id === 'keyboard' ? 'One click after Chrome restarts' : 'Not connected yet');
+  const sub = d.status === 'connected' ? (d.id === 'headset' && !d.values.headsetOn ? 'Receiver connected · headset off' : 'Ready') : d.status === 'asleep' ? 'Asleep: move to wake' : d.error || (d.id === 'headset' ? 'Plug in receiver or cable' : isRemote() ? 'Not plugged in' : d.id === 'keyboard' ? 'One click after Chrome restarts' : 'Not connected yet');
   const muted = d.id === 'headset' && d.values?.['prop:micEnabled'] === false;
   const off = d.status === 'connected' && d.id === 'headset' && !d.values.headsetOn;
   const el = h('div', { class: `bay ${d.status}${muted ? ' mic-muted' : ''}${off ? ' off' : ''}`, 'data-dev': d.id, 'data-shape': `${d.status}|${ro.length}|${bat != null}`, role: 'button', tabindex: 0, style: { '--cc': COLORS[d.id] }, onclick: () => go(d.id), onkeydown: (e) => { if (e.key === 'Enter') go(d.id); } },
@@ -251,7 +251,7 @@ function feed() {
     items.push({ ...a, n: 1 });
     if (items.length >= 60) break;
   }
-  if (!items.length) return h('div', { class: 'feed-empty' }, 'Changes you make show up here.');
+  if (!items.length) return h('div', { class: 'feed-empty' }, 'No changes yet.');
   return h('div', { class: 'feed' }, ...items.map((a) => h('div', { class: `feed-item ${a.kind}` },
     h('time', {}, when(a.at)),
     a.device ? h('span', { class: 'feed-dev', style: { '--cc': COLORS[a.device] } }, SHORT[a.device] || a.device) : h('span', { class: 'feed-dev' }, 'DeviceHub'),
@@ -262,7 +262,7 @@ function feed() {
 // changes its own text, never redraws the page) and stops as soon as the overview is left; click = the Fans page
 let gpuTimer = null, gpuText = null;
 function gpuChip(go) {
-  const el = h('button', { class: 'pill gpu-chip', title: 'Graphics card temperature (Fans page)', onclick: () => go('fans') }, icon('thermo'), h('span', {}, gpuText || 'GPU'));
+  const el = h('button', { class: 'pill gpu-chip', title: 'GPU temperature', onclick: () => go('fans') }, icon('thermo'), h('span', {}, gpuText || 'GPU'));
   const tick = async () => {
     if (location.hash !== '#/overview' && location.hash !== '' && location.hash !== '#/') { clearInterval(gpuTimer); gpuTimer = null; return; }
     if (document.hidden) return;
@@ -327,8 +327,8 @@ export default {
     const hello = hour < 5 ? 'Late session' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
     return h('div', { class: 'ov' },
 
-      isDemo() ? h('div', { class: 'banner info' }, icon('shield'), h('div', { class: 'grow' }, h('b', {}, 'Demo with pretend devices'),
-        h('small', {}, 'Click anything: change DPI, remap keys, switch profiles. Nothing leaves this page.'))) : null,
+      isDemo() ? h('div', { class: 'banner info' }, icon('shield'), h('div', { class: 'grow' }, h('b', {}, 'Demo mode'),
+        h('small', {}, 'Pretend devices. Try anything.'))) : null,
       oneDriveBanner(redraw, fresh),
       setupCard(redraw),
       noDevicesYet() ? firstRun(go, redraw)
@@ -341,7 +341,7 @@ export default {
               const r = await apply(p);
               toast(`Profile "${p.name}" applied`, r.failed ? 'bad' : 'good', { detail: `${r.done} changed, ${r.failed} failed, ${r.skipped} skipped` });
             }, { kind: 'small', ic: 'profiles' })))
-            : h('div', { class: 'feed-empty' }, 'No profiles yet. Set things up, then save them as a profile.')),
+            : h('div', { class: 'feed-empty' }, 'No profiles yet.')),
         card([h('h2', {}, 'Activity'), h('span', { class: 'spacer' }), gpuChip(go)], feed())));
   },
 };

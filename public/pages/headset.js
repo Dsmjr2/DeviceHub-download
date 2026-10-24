@@ -39,9 +39,9 @@ function genericCard(a) {
   const maker = u.brand && !u.brand.shared ? u.brand.name.toLowerCase().split(' ')[0] : null;
   const own = maker ? Object.values(devices).find((x) => x.adapter?.plugin && /headset/i.test(x.adapter.kind || '') && ['connected', 'asleep'].includes(x.status) && String(x.adapter.title || '').toLowerCase().includes(maker)) : null;
   return card([h('h2', {}, 'Lights & battery')],
-    h('p', { class: 'faint', style: { margin: '0 0 10px' } }, 'Sound, mic and EQ work for any USB headset; lights, battery and its own settings need this model learned.'),
-    own ? h('p', { style: { margin: '0 0 10px' } }, `Battery and its own settings: on its ${own.adapter.title} page. `, h('a', { href: `#/${own.id}` }, 'Open it')) : null,
-    h('div', { class: 'actions' }, button('Copy a prompt for Claude', () => copyPrompt(u), { kind: 'small' })));
+    h('p', { class: 'faint', style: { margin: '0 0 10px' } }, 'Lights and battery need this model learned.'),
+    own ? h('p', { style: { margin: '0 0 10px' } }, `Battery: ${own.adapter.title} page. `, h('a', { href: `#/${own.id}` }, 'Open it')) : null,
+    h('div', { class: 'actions' }, button('Copy prompt', () => copyPrompt(u), { kind: 'small' })));
 }
 
 // Two or more USB headsets (22 Oct 2026): which one this page controls. The choice is kept in DeviceHub's settings
@@ -74,7 +74,7 @@ function headsetPicker(a, redraw) {
     try {
       if (isDemo()) { a.choose?.(k); markMissing('headset'); await connect('headset'); }
       else if (isRemote()) await env.api('/api/agent/headset-pick', { pick: k });
-      else throw new Error('Needs DeviceHub running in the background.');
+      else throw new Error('DeviceHub is not running.');
     } catch (e) { pickError = e.message; }
     redraw();
   } }), rename, pickError ? h('span', { class: 'faint' }, pickError) : null);
@@ -92,7 +92,7 @@ export default {
     const generic = a.mode === 'generic';
     const head = topbar(generic ? `${isJack(a.generic?.usb) ? 'Wired headset' : 'USB headset'} · sound features` : direct ? 'Corsair · Wireless headset' : 'Corsair · Wireless headset · iCUE open', a.title, null, h('div', { class: 'chips' }, headsetPicker(a, redraw), undoButton(dev), dev.status === 'connected' && !dev.values?.headsetOn ? pill('headset off', 'warn') : statusPill(dev)), deviceHelp(dev));
     if (dev.status !== 'connected' && !(isAway(dev) && a.endpoints)) {
-      return h('div', {}, head, connectState(dev, 'Plug in the HS80 receiver; DeviceHub finds it in seconds, with or without iCUE.'));
+      return h('div', {}, head, connectState(dev, 'Plug in the HS80 receiver.'));
     }
     const v = dev.values;
     const props = a.props || {};
@@ -121,16 +121,16 @@ export default {
           v.sidetone != null ? row('Sidetone', 'Hear your own voice.', h('div', { class: 'srow-ctl' }, toggle({ value: v.sidetoneOn !== false, label: 'Sidetone', onCommit: (on) => set('sidetoneOn', on, 'Sidetone', on ? 'on' : 'off') }),
             v.sidetoneOn !== false ? slider({ value: v.sidetone, min: 0, max: 100, unit: '%', label: 'Sidetone level', accent: 'var(--c-headset)', grab: () => prepare('headset'), live: live('sidetone'), onCommit: (x) => set('sidetone', x, 'Sidetone level', `${x}%`) }) : null)) : null,
           has('playback') ? row('Mute sound', null, toggle({ value: v['mute:playback'], label: 'Mute output', onCommit: (on) => set('mute:playback', on, 'Output', on ? 'muted' : 'on') })) : null,
-          has('recording') ? row('Mute mic', 'Mutes it in Windows.', toggle({ value: v['mute:recording'], label: 'Mute mic', onCommit: (on) => set('mute:recording', on, 'Mic (Windows)', on ? 'muted' : 'on') })) : null,
+          has('recording') ? row('Mute mic', null, toggle({ value: v['mute:recording'], label: 'Mute mic', onCommit: (on) => set('mute:recording', on, 'Mic (Windows)', on ? 'muted' : 'on') })) : null,
           // while iCUE runs, what it reports that DeviceHub cannot change
           ...(direct ? [] : ICUE_ROWS.filter(([k]) => props[k] && !props[k].canWrite && k !== 'micEnabled').map(([k, label, show]) => row(label, 'Reported by iCUE.', pill(show(v[`prop:${k}`]), v[`prop:${k}`] ? 'good' : ''))))),
         // Lights & power, with Mic check under it (the two columns balance)
-        h('div', { class: 'stack' }, generic ? genericCard(a) : card([h('h2', {}, 'Lights & power'), h('span', { class: 'sub' }, direct ? null : 'iCUE runs the lights while it is open')],
+        h('div', { class: 'stack' }, generic ? genericCard(a) : card([h('h2', {}, 'Lights & power'), h('span', { class: 'sub' }, direct ? null : 'iCUE controls these while open')],
           row('Headset color', null, h('div', { class: 'swatches compact' },
             ...SWATCHES.map((c) => h('button', { class: 'swatch', style: { '--s': c }, title: c, 'aria-label': `color ${c}`, onclick: () => set('led', c, 'Headset Color', c).then(() => setGlow(c)) })),
             h('input', { type: 'color', class: 'swatch-custom', title: 'Any color', value: v.led || '#ff6a1a', 'aria-label': 'custom color', onchange: (e) => set('led', e.target.value, 'Headset Color', e.target.value) }))),
           direct && v.logoBrightness != null ? row('Logo brightness', '0 = off.', slider({ value: v.logoBrightness, min: 0, max: 100, unit: '%', accent: 'var(--c-headset)', grab: () => prepare('headset'), live: live('logoBrightness'), onCommit: (x) => set('logoBrightness', x, 'Ear Cup Logo', x ? `${x}%` : 'off') })) : null,
-          direct && v.autoOff != null ? row('Sleep when silent', 'Turns off after this long with no sound.', slider({ value: v.autoOff, min: 1, max: 120, unit: ' min', accent: 'var(--c-headset)', grab: () => prepare('headset'), onCommit: (x) => set('autoOff', x, 'Sleep after', `${x} min`) })) : null,
+          direct && v.autoOff != null ? row('Sleep when silent', null, slider({ value: v.autoOff, min: 1, max: 120, unit: ' min', accent: 'var(--c-headset)', grab: () => prepare('headset'), onCommit: (x) => set('autoOff', x, 'Sleep after', `${x} min`) })) : null,
           direct && v.micLight != null ? row('Mic light', 'Red while muted.', toggle({ value: v.micLight, label: 'Mic light', onCommit: (on) => set('micLight', on, 'Mic light', on ? 'on when muted' : 'off') })) : null),
         micMeter(redraw))),
       h('div', { style: { marginTop: '18px' } }, eqPanel(redraw)),

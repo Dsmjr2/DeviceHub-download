@@ -24,9 +24,8 @@ try {
 } catch { Note 'devices' $_ }
 try {
   $since = (Get-Date).AddDays(-30)
-  $ev = [ordered]@{ bugchecks = @(); shutdowns = @(); whea = @() }
+  $ev = [ordered]@{ bugchecks = @(); whea = @() }
   try { $ev.bugchecks = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; Id = 1001; ProviderName = 'Microsoft-Windows-WER-SystemErrorReporting'; StartTime = $since } -ErrorAction Stop | ForEach-Object { [ordered]@{ at = $_.TimeCreated.ToString('o'); param = [string]$_.Properties[0].Value } }) } catch { if ($_.Exception.Message -notmatch 'No events were found') { Note 'events' $_ } }
-  try { $ev.shutdowns = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; Id = 41; ProviderName = 'Microsoft-Windows-Kernel-Power'; StartTime = $since } -ErrorAction Stop | ForEach-Object { [ordered]@{ at = $_.TimeCreated.ToString('o'); bugcheck = [double]$_.Properties[0].Value } }) } catch { if ($_.Exception.Message -notmatch 'No events were found') { Note 'events' $_ } }
   try { $ev.whea = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Microsoft-Windows-WHEA-Logger'; StartTime = $since; Level = 1, 2, 3 } -ErrorAction Stop | ForEach-Object { [ordered]@{ at = $_.TimeCreated.ToString('o'); id = $_.Id; level = $_.Level } }) } catch { if ($_.Exception.Message -notmatch 'No events were found') { Note 'events' $_ } }
   $out.events = $ev
 } catch { Note 'events' $_ }
@@ -39,6 +38,32 @@ try {
     files = @($pf | Where-Object { $_ }).Count
   }
 } catch { Note 'restart' $_ }
+# the graphics maker's own app (NVIDIA App, AMD Software): its Start menu shortcut, else its usual folder; only an exe
+# under Program Files with the expected name counts (helpers/pc-check.js checks it again before starting it)
+$apps = [ordered]@{ nvidia = $null; amd = $null }
+try {
+  $pf = $env:ProgramFiles
+  $want = @(
+    @('nvidia', 'NVIDIA App*.lnk', 'NVIDIA App.exe', (Join-Path $pf 'NVIDIA Corporation\NVIDIA App\CEF\NVIDIA App.exe')),
+    @('amd', 'AMD Software*.lnk', 'RadeonSoftware.exe', (Join-Path $pf 'AMD\CNext\CNext\RadeonSoftware.exe'))
+  )
+  $menus = @((Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs'), (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'))
+  $shell = $null
+  foreach ($w in $want) {
+    $found = $null
+    foreach ($m in $menus) {
+      if ($found -or -not (Test-Path -LiteralPath $m)) { continue }
+      foreach ($l in @(Get-ChildItem -LiteralPath $m -Recurse -Filter $w[1] -ErrorAction SilentlyContinue)) {
+        if (-not $shell) { $shell = New-Object -ComObject WScript.Shell }
+        $t = $shell.CreateShortcut($l.FullName).TargetPath
+        if ($t -and (Split-Path $t -Leaf) -eq $w[2] -and $t.StartsWith($pf + '\', [StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $t)) { $found = $t; break }
+      }
+    }
+    if (-not $found -and (Test-Path -LiteralPath $w[3])) { $found = $w[3] }
+    $apps[$w[0]] = $found
+  }
+} catch { $out.errors += "apps: " + $_.Exception.Message }
+$out.driverApps = $apps
 $nv = Join-Path $env:WINDIR 'System32\nvidia-smi.exe'
 if (Test-Path $nv) { try { $out.nvidiaVersion = ((& $nv --query-gpu=driver_version --format=csv,noheader) | Select-Object -First 1).Trim() } catch {} }
 ConvertTo-Json -Compress -Depth 6 -InputObject $out

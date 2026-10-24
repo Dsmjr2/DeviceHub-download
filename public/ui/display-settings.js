@@ -4,6 +4,7 @@
 // No pop-ups: the question, the countdown and every result are plain lines on the card.
 import { h } from './dom.js';
 import { row, toggle, button, pill } from './controls.js';
+import { dropdown } from './dropdown.js';
 import { env } from '../core/env.js';
 import { isDemo } from '../core/devices.js';
 
@@ -51,11 +52,9 @@ const openSettings = (page) => (isDemo() ? null : env.api('/api/display/open-set
 
 const line = (text, cls = 'faint') => h('p', { class: `disp-line ${cls}` }, text);
 
+// the glass dropdown (ui/dropdown.js), same arguments as before
 function select(options, value, onPick, label, disabled) {
-  const sel = h('select', { class: 'text disp-select', 'aria-label': label, disabled },
-    ...options.map((o) => h('option', { value: o.value, selected: o.value === value || null }, o.label)));
-  sel.addEventListener('change', () => onPick(sel.value));
-  return sel;
+  return dropdown({ cls: 'disp-select', options, value, label, disabled, onChange: onPick });
 }
 
 function block(s) {
@@ -82,7 +81,7 @@ function block(s) {
     row('Main screen', null, s.primary ? pill('Main') : button('Make main', () => change(s, 'primary', true), { kind: 'ghost small', disabled: busy })),
     row('Night light', null, h('span', { class: 'disp-night' }, h('b', {}, disp.nightLight === true ? 'On' : disp.nightLight === false ? 'Off' : 'Not known'),
       button('Settings', () => openSettings('nightlight'), { kind: 'ghost small' }))),
-    disp.nightLight == null ? null : line('Night light is for every screen; Windows Settings changes it.'),
+    disp.nightLight == null ? null : line('Night light: set in Windows Settings.'),
     note && (!disp.pending) && note.text?.startsWith(s.name) ? line(note.text, note.ok ? 'good' : 'bad') : null);
 }
 
@@ -106,4 +105,4 @@ export function displayOnlyScreens(monitors) {
 export const displayBlockFor = (s) => block(s);
 // a result about no single screen (Windows refused a request before naming one)
 export const displayNote = () => (note && !note.ok && !disp?.screens?.some((s) => note.text?.startsWith(s.name)) ? line(note.text, 'bad') : null);
-export const displayError = () => (error ? line(`Display settings could not be read: ${error}`) : null);
+export const displayError = () => (error ? line(`Display settings not read: ${error}`) : null);

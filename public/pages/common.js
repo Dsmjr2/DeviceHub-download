@@ -23,8 +23,8 @@ export function awayBanner(d, { off } = {}) {
   const what = d.status === 'missing' ? `The ${kind} is unplugged` : off ? `The ${kind} is off` : `The ${kind} is asleep`;
   return h('div', { class: 'banner' }, icon('sleep'), h('div', { class: 'grow' },
     h('b', {}, away ? what : `Waiting for the ${kind}`),
-    h('small', {}, w.length ? `Waiting: ${w.map((c) => `${c.label} → ${c.display}`).join(', ')}. Applied the moment it is back.`
-      : 'Changes you make here apply the moment it is back.')));
+    h('small', {}, w.length ? `Waiting: ${w.map((c) => `${c.label} → ${c.display}`).join(', ')}. Applied when it is back.`
+      : 'Changes apply when it is back.')));
 }
 
 // Undo (21 Oct 2026): puts back the last change made on this device's page; pressed again, the one before
@@ -48,12 +48,12 @@ export const deviceHelp = (d) => helpHere('device', { device: d.id, context: () 
 
 const VENDOR_NAMES = { pulsar: 'the Pulsar app', icue: 'iCUE', epomaker: "Epomaker's web driver", via: 'VIA' };
 export async function openVendor(app) {
-  if (isDemo()) { toast(`In the installed app this opens ${VENDOR_NAMES[app] || 'the vendor app'}`, 'info', { detail: 'This is a demo with pretend devices.' }); return; }
+  if (isDemo()) { toast(`Demo: opens ${VENDOR_NAMES[app] || 'the vendor app'}`, 'info'); return; }
   try {
     const r = await (await fetch('/api/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ app }) })).json();
     if (r.url) window.open(r.url, '_blank', 'noopener');
-    toast(r.ok ? 'Opening the vendor app' : `Could not open it: ${r.error}`, r.ok ? 'info' : 'bad');
-  } catch { toast('DeviceHub server is not running', 'bad'); }
+    toast(r.ok ? 'Opening app' : `Not opened: ${r.error}`, r.ok ? 'info' : 'bad');
+  } catch { toast('DeviceHub not running', 'bad'); }
 }
 
 // The few things only the maker's app does. With the app not on this PC (Shawn uninstalled iCUE, 21 Oct 2026) it says
@@ -65,8 +65,8 @@ export function vendorNote(a) {
   const fill = (el) => {
     const missing = vendorApps && vendorApps[app] === false;
     el.replaceChildren(icon('external'),
-      missing ? h('div', { class: 'grow' }, h('b', {}, `Only in ${label}, which is not on this PC: `), a.unsupported.join(', '), '. You only need it for those.')
-        : h('div', { class: 'grow' }, h('b', {}, `Still in ${label}: `), a.unsupported.join(', '), '.'),
+      missing ? h('div', { class: 'grow' }, h('b', {}, `Only in ${label} (not installed): `), a.unsupported.join(', '), '.')
+        : h('div', { class: 'grow' }, h('b', {}, `Only in ${label}: `), a.unsupported.join(', '), '.'),
       ...(missing || !vendorApps ? [] : [button(`Open ${label}`, () => openVendor(app), { kind: 'small' })]));
   };
   const el = h('div', { class: 'vendor-note' });
@@ -95,7 +95,7 @@ export function checkAnswer(r, kind = 'check-again') {
 function diagAction(d, a, done) {
   if (!a) return null;
   if (a.kind === 'retry') return button(a.label || 'Connect again', () => { delete diagCache[d.id]; return connect(d.id, false); }, { kind: 'ghost small', ic: 'plug' });
-  if (a.kind === 'settings' || a.kind === 'open-folder') return button(a.label, async () => { try { await diagPost({ kind: a.kind, page: a.page }); } catch (e) { done(`Could not open it: ${e.message}`); } }, { kind: 'ghost small', ic: 'external' });
+  if (a.kind === 'settings' || a.kind === 'open-folder') return button(a.label, async () => { try { await diagPost({ kind: a.kind, page: a.page }); } catch (e) { done(`Not opened: ${e.message}`); } }, { kind: 'ghost small', ic: 'external' });
   if (a.kind === 'check-again' || a.kind === 'turn-on') return button(a.label || (a.kind === 'turn-on' ? 'Turn on settings' : 'Check again'), async () => {
     try { const r = await diagPost({ kind: a.kind, id: d.id }); delete diagCache[d.id]; done(checkAnswer(r, a.kind)); }
     catch (e) { done(`Not checked: ${e.message}`); }
@@ -107,7 +107,7 @@ function diagAction(d, a, done) {
         try {
           const r = await diagPost({ kind: 'close-app', app: a.app, confirm: true });
           delete diagCache[d.id];
-          done(r.note || (r.closed?.length ? 'Closed. DeviceHub connects within a few seconds.' : 'Nothing to close.'));
+          done(r.note || (r.closed?.length ? 'Closed. Connecting…' : 'Nothing to close.'));
           setTimeout(() => connect(d.id, false).catch(() => {}), 3000);
         } catch (e) { done(`Not closed: ${e.message}`); }
       }, { kind: 'small' }),
@@ -142,7 +142,7 @@ function diagnosis(d) {
     c.pending = fetch(`/api/diagnose?id=${encodeURIComponent(d.id)}`).then((r) => (r.ok ? r.json() : null)).then((x) => { c.data = x; return x; }).catch(() => null);
   }
   if (c.data) fill(c.data);
-  else { el.append(icon('search'), h('small', { class: 'grow' }, 'Looking for the cause…')); c.pending.then((x) => (x ? fill(x) : el.remove())); }
+  else { el.append(icon('search'), h('small', { class: 'grow' }, 'Checking…')); c.pending.then((x) => (x ? fill(x) : el.remove())); }
   return el;
 }
 
@@ -150,11 +150,11 @@ function diagnosis(d) {
 export function connectState(d, hint) {
   const a = d.adapter;
   const art = artOf(d);
-  if (d.status === 'connecting') return h('div', { class: 'panel empty' }, art, h('h2', {}, 'Connecting…'), h('p', {}, 'Reading every setting and checking it.'));
+  if (d.status === 'connecting') return h('div', { class: 'panel empty' }, art, h('h2', {}, 'Connecting…'));
   // With the background agent there is nothing to pick: plugging the device in is enough.
   const needsPick = a.id !== 'headset' && !isRemote();
-  const agentHint = a.id === 'headset' ? 'Plug in the HS80 receiver or cable and switch the headset on; DeviceHub finds it in seconds.'
-    : `Plug in the ${a.id === 'mouse' ? 'Pulsar 8K dongle' : 'P75 with its USB cable'}; DeviceHub finds it in seconds.${a.id === 'mouse' ? ' Close the Pulsar app first (same channel).' : ''}`;
+  const agentHint = a.id === 'headset' ? 'Plug in the HS80 receiver or cable and switch it on.'
+    : `Plug in the ${a.id === 'mouse' ? 'Pulsar 8K dongle' : 'P75 with its USB cable'}.${a.id === 'mouse' ? ' Close the Pulsar app first.' : ''}`;
   return h('div', { class: 'panel empty' }, art,
     h('h2', {}, d.status === 'error' ? `Couldn't reach your ${a.kind.toLowerCase()}` : isRemote() ? `Waiting for your ${a.kind.toLowerCase()}` : `Connect your ${a.kind.toLowerCase()}`),
     h('p', {}, d.error || (isRemote() ? agentHint : hint)),

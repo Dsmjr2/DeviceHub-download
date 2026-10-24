@@ -32,7 +32,7 @@ export function micMatcher(generic, endpoints) {
   return (label) => { const l = String(label || '').toLowerCase(); return !!l && names.some((n) => l.includes(n)); };
 }
 
-const NOT_ON = 'The headset mic is not connected. Turn the headset on.';
+const NOT_ON = 'Headset mic not found. Turn the headset on.';
 
 // Start the test recording. api(path, body): env.api. mic: 'headset' or 'anker' (the camera mic, server.js as before).
 export async function startMicTest(api, { mic = 'headset', generic = null } = {}) {

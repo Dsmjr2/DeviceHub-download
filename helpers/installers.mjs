@@ -37,7 +37,7 @@ const bundlePath = (id) => { const b = bundleOf(id); return b ? path.join(ROOT, 
 export const TOOLS = [
   {
     id: 'eqapo', name: 'Equalizer APO', version: '1.4.2',
-    adds: 'The EQ, Natural sound, mic boost and mic filters, and the monitors\' own EQ.',
+    adds: 'EQ, mic filters and monitor EQ.',
     page: 'https://sourceforge.net/projects/equalizerapo/',
     url: 'https://sourceforge.net/projects/equalizerapo/files/1.4.2/EqualizerAPO-x64-1.4.2.exe/download',
     file: 'EqualizerAPO-x64-1.4.2.exe', approxBytes: 11980366,
@@ -48,31 +48,31 @@ export const TOOLS = [
     marker: path.join(PF, 'EqualizerAPO', 'config', 'config.txt'), uninstallName: /^Equalizer ?APO/i,
     // which device it works on cannot be set from outside: its Configurator (DeviceSelector.exe) has no command line
     // and records the choice by rewriting Windows' protected audio-effect registry keys, which DeviceHub never edits
-    after: 'Click Yes, then Next, I Agree, Next, Install. In its Configurator, on Playback devices tick your headset (and its mic under Capture devices), click OK, then restart the PC.',
+    after: 'Click Yes, Next, I Agree, Next, Install. In Configurator tick your headset (and its mic), OK, then restart the PC.',
     restart: true,
   },
   {
     id: 'reaplugs', name: 'ReaPlugs', version: '2.36',
-    adds: 'The mic\'s Even volume (ReaComp) and the camera mic\'s background gate (ReaGate).',
+    adds: 'Mic Even volume and background gate.',
     page: 'https://www.reaper.fm/reaplugs/',
     url: 'https://www.reaper.fm/reaplugs/reaplugs236_x64-install.exe',
     file: 'reaplugs236_x64-install.exe', approxBytes: 1192256,
     hosts: ['www.reaper.fm', 'reaper.fm'],
     signer: null, sha256: null,  // not signed (its installed DLLs and uninstaller read NotSigned, 22 Oct 2026); no published hash
     marker: path.join(PF, 'VSTPlugins', 'ReaPlugs', 'reacomp-standalone.dll'), uninstallName: /^ReaPlugs/i,
-    after: 'Click Yes, keep the suggested folder and click Install. Then turn on Even volume under Sound tools.',
+    after: 'Click Yes, keep the folder, Install. Then turn on Even volume.',
     restart: false,
   },
   {
     id: 'usbpcap', name: 'USBPcap', version: '1.5.4.0',
-    adds: 'Only for learning a device: it records what the maker\'s app sends.',
+    adds: 'For learning a device.',
     page: 'https://desowin.org/usbpcap/',
     url: 'https://github.com/desowin/usbpcap/releases/download/1.5.4.0/USBPcapSetup-1.5.4.0.exe',
     file: 'USBPcapSetup-1.5.4.0.exe', approxBytes: 195040,
     hosts: ['github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com'],
     signer: /Tomasz Mo|Wireshark Foundation/i, signerName: 'Tomasz Moń (its author) or the Wireshark Foundation', sha256: null,
     marker: path.join(PF, 'USBPcap', 'USBPcapCMD.exe'), uninstallName: /^USBPcap/i,
-    after: 'Click Yes, then I Agree, Next, Install (and Yes to trust the driver). Restart the PC before learning.',
+    after: 'Click Yes, I Agree, Next, Install, and Yes to the driver. Restart before learning.',
     restart: true,
   },
 ];

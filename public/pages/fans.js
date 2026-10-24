@@ -59,9 +59,9 @@ function gpuCard(g) {
       meter({ ic: 'fan', pct: g.fanPct, value: g.fanPct == null ? '—' : g.fanPct === 0 ? 'Stopped' : `${g.fanPct}%`, label: 'fans', big: true }),
       meter({ ic: 'gauge', pct: g.loadPct, value: g.loadPct == null ? '—' : `${g.loadPct}%`, label: 'load', big: true })),
     graph(),
-    row('Power', 'Drawing now, of its limit.', h('b', {}, g.powerW == null ? '—' : `${Math.round(g.powerW)} W of ${Math.round(g.powerLimitW || 0)} W`)),
-    g.headroomC != null ? row('Headroom', 'Degrees before it slows down.', h('b', {}, `${g.headroomC} °C`)) : null,
-    row('Video memory', 'Graphics memory in use.', h('b', {}, g.memUsedMB == null ? '—' : `${(g.memUsedMB / 1024).toFixed(1)} of ${(g.memTotalMB / 1024).toFixed(0)} GB`)));
+    row('Power', null, h('b', {}, g.powerW == null ? '—' : `${Math.round(g.powerW)} W of ${Math.round(g.powerLimitW || 0)} W`)),
+    g.headroomC != null ? row('Headroom', 'Until it slows down.', h('b', {}, `${g.headroomC} °C`)) : null,
+    row('Video memory', null, h('b', {}, g.memUsedMB == null ? '—' : `${(g.memUsedMB / 1024).toFixed(1)} of ${(g.memTotalMB / 1024).toFixed(0)} GB`)));
 }
 
 // ---------- fan lights (OpenRGB) ----------
@@ -89,7 +89,7 @@ async function setFan(c, hex) {
   if (lightsBusy) return;
   if (isDemo()) { c.color = hex; c.same = true; rerender(); return; }
   lightsBusy = true; rerender();
-  try { await env.api('/api/openrgb/color', { target: c.index, hex }); toast(`${c.name}: ${hex}`, 'good', { detail: 'Saved first, then read back.' }); }
+  try { await env.api('/api/openrgb/color', { target: c.index, hex }); toast(`${c.name}: ${hex}`, 'good'); }
   catch (e) { toast('Fan lights not changed', 'bad', { detail: e.message }); }
   lightsBusy = false; loadLights(true);
 }
@@ -106,11 +106,11 @@ function whyNone(o) {
   const d = diag && !diag.isolated ? diag : null;
   const b = d?.board || board || 'your motherboard';
   // not looked yet (OpenRGB not started): only the button, no fixes for problems not known yet
-  if (!o?.running && (!d || d.openrgb?.reason === 'not running')) return [h('p', { class: 'faint fan-why' }, 'Press Find lights: DeviceHub starts its OpenRGB and looks for fan lights.')];
+  if (!o?.running && (!d || d.openrgb?.reason === 'not running')) return [h('p', { class: 'faint fan-why' }, 'Press Find lights.')];
   const kind = d?.verdict?.kind || (o?.bundled ? 'smbus' : null);
-  const head = kind === 'usb' ? `${b}: its lights are reachable over USB, so they should show after Find lights.`
-      : kind === 'smbus' ? `${b} drives its fan headers from the board's own chip: press Add board lights to reach them.`
-        : kind === 'none' ? 'No lighting controller found: the fans may be on a hub with its own button, or not RGB.'
+  const head = kind === 'usb' ? `${b}: should show after Find lights.`
+      : kind === 'smbus' ? `${b}: press Add board lights for its fan headers.`
+        : kind === 'none' ? 'No controller found. Fans may be on a hub, or not RGB.'
           : `OpenRGB sees no fan lights on ${b}.`;
   // the fix as one button (22 Oct 2026, Shawn: "I want the app to be able to set it up"): PawnIO if missing, and the
   // OpenRGB inside DeviceHub as administrator, behind Windows' own prompt (helpers/board-lights.mjs, ui/board-lights.js)
@@ -119,7 +119,7 @@ function whyNone(o) {
   return [h('p', { class: 'faint fan-why' }, head),
     ...(d?.problems || []).map((x) => h('p', { class: 'faint fan-why' }, h('b', {}, `${x.problem}. `), `${x.why} Fix: ${x.fix}`)),
     fix,
-    h('p', { class: 'faint fan-why' }, "A hub with its own button can't be reached: plug its 3-pin ARGB lead into the board's ARGB header (never the 4-pin 12 V one).")];
+    h('p', { class: 'faint fan-why' }, 'Hub with a button? Plug its 3-pin ARGB lead into the board (never the 4-pin 12 V header).')];
 }
 function fanLightsCard() {
   if (!lightsAsked) queueMicrotask(() => loadLights());
@@ -132,16 +132,18 @@ function fanLightsCard() {
     o.readOnly && list.length ? h('p', { class: 'faint fan-why' }, `Read only: ${o.readOnly}.`) : null,
     ...(list.length ? list.map((c) => h('div', { class: 'fan-light' },
       h('div', { class: 'fan-light-name' }, h('b', {}, c.name),
-        h('small', { class: 'faint' }, c.type === 'motherboard' ? 'The board and its fan headers (one colour for both)' : `${c.zones?.length || 1} ${c.zones?.length === 1 ? 'zone' : 'zones'} · ${c.leds} lights`)),
+        h('small', { class: 'faint' }, c.type === 'motherboard' ? 'Board and fan headers, one color' : `${c.zones?.length || 1} ${c.zones?.length === 1 ? 'zone' : 'zones'} · ${c.leds} lights`)),
       h('div', { class: 'swatches compact' },
         ...SWATCHES.map((x) => h('button', { class: `swatch${c.same && c.color === x ? ' on' : ''}`, style: { '--s': x }, 'aria-label': `${c.name}: ${x}`, disabled: lightsBusy || !!o.readOnly, onclick: () => setFan(c, x) })),
         h('input', { type: 'color', class: 'swatch-custom', 'aria-label': `${c.name}: pick a colour`, value: c.color || '#ffffff', disabled: lightsBusy || !!o.readOnly, onchange: (e) => setFan(c, e.target.value) }))))
       : whyNone(o)),
     // only the board itself (no fan hub or cooler on USB): where case fans must be plugged for the colour to reach them
     // (23 Oct 2026, a friend's Corsair case: "cannot see his case fans")
-    list.length && list.every((c) => c.type === 'motherboard') ? h('p', { class: 'faint fan-why' }, "Fans show here through the board's ARGB headers or a USB hub. If they don't change color, they're on the case's own hub.") : null,
-    row('Fan speed', "CPU and case fans follow the board's BIOS curve (guide: docs\\FANS.md).", pill('BIOS')));
+    list.length && list.every((c) => c.type === 'motherboard') ? h('p', { class: 'faint fan-why' }, "No change? The fans are on the case's own hub.") : null,
+    row('Fan speed', 'Set by the BIOS fan curve.', pill('BIOS')));
 }
+
+const tag = (el, cls) => { el.classList.add(cls); return el; };
 
 export default {
   id: 'fans', title: 'PC', icon: 'fan', accent: 'var(--signal)',
@@ -154,12 +156,14 @@ export default {
     return h('div', {},
       // Get help (area fans: the graphics card, the lights check, the page's red lines), top right
       topbar('Temperatures, fans and checks', 'PC', null, null, helpHere('fans')),
-      h('div', { class: 'grid two top' },
-        error ? card([h('h2', {}, 'Graphics card')], h('p', { class: 'faint' }, `Could not read it: ${error}`))
+      // the whole page fits the window at 1650x950 (Shawn, 24 Oct 2026): the graphics card down the left, the PC check
+      // across the two right columns under Fan lights and Temperatures (style.css .pc-grid; one column on a phone)
+      h('div', { class: 'grid pc-grid' },
+        tag(error ? card([h('h2', {}, 'Graphics card')], h('p', { class: 'faint' }, `Not read: ${error}`))
           : !gpu ? loadingCard('Graphics card', 4)
-            : gpus.length ? gpuCard(gpus[0]) : card([h('h2', {}, 'Graphics card')], h('p', { class: 'faint' }, gpu.reason || 'Not read on this PC.')),
-        fanLightsCard(),
-        tempsCard(rerender, 'fans'),
-        pcCheckCard(rerender)));
+            : gpus.length ? gpuCard(gpus[0]) : card([h('h2', {}, 'Graphics card')], h('p', { class: 'faint' }, gpu.reason || 'Not read on this PC.')), 'pc-gpu'),
+        tag(fanLightsCard(), 'pc-lights'),
+        tag(tempsCard(rerender, 'fans'), 'pc-temps'),
+        tag(pcCheckCard(rerender), 'pc-check')));
   },
 };

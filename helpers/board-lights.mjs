@@ -59,7 +59,7 @@ export const PAWNIO = {
   sha256: '1f519a22e47187f70a1379a48ca604981c4fcf694f4e65b734aaa74a9fba3032',
   signer: [/(^|,\s*)CN=namazso\.eu(,|$)/, /(^|,\s*)O=namazso(,|$)/],
 };
-export const PAWNIO_REMOVE = 'PawnIO stays installed (remove it in Windows Settings > Apps > Installed apps).';
+export const PAWNIO_REMOVE = 'PawnIO stays installed (remove it in Settings > Apps > Installed apps).';
 const user = () => `${process.env.USERDOMAIN || os.hostname()}\\${os.userInfo().username}`;
 
 // every file of the protected copy, flat beside OpenRGB.exe, with its pinned hash
@@ -188,9 +188,9 @@ export async function status({ fresh = false } = {}) {
     partial: task !== copy ? (task ? 'The task is there but its OpenRGB copy is not.' : 'The OpenRGB copy is there but its task is not.') : null,
     // the one plain line before the click
     before: pawnio.installed
-      ? "Runs DeviceHub's OpenRGB as administrator at sign-in (PawnIO is already installed). Windows asks once, then OpenRGB is allowed to change your board's lighting chip."
-      : `Installs PawnIO ${PAWNIO.version} (a signed driver, checked first) and runs DeviceHub's OpenRGB as administrator at sign-in. Windows asks twice, then OpenRGB is allowed to change your board's lighting chip.`,
-    remove: `Stops it and deletes its task: back to USB lights only. Windows asks once. ${PAWNIO_REMOVE}`,
+      ? 'PawnIO is already installed. Runs OpenRGB as administrator at sign-in; Windows asks once.'
+      : `Installs PawnIO ${PAWNIO.version} (signed, checked first) and runs OpenRGB as administrator at sign-in. Windows asks twice.`,
+    remove: `Back to USB lights only. Windows asks once. ${PAWNIO_REMOVE}`,
   };
   cache = { at: Date.now(), value };
   return { ...value, busy: !!(job && !job.done) };
@@ -205,31 +205,34 @@ export async function verifyPawnIO(file) {
   if (String(h).toLowerCase() !== PAWNIO.sha256) return { ok: false, why: 'it does not match the SHA-256 GitHub publishes for PawnIO 2.2.0' };
   return { ok: true, how: 'signed by namazso.eu and matches its published SHA-256' };
 }
-async function installPawnIO() {
+// shared with helpers/cpu-sensors.mjs (CPU temperature and fans): say(text, pct, extra) shows the step, area names the
+// feature in the prompt log, what starts each failure line
+export async function installPawnIO({ say = step, area = 'board lights', what = 'Not set up' } = {}) {
+  let last = null;
   fs.mkdirSync(DIR, { recursive: true });
   const file = path.join(DIR, PAWNIO.file), part = `${file}.part`;
   try {
     try { fs.rmSync(part, { force: true }); } catch {}
-    step(`Downloading ${PAWNIO.file}`, 0);
-    await deps.download(PAWNIO, part, (got, size) => { const pct = size ? Math.min(100, Math.floor((got / size) * 100)) : null; if (pct !== job?.pct) step(`Downloading ${PAWNIO.file}`, pct); });
+    say(`Downloading ${PAWNIO.file}`, 0);
+    await deps.download(PAWNIO, part, (got, size) => { const pct = size ? Math.min(100, Math.floor((got / size) * 100)) : null; if (pct !== last) { last = pct; say(`Downloading ${PAWNIO.file}`, pct); } });
     fs.renameSync(part, file);
-    step(`Checking ${PAWNIO.file}`);
+    say(`Checking ${PAWNIO.file}`);
     const v = await verifyPawnIO(file);
-    if (!v.ok) return { ok: false, text: `Not set up: PawnIO was not run because ${v.why}. The download was deleted; nothing was changed.` };
-    step(UAC_LINE, null, { uac: 'waiting' });
-    const r = await deps.run(file, { onStarted: () => { recordUac({ area: 'board lights', action: 'install PawnIO', outcome: 'yes' }); step("PawnIO's installer is open: click Install in it"); } });
+    if (!v.ok) return { ok: false, text: `${what}: PawnIO was not run because ${v.why}. The download was deleted; nothing was changed.` };
+    say(UAC_LINE, null, { uac: 'waiting' });
+    const r = await deps.run(file, { onStarted: () => { recordUac({ area, action: 'install PawnIO', outcome: 'yes' }); say("PawnIO's installer is open: click Install in it"); } });
     if (!r.started && (r.declined || r.unanswered)) {
       const outcome = r.unanswered ? 'unanswered' : 'declined';
-      recordUac({ area: 'board lights', action: 'install PawnIO', outcome });
-      return { ok: false, uac: outcome, text: (outcome === 'declined' ? declinedText : unansweredText)('Not set up: PawnIO') };
+      recordUac({ area, action: 'install PawnIO', outcome });
+      return { ok: false, uac: outcome, text: (outcome === 'declined' ? declinedText : unansweredText)(`${what}: PawnIO`) };
     }
-    if (!r.started) return { ok: false, text: `Not set up: PawnIO's installer did not start (${r.error}). Nothing was changed.` };
-    step('Checking PawnIO is installed');
+    if (!r.started) return { ok: false, text: `${what}: PawnIO's installer did not start (${r.error}). Nothing was changed.` };
+    say('Checking PawnIO is installed');
     const p = await deps.pawnio().catch(() => ({}));
-    if (!(p.app || p.service)) return { ok: false, text: `Not set up: PawnIO's installer closed (code ${r.exitCode}) but PawnIO is not installed. Nothing else was changed.` };
+    if (!(p.app || p.service)) return { ok: false, text: `${what}: PawnIO's installer closed (code ${r.exitCode}) but PawnIO is not installed. Nothing else was changed.` };
     return { ok: true, how: v.how, version: p.version };
   } catch (e) {
-    return { ok: false, text: `Not set up: ${e.message}. Nothing was changed.` };
+    return { ok: false, text: `${what}: ${e.message}. Nothing was changed.` };
   } finally {
     for (const f of [part, file]) { try { fs.rmSync(f, { force: true }); } catch {} }
   }
@@ -247,14 +250,15 @@ const begin = (kind) => { if (running()) throw new Error('board lights are being
 // one admin prompt, watched: UAC_LINE until the elevated script says it started (the box was answered Yes), then
 // `next`; not answered within deps.uacWaitMs: the cancel file is written (a later Yes does nothing) and the wait stops.
 // { ok, declined, unanswered, code, error }
-async function elevateWatched(script, action, next) {
+// shared with helpers/cpu-sensors.mjs: { area, say } as for installPawnIO
+export async function elevateWatched(script, action, next, { area = 'board lights', say = step } = {}) {
   const id = crypto.randomBytes(6).toString('hex');
   const marks = { started: path.join(DIR, `uac-started-${id}.txt`), cancel: path.join(DIR, `uac-cancel-${id}.txt`) };
   tidyMarks();
-  step(UAC_LINE, null, { uac: 'waiting' });
+  say(UAC_LINE, null, { uac: 'waiting' });
   const ac = new AbortController();
   let answered = false, unanswered = false;
-  const yes = () => { if (answered) return; answered = true; recordUac({ area: 'board lights', action, outcome: 'yes' }); step(next); };
+  const yes = () => { if (answered) return; answered = true; recordUac({ area, action, outcome: 'yes' }); say(next); };
   // looked at once a second only while this click's prompt is open (no timer of its own outlives it)
   let settled = false;
   const p = deps.elevate(script, { marks, signal: ac.signal }).then((x) => { settled = true; return x; }, (e) => { settled = true; return { ok: false, error: e.message }; });
@@ -267,9 +271,9 @@ async function elevateWatched(script, action, next) {
   }
   const r = await p;
   try { fs.rmSync(marks.started, { force: true }); } catch {}
-  if (unanswered) { recordUac({ area: 'board lights', action, outcome: 'unanswered' }); return { ok: false, unanswered: true }; }
-  if (r.declined) recordUac({ area: 'board lights', action, outcome: 'declined' });
-  else if (!answered && (r.ok || r.code != null)) recordUac({ area: 'board lights', action, outcome: 'yes' });
+  if (unanswered) { recordUac({ area, action, outcome: 'unanswered' }); return { ok: false, unanswered: true }; }
+  if (r.declined) recordUac({ area, action, outcome: 'declined' });
+  else if (!answered && (r.ok || r.code != null)) recordUac({ area, action, outcome: 'yes' });
   return r;
 }
 // cancel files older than a day are no longer needed (a prompt left open that long is gone)

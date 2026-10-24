@@ -38,13 +38,13 @@ function cameraCard(cam, redraw) {
     return row(label, null, auto ? h('div', { class: 'cam-ctl' }, auto, s) : s);
   });
   return card([icon('camera'), h('h2', {}, 'Camera'), h('span', { class: 'sub' }, cam.name)],
-    rows.length ? rows : h('p', { class: 'faint' }, 'This camera lists no picture settings.'));
+    rows.length ? rows : h('p', { class: 'faint' }, 'No picture settings.'));
 }
 
 // the camera cards, to sit in the Monitors page's grid beside the monitors
 export function cameraCards(redraw) {
   if (!cams && !error && !loading) queueMicrotask(() => load(redraw, false));
-  if (error) return [card([h('h2', {}, 'Camera')], h('p', { class: 'faint' }, `Couldn't read the camera: ${error}`), h('div', { class: 'actions' }, button('Try again', () => load(redraw, true), { kind: 'small', ic: 'refresh' })))];
+  if (error) return [card([h('h2', {}, 'Camera')], h('p', { class: 'faint' }, `Camera not read: ${error}`), h('div', { class: 'actions' }, button('Try again', () => load(redraw, true), { kind: 'small', ic: 'refresh' })))];
   if (!cams) return [loadingCard('Camera', 3, 'camera')];  // while it is read (21 Oct 2026)
   return cams.map((c) => cameraCard(c, redraw));
 }

@@ -539,7 +539,7 @@ export function driverFault(id, err) {
   if (isAsleep({ message: msg })) { if (d.status !== 'asleep') set(id, { status: 'asleep', error: msg }); return; }
   const was = d.status;
   set(id, { status: 'error', error: msg });
-  if (env.agent && was !== 'error') log(`${d.adapter.title}: its driver hit an error (${msg}); DeviceHub kept running and tries it again`, 'bad', id);
+  if (env.agent && was !== 'error') log(`${d.adapter.title}: driver error (${msg}); retrying`, 'bad', id);
 }
 
 export function markMissing(id) { delete rawCache[id]; if (!remote && devices[id] && devices[id].status !== 'missing') { set(id, { status: 'missing', error: null }); if (env.agent) log(`${devices[id].adapter.title} unplugged`, 'info', id); } }

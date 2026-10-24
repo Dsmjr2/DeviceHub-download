@@ -5,7 +5,8 @@
 // To add a check: write a function (facts, now) => result or [results], and add it to CHECKS.
 // Read when the page opens (kept 60 s) and on Check again; never in the background.
 const path = require('path');
-const { execFile } = require('child_process');
+const fs = require('fs');
+const { execFile, spawn } = require('child_process');
 
 const PS1 = path.join(__dirname, 'pc-check.ps1');
 const DAY = 86400000;
@@ -44,7 +45,7 @@ function driveHealth(f) {
     if (d.health === 'Healthy') return result('drive-health', 'Drive health', 'ok', `${d.name} (${kind}): healthy${extra ? `, ${extra}` : ''}.`);
     return result('drive-health', 'Drive health', 'info', `${d.name} (${kind}): Windows does not say how it is.`);
   });
-  if ((f.denied || []).includes('reliability')) out.push(result('drive-health', 'Drive health', 'info', 'Drive wear and temperature need administrator rights, so they are not read.'));
+  // wear and temperature need administrator here; not said (Shawn, 24 Oct 2026: not necessary), shown when they answer
   return out;
 }
 
@@ -63,6 +64,8 @@ function nvidiaNumber(v) {
   return /^\d{5}$/.test(d) ? `${d.slice(0, 3)}.${d.slice(3)}` : null;
 }
 const DRIVER_OLD_DAYS = 183;
+// the graphics makers' own apps (helpers/pc-check.ps1 finds them: Start menu shortcut, else the usual folder)
+const DRIVER_APPS = { NVIDIA: { id: 'nvidia', name: 'NVIDIA App', exe: 'NVIDIA App.exe' }, AMD: { id: 'amd', name: 'AMD Software', exe: 'RadeonSoftware.exe' } };
 function graphicsDriver(f, now = Date.now()) {
   const cards = (f.video || []).filter((v) => v.name && !/virtual|remote|parsec|mirage|dameware|meta|spacedesk|citrix/i.test(v.name));
   if (!cards.length) return result('gpu-driver', 'Graphics driver', 'info', 'No graphics card was read.');
@@ -71,7 +74,9 @@ function graphicsDriver(f, now = Date.now()) {
     const maker = DRIVER_PAGES.find(([re]) => re.test(`${v.maker} ${v.name}`));
     const isNv = maker?.[1] === 'NVIDIA';
     const ver = isNv ? (f.nvidiaVersion || nvidiaNumber(v.version) || v.version) : v.version;
-    const link = maker ? { text: `${maker[1]} drivers`, url: maker[2] } : null;
+    // the maker's own app when it is installed (POST /api/pc-check/open-app starts only that exe), else its driver page
+    const app = maker && DRIVER_APPS[maker[1]];
+    const link = app && f.driverApps?.[app.id] ? { text: `Open ${app.name}`, app: app.id } : maker ? { text: `${maker[1]} drivers`, url: maker[2] } : null;
     if (!v.date) return result('gpu-driver', 'Graphics driver', 'info', `${v.name}: driver ${ver}; its date is not known.`, link);
     const age = Math.floor((now - Date.parse(`${v.date}T00:00:00Z`)) / DAY);
     if (age > DRIVER_OLD_DAYS) return result('gpu-driver', 'Graphics driver', 'warn', `${v.name}: driver ${ver} is from ${day(v.date)}, over 6 months old.`, link);
@@ -110,7 +115,7 @@ function ramSpeed(f) {
   const [, boardUrl, boardMaker] = BOARD_SUPPORT.find(([re]) => re.test(`${f.board?.maker || ''}`)) || [];
   const link = boardUrl ? { text: `${boardMaker} support`, url: boardUrl } : null;
   if (rated && running && running < rated - 50) {
-    return result('ram-speed', 'RAM speed', 'warn', `RAM runs at ${running} MT/s; it is rated ${rated}. Turn on XMP (Intel) or EXPO/DOCP (AMD) in the BIOS.`, link);
+    return result('ram-speed', 'RAM speed', 'warn', `${running} of ${rated} MT/s. Turn on XMP/EXPO in the BIOS.`, link);
   }
   return result('ram-speed', 'RAM speed', 'ok', rated ? `RAM runs at ${running} MT/s, its rated speed.` : `RAM runs at ${running} MT/s.`);
 }
@@ -128,13 +133,12 @@ const PROBLEMS = {
   48: 'is blocked: its driver has known problems', 49: 'cannot start: the registry is too large', 52: 'has a driver that is not signed', 54: 'is restarting',
 };
 function deviceErrors(f) {
-  // 45 = not connected (a ghost of a device that was unplugged): not a problem
-  const list = (f.devices || []).filter((d) => d.problem !== 45 && (d.problem > 0 || d.status === 'Error'));
+  // 45 = a ghost; 22 = turned off by the person in Device Manager (Shawn, 24 Oct 2026: not a problem, not shown)
+  const list = (f.devices || []).filter((d) => d.problem !== 45 && d.problem !== 22 && (d.problem > 0 || d.status === 'Error'));
   if (!list.length) return result('device-errors', 'Devices', 'ok', (f.denied || []).includes('devices') ? 'Windows did not let DeviceHub read the devices.' : 'No device reports a problem.');
   return list.map((d) => {
     const words = PROBLEMS[d.problem] || (d.problem ? `has a problem (code ${d.problem})` : 'reports an error');
-    // turned off on purpose (22): worth knowing, not a fault
-    return result('device-errors', 'Devices', d.problem === 22 ? 'info' : 'warn', `${d.name || 'A device'} ${words}.`);
+    return result('device-errors', 'Devices', 'warn', `${d.name || 'A device'} ${words}.`);
   });
 }
 
@@ -164,17 +168,15 @@ function crashes(f) {
   if (!f.events) return result('crashes', 'Crashes', 'info', (f.denied || []).includes('events') ? "Reading Windows' system log needs administrator here, so crashes are not counted." : 'Windows did not answer for its system log.');
   const newest = (a) => [...a].sort((x, y) => Date.parse(y.at) - Date.parse(x.at));
   const bc = newest(f.events.bugchecks || []);
-  // Kernel-Power 41 with a stop code is the same crash as its 1001; without one it was a power loss or a held power button
-  const off = newest((f.events.shutdowns || []).filter((e) => !bugcheckCode(e.bugcheck)));
+  // a power loss or a held power button (Kernel-Power 41 alone) is not counted (Shawn, 24 Oct 2026: not necessary)
   const whea = newest(f.events.whea || []);
   const out = [];
   if (bc.length) {
     const code = bugcheckCode(bc[0].param);
     out.push(result('crashes', 'Crashes', 'warn', `${plural(bc.length, 'crash', 'crashes')} (blue screen) in the last 30 days: ${dates(bc)}.${code ? ` Last: ${codeWords(code)}.` : ''}`));
   }
-  if (off.length) out.push(result('crashes', 'Crashes', 'warn', `${plural(off.length, 'unexpected shutdown')} in the last 30 days (power lost or the power button held): ${dates(off)}.`));
   if (whea.length) out.push(result('crashes', 'Crashes', 'warn', `${plural(whea.length, 'hardware error')} logged by Windows (WHEA) in the last 30 days: ${dates(whea)}.`));
-  if (!out.length) out.push(result('crashes', 'Crashes', 'ok', 'No crashes or unexpected shutdowns in the last 30 days.'));
+  if (!out.length) out.push(result('crashes', 'Crashes', 'ok', 'No crashes in the last 30 days.'));
   return out;
 }
 
@@ -183,7 +185,7 @@ function restartPending(f) {
   const r = f.restart;
   if (!r) return result('restart', 'Restart', 'info', 'Whether a restart is waiting was not read.');
   if (r.cbs || r.wu) return result('restart', 'Restart', 'warn', 'Restart to finish an update.');
-  if (r.files > 0) return result('restart', 'Restart', 'info', 'Restart to finish an update: some files are waiting to be replaced.');
+  if (r.files > 0) return result('restart', 'Restart', 'info', 'Restart to finish an update.');
   return result('restart', 'Restart', 'ok', 'No restart is waiting.');
 }
 
@@ -208,17 +210,33 @@ function gather() {
     }));
 }
 
-let cache = { at: 0, value: null }, pending = null;
+let cache = { at: 0, value: null, facts: null }, pending = null;
+// POST /api/pc-check/open-app { app: 'nvidia' | 'amd' }: starts only the exe the last check found, checked again here
+// (its expected name, under Program Files, still there); never a path from the page
+function appPath(id, facts = cache.facts, { exists = fs.existsSync } = {}) {
+  const a = Object.values(DRIVER_APPS).find((x) => x.id === id);
+  const p = a && facts?.driverApps?.[id];
+  if (!p || typeof p !== 'string') return null;
+  const pf = `${(process.env.ProgramFiles || 'C:\\Program Files').toLowerCase()}\\`;
+  if (path.win32.basename(p).toLowerCase() !== a.exe.toLowerCase() || !p.toLowerCase().startsWith(pf) || p.includes('..') || !exists(p)) return null;
+  return p;
+}
+function openApp(id, { start = (p) => spawn(p, [], { cwd: path.dirname(p), detached: true, stdio: 'ignore', windowsHide: false }).on('error', () => {}).unref() } = {}) {
+  const p = appPath(id);
+  if (!p) throw new Error('that app was not found; press Check again');
+  start(p);
+  return { ok: true };
+}
 async function check(fresh = false) {
   if (!fresh && cache.value && Date.now() - cache.at < 60000) return cache.value;
   if (pending) return pending;
   pending = (async () => {
     const facts = await gather();
     const results = runChecks(facts);
-    cache = { at: Date.now(), value: { at: new Date().toISOString(), results, summary: summary(results) } };
+    cache = { at: Date.now(), facts, value: { at: new Date().toISOString(), results, summary: summary(results) } };
     return cache.value;
   })();
   try { return await pending; } finally { pending = null; }
 }
 
-module.exports = { check, CHECKS, _test: { runChecks, summary, diskSpace, driveHealth, graphicsDriver, ramSpeed, deviceErrors, crashes, restartPending, nvidiaNumber, partSpeed, bugcheckCode } };
+module.exports = { check, openApp, CHECKS, _test: { appPath, DRIVER_APPS, runChecks, summary, diskSpace, driveHealth, graphicsDriver, ramSpeed, deviceErrors, crashes, restartPending, nvidiaNumber, partSpeed, bugcheckCode } };

@@ -82,12 +82,13 @@ function fakePc({ refuseReadBack = false } = {}) {
   await clock.advance(20000);
   check(screens[0].hz === 144, 'a kept change is not put back later');
 }
-{ // Undo puts it back at once
+{ // HDR is done at once, with no Keep wait (24 Oct 2026, Shawn: "hdr button is slow"); Undo of a mode puts it back at once
   const { ctl, screens } = fakePc();
-  await ctl.change('S1', 'hdr', true);
-  check(screens[0].hdr.on === true, 'HDR on');
+  const on = await ctl.change('S1', 'hdr', true);
+  check(screens[0].hdr.on === true && !on.pending && on.last.ok && /HDR on/.test(on.last.text), 'HDR on at once, nothing waits for Keep');
+  await ctl.change('S1', 'mode', { width: 2560, height: 1440, hz: 144 });
   const st = await ctl.revert();
-  check(screens[0].hdr.on === false && !st.pending && /back as it was/.test(st.last.text), 'Undo: HDR off again');
+  check(screens[0].hz !== 144 && !st.pending && /back as it was/.test(st.last.text), 'Undo: the mode is back');
 }
 { // one at a time, and refusals
   const { ctl } = fakePc();
@@ -126,12 +127,24 @@ check(pc.diskSpace({ volumes: [{ drive: 'E:', size: 100 * GB, free: 10 * GB }] }
 const dh = pc.driveHealth({ disks: [{ id: '0', name: 'SSD A', media: 'SSD', health: 'Healthy' }, { id: '1', name: 'HDD B', media: 'HDD', health: 'Warning', status: 'Predictive Failure' }], reliability: [{ id: '0', wear: 3, tempC: 41 }] });
 check(dh[0].level === 'ok' && dh[0].line === 'SSD A (SSD): healthy, 3% worn, 41 °C.' && dh[1].level === 'warn', `drive health (${dh.map((x) => x.line).join(' | ')})`);
 const dh2 = pc.driveHealth({ disks: [{ id: '0', name: 'SSD A', media: 'SSD', health: 'Healthy' }], denied: ['reliability'] });
-check(dh2.length === 2 && /need administrator/.test(dh2[1].line), 'wear without admin: said, not guessed');
+check(dh2.length === 1 && dh2[0].line === 'SSD A (SSD): healthy.', 'wear without admin: not mentioned, only the plain healthy line (Shawn, 24 Oct 2026)');
 
 const NOW = Date.parse('2026-10-24T12:00:00Z');
 const nv = (date) => ({ video: [{ name: 'NVIDIA GeForce RTX 4070', maker: 'NVIDIA', version: '32.0.16.2101', date }] });
 const fresh = pc.graphicsDriver(nv('2026-10-18'), NOW)[0];
 check(fresh.level === 'ok' && fresh.line === 'NVIDIA GeForce RTX 4070: driver 621.01, from Oct 18, 2026.' && fresh.link.url.includes('nvidia.com'), `a new driver is fine (${fresh.line})`);
+// the NVIDIA App when it is installed (found by helpers/pc-check.ps1), else the download page
+const win = (s) => s.split('/').join(String.fromCharCode(92));   // forward slashes to Windows' backslashes
+const PF = process.env.ProgramFiles || win('C:/Program Files');
+const NVAPP = `${PF}${win('/NVIDIA Corporation/NVIDIA app/CEF/NVIDIA App.exe')}`;
+const withApp = pc.graphicsDriver({ ...nv('2026-10-18'), driverApps: { nvidia: NVAPP, amd: null } }, NOW)[0];
+check(withApp.link.app === 'nvidia' && withApp.link.text === 'Open NVIDIA App' && !withApp.link.url, `NVIDIA App installed: its button (${JSON.stringify(withApp.link)})`);
+const amdApp = pc.graphicsDriver({ video: [{ name: 'AMD Radeon RX 7800 XT', maker: 'Advanced Micro Devices, Inc.', version: '32.0.11021.1011', date: '2026-10-01' }], driverApps: { amd: `${PF}${win('/AMD/CNext/CNext/RadeonSoftware.exe')}` } }, NOW)[0];
+check(amdApp.link.app === 'amd' && amdApp.link.text === 'Open AMD Software', 'AMD Software installed: its button');
+const ok = (p) => pc.appPath('nvidia', { driverApps: { nvidia: p } }, { exists: () => true });
+check(ok(NVAPP) !== null, 'open-app: the NVIDIA App under Program Files');
+check(ok(win('C:/Users/me/NVIDIA App.exe')) === null && ok(`${PF}${win('/NVIDIA Corporation/evil.exe')}`) === null && ok(`${PF}${win('/../x/NVIDIA App.exe')}`) === null && pc.appPath('nvidia', null) === null && pc.appPath('notepad', { driverApps: { notepad: 'x' } }) === null, 'open-app refuses any other path, name or app');
+check(pc.appPath('nvidia', { driverApps: { nvidia: NVAPP } }, { exists: () => false }) === null, 'open-app refuses an exe that is gone');
 const old = pc.graphicsDriver(nv('2026-03-01'), NOW)[0];
 check(old.level === 'warn' && /over 6 months old/.test(old.line), `a driver over 6 months old warns (${old.line})`);
 check(pc.graphicsDriver(nv('2026-05-01'), NOW)[0].level === 'ok', 'under 6 months is fine');
@@ -143,7 +156,7 @@ check([].concat(pc.graphicsDriver({ video: [{ name: 'Parsec Virtual Display Adap
 
 const ram = (configured, part, speed = configured) => ({ ram: [{ part, speed, configured }, { part, speed, configured }], board: { maker: 'Gigabyte Technology Co., Ltd.', model: 'B450 AORUS PRO WIFI-CF' } });
 const slow = pc.ramSpeed(ram(2133, 'F4-3200C16-8GVKB'));
-check(slow.level === 'warn' && slow.line === 'RAM runs at 2133 MT/s; it is rated 3200. Turn on XMP (Intel) or EXPO/DOCP (AMD) in the BIOS.' && slow.link.url === 'https://www.gigabyte.com/Support' && slow.link.text === 'Gigabyte support', `RAM at base speed warns, with the board maker's page (${slow.line} ${JSON.stringify(slow.link)})`);
+check(slow.level === 'warn' && slow.line === '2133 of 3200 MT/s. Turn on XMP/EXPO in the BIOS.' && slow.link.url === 'https://www.gigabyte.com/Support' && slow.link.text === 'Gigabyte support', `RAM at base speed warns, with the board maker's page (${slow.line} ${JSON.stringify(slow.link)})`);
 check(pc.ramSpeed(ram(3200, 'F4-3200C16-8GVKB')).level === 'ok', 'RAM at its rating is fine');
 check(pc.ramSpeed({ ram: [{ part: 'F4-3200C16-8GVKB', speed: 3200, configured: 3200 }, { part: 'F4-3000C16-8GISB', speed: 3200, configured: 3200 }] }).level === 'ok', "Shawn's mixed sticks (3000 and 3200) at 3200 are fine");
 check(pc.ramSpeed(ram(4800, 'KF556C40-16', 4800)).level === 'warn', 'DDR5 rated 5600 at 4800 warns (rating from the part number)');
@@ -151,15 +164,17 @@ check(pc.ramSpeed(ram(2400, 'M378A1K43CB2-CTD', 2666)).level === 'warn', 'no rat
 check(pc.partSpeed('CMK16GX4M2B3200C16') === 3200 && pc.partSpeed('KF432C16BB/8') === 3200 && pc.partSpeed('BL8G32C16U4B.M8FE1') === 3200 && pc.partSpeed('CP16G56C46U5.C8D') === 5600 && pc.partSpeed('TF3D416G3200HC16F') === 3200 && pc.partSpeed('HX432C16FB3/8') === 3200 && pc.partSpeed('M378A1K43CB2-CTD') === null, 'ratings read from part numbers');
 
 const dev = pc.deviceErrors({ devices: [{ name: 'Realtek(R) Audio', problem: 22, status: 'Error' }, { name: 'USB Hub', problem: 43, status: 'Error' }, { name: 'Gone mouse', problem: 45, status: 'Unknown' }, { name: 'Odd thing', problem: 0, status: 'Error' }] });
-check(dev.length === 3 && dev[0].level === 'info' && dev[0].line === 'Realtek(R) Audio is turned off in Device Manager.', `turned off: a note (${dev[0]?.line})`);
-check(dev[1].level === 'warn' && dev[1].line === 'USB Hub was stopped by Windows because it reported problems.', `code 43 in words (${dev[1]?.line})`);
-check(dev[2].line === 'Odd thing reports an error.' && !dev.some((d) => /Gone mouse/.test(d.line)), 'a ghost (45) is skipped; an error with no code still shows');
+check(dev.length === 2 && !dev.some((d) => /Realtek|turned off/.test(d.line)), `turned off by the person in Device Manager: not shown (Shawn, 24 Oct 2026) (${dev.map((x) => x.line).join(' | ')})`);
+check(dev[0].level === 'warn' && dev[0].line === 'USB Hub was stopped by Windows because it reported problems.', `code 43 in words (${dev[0]?.line})`);
+check(dev[1].line === 'Odd thing reports an error.' && !dev.some((d) => /Gone mouse/.test(d.line)), 'a ghost (45) is skipped; an error with no code still shows');
+check(pc.deviceErrors({ devices: [{ name: 'Wi-Fi', problem: 22, status: 'Error' }] }).level === 'ok', 'only turned-off devices: fine');
 check(pc.deviceErrors({ devices: [] }).level === 'ok', 'none: fine');
 
 const cr = pc.crashes({ events: { bugchecks: [{ at: '2026-10-14T23:50:33-04:00', param: '0x000000be (0xffffe578f0c07000, 0x8a00000000200101)' }],
   shutdowns: [{ at: '2026-10-14T23:50:19-04:00', bugcheck: 190 }, { at: '2026-10-05T10:52:26-04:00', bugcheck: 0 }], whea: [] } });
-check(cr.length === 2 && cr[0].level === 'warn' && /1 crash \(blue screen\) in the last 30 days: Oct 1[45]\. Last: 0xBE: a driver wrote to read-only memory/.test(cr[0].line), `a crash with its stop code in words (${cr[0]?.line})`);
-check(/1 unexpected shutdown in the last 30 days/.test(cr[1]?.line || ''), 'a Kernel-Power 41 with a stop code is the same crash; the one without is an unexpected shutdown');
+check(cr.length === 1 && cr[0].level === 'warn' && /1 crash \(blue screen\) in the last 30 days: Oct 1[45]\. Last: 0xBE: a driver wrote to read-only memory/.test(cr[0].line), `a crash with its stop code in words (${cr[0]?.line})`);
+check(!cr.some((x) => /unexpected shutdown|power/i.test(x.line)), 'a power loss or held power button is not listed (Shawn, 24 Oct 2026); the blue screen is');
+check(pc.crashes({ events: { bugchecks: [], shutdowns: [{ at: '2026-10-05T10:52:26-04:00', bugcheck: 0 }], whea: [] } })[0].line === 'No crashes in the last 30 days.', 'only a power loss: no crashes');
 check(pc.crashes({ events: { bugchecks: [], shutdowns: [], whea: [{ at: '2026-10-20T10:00:00Z', id: 17 }, { at: '2026-10-21T10:00:00Z', id: 17 }] } })[0].line.startsWith('2 hardware errors logged'), 'WHEA errors counted');
 check(pc.crashes({ events: { bugchecks: [], shutdowns: [], whea: [] } })[0].level === 'ok', 'none: fine');
 check(/needs administrator/.test([].concat(pc.crashes({ events: null, denied: ['events'] }))[0].line), 'a log that needs admin is said so');
@@ -176,8 +191,8 @@ check(require('../helpers/pc-check.js').CHECKS.length === 7, 'seven checks in th
 
 // ---------- temperatures ----------
 const t1 = sensors.decide({ nvidia: { available: true, gpus: [{ name: 'NVIDIA GeForce RTX 4070', tempC: 34.4, fanPct: 0 }] }, kmt: [{ name: 'NVIDIA GeForce RTX 4070', tempC: 33.9 }], zones: [{ name: '\\_TZ.UAD0', tenthsK: 2900 }], pawnio: true });
-check(t1.readings.length === 2 && t1.readings[0].source === "NVIDIA's nvidia-smi" && t1.readings[0].tempC === 34, 'NVIDIA from nvidia-smi, not twice');
-check(t1.readings[1].tempC === 17 && /not a real reading/.test(t1.readings[1].note), `a zone below room temperature is not a real reading (${t1.readings[1].note})`);
+check(t1.readings.length === 1 && t1.readings[0].source === "NVIDIA's nvidia-smi" && t1.readings[0].tempC === 34, 'NVIDIA from nvidia-smi, not twice');
+check(!t1.readings.some((r) => r.kind === 'zone'), 'a zone below room temperature is not shown (not a real reading)');
 check(t1.notReadable.some((n) => n.what === 'CPU temperature' && /PawnIO is already installed/.test(n.need)) && t1.notReadable.some((n) => /fan speeds/.test(n.what)), 'CPU temperature and board fans: not readable, with what is needed');
 const t2 = sensors.decide({ nvidia: { available: false }, kmt: [{ name: 'AMD Radeon RX 7800 XT', tempC: 48.2, fanRpm: 900 }], zones: [{ name: '\\_TZ.CPUZ', tenthsK: 3231 }], pawnio: false });
 check(t2.readings[0].name === 'AMD Radeon RX 7800 XT' && t2.readings[0].fanRpm === 900 && t2.readings[1].real === true, 'AMD through Windows; a plausible zone is a reading');
@@ -186,7 +201,7 @@ const t3 = sensors.decide({});
 check(t3.readings.length === 0 && t3.notReadable[0].what === 'Graphics card temperature', 'no card reading: said plainly');
 
 // ---------- routes ----------
-check(routes.handles('/api/display') && routes.handles('/api/display/keep') && routes.handles('/api/temps') && routes.handles('/api/pc-check') && !routes.handles('/api/displays') && !routes.handles('/api/pc'), 'routes claimed exactly');
+check(routes.handles('/api/display') && routes.handles('/api/display/keep') && routes.handles('/api/temps') && routes.handles('/api/pc-check') && routes.handles('/api/pc-check/open-app') && !routes.handles('/api/displays') && !routes.handles('/api/pc'), 'routes claimed exactly');
 
 if (fails.length) { console.log(`display-health: ${fails.length} failed\n - ${fails.join('\n - ')}`); process.exit(1); }
 console.log('display-health (display modes, temperatures, PC check): all good');

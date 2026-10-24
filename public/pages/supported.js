@@ -22,12 +22,12 @@ async function load() {
 
 // what works with no driver at all: [what, what it gets]
 const ANY = [
-  ['Any VIA keyboard', 'Keys, layers, macros and lights. Layouts for about 1,500 keyboards.'],
-  ['Any USB headset', 'Volume, mutes and mic level. EQ and mic filters with Equalizer APO.'],
-  ['Monitors', 'Brightness, contrast, color preset and speaker volume over DDC/CI.'],
-  ['Webcams', "Picture settings, through Windows' own camera controls."],
-  ['USB lights', 'Colors, through the OpenRGB that comes with DeviceHub.'],
-  ['Bluetooth batteries', "Any Bluetooth device's battery, as Windows reads it."],
+  ['Any VIA keyboard', 'Keys, layers, macros, lights.'],
+  ['Any USB headset', 'Volume, mic, EQ.'],
+  ['Monitors', 'Brightness, contrast, color, volume.'],
+  ['Webcams', 'Picture settings.'],
+  ['USB lights', 'Colors.'],
+  ['Bluetooth batteries', 'Battery level.'],
 ];
 
 const PILL = { works: 'good', reads: 'warn', untried: '' };
@@ -46,7 +46,7 @@ function driverRow(r) {
 // across the top, its rows in three columns (one on a phone)
 function anyCard() {
   const rows = [...ANY.map(([what, gets]) => tight(row(what, gets, null))),
-    tight(row('Not listed?', "Learn a device makes a driver while you change settings in its maker's app.",
+    tight(row('Not listed?', 'Make a driver for it.',
       button('Learn a device', () => { location.hash = '#/learn'; }, { kind: 'primary small', ic: 'plug' })))];
   const per = Math.ceil(rows.length / 3);
   return card([icon('check'), h('h2', {}, 'Works with any device')],
@@ -71,15 +71,15 @@ export default {
       cols.forEach((col, i) => { cols[i] = col.sort((x, y) => x.n - y.n).map((x) => groupCard(x.g)); });
     } else {
       cols[0].push(card([h('h2', {}, 'Device drivers')],
-        h('p', { class: 'faint', style: { margin: 0 } }, failed ? 'The list did not load. Restart DeviceHub, then open this page again.' : 'Loading…'),
+        h('p', { class: 'faint', style: { margin: 0 } }, failed ? 'List not loaded. Restart DeviceHub.' : 'Loading…'),
         failed ? h('div', { class: 'actions', style: { marginTop: '10px' } }, button('Try again', () => { failed = false; load(); redrawPage(); }, { kind: 'ghost small', ic: 'refresh' })) : null));
     }
     // the three statuses, said once here instead of on every row
     const legend = h('p', { class: 'faint', style: { margin: '0 0 14px' } },
-      h('b', {}, 'Works'), ': out of the box. ', h('b', {}, 'Reads now'), ': settings after Turn on settings on its page. ',
-      h('b', {}, 'Not tried yet'), ': no real-device test; install it from the Set up card on Overview.');
+      h('b', {}, 'Works'), ': out of the box. ', h('b', {}, 'Reads now'), ': after Turn on settings. ',
+      h('b', {}, 'Not tried yet'), ': untested; install from Setup.');
     return h('div', {},
-      topbar('App', 'Supported devices', null, button('Back to Settings', () => { location.hash = '#/settings'; }, { kind: 'ghost small' })),
+      topbar('App', 'Supported devices', null, button('Back', () => { location.hash = '#/settings'; }, { kind: 'ghost small' })),
       legend,
       h('div', { style: { marginBottom: '16px' } }, anyCard()),
       h('div', { class: 'grid three top' }, ...cols.filter((c) => c.length).map((c) => h('div', { class: 'stack' }, ...c))));

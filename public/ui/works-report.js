@@ -31,7 +31,7 @@ export function worksReport(d, { invite = false } = {}) {
   const s = state[id] || (state[id] = { stage: 'closed' });
   const set = (x) => { Object.assign(s, x); draw(); };
   const start = async () => {
-    if (isDemo()) return set({ stage: 'error', msg: 'Works on my device works in the installed app, not in demo mode.' });
+    if (isDemo()) return set({ stage: 'error', msg: 'Not in demo mode.' });
     set({ stage: 'loading', r: null, msg: '' });
     try {
       const r = await getJson(`/api/help/works?id=${encodeURIComponent(id)}`);
@@ -51,22 +51,22 @@ export function worksReport(d, { invite = false } = {}) {
   function draw() {
     if (s.stage === 'closed' && invite) {
       return box.replaceChildren(h('div', { class: 'works-invite' },
-        h('p', {}, h('b', {}, 'It works. '), 'Tell the device library, so others with this model need no setup. Nothing personal goes in it.'),
-        row(button('Tell others it works', start, { kind: 'primary small', ic: 'external' }))));
+        h('p', {}, h('b', {}, 'It works. '), 'Share it so others need no setup.'),
+        row(button('Tell others', start, { kind: 'primary small', ic: 'external' }))));
     }
     if (s.stage === 'closed') {
       return box.replaceChildren(row(button('Works on my device', start, { kind: 'ghost small', ic: 'external' }),
-        h('span', { class: 'faint', style: { fontSize: '12.5px' } }, 'Tell the library this driver works here.')));
+        null));
     }
     if (s.stage === 'loading') return box.replaceChildren(small('Making the record…'));
     if (s.stage === 'error') return box.replaceChildren(small(s.msg), row(button('Try again', start, { kind: 'ghost small' }), button('Close', close, { kind: 'ghost small' })));
     const r = s.r;
     const parts = [
-      h('b', {}, 'This is what goes on GitHub'),
-      small('Only what passed and on which version, nothing personal. Nothing is sent until you press Submit on GitHub (free account).'),
+      h('b', {}, 'Goes to GitHub'),
+      small('Nothing personal. Needs a free GitHub account.'),
       h('pre', { class: 'json', style: { whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: '220px', marginTop: '8px' } }, JSON.stringify(r.record, null, 2)),
     ];
-    if (s.stage === 'opened') parts.push(small('GitHub opened in your browser. Press Submit there.'), small(h('a', { href: r.url, target: '_blank', rel: 'noopener' }, 'If it did not open, use this link')));
+    if (s.stage === 'opened') parts.push(small('Press Submit on GitHub.'), small(h('a', { href: r.url, target: '_blank', rel: 'noopener' }, 'Not open? Use this link.')));
     if (s.msg) parts.push(small(s.msg));
     parts.push(row(s.stage !== 'opened' ? button('Open on GitHub', openIt, { kind: 'small', ic: 'external' }) : null, button('Close', close, { kind: 'ghost small' })));
     box.replaceChildren(...parts);

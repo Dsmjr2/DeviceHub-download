@@ -69,7 +69,7 @@ check(!r2.replaced.length, 'a second run changes nothing');
 // the loaded driver: the device page line until a restart
 check(loadedDriverChanged(path.join(root, 'my-devices', 'acme-mouse'), oldSha), 'the driver loaded before the update is seen as changed on disk');
 check(!loadedDriverChanged(path.join(root, 'my-devices', 'acme-mouse'), driverShaOf(path.join(root, 'my-devices', 'acme-mouse'))), 'a driver loaded after the update is not');
-check(/^A newer driver is ready: it loads when DeviceHub restarts/.test(NEWER_DRIVER_LINE), 'the page line says it in plain words');
+check(/^A newer driver is ready\. Restart DeviceHub/.test(NEWER_DRIVER_LINE), 'the page line says it in plain words');
 
 // a check made before the update no longer lets a setting write
 const folder = path.join(root, 'my-devices', 'acme-mouse');

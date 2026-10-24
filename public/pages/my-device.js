@@ -26,8 +26,8 @@ function careLine(d) {
   const part = (r) => { const s = set(r?.key); return s ? [s, `${s.label} ${showAdded(s, r.value)}`] : null; };
   const low = part(care.lowBattery), chg = part(care.charging);
   const lines = [];
-  if (low) lines.push(`At 20% or less: ${low[1]}, back once it charges (Settings, Save device battery).`);
-  if (chg) lines.push(`While charging: ${chg[1]}, back when unplugged.`);
+  if (low) lines.push(`At 20% or less: ${low[1]} until charged.`);
+  if (chg) lines.push(`While charging: ${chg[1]}.`);
   if (!lines.length) return null;
   const waits = [low, chg].some((x) => x && x[0].readOnly);
   return h('p', { class: 'faint', style: { marginTop: '12px', fontSize: '12.5px' } }, `Battery saving. ${lines.join(' ')}${waits ? ' It waits while that setting is read-only.' : ''}`);
@@ -55,26 +55,26 @@ const list = (items) => h('ul', { style: { margin: '0 0 10px', paddingLeft: '20p
 async function shareRefused(a, r) {
   const found = r.refused || [];
   const body = h('div', {},
-    para(found.length ? `Something in my-devices\\${a.plugin} is about you or this PC, so nothing was shared:` : `It could not be shared: ${r.error || 'unknown problem'}.`),
+    para(found.length ? 'Personal data found, so nothing was shared:' : `Not shared: ${r.error || 'unknown problem'}.`),
     found.length ? list(found.map((x) => h('span', {}, h('b', {}, x.text), h('br'), h('span', { class: 'faint' }, x.fix)))) : null,
-    para(found.length ? 'Fix those, then try again. Nothing left this PC.' : 'Nothing has left this PC.', { class: 'faint' }));
+    para(found.length ? 'Fix these, then try again.' : 'Nothing was sent.', { class: 'faint' }));
   await modal('Not shared', body, [{ label: 'Close', value: true, kind: 'primary' }]);
 }
 
 async function shareDriver(d) {
   const a = d.adapter;
-  if (isDemo()) { toast('Demo mode: nothing is shared', 'info'); return; }
+  if (isDemo()) { toast('Demo: not shared', 'info'); return; }
   const c = await sharePost('/api/share/check', { name: a.plugin });
   if (!c.ok) return shareRefused(a, c);
-  const by = h('input', { class: 'text', placeholder: 'A public name or nickname (optional)', 'aria-label': 'Public name', maxlength: 40 });
+  const by = h('input', { class: 'text', placeholder: 'Public name (optional)', 'aria-label': 'Public name', maxlength: 40 });
   const body = h('div', {},
-    para(`Others with a ${c.title} (USB ${c.usb}) would get this driver without any setup.`),
+    para(`Others with a ${c.title} get this driver.`),
     h('b', {}, 'What is shared'), list(c.shared),
     c.stays?.length ? para(`Stays on this PC: ${c.stays.join(', ')}.`, { class: 'faint' }) : null,
     h('b', {}, 'Nothing personal'), para(c.checked),
     h('b', {}, `Shared as "${c.status}"`), para(c.statusWhy),
     h('b', {}, 'What happens next'), para(c.next),
-    by, para('Shown to everyone with the driver; leave it empty to stay unnamed.', { class: 'faint', style: { margin: '6px 0 0' } }));
+    by, para('Shown publicly.', { class: 'faint', style: { margin: '6px 0 0' } }));
   if (!(await modal('Share this driver?', body, [{ label: 'Cancel', value: false, kind: 'ghost' }, { label: 'Open GitHub', value: true, kind: 'primary' }]))) return;
   const p = await sharePost('/api/share/prepare', { name: a.plugin, by: by.value });
   if (!p.ok) return shareRefused(a, p);
@@ -83,7 +83,7 @@ async function shareDriver(d) {
   // the link is shown too, in case the browser blocked the new window
   await modal(p.method === 'attach' ? 'Attach the driver on GitHub' : 'Finish on GitHub', h('div', {},
     list(p.steps),
-    para(h('a', { href: p.url, target: '_blank', rel: 'noopener' }, opened ? 'Open the GitHub page again' : 'Open the GitHub page')),
+    para(h('a', { href: p.url, target: '_blank', rel: 'noopener' }, opened ? 'Open again' : 'Open GitHub')),
     para(`Saved on this PC in ${p.folder}.`, { class: 'faint' })), [{ label: 'Done', value: true, kind: 'primary' }]);
 }
 
@@ -92,7 +92,7 @@ function shareButton(d, shown) {
   if (!d.adapter?.plugin || d.status !== 'connected' || !shown.length) return null;
   return h('div', { class: 'actions', style: { marginTop: '12px' } },
     button('Share this driver', () => shareDriver(d).catch((e) => toast('Not shared', 'bad', { detail: e.message })), { kind: 'ghost small', ic: 'external' }),
-    h('span', { class: 'faint', style: { fontSize: '12.5px' } }, 'Offers it to the shared library on GitHub (free account needed), so others need no setup.'));
+    h('span', { class: 'faint', style: { fontSize: '12.5px' } }, 'Needs a free GitHub account.'));
 }
 
 // a driver from the device library with settings still read-only (failed, waiting or not checked yet): Check again
@@ -115,8 +115,8 @@ function checkAgain(d, redraw = () => {}) {
     redraw();   // the answer (and, once settings are on, the Tell others it works invitation) shows at once
   };
   const line = kind === 'turn-on'
-    ? `Its settings are read-only until you turn them on. ${lib.turnOnLine || "DeviceHub writes each setting's current value back once to check it."}`
-    : `${ro.map((s) => s.label).join(', ')} ${ro.length === 1 ? 'is' : 'are'} read-only until ${ro.length === 1 ? 'it passes' : 'each passes'} DeviceHub's write-and-read-back check.`;
+    ? 'Read-only until you turn settings on.'
+    : `${ro.map((s) => s.label).join(', ')} ${ro.length === 1 ? 'is' : 'are'} read-only until checked.`;
   return h('div', { class: 'actions', style: { marginTop: '12px', alignItems: 'center' } },
     button(kind === 'turn-on' ? 'Turn on settings' : 'Check again', run, { kind: kind === 'turn-on' ? 'primary small' : 'ghost small', ic: kind === 'turn-on' ? 'plug' : 'search' }),
     h('span', { class: 'faint', style: { fontSize: '12.5px' } }, checkNote[d.id] || line));
@@ -149,7 +149,7 @@ const nameOf = (list, v) => (list || []).find((o) => o.value === v)?.label ?? St
 // a read-only setting (a library driver's, until it passes its check or is turned on): its control is disabled and
 // the reason is the visible line under its name (the hint the guard writes, "Read-only: ..."), never a tooltip
 const readOnlyOf = (s) => s.type !== 'display' && !!s.readOnly;
-const descOf = (s) => (readOnlyOf(s) && !/read-only/i.test(s.hint || '') ? [s.hint, 'Read-only: its driver does not change it.'].filter(Boolean).join(' ') : s.hint || null);
+const descOf = (s) => (readOnlyOf(s) && !/read-only/i.test(s.hint || '') ? [s.hint, 'Read-only.'].filter(Boolean).join(' ') : s.hint || null);
 function settingRow(d, s) {
   const v = d.values?.[s.key];
   const off = readOnlyOf(s);
@@ -197,7 +197,7 @@ export function devicePage(id) {
       if (d.status !== 'connected' && !isAway(d)) {
         return h('div', {}, head, h('div', { class: 'panel empty' }, artOf(d),
           h('h2', {}, d.status === 'error' ? `Couldn't reach the ${a.kind.toLowerCase()}` : `Waiting for the ${a.kind.toLowerCase()}`),
-          h('p', {}, d.error || `Plug in the ${a.title}; DeviceHub finds it in seconds.`),
+          h('p', {}, d.error || `Plug in the ${a.title}.`),
           newerLine(d),
           h('div', { class: 'actions' }, button('Look again', () => connect(id, false), { kind: 'primary', ic: 'plug' }))));
       }
@@ -205,8 +205,8 @@ export function devicePage(id) {
       return h('div', {}, head, awayBanner(d),
         h('div', { class: 'grid two top' },
           card([h('h2', {}, 'Settings'), batteryPill(d)],
-            shown.length ? shown.map((s) => settingRow(d, s)) : h('p', { class: 'faint', style: { margin: 0 } }, 'It has not reported any settings yet.'),
-            a.unsupported?.length ? h('p', { class: 'faint', style: { marginTop: '12px' } }, icon('external'), ` Still in its maker's app: ${a.unsupported.join(', ')}.`) : null,
+            shown.length ? shown.map((s) => settingRow(d, s)) : h('p', { class: 'faint', style: { margin: 0 } }, 'No settings reported yet.'),
+            a.unsupported?.length ? h('p', { class: 'faint', style: { marginTop: '12px' } }, icon('external'), ` Maker's app only: ${a.unsupported.join(', ')}.`) : null,
             careLine(d),
             newerLine(d),
             checkAgain(d, () => ctx.redraw?.()),

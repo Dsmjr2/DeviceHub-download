@@ -82,14 +82,14 @@ async function applyAll() {
   const [r, g, b] = hexToRgb(ui.hex);
   const k = ui.brightness / 100;
   const done = [];
-  const t = toast(`Applying ${ui.hex.toUpperCase()}`, 'busy', { ms: 0, detail: 'Backing up, writing, checking each device…' });
+  const t = toast(`Applying ${ui.hex.toUpperCase()}`, 'busy', { ms: 0 });
   for (const id of ['keyboard', 'headset']) {
     const d = devices[id];
     if (!ui.include[id] || d.status !== 'connected' || !d.adapter.hasLighting?.()) continue;
     try {
       if (id === 'keyboard') {
         const res = await writeBatch(id, d.adapter.lightingKeys(r, g, b, ui.brightness).map(([key, val]) => ({ key, value: val, label: `Lighting ${key}`, display: val })), 'before lighting');
-        if (res.failed) throw new Error(`${res.failed} lighting value(s) did not stick`);
+        if (res.failed) throw new Error(`${res.failed} value(s) not set`);
       } else {
         await write(id, 'led', rgbToHex(r * k, g * k, b * k), { label: 'LED color', display: ui.hex, silent: true });
       }
@@ -105,7 +105,7 @@ async function applyAll() {
   // the PC's own lights (board, fans, RAM, graphics card) through OpenRGB, when it runs
   try { const pc = await applyPc(rgbToHex(r * k, g * k, b * k)); if (pc) done.push(pc); } catch (e) { log(`PC lights failed: ${e.message}`, 'bad'); }
   setGlow(ui.hex);
-  t.update(done.length ? `Lighting set on ${done.join(' + ')}` : 'No connected device with lighting', done.length ? 'good' : 'bad', done.length ? undefined : 'Connect the keyboard or headset first');
+  t.update(done.length ? `Lighting set on ${done.join(' + ')}` : 'No lit devices', done.length ? 'good' : 'bad', done.length ? undefined : 'Connect a device first.');
 }
 
 // the devices this PC has, beyond the built-in three, that take one color (23 Oct 2026, a friend's PC listed Shawn's
@@ -148,17 +148,17 @@ export default {
             // only the devices this PC has, by their own names (23 Oct 2026, Shawn: a friend's PC showed his P75, HS80
             // and Pulsar whatever it had)
             h('div', { class: 'targets' },
-              has('keyboard') ? target('keyboard', 'color + brightness, effect kept · saved on the keyboard') : null,
-              has('headset') ? target('headset', 'LED color · held while DeviceHub runs') : null,
+              has('keyboard') ? target('keyboard', 'color and brightness') : null,
+              has('headset') ? target('headset', 'LED color') : null,
               ...addedColors().map(({ d, s }) => {
                 const ok = d.status === 'connected' && !s.readOnly;
                 return h('div', { class: 'target lighting-preview', style: { '--cc': 'var(--signal)', '--pick': ui.hex } }, h('div', { class: 'target-ic' }, icon(d.adapter.kind === 'Mouse' ? 'mouse' : d.adapter.kind === 'Headset' ? 'headset' : d.adapter.kind === 'Keyboard' ? 'keyboard' : 'lighting')),
-                  h('div', { class: 'grow' }, h('b', {}, d.adapter.title), h('small', {}, ok ? s.label : d.status !== 'connected' ? 'not connected' : `${s.label}: read-only until Turn on settings on its page`)),
+                  h('div', { class: 'grow' }, h('b', {}, d.adapter.title), h('small', {}, ok ? s.label : d.status !== 'connected' ? 'not connected' : `${s.label}: turn on settings first`)),
                   toggle({ value: ui.include[d.id] !== false && ok, disabled: !ok, label: `include ${d.adapter.title}`, onCommit: async (on) => { ui.include[d.id] = on; } }));
               }),
-              has('mouse') ? h('div', { class: 'target', style: { '--cc': 'var(--c-mouse)' } }, artOf(devices.mouse), h('div', { class: 'grow' }, h('b', {}, devices.mouse.adapter.title), h('small', {}, 'no lights DeviceHub can set on this mouse')), pill('n/a')) : null,
+              has('mouse') ? h('div', { class: 'target', style: { '--cc': 'var(--c-mouse)' } }, artOf(devices.mouse), h('div', { class: 'grow' }, h('b', {}, devices.mouse.adapter.title), h('small', {}, 'no settable lights')), pill('n/a')) : null,
               h('div', { class: 'target lighting-preview', style: { '--cc': 'var(--signal)', '--pick': ui.hex } }, h('div', { class: 'target-ic' }, icon('lighting')),
-                h('div', { class: 'grow' }, h('b', {}, 'PC lights'), h('small', {}, pcIncluded() ? 'board, fans and more, through OpenRGB' : 'through OpenRGB, when it runs (PC lights, right)')),
+                h('div', { class: 'grow' }, h('b', {}, 'PC lights'), h('small', {}, pcIncluded() ? 'board, fans and more' : 'when OpenRGB runs')),
                 toggle({ value: pcIncluded(), disabled: !pcAvailable(), label: 'include PC lights', onCommit: async (on) => { setPcIncluded(on); } }))))),
         h('div', { class: 'light-pc' }, pcLightsCard(redraw))));
   },

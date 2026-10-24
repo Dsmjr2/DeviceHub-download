@@ -113,12 +113,12 @@ export function batteryChart(id, redraw, { title, kind } = {}) {
     h('div', { class: 'bc-key' }, h('i'), 'Charging'),
     table);
   load(id, days).then((rows) => {
-    if (rows.length < 2) { box.replaceChildren(h('div', { class: 'faint', style: { padding: '40px 0', textAlign: 'center' } }, 'Not enough readings yet. DeviceHub records the level every 5 minutes.')); return; }
+    if (rows.length < 2) { box.replaceChildren(h('div', { class: 'faint', style: { padding: '40px 0', textAlign: 'center' } }, 'Not enough readings yet.')); return; }
     // redrawn when its width changes; the watcher stops once the page has replaced this card (pages redraw often)
     const ro = new ResizeObserver(() => { if (!box.isConnected) { ro.disconnect(); return; } draw(box, id, rows, days, line); });
     ro.observe(box);
     requestAnimationFrame(() => draw(box, id, rows, days, line));
-  }).catch(() => box.replaceChildren(h('div', { class: 'faint' }, 'Battery history is not available.')));
+  }).catch(() => box.replaceChildren(h('div', { class: 'faint' }, 'No battery history.')));
   // the table always covers the whole 7 days, whatever the graph shows
   load(id, 7).then((rows) => table.append(readings(rows))).catch(() => {});
   return el;

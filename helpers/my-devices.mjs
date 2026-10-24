@@ -662,7 +662,7 @@ export const loadedYet = () => !!last;
 // A newer library driver put into a loaded copy (helpers/library-refresh.mjs, 24 Oct 2026) runs only after a restart:
 // swapping a loaded driver would drop its open HID channel and its lock mid-use, so it is not done. a.library.newerDriver
 // is then the plain line the device page and Get help show (read on each snapshot, the file hash kept for 5 seconds).
-export const NEWER_DRIVER_LINE = 'A newer driver is ready: it loads when DeviceHub restarts (tray icon > Quit, then open DeviceHub again).';
+export const NEWER_DRIVER_LINE = 'A newer driver is ready. Restart DeviceHub to load it.';
 export function loadedDriverChanged(folder, loadedSha) {
   const now = driverShaOf(folder);
   return !!(loadedSha && now && now !== loadedSha);

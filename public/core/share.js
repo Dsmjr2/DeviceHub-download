@@ -5,7 +5,7 @@ import { toast } from '../ui/overlay.js';
 export const DOWNLOAD_URL = 'https://github.com/Dsmjr2/DeviceHub-download';
 
 export async function copyDownloadLink() {
-  try { await navigator.clipboard.writeText(DOWNLOAD_URL); toast('Download link copied', 'good', { detail: 'Paste it to anyone; it is always the newest version.' }); }
+  try { await navigator.clipboard.writeText(DOWNLOAD_URL); toast('Download link copied', 'good', { detail: 'Always the newest version.' }); }
   catch { toast('Could not copy', 'bad', { detail: DOWNLOAD_URL }); }
 }
 
@@ -14,6 +14,6 @@ export async function copyShortReport() {
   try {
     const r = await fetch('/api/report/short'); if (!r.ok) throw new Error(`HTTP ${r.status}`);
     await navigator.clipboard.writeText(await r.text());
-    toast('Report copied', 'good', { detail: 'Paste it to whoever helps, or into Claude Code.' });
-  } catch (e) { toast('Could not copy the report', 'bad', { detail: e.message }); }
+    toast('Report copied', 'good', { detail: 'Paste it to whoever helps.' });
+  } catch (e) { toast('Report not copied', 'bad', { detail: e.message }); }
 }

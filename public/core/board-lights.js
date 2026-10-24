@@ -10,8 +10,8 @@ export const ADD_LABEL = 'Add board, fan and RAM lights';
 export const REMOVE_LABEL = 'Remove board lights';
 export const DEMO_BOARD = {
   demo: true, pawnio: { installed: true, version: '2.2.0.0' }, setUp: false, task: false, copy: false, canSetUp: true, why: null, partial: null, busy: false,
-  before: "Runs DeviceHub's OpenRGB as administrator at sign-in (PawnIO is already installed). Windows asks once, then OpenRGB is allowed to change your board's lighting chip.",
-  remove: 'Stops it and deletes its task: back to USB lights only. Windows asks once. PawnIO stays installed (remove it in Windows Settings > Apps > Installed apps).',
+  before: 'Runs OpenRGB as administrator. Windows asks once.',
+  remove: 'Back to USB lights only. Windows asks once. PawnIO stays installed (remove it in Settings > Apps > Installed apps).',
 };
 
 export function boardView(st, job = null, { confirmRemove = false } = {}) {
@@ -23,11 +23,11 @@ export function boardView(st, job = null, { confirmRemove = false } = {}) {
   if (job?.done && !job.ok && job.retry) return { line: job.kind === 'remove' ? st.remove : st.before, result, action: job.kind === 'remove' ? 'remove' : 'setup', label: 'Try again' };
   if (st.setUp) {
     if (confirmRemove) return { line: st.remove, result: null, action: 'remove', label: 'Yes, remove' };
-    return { line: 'Board, fan and RAM lights are on (OpenRGB runs as administrator).', result, action: 'ask-remove', label: REMOVE_LABEL };
+    return { line: 'Board, fan and RAM lights are on.', result, action: 'ask-remove', label: REMOVE_LABEL };
   }
   // a part left from a try that failed (the task or the copy alone): Remove stays offered beside Add
   const left = !!(st.task || st.copy);
   if (confirmRemove && left) return { line: st.remove, result: null, action: 'remove', label: 'Yes, remove' };
-  if (!st.canSetUp) return { line: `Board lights cannot be added from here: ${st.why}.`, result, action: left ? 'ask-remove' : null, label: left ? REMOVE_LABEL : null };
+  if (!st.canSetUp) return { line: `Board lights cannot be added: ${st.why}.`, result, action: left ? 'ask-remove' : null, label: left ? REMOVE_LABEL : null };
   return { line: st.partial ? `${st.before} (${st.partial} Adding again replaces it.)` : st.before, result, action: 'setup', label: ADD_LABEL, also: left ? 'ask-remove' : null };
 }

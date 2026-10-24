@@ -155,7 +155,7 @@ d.run = async (file) => { calls.run.push(file); pcFiles.add(eq.marker); return {
 let st = (await inst.status({ fresh: true })).find((t) => t.id === 'eqapo');
 check(st.offer === 'install' && st.bundled && !st.installed, `bundled Equalizer APO is offered to install (${JSON.stringify(st)})`);
 const p = await inst.plan('eqapo');
-check(p.bundled && p.offer === 'install' && p.size === eqT.size && p.sizeExact && calls.head === 0 && /pinned/.test(p.check) && /Playback devices tick your headset/.test(p.after), 'its plan: inside DeviceHub, exact size, no download, which box to tick');
+check(p.bundled && p.offer === 'install' && p.size === eqT.size && p.sizeExact && calls.head === 0 && /pinned/.test(p.check) && /Configurator tick your headset/.test(p.after), 'its plan: inside DeviceHub, exact size, no download, which box to tick');
 let r = await inst.install('eqapo');
 check(r.ok && /pinned/.test(r.verified) && calls.run.length === 1 && calls.run[0] === installer && calls.download === 0, `installed from the bundle with no download (${JSON.stringify(r)})`);
 check(fs.existsSync(installer), 'the bundled installer stays (it is part of DeviceHub)');

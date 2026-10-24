@@ -18,10 +18,10 @@ const TABLE = require('./rgb-controllers.json');
 const BY_ID = new Map(TABLE.controllers.map((c) => [c.id, c]));
 const SOURCE = `${TABLE.source.repo}/src/commit/${TABLE.source.commit}`;
 const KIND = {
-  reached: 'reached: the board\'s lights, its fan (ARGB) headers included, are listed above',
-  usb: 'reachable over USB: should show after Find lights',
-  smbus: 'on the board\'s SMBus: needs OpenRGB with PawnIO as administrator (Add board, fan and RAM lights sets it up)',
-  none: 'no lighting controller found: the fans may be on a non-addressable or remote-controlled hub',
+  reached: 'reached: board and fan headers listed above',
+  usb: 'on USB: shows after Find lights',
+  smbus: 'on the board\'s SMBus: needs Add board, fan and RAM lights',
+  none: 'no lighting controller found: fans may be on a plain or remote hub',
 };
 // the maker's own lighting apps that hold these controllers while they run
 const MAKER_APPS = 'Armoury Crate, MSI Center, Gigabyte Control Center or RGB Fusion, iCUE, L-Connect, NZXT CAM, SignalRGB';
@@ -30,14 +30,14 @@ const MAKER_APPS = 'Armoury Crate, MSI Center, Gigabyte Control Center or RGB Fu
 function openrgbFix(reason) {
   const r = String(reason || '');
   if (!r || r === 'not running') return { why: 'Find lights has not run yet.', fix: 'Press Find lights.' };
-  if (/Visual C\+\+ runtime/i.test(r)) return { why: 'OpenRGB needs Microsoft\'s Visual C++ runtime, and this PC does not have it.', fix: 'Install the "Visual C++ Redistributable" (X64) from Microsoft (learn.microsoft.com/cpp/windows/latest-supported-vc-redist), then press Find lights again.' };
-  if (/already running here without its SDK server/i.test(r)) return { why: 'Another OpenRGB is already open on this PC, so DeviceHub does not start its own.', fix: 'Quit that OpenRGB (also from the tray) and press Find lights, or press Start Server on its SDK Server tab.' };
-  if (/installed on this PC/i.test(r)) return { why: 'OpenRGB is installed on this PC, so DeviceHub uses that one instead of its own.', fix: 'In OpenRGB, press Start Server on the SDK Server tab, then Find lights.' };
-  if (/cannot start without|is missing|not shipped/i.test(r)) return { why: 'The OpenRGB inside DeviceHub is missing some of its files.', fix: 'Reinstall DeviceHub from its download (settings are kept), and check your antivirus quarantine.' };
-  if (/did not start its SDK server/i.test(r)) return { why: 'The OpenRGB inside DeviceHub started but did not answer.', fix: 'Press Find lights again. If it repeats, restart the PC and check your antivirus did not block tools\\openrgb\\OpenRGB.exe.' };
-  if (/did not answer in time/i.test(r)) return { why: 'OpenRGB took too long to answer (it may still be looking for lights).', fix: 'Wait a minute and press Find lights again.' };
-  if (/protocol|0\.7 or newer|before 1\.1/i.test(r)) return { why: 'The OpenRGB on this PC is too old for DeviceHub.', fix: 'Update OpenRGB to 1.1 or newer (openrgb.org).' };
-  return { why: `OpenRGB said: ${r}`, fix: 'Press Find lights again; if it repeats, use Get help below.' };
+  if (/Visual C\+\+ runtime/i.test(r)) return { why: 'OpenRGB needs Microsoft\'s Visual C++ runtime.', fix: 'Install the "Visual C++ Redistributable" (X64) from learn.microsoft.com/cpp/windows/latest-supported-vc-redist, then Find lights.' };
+  if (/already running here without its SDK server/i.test(r)) return { why: 'Another OpenRGB is already open.', fix: 'Quit it (also from the tray), or press Start Server in it.' };
+  if (/installed on this PC/i.test(r)) return { why: 'OpenRGB is installed on this PC, so DeviceHub uses it.', fix: 'In OpenRGB, press Start Server, then Find lights.' };
+  if (/cannot start without|is missing|not shipped/i.test(r)) return { why: 'DeviceHub\'s OpenRGB is missing some of its files.', fix: 'Reinstall DeviceHub; check your antivirus quarantine.' };
+  if (/did not start its SDK server/i.test(r)) return { why: 'DeviceHub\'s OpenRGB did not answer.', fix: 'Press Find lights again. If it repeats, check your antivirus.' };
+  if (/did not answer in time/i.test(r)) return { why: 'OpenRGB took too long to answer.', fix: 'Wait a minute and press Find lights again.' };
+  if (/protocol|0\.7 or newer|before 1\.1/i.test(r)) return { why: 'This OpenRGB is too old.', fix: 'Update OpenRGB to 1.1 or newer (openrgb.org).' };
+  return { why: `OpenRGB said: ${r}`, fix: 'Press Find lights again, or use Get help.' };
 }
 
 const cleanMaker = (s) => String(s || '').replace(/Technology|Co\.|Ltd\.?|Inc\.?|Corporation|International|Computer|,/gi, '').replace(/\s+/g, ' ').trim();
@@ -74,9 +74,9 @@ function diagnose({ pc = null, orgb = null } = {}) {
   // what to tell the person, most useful first
   const problems = [];
   if (reason && openrgb.state !== 'not started yet') problems.push({ problem: 'OpenRGB could not start', why: openrgb.why, fix: openrgb.fix });
-  for (const s of seen) if (s.found === false) problems.push({ problem: `${s.name} was not found by OpenRGB`, why: `It is plugged in (USB ${s.id}), but OpenRGB did not list it: the maker's lighting app (${MAKER_APPS}) may hold it, or it needs an OpenRGB newer than ${b.version || '1.1'}.`, fix: 'Quit the maker\'s lighting app (also from the tray), then press Find lights again.' });
-  if (kind === 'smbus' && !(orgb?.running && !orgb.bundled) && !orgb?.board?.setUp) problems.push({ problem: 'The fan headers are likely on the board\'s SMBus', why: `No USB lighting controller is plugged in, so these ${smbus.maker} board lights sit on the SMBus, which DeviceHub's OpenRGB reaches only as administrator with PawnIO.`, fix: 'Press Add board, fan and RAM lights (Lighting > PC lights, or Setup): it installs the signed PawnIO driver and runs OpenRGB as administrator after Windows asks. Your choice; Remove board lights undoes it.' });
-  if (kind === 'none') problems.push({ problem: 'No lighting controller found', why: 'Nothing on USB is a known lighting controller, and the board is not one whose lights sit on the SMBus.', fix: 'Check the wiring: 3-pin (12 V) RGB fans and hubs with their own remote or button cannot be reached from the PC; a 3-pin ARGB (5 V) cable on a board ARGB header can.' });
+  for (const s of seen) if (s.found === false) problems.push({ problem: `${s.name} was not found by OpenRGB`, why: `Plugged in (USB ${s.id}), not listed. A lighting app (${MAKER_APPS}) may hold it.`, fix: 'Quit the maker\'s lighting app (also from the tray), then Find lights.' });
+  if (kind === 'smbus' && !(orgb?.running && !orgb.bundled) && !orgb?.board?.setUp) problems.push({ problem: 'The fan headers are likely on the board\'s SMBus', why: `No USB lighting controller, so these ${smbus.maker} board lights need OpenRGB as administrator with PawnIO.`, fix: 'Press Add board, fan and RAM lights: it installs PawnIO and runs OpenRGB as administrator. Your choice.' });
+  if (kind === 'none') problems.push({ problem: 'No lighting controller found', why: 'No known lighting controller on USB or the board.', fix: 'Check wiring: 3-pin (12 V) fans and hubs with a remote or button can\'t be reached; 3-pin ARGB (5 V) on a board header can.' });
 
   const lines = [
     `- OpenRGB: ${openrgb.version || 'none'}, ${openrgb.state}${openrgb.usbOnly ? ' (USB lights only)' : ''}${reason && openrgb.state !== 'not started yet' ? `; ${reason}` : ''}`,

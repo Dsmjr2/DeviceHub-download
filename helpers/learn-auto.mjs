@@ -93,11 +93,11 @@ export function novel(base, msgs) {
 
 // ---------------------------------------------------------------- the session
 export async function start({ vid, pid, kind = null } = {}) {
-  if (run && !['done', 'stopped', 'failed'].includes(run.phase)) return { ok: false, error: 'DeviceHub is already learning a device. Stop it first, or wait until it is done.' };
-  if (lw.current()?.listening) return { ok: false, error: 'A learning session is open on Learn a device. Stop it first (Stop learning), then try again.' };
+  if (run && !['done', 'stopped', 'failed'].includes(run.phase)) return { ok: false, error: 'Already learning a device. Stop it or wait.' };
+  if (lw.current()?.listening) return { ok: false, error: 'A learning session is open. Press Stop learning, then try again.' };
   run = { phase: 'start', kind: ['mouse', 'keyboard'].includes(kind) ? kind : null, device: { vid: String(vid || '').toUpperCase(), pid: String(pid || '').toUpperCase(), name: null }, app: null, steps: [], items: [], ask: null, result: null, error: null, stop: false, done: false, skip: false };
   const r = run;
-  session(r).catch((e) => { if (run === r) { r.phase = 'failed'; r.error = { text: `Something went wrong: ${e.message}`, next: 'Press Learn it for me again; Get help (top right) tells Shawn if it happens again.' }; } });
+  session(r).catch((e) => { if (run === r) { r.phase = 'failed'; r.error = { text: `Something went wrong: ${e.message}`, next: 'Press Learn it for me again, or use Get help.' }; } });
   return { ok: true, ...view(r) };
 }
 
@@ -344,14 +344,14 @@ export async function finish() {
   }
   // the saved driver's device: wait until it is connected (it loads by itself after the save)
   const id = res.saved.id;
-  if (!id) return { ok: false, error: 'Restart DeviceHub once to load the new driver, then press Turn on settings on its page.' };
+  if (!id) return { ok: false, error: 'Restart DeviceHub, then press Turn on settings on its page.' };
   let st = null;
   for (let i = 0; i < 30; i++) {
     try { st = (await d.get('/api/agent/state'))?.devices?.find((x) => x.id === id); } catch {}
     if (st?.status === 'connected') break;
     await d.sleep(1000);
   }
-  if (st?.status !== 'connected') return { ok: false, error: 'The device has not connected to its new driver yet. Unplug it and plug it back in, then press Turn on settings again.' };
+  if (st?.status !== 'connected') return { ok: false, error: 'Not connected to its new driver yet. Replug it, then press Turn on settings again.' };
   try {
     const t = await d.post('/api/agent/turn-on', { id });
     res.turnedOn = { ran: !!t.ran, on: !!t.on, counts: t.counts || null, why: t.why || null };

@@ -77,13 +77,13 @@ function speakerBody(sp) {
   return h('div', {},
     // a camera mic: muted unless a Google Meet or Chat call is using it (helpers/anker-guard.js)
     isMic && /anker/i.test(sp.name) ? h('div', { class: 'srow', style: { borderTop: 0, paddingTop: 0 } },
-      h('div', {}, h('div', { class: 'srow-title' }, 'Only for Google Meet and Chat'), h('div', { class: 'srow-desc' }, 'Muted except during Google Meet or Chat calls.')),
+      h('div', {}, h('div', { class: 'srow-title' }, 'Only for Google Meet and Chat'), h('div', { class: 'srow-desc' }, 'Muted otherwise.')),
       h('div', { class: 'srow-ctl' }, toggle({ value: guard === true, label: 'Only for Google Meet and Chat', onCommit: async (on) => { try { await env.api('/api/settings', { ankerGuard: on }); guard = on; rerender(); } catch (e) { toast('Not changed', 'bad', { detail: e.message }); } } }))) : null,
     isMic ? h('div', { class: 'srow' },
-      h('div', {}, h('div', { class: 'srow-title' }, 'Background gate'), h('div', { class: 'srow-desc' }, 'Turns the room down between your words.')),
+      h('div', {}, h('div', { class: 'srow-title' }, 'Background gate'), h('div', { class: 'srow-desc' }, 'Quiets the room between words.')),
       h('div', { class: 'srow-ctl' }, toggle({ value: !!sp.gate, label: 'Background gate', onCommit: (on) => put(sp.guid, { gate: on }) }))) : null,
     isMic ? h('div', { class: 'srow' },
-      h('div', {}, h('div', { class: 'srow-title' }, 'Leveler'), h('div', { class: 'srow-desc' }, 'Brings your voice forward and keeps it even.')),
+      h('div', {}, h('div', { class: 'srow-title' }, 'Leveler'), h('div', { class: 'srow-desc' }, 'Keeps your voice even.')),
       h('div', { class: 'srow-ctl' }, toggle({ value: !!sp.level, label: 'Leveler', onCommit: (on) => put(sp.guid, { level: on }) }))) : null,
     h('div', { class: 'srow', style: isMic && /anker/i.test(sp.name) ? {} : { borderTop: 0, paddingTop: 0 } },
       h('div', {}, h('div', { class: 'srow-title' }, `${sp.name} EQ`), h('div', { class: 'srow-desc' }, sp.on ? (isMic ? 'On' : 'On') : (isMic ? 'Off: no EQ' : 'Off: no EQ'))),
@@ -93,8 +93,8 @@ function speakerBody(sp) {
     h('div', { class: 'actions', style: { marginTop: '12px', alignItems: 'center' } }, h('span', { class: 'faint', style: { fontSize: '13px' } }, 'Start from:'),
       ...starts.map(([name, stages]) => button(name, () => put(sp.guid, { stages, on: true }), { kind: 'ghost small' }))),
     h('p', { class: 'faint', style: { fontSize: '12.5px', marginBottom: 0 } }, isMic
-      ? 'Tip: cut the lows, lift 2-4 kHz for a clearer voice.'
-      : 'Tip: small speakers can\'t play deep bass; add warmth at 250 Hz instead.'));
+      ? 'Tip: lift 2-4 kHz for clarity.'
+      : 'Tip: add warmth at 250 Hz.'));
 }
 
 // the section for one speaker (guid), redrawn with the page's own redraw
@@ -102,8 +102,8 @@ export function speakerSection(guid, redraw) {
   rerender = redraw;
   // read again when older than 10 s (never while a slider is being dragged), so a tab always shows what plays
   if (!loading && !Object.keys(drafts).length && (error ? Date.now() - at > 3000 : !eq || Date.now() - at > 10000)) load();
-  if (error) return h('p', { class: 'faint' }, `Could not read the speakers: ${error}`);
+  if (error) return h('p', { class: 'faint' }, `Speakers not read: ${error}`);
   if (!eq) return h('p', { class: 'faint' }, 'Reading the speakers…');
   const sp = eq.speakers?.find((x) => x.guid === guid);
-  return sp ? speakerBody(sp) : h('p', { class: 'faint' }, 'That speaker isn\'t in Windows right now.');
+  return sp ? speakerBody(sp) : h('p', { class: 'faint' }, 'Speaker not found in Windows.');
 }

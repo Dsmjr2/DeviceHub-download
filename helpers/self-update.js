@@ -38,7 +38,7 @@ async function releaseInfo() {
     const crypto = require('crypto');
     let ok = false;
     try { ok = !!v.signature && crypto.verify(null, Buffer.from(releasePayload(v)), crypto.createPublicKey(fs.readFileSync(PUBLIC_KEY)), Buffer.from(v.signature, 'base64')); } catch {}
-    if (!ok) throw new Error('the update on the download page is not signed by DeviceHub\'s publisher, so it was not used');
+    if (!ok) throw new Error('the update is not signed by DeviceHub\'s publisher; not used');
   }
   return v;
 }
@@ -113,19 +113,19 @@ async function zipUpdate({ overwrite = false, auto = false } = {}) {
   const buf = Buffer.concat(parts);
   step('Checking the download');
   if (buf.length !== rel.size) throw new Error(`the download is ${buf.length} bytes, not ${rel.size}; nothing was changed`);
-  if (crypto.createHash('sha256').update(buf).digest('hex') !== rel.sha256) throw new Error('the download does not match its checksum; nothing was changed');
+  if (crypto.createHash('sha256').update(buf).digest('hex') !== rel.sha256) throw new Error('the download fails its checksum; nothing changed');
   fs.writeFileSync(zip, buf);
   const ps = (cmd, ms) => runAsync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', cmd], { timeout: ms });
   step('Unpacking');
   const x = await ps(`Expand-Archive -LiteralPath '${zip.replace(/'/g, "''")}' -DestinationPath '${dir.replace(/'/g, "''")}' -Force`, 5 * 60 * 1000);
   const src = path.join(dir, 'DeviceHub');
-  if (x.status !== 0 || !fs.existsSync(path.join(src, 'helpers', 'install.ps1'))) throw new Error('the download could not be unpacked; nothing was changed');
+  if (x.status !== 0 || !fs.existsSync(path.join(src, 'helpers', 'install.ps1'))) throw new Error('the download could not be unpacked; nothing changed');
   // the new version checks itself before it is installed
   step('Checking the new version');
   const check = path.join(src, 'tests', 'check.mjs');
   if (fs.existsSync(check)) {
     const c = await runAsync(process.execPath, [check], { cwd: src, timeout: 120000 });
-    if (c.status !== 0) throw new Error('the new version did not pass its checks, so DeviceHub stayed on this one');
+    if (c.status !== 0) throw new Error('the new version failed its checks; kept this one');
   }
   // its installer replaces this copy (it quits this DeviceHub first and starts the new one); run on its own, outside
   // this folder, with no new shortcuts. An update by itself (auto, the removed auto-update (24 Oct 2026)) passes -Background: with no
@@ -233,7 +233,7 @@ async function updateSteps(opts = {}) {
     if (r.status !== 0) {
       await git(['reset', '--quiet', '--hard', old]);
       const why = `${r.stdout || ''}${r.stderr || ''}`.split('\n').find((l) => l.startsWith('- ')) || 'its checks failed';
-      throw new Error(`the new version did not pass its checks, so DeviceHub stayed on this one (${why.replace(/^- /, '').slice(0, 160)})`);
+      throw new Error(`the new version failed its checks; kept this one (${why.replace(/^- /, '').slice(0, 160)})`);
     }
   }
   writeAtomic(path.join(ROOT, 'update-rollback.txt'), old);
@@ -261,14 +261,14 @@ async function mergeUpdate(s) {
     await git(['merge', '--abort']).catch(() => {});
     await git(['reset', '-q', '--hard', before]).catch(() => {});
     throw new Error(both.length
-      ? `the new version and this PC's changes both change ${both.slice(0, 4).join(', ')}${both.length > 4 ? ', …' : ''}; nothing was changed. Ask Claude Code to "update DeviceHub": it can bring the two together.`
-      : `the new version could not be brought together with this PC's files (${e.message}); nothing was changed`);
+      ? `the new version and this PC's changes both change ${both.slice(0, 4).join(', ')}${both.length > 4 ? ', …' : ''}; nothing changed. Ask Claude Code to "update DeviceHub".`
+      : `could not merge with this PC's files (${e.message}); nothing changed`);
   }
   const check = path.join(ROOT, 'tests', 'check.mjs');
   if (fs.existsSync(check)) {
     step('Checking the new version');
     const r = await runAsync(process.execPath, [check], { cwd: ROOT, timeout: 120000 });
-    if (r.status !== 0) { await git(['reset', '-q', '--hard', before]); throw new Error("the new version, with this PC's changes, did not pass its checks, so DeviceHub stayed as it was"); }
+    if (r.status !== 0) { await git(['reset', '-q', '--hard', before]); throw new Error("the new version, with this PC's changes, failed its checks; nothing changed"); }
   }
   writeAtomic(path.join(ROOT, 'update-rollback.txt'), before);
   step('Restarting DeviceHub');

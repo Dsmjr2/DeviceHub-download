@@ -86,7 +86,7 @@ check(L.lightRows({ running: true, controllers: [{}, {}] }, null)[0].status === 
 check(L.lightRows({ running: true, controllers: [{}] }, null).length === 1, 'lights found: one row');
 check(L.lightRows(null, D.DEMO_SUMMARY).some((r) => r.key === 'lamparrays'), 'Dynamic Lighting shows under Lights');
 { const r = L.lightRows({ running: true, controllers: [] }, null, { verdict: { kind: 'smbus' } })[0]; check(r.status === 'needs' && /SMBus/.test(r.line), 'no lights on an SMBus board: needs you, says why'); }
-{ const r = L.lightRows({ running: true, controllers: [] }, null, { verdict: { kind: 'none' } })[0]; check(r.status === 'none' && /3-pin/.test(r.line), 'no lighting controller: not needed, says why'); }
+{ const r = L.lightRows({ running: true, controllers: [] }, null, { verdict: { kind: 'none' } })[0]; check(r.status === 'none' && /No lights/.test(r.line), 'no lighting controller: not needed, says why'); }
 check(L.batteryRows([{ name: 'A', connected: true, battery: 50 }, { name: 'B', connected: false, battery: 90 }]).length === 1, 'only connected batteries');
 check(L.batteryRows([])[0].status === 'none', 'no batteries: not needed');
 check(L.learnRows({ installed: false }, rows)[0]?.action?.kind === 'tool', 'USBPcap offered when a device needs learning');
@@ -155,9 +155,9 @@ check(!plan.devices.some((r) => r.key === 'unknown' || r.key === '1b1c:1b8b'), '
     { key: 'demo-razer', id: 'demo-razer', title: 'Razer DeathAdder V3', status: 'needs', action: { kind: 'turn-on', id: 'demo-razer' } }, { ...held('x', 'icue', 'Close iCUE', 'Done one'), status: 'done' }];
   const apps = L.makerApps(rowsQ);
   check(apps.length === 2 && apps[0].app === 'ghub' && apps[0].ids.join() === 'mouse,kb' && apps[1].app === 'synapse', `one entry per app, every device it holds (${apps.map((a) => a.app)})`);
-  check(L.askLine(apps) === 'Close G HUB and Synapse so DeviceHub can set your devices up?', `one question, the apps named (${L.askLine(apps)})`);
-  check(L.askLine(L.makerApps([held('a', 'gg', 'Close SteelSeries GG', 'Aerox')])) === 'Close SteelSeries GG so DeviceHub can set your device up?', 'one app, one device');
-  check(L.askLine(L.makerApps([held('a', 'gg', 'Close SteelSeries GG', 'A'), held('b', 'icue', 'Close iCUE', 'B'), held('c', 'pulsar', 'Close the Pulsar app', 'C')])) === 'Close SteelSeries GG, iCUE and the Pulsar app so DeviceHub can set your devices up?', 'three apps: commas and "and"');
+  check(L.askLine(apps) === 'Close G HUB and Synapse first?', `one question, the apps named (${L.askLine(apps)})`);
+  check(L.askLine(L.makerApps([held('a', 'gg', 'Close SteelSeries GG', 'Aerox')])) === 'Close SteelSeries GG first?', 'one app, one device');
+  check(L.askLine(L.makerApps([held('a', 'gg', 'Close SteelSeries GG', 'A'), held('b', 'icue', 'Close iCUE', 'B'), held('c', 'pulsar', 'Close the Pulsar app', 'C')])) === 'Close SteelSeries GG, iCUE and the Pulsar app first?', 'three apps: commas and "and"');
   check(L.makerApps([held('a', 'zzz', 'Close Some App', 'A')])[0].name === 'Some App', 'an app without a short name: its own name');
   check(L.leftLine(apps[1]).join() === 'Razer Viper: left as it is (Synapse is open).', 'Not now: each of its devices left as it is');
   check(!L.doAllSteps(rowsQ).some((s) => s.kind === 'close-app'), 'the close is not a step: it waits for the Yes');
@@ -171,7 +171,7 @@ check(!plan.devices.some((r) => r.key === 'unknown' || r.key === '1b1c:1b8b'), '
   check(/kind: 'close-app', app: a\.app, confirm: true/.test(page) && /'Yes, close them'/.test(page) && /'Not now'/.test(page), 'the page asks once (Yes, close them / Not now) and closes with the confirm flag');
   // the demo: Set it all up asks about SteelSeries GG first
   const demoRows = L.deviceRows(D.DEMO_SUMMARY, { live: D.DEMO_LIVE, diag: D.DEMO_DIAG, isVia });
-  check(L.askLine(L.makerApps(L.planSetup(demoRows).needs)) === 'Close SteelSeries GG so DeviceHub can set your device up?', 'demo: asks about SteelSeries GG');
+  check(L.askLine(L.makerApps(L.planSetup(demoRows).needs)) === 'Close SteelSeries GG first?', 'demo: asks about SteelSeries GG');
 }
 
 // ---------- "You're all set": each device with what it can do now ----------
@@ -183,13 +183,13 @@ check(!plan.devices.some((r) => r.key === 'unknown' || r.key === '1b1c:1b8b'), '
   check(L.canDo({ id: 'mouse', kind: 'mouse' }, null) === 'DPI, polling, buttons', 'a built-in not read yet: what its page has');
   check(L.canDo({ id: 'demo-razer', kind: 'mouse' }, D.DEMO_LIVE['demo-razer']) === 'DPI, polling rate, lights, battery', "an added driver: its own settings list");
   check(L.canDo({ key: 'monitors', kind: 'monitor' }, null) === 'brightness, contrast', 'monitors');
-  check(L.canDo({ key: 'x', kind: 'gadget' }, null) === 'Open it to see its settings', 'nothing known: a plain line');
+  check(L.canDo({ key: 'x', kind: 'gadget' }, null) === 'Open to see settings', 'nothing known: a plain line');
   // Shawn's PC: nothing needs him, every device tile says what it can do
   const shawnRows = L.deviceRows({ works: D.DEMO_SUMMARY.works.filter((i) => ['mouse', 'headset', 'keyboard', 'monitors', 'cameras'].includes(i.what)) }, {});
   const p = L.planSetup(shawnRows);
   check(p.needs.length === 0 && p.devices.length === 5 && p.devices.every((r) => L.canDo(r, null).length > 0 && L.canDo(r, null).length <= 50), "Shawn's PC: 5 tiles, each with a short line");
   const page = fs.readFileSync(path.join(ROOT, 'public/pages/setup.js'), 'utf8');
-  check(page.includes("\"You're all set\"") && page.includes("'Open a device to change its settings.'"), "the done view's title and its one line");
+  check(page.includes("\"You're all set\"") && page.includes("'Open a device to change it.'"), "the done view's title and its one line");
   // the demo after Set it all up (Yes): nothing needs you, so the done view shows
   const after = L.deviceRows(D.DEMO_SUMMARY, { live: { ...D.DEMO_LIVE, 'demo-razer': { ...D.DEMO_LIVE['demo-razer'], turnOn: false }, 'demo-aerox': { ...D.DEMO_LIVE['demo-aerox'], status: 'connected' } }, isVia });
   check(L.planSetup(after).needs.length === 0, 'demo: after Yes, close them and Set it all up, nothing needs you');

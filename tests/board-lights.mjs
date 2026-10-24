@@ -96,7 +96,7 @@ const setupOnce = async () => { resultText = pc.result; return bl.setUp(); };
 // 1. PawnIO missing: downloaded, both checks, its installer, then one admin prompt
 reset();
 let st = await bl.status({ fresh: true });
-check(!st.setUp && st.canSetUp && !st.pawnio.installed && /Installs PawnIO 2\.2\.0/.test(st.before) && /Windows asks twice/.test(st.before) && /allowed to change your board's lighting chip/.test(st.before), `before the click: what, the prompts, the chip (${st.before})`);
+check(!st.setUp && st.canSetUp && !st.pawnio.installed && /Installs PawnIO 2\.2\.0/.test(st.before) && /Windows asks twice/.test(st.before) && /as administrator/.test(st.before), `before the click: what, the prompts, the chip (${st.before})`);
 let r = await setupOnce();
 check(r.ok && /Board, fan and RAM lights are set up/.test(r.text) && /Find lights/.test(r.text), `happy path (${r.text})`);
 check(calls.download.length === 1 && calls.download[0] === P.url && calls.run.join() === 'PawnIO_setup.exe', 'PawnIO downloaded from its release and its own installer run');
@@ -216,7 +216,7 @@ v = boardView({ ...ST, canSetUp: false, why: 'this copy of DeviceHub lacks its b
 check(!v.action && /cannot be added/.test(v.line), 'a copy without the modules: why, no button');
 v = boardView({ ...ST, task: true, partial: 'The task is there but its OpenRGB copy is not.' }, { done: true, ok: false, text: 'Not set up: x.' });
 check(v.action === 'setup' && v.also === 'ask-remove' && !v.result.ok && /Adding again replaces it/.test(v.line), 'a part left from a failed try: Add again or Remove');
-check(DEMO_BOARD.demo && /allowed to change your board's lighting chip/.test(DEMO_BOARD.before), 'demo mode has a pretend status');
+check(DEMO_BOARD.demo && /as administrator/.test(DEMO_BOARD.before), 'demo mode has a pretend status');
 
 const smbus = { verdict: { kind: 'smbus' } };
 let row = boardRow({ ...ST }, smbus);

@@ -294,7 +294,7 @@ const where = (e) => (e.size === 1 ? `byte ${e.offset}` : e.color ? `bytes ${e.o
 const howScaled = (e) => (e.scale == null ? '' : `${e.scale !== 1 ? ` x ${e.scale}` : ''}${e.add ? ` ${e.add > 0 ? '+' : '-'} ${Math.abs(e.add)}` : ''}`);
 const refuse = (why, extra = {}) => ({ ok: false, why: [].concat(why), ...extra });
 // the way on when a setting cannot be learned at all (23 Oct 2026: every refusal names what to do next, never a dead end)
-const SKIP = 'Skip it to keep learning the other settings; Get help (top right) tells Shawn what was found.';
+const SKIP = 'Skip it to keep learning the others.';
 
 // takes: [{ value, messages }]; setting: { label, kind: 'number' | 'toggle' | 'choice' }.
 // { ok: true, learned } or { ok: false, why: [sentences], ambiguous?, needMore? }
@@ -1172,7 +1172,7 @@ export const deps = {
   async listHid() {
     const r = await PS(['-File', path.join(HERE, 'learn-hid-list.ps1')]);
     const at = r.out.indexOf('{');
-    if (at < 0) throw new Error('DeviceHub could not read the list of USB devices. Press Look again; if it stays, restart DeviceHub.');
+    if (at < 0) throw new Error('USB list not read. Press Look again or restart DeviceHub.');
     return JSON.parse(r.out.slice(at));
   },
   // the ids DeviceHub already runs: its own drivers (pc-map RUNS), the person's own my-devices drivers (mine, hidden),
@@ -1490,7 +1490,7 @@ export async function act(name, b = {}) {
     session.uac = null;
     if (r.started) recordUac({ area: 'learn', action: 'start listening', outcome: 'yes' });
     else if (r.declined || r.unanswered) recordUac({ area: 'learn', action: 'start listening', outcome: r.unanswered ? 'unanswered' : 'declined' });
-    if (!r.started) return { ok: false, uac: r.unanswered ? 'unanswered' : r.declined ? 'declined' : null, error: r.declined ? "Windows' permission box was declined, so DeviceHub is not listening. Press Try again and choose Yes." : r.unanswered ? "Windows' permission box was not answered within 2 minutes. If it is still open, close it (No), then press Try again." : `DeviceHub could not start listening: ${r.error}` };
+    if (!r.started) return { ok: false, uac: r.unanswered ? 'unanswered' : r.declined ? 'declined' : null, error: r.declined ? "Windows' prompt was declined, so DeviceHub is not listening. Try again and choose Yes." : r.unanswered ? "Windows' prompt was not answered in 2 minutes. Close it, then Try again." : `DeviceHub could not start listening: ${r.error}` };
     session.listening = true;
     return { ok: true, ...summary() };
   }
@@ -1599,7 +1599,7 @@ export async function act(name, b = {}) {
       const dev = session.device;
       lastSaved = { ...sec, def: c.driver };
       session.saved = { name: r.name, id: r.id, second: true, same: c.same, pid: dev.pid, canSecond: true,
-        note: `${c.same ? `The device takes the same bytes on USB ${dev.vid}:${dev.pid}, so that id was added to the driver.` : `The device takes other bytes on USB ${dev.vid}:${dev.pid}, so the driver keeps its own copy of them for that id.`} Restart DeviceHub to use it there. Each setting stays read-only until you press Turn on settings on its page and it passes its check.` };
+        note: `${c.same ? `The device takes the same bytes on USB ${dev.vid}:${dev.pid}, so that id was added to the driver.` : `The device takes other bytes on USB ${dev.vid}:${dev.pid}, so the driver keeps its own copy of them for that id.`} Restart DeviceHub to use it there. Settings stay read-only until you press Turn on settings.` };
       if (session.listening) { await command(session.dir, 'quit', null, 'ended', 3000).catch(() => {}); session.listening = false; }
       return { ok: true, ...summary() };
     }
@@ -1611,7 +1611,7 @@ export async function act(name, b = {}) {
       let folder = session.base.where === 'my-devices' ? session.base.dir : null;
       if (!folder) {
         const inst = await installFromLibrary(session.base.name, { root, readOnly: true, untested: true });
-        if (!inst.ok) return { ok: false, why: [`Its library driver could not be copied to my-devices: ${inst.error}`, 'Close any window showing the my-devices folder and try again; Get help (top right) tells Shawn if it stays.'] };
+        if (!inst.ok) return { ok: false, why: [`Its library driver could not be copied to my-devices: ${inst.error}`, 'Close any my-devices folder window, then try again.'] };
         folder = inst.to;
       }
       const r = saveInto(folder, c.driver, keys, { root });
@@ -1620,7 +1620,7 @@ export async function act(name, b = {}) {
       if (session.base.where !== 'my-devices') { try { loaded = await d.loadNew(root); } catch {} }
       lastSaved = null;
       session.saved = { name: r.name, id: r.id, added: keys, into: session.base.name, loaded: !!loaded?.some((x) => x.name === r.name && x.id),
-        note: session.base.where === 'my-devices' ? 'Added to the driver it already had. Restart DeviceHub to load the new settings; each stays read-only until you press Turn on settings and it passes its check.' : 'Added to a copy of its library driver. Each new setting stays read-only until you press Turn on settings and it passes its check.' };
+        note: session.base.where === 'my-devices' ? 'Added to its driver. Restart DeviceHub; new settings stay read-only until Turn on settings.' : 'Added to a copy of its library driver. New settings stay read-only until Turn on settings.' };
       if (session.listening) { await command(session.dir, 'quit', null, 'ended', 3000).catch(() => {}); session.listening = false; }
       return { ok: true, ...summary() };
     }
@@ -1780,7 +1780,7 @@ function draftCheck(learned, b = {}) {
   const v = validate(def);
   if (!v.ok) return { ok: false, why: v.problems, driver: def };
   const seen = verifySeen(def, learned);
-  if (seen.length) return { ok: false, why: ['The driver would send something not seen in the recordings, so it was not made.', ...seen, 'Remove the last setting learned (it is the likeliest cause) and press Save the driver again; Get help (top right) tells Shawn the rest.'], driver: def };
+  if (seen.length) return { ok: false, why: ['The driver would send something not seen in the recordings, so it was not made.', ...seen, 'Remove the last setting learned, then save again.'], driver: def };
   if (session.base) {
     let merged;
     try { merged = mergeDriver(session.base.def, def); } catch (e) { return { ok: false, why: [e.message], driver: def }; }
@@ -1837,7 +1837,7 @@ async function checkSetupOnce({ vid = null, pid = null } = {}) {
     return done();
   }
   const has = d.usbpcapInstalled();
-  if (!step('usbpcap', has, has ? 'USBPcap is installed.' : 'USBPcap is not installed.', 'Install it (Settings > Optional tools > Show, USBPcap), restart the PC once, then test again.')) return done();
+  if (!step('usbpcap', has, has ? 'USBPcap is installed.' : 'USBPcap is not installed.', 'Install USBPcap (Settings > Optional tools), restart the PC, then test again.')) return done();
   const dir = path.join(root, 'learn', 'wizard', `check-${Date.now().toString(36)}`);
   fs.mkdirSync(dir, { recursive: true });
   const holder = { seq: 0 };
@@ -1847,32 +1847,32 @@ async function checkSetupOnce({ vid = null, pid = null } = {}) {
     started = !!r.started;
     if (r.started || r.declined || r.unanswered) recordUac({ area: 'learn', action: 'test my learning setup', outcome: r.started ? 'yes' : r.unanswered ? 'unanswered' : 'declined' });
     if (!step('prompt', r.started, r.started ? 'Windows\' prompt was answered Yes.' : r.declined ? 'Windows\' prompt was answered No.' : r.unanswered ? "Windows' permission box was not answered within 2 minutes." : `The listener did not start: ${r.error}.`,
-      r.declined || r.unanswered ? `Test again and press Yes: listening to USB needs administrator rights. It only listens. ${UAC_LINE}` : 'Restart DeviceHub and test again; Get help (top right) tells Shawn if it stays.')) return done();
+      r.declined || r.unanswered ? `Test again and press Yes: USB listening needs admin rights. ${UAC_LINE}` : 'Restart DeviceHub and test again.')) return done();
     let s = null;
     for (let t = 0; t < 15000; t += 200) { s = d.readState(dir); if (s && ['ready', 'error', 'ended'].includes(s.status)) break; await d.sleep(200); }
     const hubs = Number(s?.hubs) || 0;
     if (!step('ready', s?.status === 'ready', s?.status === 'ready' ? `It listens on ${hubs} USB hub${hubs === 1 ? '' : 's'}.` : s?.error ? `The listener says: ${s.error}.` : 'The listener did not answer.',
-      /restart the PC/i.test(s?.error || '') || !s ? 'Restart the PC once (USBPcap needs it after installing), then test again.' : 'Restart the PC, then test again; Get help (top right) tells Shawn if it stays.')) return done();
+      /restart the PC/i.test(s?.error || '') || !s ? 'Restart the PC once (USBPcap needs it after installing), then test again.' : 'Restart the PC, then test again.')) return done();
     s = await command(dir, 'start', 'check', 'recording', 15000, holder);
     if (!step('record', s.status === 'recording', s.status === 'recording' ? 'It started recording.' : `It did not start recording${s.error ? `: ${s.error}` : ''}.`,
-      'Restart the PC once, then test again; Get help (top right) tells Shawn if it stays.')) return done();
+      'Restart the PC once, then test again.')) return done();
     await d.sleep(CHECK_MS);
     s = await command(dir, 'stop', null, 'stopped', 15000, holder);
-    if (!step('stop', s.status === 'stopped', s.status === 'stopped' ? 'It stopped cleanly.' : 'It did not stop cleanly.', 'Test again; Get help (top right) tells Shawn if it stays.')) return done();
+    if (!step('stop', s.status === 'stopped', s.status === 'stopped' ? 'It stopped cleanly.' : 'It did not stop cleanly.', 'Test again.')) return done();
     const bufs = d.readTake(dir, 'check');
     const recs = [];
     let bad = 0;
     for (const b of bufs) { try { recs.push(...readPcapBuffer(b)); } catch { bad++; } }
     if (!step('read', bufs.length && bad < bufs.length, bufs.length && bad < bufs.length ? `The recording reads (${recs.length} USB message${recs.length === 1 ? '' : 's'} in ${CHECK_MS / 1000} s).` : bufs.length ? 'The recording could not be read.' : 'No recording was saved.',
-      'Test again; Get help (top right) tells Shawn if it stays.')) return done();
+      'Test again.')) return done();
     const found = deviceDescriptors(recs);
     if (!step('devices', found.size, found.size ? `It names the ${found.size} USB device${found.size === 1 ? '' : 's'} plugged in.` : 'It named no USB device.',
-      'Unplug the device you want to learn and plug it back in, then test again.')) return done();
+      'Unplug the device and plug it back in, then test again.')) return done();
     if (vid && pid) {
       const at = [...found].filter(([, x]) => x.vid === up4(vid) && x.pid === up4(pid)).map(([k]) => k);
       const heard = at.length ? hidMessages(recs, { at: new Set(at) }).length : 0;
       step('device', at.length, at.length ? `It finds USB ${up4(vid)}:${up4(pid)}${heard ? ` and heard ${heard} message${heard === 1 ? '' : 's'} from it` : ''}.` : `It does not find USB ${up4(vid)}:${up4(pid)}.`,
-        'Unplug it and plug it back in (a port on the PC itself, not a hub), then test again.');
+        'Unplug it and plug it back in (not a hub), then test again.');
     }
     return done();
   } finally {

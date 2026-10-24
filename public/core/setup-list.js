@@ -79,18 +79,18 @@ export function deviceRows(summary, { live = {}, diag = {}, layouts = {}, isVia 
   }
   for (const i of s.learn || []) {
     if (i.what === 'library-install' || i.what === 'library-untested') {
-      rows.push({ key: `install:${i.name}`, title: i.title, device: true, status: 'needs', line: 'Install its driver to change its settings.', ...(i.action ? { action: { kind: 'install', name: i.action.name } } : {}) });
+      rows.push({ key: `install:${i.name}`, title: i.title, device: true, status: 'needs', line: 'Install its driver.', ...(i.action ? { action: { kind: 'install', name: i.action.name } } : {}) });
       continue;
     }
     const { vid, pid } = splitUsb(i.usb);
-    if (i.what === 'packet-size') { rows.push({ key: i.usb, title: i.title, status: 'optional', line: 'Not supported yet. You can ask for it.', action: { kind: 'request', vid, pid, name: i.title } }); continue; }
+    if (i.what === 'packet-size') { rows.push({ key: i.usb, title: i.title, status: 'optional', line: 'Not supported yet.', action: { kind: 'request', vid, pid, name: i.title } }); continue; }
     const L = layouts[String(i.usb || '').toLowerCase()];
-    if (isVia(i.usb, i.title) && L?.have) rows.push({ key: i.usb, title: i.title, device: true, kind: 'keyboard', status: 'needs', line: 'Restart DeviceHub (tray icon > Quit) to show its keys.' });
-    else if (isVia(i.usb, i.title) && L?.source) rows.push({ key: i.usb, title: i.title, device: true, kind: 'keyboard', status: 'needs', line: "Get its maker's layout file to change its keys.", action: { kind: 'get-layout', vid, pid } });
-    else rows.push({ key: i.usb, title: i.title, device: true, status: 'needs', line: 'No driver yet. Learn it to change its settings.', action: { kind: 'learn', vid, pid } });
+    if (isVia(i.usb, i.title) && L?.have) rows.push({ key: i.usb, title: i.title, device: true, kind: 'keyboard', status: 'needs', line: 'Restart DeviceHub to show its keys.' });
+    else if (isVia(i.usb, i.title) && L?.source) rows.push({ key: i.usb, title: i.title, device: true, kind: 'keyboard', status: 'needs', line: 'Needs its layout file.', action: { kind: 'get-layout', vid, pid } });
+    else rows.push({ key: i.usb, title: i.title, device: true, status: 'needs', line: 'No driver yet. Learn it.', action: { kind: 'learn', vid, pid } });
   }
   for (const i of s.optional || []) {
-    if (i.what === 'library-extra') rows.push({ key: `install:${i.name}`, title: i.title, kind: 'keyboard', status: 'optional', line: 'Works now. A driver adds more settings.', ...(i.action ? { action: { kind: 'install', name: i.action.name } } : {}) });
+    if (i.what === 'library-extra') rows.push({ key: `install:${i.name}`, title: i.title, kind: 'keyboard', status: 'optional', line: 'Works. A driver adds more.', ...(i.action ? { action: { kind: 'install', name: i.action.name } } : {}) });
     else if (i.what === 'unknown-vendor') rows.push({ key: 'unknown', title: i.title, status: 'optional', line: [].concat(i.usb || []).length === 1 ? 'Learn a device can try it.' : 'Learn a device can try them.', action: { kind: 'learn' } });
   }
   // devices the summary did not list (it did not answer, or a driver written on this PC): from the window's own list
@@ -123,7 +123,7 @@ export function doAllSteps(rows) {
 export function soundRows(tool, eq) {
   const rows = [];
   if (!tool) return rows;
-  if (!tool.installed) rows.push({ key: 'eqapo', title: 'Equalizer APO', status: 'optional', line: 'EQ and mic filters for any headset.', action: { kind: 'tool', id: 'eqapo' } });
+  if (!tool.installed) rows.push({ key: 'eqapo', title: 'Equalizer APO', status: 'optional', line: 'EQ and mic filters.', action: { kind: 'tool', id: 'eqapo' } });
   else rows.push({ key: 'eqapo', title: 'Equalizer APO', status: 'done', line: 'Installed.', action: { kind: 'open', page: 'headset' } });
   if (tool.installed && eq && eq.engine === 'eqapo') {
     const off = [...new Set((eq.notOn || []).map((d) => d.name))];
@@ -138,17 +138,17 @@ export function soundRows(tool, eq) {
 // Lights: the OpenRGB inside DeviceHub (GET /api/openrgb), why nothing was found (GET /api/lights/diagnose,
 // helpers/lights-diagnose.js), and Windows Dynamic Lighting from the summary
 const NO_LIGHTS = {
-  smbus: { status: 'needs', line: "Board lights (SMBus) need adding. Lighting shows how." },
-  none: { status: 'none', line: 'No lights to change: the fans are plain 3-pin RGB or on a hub with a remote.' },
-  usb: { status: 'needs', line: "A light is plugged in but not found. Close its maker's app, then look again." },
+  smbus: { status: 'needs', line: 'Board lights (SMBus) need adding.' },
+  none: { status: 'none', line: 'No lights DeviceHub can change.' },
+  usb: { status: 'needs', line: "Light not found. Close its maker's app, look again." },
 };
 // board: GET /api/board-lights (helpers/board-lights.mjs), or null when not read: with it, an SMBus board gets its own
 // row, "Board, fan and RAM lights", whose one control is Add board, fan and RAM lights (ui/board-lights.js)
 export function boardRow(board, diag) {
   if (!board) return null;
-  if (board.setUp) return { key: 'board-lights', title: 'Board, fan and RAM lights', status: 'done', line: 'On: OpenRGB runs as administrator.', action: { kind: 'board-lights' } };
+  if (board.setUp) return { key: 'board-lights', title: 'Board, fan and RAM lights', status: 'done', line: 'On.', action: { kind: 'board-lights' } };
   if (diag?.verdict?.kind !== 'smbus') return null;
-  return { key: 'board-lights', title: 'Board, fan and RAM lights', status: board.canSetUp ? 'needs' : 'optional', line: "They sit on your board's lighting chip (SMBus).", action: { kind: 'board-lights' } };
+  return { key: 'board-lights', title: 'Board, fan and RAM lights', status: board.canSetUp ? 'needs' : 'optional', line: 'On the board\'s lighting chip.', action: { kind: 'board-lights' } };
 }
 export function lightRows(orgb, summary, diag = null, board = null) {
   const rows = [];
@@ -159,12 +159,12 @@ export function lightRows(orgb, summary, diag = null, board = null) {
     // an SMBus board with its own row: that row needs you, not this one too
     if (orgb.running && !n && NO_LIGHTS[diag?.verdict?.kind]) rows[rows.length - 1].status = own && diag.verdict.kind === 'smbus' ? 'none' : NO_LIGHTS[diag.verdict.kind].status;
     else if (orgb.running) { /* found, or no reason known */ }
-    else if (orgb.bundle?.canStart) rows.push({ key: 'openrgb', title: 'PC lights', status: 'optional', line: 'Find lights looks for USB lights.', action: { kind: 'find-lights' } });
-    else rows.push({ key: 'openrgb', title: 'PC lights', status: 'optional', line: 'Board and fan lights need the free OpenRGB. Lighting shows how.', action: { kind: 'open', page: 'lighting' } });
+    else if (orgb.bundle?.canStart) rows.push({ key: 'openrgb', title: 'PC lights', status: 'optional', line: 'USB lights.', action: { kind: 'find-lights' } });
+    else rows.push({ key: 'openrgb', title: 'PC lights', status: 'optional', line: 'Needs OpenRGB (Lighting page).', action: { kind: 'open', page: 'lighting' } });
   }
   if (own) rows.push(own);
   const lamps = (summary?.works || []).find((i) => i.what === 'lamparrays');
-  if (lamps) rows.push({ key: 'lamparrays', title: lamps.name, status: 'done', line: 'Works in Windows Dynamic Lighting.', action: { kind: 'settings', page: 'lighting', label: 'Open Dynamic Lighting' } });
+  if (lamps) rows.push({ key: 'lamparrays', title: lamps.name, status: 'done', line: 'Works in Dynamic Lighting.', action: { kind: 'settings', page: 'lighting', label: 'Open Dynamic Lighting' } });
   return rows;
 }
 
@@ -181,7 +181,7 @@ export function learnRows(tool, devRows) {
   if (!tool) return [];
   return [tool.installed
     ? { key: 'usbpcap', title: 'USBPcap', status: 'done', line: 'Installed.' }
-    : { key: 'usbpcap', title: 'USBPcap', status: 'optional', line: 'Only for learning a device.', action: { kind: 'tool', id: 'usbpcap' } }];
+    : { key: 'usbpcap', title: 'USBPcap', status: 'optional', line: 'For learning a device.', action: { kind: 'tool', id: 'usbpcap' } }];
 }
 
 export const countNeeds = (rows) => rows.filter((r) => r.status === 'needs').length;
@@ -229,7 +229,7 @@ export function makerApps(rows) {
 const joinAnd = (list) => (list.length < 2 ? list.join('') : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`);
 export function askLine(apps) {
   const n = apps.reduce((s, a) => s + a.keys.length, 0);
-  return `Close ${joinAnd(apps.map((a) => a.name))} so DeviceHub can set your device${n === 1 ? '' : 's'} up?`;
+  return `Close ${joinAnd(apps.map((a) => a.name))} first?`;
 }
 // Not now: one line for each device left as it is
 export const leftLine = (a) => a.titles.map((t) => `${t}: left as it is (${a.name} is open).`);
@@ -264,5 +264,5 @@ export function canDo(row, dev) {
   const more = out.length > room;
   const list = out.slice(0, room);
   if (dev?.battery) list.push('battery');
-  return list.length ? `${list.join(', ')}${more ? ' and more' : ''}` : 'Open it to see its settings';
+  return list.length ? `${list.join(', ')}${more ? ' and more' : ''}` : 'Open to see settings';
 }

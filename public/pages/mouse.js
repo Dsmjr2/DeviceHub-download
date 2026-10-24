@@ -2,6 +2,7 @@
 import { h, icon, fmt } from '../ui/dom.js';
 import { card, row, toggle, segmented, slider, stepper, ring, button, pill } from '../ui/controls.js';
 import { batteryCell, loadBatteryEstimates } from '../ui/controls.js';
+import { dropdown } from '../ui/dropdown.js';
 import { devices, write, isDemo, prepare } from '../core/devices.js';
 import { toast, modal } from '../ui/overlay.js';
 import { mouseArt } from '../ui/art.js';
@@ -40,16 +41,16 @@ function pointerCard(redraw) {
   if (isDemo()) pointer = pointer || { ok: true, speed: 10, precision: false, scrollLines: 3, doubleClick: 500 };
   else if (!pointer) loadPointer(redraw);
   const p = pointer;
-  const head = [h('h2', {}, 'Windows pointer'), h('span', { class: 'sub' }, 'set in Windows, for every mouse')];
+  const head = [h('h2', {}, 'Windows pointer'), h('span', { class: 'sub' }, 'all mice')];
   if (!p) return card(head, h('p', { class: 'faint' }, 'Reading…'));
-  if (!p.ok) return card(head, h('p', { class: 'faint' }, `Could not read them: ${p.error}`));
+  if (!p.ok) return card(head, h('p', { class: 'faint' }, `Not read: ${p.error}`));
   const page = p.scrollLines === -1;
   // the sliders together, then the switches (22 Oct 2026, Shawn: "group scrollables and buttons together")
   return card(head,
     row('Pointer speed', 'Windows default: 10.', slider({ value: p.speed, min: 1, max: 20, live: livePointer('speed'), onCommit: (v) => setPointer('speed', v, 'Pointer speed', `${v}`, redraw) })),
     page ? null : row('Scroll lines', null, slider({ value: p.scrollLines, min: 1, max: 20, live: livePointer('scrollLines'), onCommit: (v) => setPointer('scrollLines', v, 'Scroll lines', `${v}`, redraw) })),
-    row('Double-click speed', 'Max time between two clicks. Windows default: 500 ms.', slider({ value: p.doubleClick, min: 200, max: 900, step: 10, unit: ' ms', live: livePointer('doubleClick'), onCommit: (v) => setPointer('doubleClick', v, 'Double-click speed', `${v} ms`, redraw) })),
-    row('Enhance pointer precision', 'Mouse acceleration. Best off for gaming.', toggle({ value: p.precision, label: 'Enhance pointer precision', onCommit: (on) => setPointer('precision', on, 'Pointer precision', on ? 'on' : 'off', redraw) })),
+    row('Double-click speed', 'Windows default: 500 ms.', slider({ value: p.doubleClick, min: 200, max: 900, step: 10, unit: ' ms', live: livePointer('doubleClick'), onCommit: (v) => setPointer('doubleClick', v, 'Double-click speed', `${v} ms`, redraw) })),
+    row('Enhance pointer precision', 'Acceleration. Best off for games.', toggle({ value: p.precision, label: 'Enhance pointer precision', onCommit: (on) => setPointer('precision', on, 'Pointer precision', on ? 'on' : 'off', redraw) })),
     row('Scroll one page at a time', null, toggle({ value: page, label: 'Scroll one page', onCommit: (on) => setPointer('scrollLines', on ? -1 : 3, 'Scrolling', on ? 'one page' : '3 lines', redraw) })));
 }
 const set = (key, value, label, display) => write('mouse', key, value, { label, display }).catch(() => {});
@@ -89,11 +90,11 @@ function stageCard(v, i, count) {
   return h('div', { class: `stage${active ? ' on' : ''}${unused ? ' unused' : ''}` },
     h('div', { class: 'stage-top' }, h('span', { style: { display: 'flex', alignItems: 'center', gap: '6px' } },
       v[`color${i}`] ? h('input', { type: 'color', value: v[`color${i}`], title: `Stage ${i + 1} light color`, 'aria-label': `Stage ${i + 1} light color`, disabled: locked(`color${i}`) ? true : null, style: { width: '18px', height: '18px', padding: 0, border: 0, background: 'none', cursor: 'pointer' }, onchange: (e) => set(`color${i}`, e.target.value, `Stage ${i + 1} color`, e.target.value) }) : null,
-      `Stage ${i + 1}`), active ? pill('active', 'accent') : unused ? h('span', { title: 'Probably outside the DPI-button cycle (stage count not confirmed yet)' }, 'spare') : null),
+      `Stage ${i + 1}`), active ? pill('active', 'accent') : unused ? h('span', { title: 'Likely outside the cycle' }, 'spare') : null),
     stepper({ value: dpi, min: 50, max: DPI_MAX, step: 50, disabled: dpi == null, label: `DPI stage ${i + 1}`, onCommit: (n) => set(`dpi${i}`, snapDpi(n), `DPI stage ${i + 1}`, `${fmt(snapDpi(n))} DPI`) }),
     active ? h('div', { class: 'faint', style: { fontSize: '12px', textAlign: 'center' } }, 'in use now')
-      : unused ? h('div', { class: 'faint', style: { fontSize: '12px', textAlign: 'center' }, title: 'The DPI button cycles only the first stages; set how many with "stages in cycle" above.' }, 'outside the cycle')
-        : button('Use this stage', () => set('dpiStage', i + 1, 'Active DPI stage', `stage ${i + 1} (${fmt(dpi)} DPI)`), { kind: 'ghost small', disabled: locked('dpiStage') }));
+      : unused ? h('div', { class: 'faint', style: { fontSize: '12px', textAlign: 'center' }, title: 'Set by "stages in cycle" above.' }, 'outside the cycle')
+        : button('Use', () => set('dpiStage', i + 1, 'Active DPI stage', `stage ${i + 1} (${fmt(dpi)} DPI)`), { kind: 'ghost small', disabled: locked('dpiStage') }));
 }
 
 // Keyboard keys a mouse button can send (USB keyboard codes, as the Pulsar app stores them; learned 19 Oct 2026).
@@ -113,7 +114,7 @@ const keysText = (v) => (parseKeys(v) || []).map((c) => KEY_NAME[c] || `key ${c}
 async function pickKeys(btnName, current) {
   const chosen = [...(parseKeys(current) || [])];
   const shown = h('div', { class: 'combo-now' });
-  const paint = () => shown.replaceChildren(chosen.length ? h('b', {}, chosen.map((c) => KEY_NAME[c]).join(' + ')) : h('span', { class: 'faint' }, 'Up to 5 keys, pressed in this order.'),
+  const paint = () => shown.replaceChildren(chosen.length ? h('b', {}, chosen.map((c) => KEY_NAME[c]).join(' + ')) : h('span', { class: 'faint' }, 'Up to 5 keys, in order.'),
     chosen.length ? button('Clear', () => { chosen.length = 0; paint(); }, { kind: 'ghost small' }) : null);
   const body = h('div', { class: 'combo-pick' }, shown,
     ...KEY_GROUPS.map(([group, keys]) => h('div', { class: 'combo-group' }, h('span', { class: 'faint' }, group),
@@ -133,12 +134,12 @@ function buttonsPanel(v) {
   const sel = (i) => {
     const cur = v[`btn${i}`];
     if (i === 0) return h('div', { class: 'btnmap' }, h('b', {}, BUTTONS[0]), h('span', { class: 'locked' }, icon('shield'), 'always left click'));
-    if (cur == null) return h('div', { class: 'btnmap' }, h('b', {}, BUTTONS[i]), h('span', { class: 'locked' }, 'not readable, so it stays as it is'));
+    if (cur == null) return h('div', { class: 'btnmap' }, h('b', {}, BUTTONS[i]), h('span', { class: 'locked' }, 'not readable'));
     const isKeys = !!parseKeys(cur);
-    const s = h('select', { class: 'text', 'aria-label': BUTTONS[i] },
-      ...Object.entries(ACTIONS).filter(([k]) => k !== 'left').map(([k, a]) => h('option', { value: k, selected: k === cur ? true : null }, a.label)),
-      isKeys ? h('option', { value: cur, selected: true }, `Keys: ${keysText(cur)}`) : null,
-      h('option', { value: 'pick-keys' }, isKeys ? 'Change keyboard keys…' : 'Keyboard keys…'));
+    const s = dropdown({ label: BUTTONS[i], value: cur, options: [
+      ...Object.entries(ACTIONS).filter(([k]) => k !== 'left').map(([k, a]) => ({ value: k, label: a.label })),
+      isKeys ? { value: cur, label: `Keys: ${keysText(cur)}` } : null,
+      { value: 'pick-keys', label: isKeys ? 'Change keyboard keys…' : 'Keyboard keys…' }] });
     const wrap = h('div', { class: 'btnmap' }, h('b', {}, BUTTONS[i]), s);
     s.addEventListener('change', async () => {
       let val = s.value;
@@ -166,7 +167,7 @@ export default {
     const a = dev.adapter;
     const head = topbar('Pulsar · 8K wireless mouse', a.title, null, h('div', { class: 'chips' }, undoButton(dev), statusPill(dev)), deviceHelp(dev));
     if (dev.status !== 'connected' && !isAway(dev)) {
-      return h('div', {}, head, connectState(dev, 'Plug in the Pulsar 8K dongle, press Connect and pick "Pulsar 8K Dongle". Close the Pulsar app first (same channel).'));
+      return h('div', {}, head, connectState(dev, 'Plug in the dongle, press Connect, pick "Pulsar 8K Dongle". Close the Pulsar app first.'));
     }
     const v = dev.values;
     const count = v.stageCount;
@@ -190,7 +191,7 @@ export default {
         h('div', { class: 'grid two' },
           // Tracking: the choices and the slider first, then the on/off switches
           card([h('h2', {}, 'Tracking')],
-            row('Polling rate', 'Higher = smoother, uses more battery.',
+            row('Polling rate', 'Higher uses more battery.',
               segmented({ value: v.pollingRate, compact: true, disabled: locked('pollingRate'), options: Object.keys(POLLING).map(Number).map((hz) => ({ value: hz, label: hz >= 1000 ? `${hz / 1000}K` : String(hz) })), onCommit: (hz) => set('pollingRate', hz, 'Polling rate', `${hz} Hz`) })),
             row('Lift-off distance', 'How high it tracks when lifted.',
               segmented({ value: v.liftOff, disabled: locked('liftOff'), options: [3, 1, 2].map((c) => ({ value: c, label: LIFT_OFF[c] })), onCommit: (c) => set('liftOff', c, 'Lift-off distance', LIFT_OFF[c]) })),
@@ -201,7 +202,7 @@ export default {
             row('Ripple control', 'Smooths jitter at high DPI.', toggle({ value: v.ripple, label: 'Ripple control', disabled: locked('ripple'), onCommit: (on) => set('ripple', on, 'Ripple control', on ? 'on' : 'off') }))),
           // Power & light
           card([h('h2', {}, 'Power & light')],
-            row('Auto sleep', 'Idle time before it sleeps.', (() => { const stops = sleepStops(v.sleep); return slider({ value: v.sleep == null ? null : stops.indexOf(v.sleep), min: 0, max: stops.length - 1, step: 1, format: (i) => sleepText(stops[i]), disabled: locked('sleep'), grab: () => prepare('mouse'), onCommit: (i) => set('sleep', stops[i], 'Auto sleep', sleepText(stops[i])) }); })()),
+            row('Auto sleep', null, (() => { const stops = sleepStops(v.sleep); return slider({ value: v.sleep == null ? null : stops.indexOf(v.sleep), min: 0, max: stops.length - 1, step: 1, format: (i) => sleepText(stops[i]), disabled: locked('sleep'), grab: () => prepare('mouse'), onCommit: (i) => set('sleep', stops[i], 'Auto sleep', sleepText(stops[i])) }); })()),
             row('DPI light', null, segmented({ value: v.dpiEffect, disabled: locked('dpiEffect'), options: [{ value: 'off', label: 'Off' }, { value: 'steady', label: 'Steady' }, { value: 'breathing', label: 'Breathing' }], onCommit: (e) => set('dpiEffect', e, 'DPI light', e) })),
             // brightness applies to steady and speed to breathing, as in the Pulsar app
             v.dpiEffect === 'steady' ? row('Light brightness', null, slider({ value: v.effectBrightness, min: 1, max: 10, disabled: locked('effectBrightness'), grab: () => prepare('mouse'), onCommit: (n) => set('effectBrightness', n, 'DPI light brightness', `${n} of 10`) })) : null,

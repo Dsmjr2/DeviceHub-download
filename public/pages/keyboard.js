@@ -2,6 +2,7 @@
 import { P75, grid } from '../devices/via-layout.js';
 import { h, icon } from '../ui/dom.js';
 import { card, row, slider, stepper, button, toggle } from '../ui/controls.js';
+import { dropdown } from '../ui/dropdown.js';
 import { devices, write, writeBatch, isDemo, prepare } from '../core/devices.js';
 import { topbar, connectState, deviceActions, vendorNote, kv, statusPill, isAway, awayBanner, undoButton, deviceHelp } from './common.js';
 import { modal } from '../ui/overlay.js';
@@ -32,7 +33,7 @@ async function assign(code) {
   const s = d().adapter.session;
   const t = ui.target;
   if (!t) return;
-  if (isDangerous(code)) { toast('That keycode resets or reflashes the keyboard, so it is blocked', 'bad'); return; }
+  if (isDangerous(code)) { toast('Reset keys are blocked', 'bad'); return; }
   const from = currentCode(s);
   if (from === code) return;
   const key = t.type === 'key' ? `key:${ui.layer}:${t.r}:${t.c}` : `enc:${ui.layer}:0:${t.cw ? 1 : 0}`;
@@ -79,7 +80,7 @@ function keyboardView(s) {
 function picker(s) {
   const t = ui.target;
   if (!t) {
-    return h('div', { class: 'picker' }, h('div', { class: 'picker-cur' }, h('div', { class: 'bigcap' }, '?'), h('div', { class: 'meta' }, h('b', {}, 'Pick a key'), 'Click a key (or a knob action) to change it on this layer.')),
+    return h('div', { class: 'picker' }, h('div', { class: 'picker-cur' }, h('div', { class: 'bigcap' }, '?'), h('div', { class: 'meta' }, h('b', {}, 'Pick a key'), 'Click a key to change it.')),
       ui.undo.length ? button(`Undo: ${ui.undo.at(-1).where}`, undoLast, { kind: 'ghost', ic: 'undo' }) : null);
   }
   const code = currentCode(s);
@@ -89,9 +90,9 @@ function picker(s) {
     const q = ui.query.trim().toLowerCase();
     const groups = pickerGroups(s.info.layers).map(([g, items]) => [g, items.filter(([k, n]) => !q || n.toLowerCase().includes(q) || g.toLowerCase().includes(q) || hex(k).includes(q))]).filter(([, items]) => items.length);
     listEl.replaceChildren(...(groups.length ? groups.map(([g, items]) => h('div', { class: 'picker-group' }, h('h4', {}, g),
-      h('div', { class: 'picker-keys' }, ...items.map(([k, n]) => h('button', { class: `pk${k === code ? ' cur' : ''}`, title: hex(k), onclick: () => assign(k) }, n))))) : [h('div', { class: 'faint' }, 'Nothing matches. You can also type a raw keycode below.')]));
+      h('div', { class: 'picker-keys' }, ...items.map(([k, n]) => h('button', { class: `pk${k === code ? ' cur' : ''}`, title: hex(k), onclick: () => assign(k) }, n))))) : [h('div', { class: 'faint' }, 'No match. Try a raw keycode below.')]));
   };
-  const search = h('input', { class: 'text', placeholder: 'Search keys: "volume", "f5", "layer"…', value: ui.query, 'aria-label': 'search keys' });
+  const search = h('input', { class: 'text', placeholder: 'Search keys…', value: ui.query, 'aria-label': 'search keys' });
   search.addEventListener('input', () => { ui.query = search.value; fill(); });
   const raw = h('input', { class: 'text mono', placeholder: '0x0004', style: { width: '120px' }, 'aria-label': 'raw keycode' });
   fill();
@@ -99,7 +100,7 @@ function picker(s) {
   return h('div', { class: 'picker' },
     h('div', { class: 'picker-cur' }, h('div', { class: 'bigcap' }, t.type === 'key' ? shortName(code) : icon('knob')), h('div', { class: 'meta' }, h('b', {}, title), `Now: ${keyName(code)}`)),
     search, listEl,
-    h('div', { class: 'actions', style: { alignItems: 'center' } }, raw, button('Set raw', () => { const k = parseInt(raw.value, 16); if (Number.isNaN(k) || k < 0 || k > 0xffff) toast('Type a hex keycode like 0x0004', 'bad'); else assign(k); }, { kind: 'ghost small' }),
+    h('div', { class: 'actions', style: { alignItems: 'center' } }, raw, button('Set raw', () => { const k = parseInt(raw.value, 16); if (Number.isNaN(k) || k < 0 || k > 0xffff) toast('Use hex, like 0x0004', 'bad'); else assign(k); }, { kind: 'ghost small' }),
       ui.undo.length ? button('Undo last', undoLast, { kind: 'ghost small', ic: 'undo' }) : null,
       button('Done', () => { ui.target = null; rerender(); }, { kind: 'ghost small' })));
 }
@@ -108,9 +109,9 @@ function picker(s) {
 function* positions() { const g = LAYOUT_NOW(); for (let r = 0; r < g.length; r++) for (let c = 0; c < g[r].length; c++) if (g[r][c]) yield [r, c]; }
 
 async function runLayerPlan(title, intro, items) {
-  if (!items.length) { toast('Nothing to change', 'good', { detail: 'That layer already looks like that.' }); return; }
+  if (!items.length) { toast('Nothing to change', 'good'); return; }
   const ok = await modal(title, h('div', {}, h('p', { style: { marginTop: 0 } }, intro),
-    h('p', {}, `${items.length} key${items.length === 1 ? '' : 's'} will change. The keymap is backed up first; each key is read back.`)),
+    h('p', {}, `${items.length} key${items.length === 1 ? '' : 's'} will change.`)),
   [{ label: 'Cancel', value: false, kind: 'ghost' }, { label: 'Change keys', value: true, kind: 'primary' }]);
   if (!ok) return;
   const t = toast(`${title}…`, 'busy', { ms: 0 });
@@ -120,9 +121,9 @@ async function runLayerPlan(title, intro, items) {
 
 async function copyLayer(s, from) {
   const choices = LAYER_NAMES.slice(0, s.info.layers).map((n, i) => [i, n]).filter(([i]) => i !== from && i !== 0);
-  const sel = h('select', { class: 'text', 'aria-label': 'copy to layer' }, ...choices.map(([i, n]) => h('option', { value: i }, `${i} · ${n}`)));
-  const ok = await modal(`Copy ${LAYER_NAMES[from]} layer`, h('div', {}, h('p', { style: { marginTop: 0 } }, 'Copy every key of this layer onto:'), sel,
-    h('p', { class: 'faint', style: { fontSize: '12.5px' } }, 'Never overwrites the base layer or copies reset and bootloader keys.')),
+  const sel = dropdown({ label: 'copy to layer', value: choices[0]?.[0], options: choices.map(([i, n]) => ({ value: i, label: `${i} · ${n}` })) });
+  const ok = await modal(`Copy ${LAYER_NAMES[from]} layer`, h('div', {}, h('p', { style: { marginTop: 0 } }, 'Copy this layer onto:'), sel,
+    h('p', { class: 'faint', style: { fontSize: '12.5px' } }, 'Skips the base layer and reset keys.')),
   [{ label: 'Cancel', value: false, kind: 'ghost' }, { label: 'Next', value: true, kind: 'primary' }]);
   if (!ok) return;
   const to = Number(sel.value);
@@ -150,7 +151,7 @@ function cheatSheet(s) {
     rows.push([shortName(s.keymap[0][r][c]), keyName(code), isDangerous(code)]);
   }
   const body = h('div', { class: 'diff' }, ...rows.map(([base, action, danger]) => h('div', { style: { gridTemplateColumns: '120px 1fr' } },
-    h('b', { style: { color: 'var(--text)' } }, `Fn + ${base}`), h('span', { style: danger ? { color: 'var(--bad)' } : null }, action + (danger ? ' (hold carefully: resets the keyboard)' : '')))));
+    h('b', { style: { color: 'var(--text)' } }, `Fn + ${base}`), h('span', { style: danger ? { color: 'var(--bad)' } : null }, action + (danger ? ' (resets the keyboard)' : '')))));
   const actions = [{ label: 'Close', value: 'close', kind: 'ghost' }];
   if (!isDemo()) actions.unshift({ label: 'Print', value: 'print', kind: 'primary' });
   modal('Fn layer cheat-sheet', h('div', {}, h('p', { style: { marginTop: 0 } }, `${rows.length} Fn combinations on your ${layoutOf().name.replace(/^Epomaker /, '')}:`), body), actions).then((v) => { if (v === 'print') window.print(); });
@@ -179,10 +180,10 @@ function macroPanel(s) {
   const used = m.raw?.length ? m.raw.reduce((n, x) => n + x.length + 1, 0) : null;
   // in plain steps (22 Oct 2026, Shawn: "make this description make more sense and easier to understand")
   const help = h('div', { class: 'macro-help' },
-    h('p', {}, 'A macro types something for you when you press one key.'),
+    h('p', {}, 'One key types your text.'),
     h('ol', {},
-      h('li', {}, 'Type what it should type in a box below, then press Save.'),
-      h('li', {}, 'In Key mapping above, click a key and pick the macro from the Macros group.')),
+      h('li', {}, 'Type the text below, press Save.'),
+      h('li', {}, 'In Key mapping, click a key, pick the macro.')),
     h('p', { class: 'faint' }, 'Special keys go in braces: ', h('code', {}, '{Enter}'), ', ', h('code', {}, '{Tab}'), ', ', h('code', {}, '{Ctrl+C}'), '; ',
       h('code', {}, '{wait 200}'), ' pauses 200 ms; ', h('code', {}, '{{'), ' types a brace.'));
   // the slots in use, plus the first empty one to add a macro (or all of them)
@@ -191,7 +192,7 @@ function macroPanel(s) {
   return card([h('h2', {}, 'Macros'), h('span', { class: 'spacer' })], help,
     ...show.map(([text, i]) => {
       const locked = m.editable && !m.editable[i] && !!text;
-      const input = h('input', { class: 'text mono', value: text, placeholder: text ? '' : 'e.g. gg{Enter}', 'aria-label': `macro ${i}`, disabled: locked, title: locked ? 'Made in another app with steps DeviceHub cannot show exactly; edit it there' : null });
+      const input = h('input', { class: 'text mono', value: text, placeholder: text ? '' : 'e.g. gg{Enter}', 'aria-label': `macro ${i}`, disabled: locked, title: locked ? 'Made in another app; edit it there' : null });
       const save = button('Save', () => write('keyboard', `macro:${i}`, input.value, { label: `Macro ${i}`, display: input.value ? `"${input.value}"` : 'empty' }).catch(() => {}), { kind: 'ghost small' });
       save.disabled = true;
       input.addEventListener('input', () => { save.disabled = input.value === text; });
@@ -202,8 +203,8 @@ function macroPanel(s) {
 }
 
 function effectSelect(value, onCommit) {
-  const sel = h('select', { class: 'text', style: { width: '230px' }, 'aria-label': 'lighting effect' },
-    ...EFFECTS.map((n, i) => h('option', { value: i, selected: i === value ? true : null }, n[0].toUpperCase() + n.slice(1))));
+  const sel = dropdown({ style: { width: '230px' }, label: 'lighting effect', value,
+    options: EFFECTS.map((n, i) => ({ value: i, label: n[0].toUpperCase() + n.slice(1) })) });
   const wrap = h('div', { class: 'stepper', style: { border: 0, background: 'none' } }, sel);
   sel.addEventListener('change', async () => { wrap.classList.add('pending'); try { await onCommit(Number(sel.value)); } finally { wrap.classList.remove('pending'); } });
   return wrap;
@@ -215,7 +216,7 @@ function effectSelect(value, onCommit) {
 const KB_COLORS = ['#ff2d55', '#ff6a1a', '#ffd23f', '#3ddc97', '#3fe0ff', '#5b6cff', '#b48cff', '#ff5d8f', '#ffffff'];
 function lightingPanel(dev) {
   const v = dev.values;
-  if (v.brightness == null) return card([h('h2', {}, 'Lighting')], h('p', { class: 'faint' }, 'No answer on the lighting channel.'));
+  if (v.brightness == null) return card([h('h2', {}, 'Lighting')], h('p', { class: 'faint' }, 'Lighting not answering.'));
   const set = (key, value, label, display) => write('keyboard', key, value, { label, display });
   // the P75 keeps its top step as 250-253 of 255, which is full brightness: show it as 100%
   const pct = (x) => `${x >= 250 ? 100 : Math.round((x / 255) * 100)}%`;
@@ -277,21 +278,21 @@ export function viaFileNote(vid, pid, maker) {
   // "Get the layout" (helpers/via-fetch.mjs): only for a keyboard whose official VIA file DeviceHub knows; the click
   // is the person's yes for that one file, which is checked before it is saved
   if (!isDemo()) fetch(`/api/via-fetch?vid=${encodeURIComponent(vid)}&pid=${encodeURIComponent(pid)}`).then((r) => r.json()).then((p) => {
-    if (p.have) { line.textContent = `via-definitions\\${p.file} is there. Keys missing? Restart DeviceHub.`; return; }
+    if (p.have) { line.textContent = 'Layout found. Keys missing? Restart DeviceHub.'; return; }
     if (!p.source) return;
     const size = p.source.size ? `, about ${(p.source.size / 1024).toFixed(1)} KB` : '';
-    line.textContent = `Get the layout saves ${p.file} (${p.source.name || 'its VIA file'}${size}) from ${p.source.host}, checked first.`;
-    const b = button('Get the layout', async () => {
-      line.textContent = `Getting ${p.file} from ${p.source.host}...`;
+    line.textContent = `Layout file from ${p.source.host}${size}.`;
+    const b = button('Get layout', async () => {
+      line.textContent = 'Getting layout…';
       const r = await fetch('/api/via-fetch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vid, pid }) })
         .then((x) => x.json()).catch(() => ({ error: 'DeviceHub did not answer.' }));
-      if (r.ok) { b.remove(); line.textContent = `Saved ${r.file} in via-definitions. Restart DeviceHub (tray icon > Quit) to show its keys.`; }
-      else line.textContent = `${r.file || p.file} was not saved. ${r.error || ''}`.trim();
+      if (r.ok) { b.remove(); line.textContent = 'Saved. Restart DeviceHub to show its keys.'; }
+      else line.textContent = `Not saved. ${r.error || ''}`.trim();
     }, { kind: 'small' });
     actions.prepend(b);
   }).catch(() => {});
   return h('div', { class: 'via-file' },
-    h('p', { class: 'faint', style: { margin: '6px 0' } }, `Keys not showing? VIA's list lacks this model: get its VIA .json file from ${site}, rename it ${file}, put it in DeviceHub's via-definitions folder, then restart DeviceHub.`),
+    h('p', { class: 'faint', style: { margin: '6px 0' } }, `No keys? Get its VIA .json from ${site}, save it as ${file} in via-definitions, restart DeviceHub.`),
     line, actions);
 }
 // on the Keyboard page while no keyboard runs: the VIA keyboards This PC found (pc-lights.js reads the PC once)
@@ -311,7 +312,7 @@ export default {
     rerender = () => { const el = document.querySelector('#main .page'); if (el) el.replaceWith(Object.assign(this.render(), { className: 'page no-anim' })); };
     const head = topbar('Epomaker · 75% wireless keyboard', a.title, null, h('div', { class: 'chips' }, undoButton(dev), statusPill(dev)), deviceHelp(dev));
     if ((dev.status !== 'connected' && !isAway(dev)) || !a.session) {
-      return h('div', {}, head, connectState(dev, 'Connect the keyboard with its USB cable and press Connect. Close VIA and the maker\'s app first.'), viaHelp());
+      return h('div', {}, head, connectState(dev, 'Plug in its USB cable, press Connect. Close VIA and the maker\'s app first.'), viaHelp());
     }
     const s = a.session;
     const changed = s.original ? s.keymap.reduce((n, l, li) => n + l.reduce((m, r, ri) => m + r.filter((k, ci) => k !== s.original[li][ri][ci]).length, 0), 0) : 0;
@@ -325,7 +326,7 @@ export default {
           h('div', { class: 'layer-tabs', role: 'tablist' }, ...LAYER_NAMES.slice(0, s.info.layers).map((n, i) => h('button', { class: `layer-tab${i === ui.layer ? ' sel' : ''}`, role: 'tab', 'aria-selected': String(i === ui.layer), onclick: () => { ui.layer = i; if (ui.target?.type === 'enc') ui.target = null; rerender(); } }, `${i} · ${n}`))),
           h('div', { class: 'actions', style: { alignItems: 'center' } },
             ui.layer ? h('span', { class: 'faint', style: { fontSize: '12.5px' } }, '▽ = same as the layer below') : null,
-            button('Copy layer to…', () => copyLayer(s, ui.layer), { kind: 'ghost small' }),
+            button('Copy layer', () => copyLayer(s, ui.layer), { kind: 'ghost small' }),
             ui.layer ? button('Reset layer', () => resetLayer(s, ui.layer), { kind: 'ghost small' }) : null,
             button('Fn cheat-sheet', () => cheatSheet(s), { kind: 'ghost small' }))),
         h('div', { class: 'kb-layout' }, keyboardView(s), picker(s)),
@@ -333,7 +334,7 @@ export default {
           h('span', {}, h('i', { style: { background: '#3a3934' } }), 'normal key'),
           h('span', {}, h('i', { style: { background: 'color-mix(in srgb, var(--accent) 22%, #3a3934)' } }), 'layer / media / lighting'),
           h('span', {}, h('i', { style: { background: 'var(--signal)', borderRadius: '50%' } }), 'changed this session'),
-          h('span', {}, icon('shield', 'ic'), 'Reset and bootloader keys can never be assigned'))),
+          h('span', {}, icon('shield', 'ic'), 'Reset keys blocked'))),
       h('div', { class: 'grid two', style: { marginTop: '18px' } },
         h('div', { class: 'stack' }, knobPanel(s), lightingPanel(dev)),
         macroPanel(s)),

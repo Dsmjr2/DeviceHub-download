@@ -12,6 +12,7 @@ import keyboard from './devices/keyboard-adapter.js';
 import { demoAdapters } from './devices/demo.js';
 import { useDemoHistory } from './ui/battery-chart.js';
 import { useDemoEstimate } from './ui/controls.js';
+import { dropdownOpen } from './ui/dropdown.js';
 import overview from './pages/overview.js';
 import setupPage from './pages/setup.js';
 import { setupNeeds, watchSetup } from './pages/setup.js';
@@ -164,10 +165,10 @@ watchSetup(paintSetupNav);
 // library driver was installed (Open its page), or DeviceHub can learn it (Learn it for me, one click from here)
 env.onNewDevice = (x) => {
   if (x.installed) {
-    toast(`${x.name} is ready`, 'good', { detail: 'Installed from the shared library. Press Turn on settings on its page when ready.', ms: 15000,
-      action: x.installed.id ? { label: 'Open its page', run: () => { location.hash = `#/${x.installed.id}`; } } : null });
+    toast(`${x.name} is ready`, 'good', { detail: 'Turn on settings on its page.', ms: 15000,
+      action: x.installed.id ? { label: 'Open', run: () => { location.hash = `#/${x.installed.id}`; } } : null });
   } else if (x.learn) {
-    toast(`New: ${x.name}`, 'info', { detail: 'DeviceHub can learn it by changing each setting in the maker\'s app.', ms: 20000,
+    toast(`New: ${x.name}`, 'info', { ms: 20000,
       action: { label: 'Learn it for me', run: () => { learnThis(x.vid, x.pid, { start: true }); location.hash = '#/learn'; } } });
   }
 };
@@ -241,7 +242,10 @@ function render(fresh) {
 // page and the slider jumped back): the redraw waits for the release.
 let holding = false, heldRender = false;
 document.addEventListener('pointerdown', (e) => { if (e.target.closest?.('#main input[type=range]')) holding = true; }, true);
-const letGo = () => { if (!holding) return; holding = false; if (heldRender) { heldRender = false; setTimeout(() => render(false), 0); } };
+const letGo = () => { if (!holding || dropdownOpen()) return; holding = false; if (heldRender) { heldRender = false; setTimeout(() => render(false), 0); } };
+// an open dropdown list (ui/dropdown.js) holds redraws the same way, so a reading never pulls the control out from under it
+addEventListener('dropdown-open', () => { holding = true; });
+addEventListener('dropdown-closed', letGo);
 document.addEventListener('pointerup', letGo, true);
 document.addEventListener('pointercancel', letGo, true);
 
@@ -281,10 +285,10 @@ if (REMOTE) {
   loadSettings(); // for the Profiles page; the agent runs auto-switch itself
   env.onRemoteAuto = (a) => { if (a?.settings) Object.assign(auto.settings, a.settings); }; // e.g. toggled from the tray
 } else if (AGENT) {
-  toast('DeviceHub\'s background part is not answering', 'bad', { detail: 'Quit DeviceHub from the tray icon and open it again.', ms: 0 });
+  toast('DeviceHub not responding', 'bad', { detail: 'Quit from the tray icon, then reopen.', ms: 0 });
 } else {
   // Reconnect devices this browser already allowed (never shows a prompt), then keep battery fresh.
-  if (LOCAL && !('hid' in navigator)) toast('This browser has no WebHID', 'bad', { detail: 'Open DeviceHub in Chrome or Edge to reach the mouse and keyboard.', ms: 0 });
+  if (LOCAL && !('hid' in navigator)) toast('WebHID not available', 'bad', { detail: 'Open DeviceHub in Chrome or Edge.', ms: 0 });
   for (const a of adapters) connect(a.id, false);
   startPolling();
   startAutoSwitch();
@@ -311,7 +315,7 @@ setInterval(async () => {
     const v = (await (await fetch('/api/version')).json()).version;
     // new files: reload, but only once DeviceHub answers steadily (19 Oct 2026: a reload during its restart left the
     // window blank)
-    if (version && v !== version && !isBusy()) { toast('DeviceHub was updated', 'info', { detail: 'Reloading…' }); reloadWhenUp(); }
+    if (version && v !== version && !isBusy()) { toast('DeviceHub updated', 'info', { detail: 'Reloading…' }); reloadWhenUp(); }
     version = version || v;
   } catch {}
 }, 20000);

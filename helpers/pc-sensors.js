@@ -5,8 +5,9 @@
 //   source Task Manager uses (helpers/pc-sensors.ps1 over helpers/pc-native.cs);
 // - the ACPI thermal zones Windows exposes as performance counters (often a fixed value on desktop boards: a zone
 //   reading below room temperature is shown as not a real reading).
-// Not readable without something new: the CPU temperature and the board's fan speeds (the SuperIO chip). The OpenRGB
-// inside DeviceHub reads lights only; with PawnIO installed it still reads no fan speed. notReadable says what would.
+// The CPU temperature and the board's fan speeds (the SuperIO chip) need LibreHardwareMonitor: added on the person's
+// click (Add CPU temperature and fan speeds, helpers/cpu-sensors.mjs), then read by helpers/cpu-sensors-read.js in the
+// same request. Not added: notReadable says what would be needed. Read only, always.
 // Read only while the card is on screen (at most every 5 s); the PowerShell session stops 30 s after the last question.
 const path = require('path');
 const { spawn, execFile } = require('child_process');
@@ -59,40 +60,57 @@ function zoneTemp(z) {
   const c = z.tenthsK ? z.tenthsK / 10 - 273.15 : z.kelvin ? z.kelvin - 273.15 : null;
   return c == null ? null : Math.round(c * 10) / 10;
 }
-function decide({ nvidia = null, kmt = [], zones = [], pawnio: hasPawnio = false } = {}) {
+const LHM_SRC = 'LibreHardwareMonitor';
+function decide({ nvidia = null, kmt = [], zones = [], pawnio: hasPawnio = false, lhm = null } = {}) {
   const readings = [];
+  const lhmOk = lhm?.setUp && lhm.state === 'ok';
+  if (lhmOk) {
+    for (const c of lhm.cpu || []) {
+      if (c.packageC != null) readings.push({ name: 'CPU package', kind: 'cpu', tempC: c.packageC, fanPct: null, fanRpm: null, source: LHM_SRC });
+      if (c.coresMaxC != null && c.coresMaxC !== c.packageC) readings.push({ name: 'CPU cores, hottest', kind: 'cpu', tempC: c.coresMaxC, fanPct: null, fanRpm: null, source: LHM_SRC });
+    }
+    for (const x of lhm.fans || []) readings.push({ name: x.name, kind: 'fan', tempC: null, fanPct: null, fanRpm: x.rpm, source: LHM_SRC });
+    for (const x of lhm.boardTemps || []) readings.push({ name: `Board: ${x.name}`, kind: 'board', tempC: x.tempC, fanPct: null, fanRpm: null, source: LHM_SRC });
+  }
   const nv = nvidia?.available ? nvidia.gpus || [] : [];
   for (const g of nv) readings.push({ name: g.name, kind: 'gpu', tempC: round(g.tempC), fanPct: g.fanPct, fanRpm: null, source: "NVIDIA's nvidia-smi" });
   for (const g of kmt || []) {
     if (nv.some((n) => sameCard(n.name, g.name))) continue;
     readings.push({ name: g.name || 'Graphics card', kind: 'gpu', tempC: round(g.tempC), fanPct: null, fanRpm: g.fanRpm ?? null, source: "Windows (the card's own driver)" });
   }
-  for (const z of zones || []) {
+  // the ACPI zones: only a real reading, and only when LibreHardwareMonitor does not read the CPU itself
+  for (const z of lhmOk ? [] : zones || []) {
     const t = zoneTemp(z);
-    if (t == null) continue;
+    if (t == null || t < 20 || t > 110) continue;
     const label = `Board thermal zone ${String(z.name || '').replace(/^.*\./, '') || ''}`.trim();
     const real = t >= 20 && t <= 110;
     readings.push({ name: label, kind: 'zone', tempC: round(t), fanPct: null, fanRpm: null, source: 'Windows (ACPI)',
-      note: real ? 'The board reports this zone; it is not the CPU core temperature.' : t < 20 ? 'Below room temperature, so not a real reading.' : 'Out of range, so not a real reading.', real });
+      note: real ? 'Board zone, not the CPU.' : t < 20 ? 'Below room temperature, so not a real reading.' : 'Out of range, so not a real reading.', real });
   }
   const notReadable = [];
   if (!readings.some((r) => r.kind === 'gpu')) notReadable.push({ what: 'Graphics card temperature', why: "Its driver does not report it to Windows.", need: "An up-to-date driver from the card's maker usually adds it." });
-  const lhm = hasPawnio ? `PawnIO is already installed, so only ${LHM.name} (free, open source) would be needed.` : `${LHM.name} (free, open source) with the PawnIO driver would be needed.`;
-  notReadable.push({ what: 'CPU temperature', why: 'Windows does not share it without a driver that reads the CPU.', need: lhm, link: LHM.url });
-  notReadable.push({ what: 'CPU and case fan speeds', why: "They sit on the board's fan chip (SuperIO). The OpenRGB inside DeviceHub reads lights only, never fans.", need: lhm, link: LHM.url });
+  const lhmNeed = hasPawnio ? `PawnIO is already installed, so only ${LHM.name} (free, open source) is needed.` : `${LHM.name} (free, open source) with the PawnIO driver is needed.`;
+  if (!lhm?.setUp) {
+    notReadable.push({ what: 'CPU temperature', why: 'Needs the add-on below.', need: lhmNeed, link: LHM.url });
+    notReadable.push({ what: 'CPU and case fan speeds', why: "They sit on the board's fan chip (SuperIO).", need: lhmNeed, link: LHM.url });
+  } else if (lhmOk) {
+    if (!(lhm.cpu || []).some((c) => c.packageC != null)) notReadable.push({ what: 'CPU temperature', why: `${LHM_SRC} found no temperature on this CPU.`, need: 'Make sure PawnIO is installed, then restart the PC.' });
+    if (!(lhm.fans || []).length) notReadable.push({ what: 'CPU and case fan speeds', why: lhm.boardFound ? (lhm.idleFans ? `Every fan header reads 0 RPM.` : 'The fan chip reports no fans.') : `${LHM_SRC} found no fan chip on this board.`, need: lhm.boardFound ? 'Fans on a hub with its own power are not read.' : 'Some boards hide it; a BIOS update can help.' });
+  }
   if (!nv.length && readings.some((r) => r.kind === 'gpu' && r.fanRpm == null)) notReadable.push({ what: 'Graphics card fan speed', why: 'Its driver reports the temperature but not the fan.', need: "The card maker's own app shows it." });
-  return { readings, notReadable };
+  const sensors = lhm ? { setUp: !!lhm.setUp, state: lhm.state || null, why: lhm.why || null, idleFans: lhm.idleFans || 0 } : { setUp: false, state: null, why: null, idleFans: 0 };
+  return { readings, notReadable, cpuSensors: sensors };
 }
 
 // ---- the read ----
 let cache = { at: 0, value: null }, pending = null;
-async function read({ gpu = require('./gpu') } = {}) {
+async function read({ gpu = require('./gpu'), cpuReader = require('./cpu-sensors-read') } = {}) {
   if (cache.value && Date.now() - cache.at < 4500) return cache.value;
   if (pending) return pending;
   pending = (async () => {
     if (process.platform !== 'win32') return { readings: [], notReadable: [], errors: ['only on Windows'] };
-    const [nvidia, s, pw] = await Promise.all([gpu.read().catch(() => null), askSession(), pawnioInstalled()]);
-    const v = { ...decide({ nvidia, kmt: s?.gpus || [], zones: s?.zones || [], pawnio: pw }), pawnio: pw, errors: s ? s.errors || [] : ['the sensor reader did not answer'], at: new Date().toISOString() };
+    const [nvidia, s, pw, lhm] = await Promise.all([gpu.read().catch(() => null), askSession(), pawnioInstalled(), cpuReader.read().catch((e) => ({ setUp: true, state: 'error', why: e.message }))]);
+    const v = { ...decide({ nvidia, kmt: s?.gpus || [], zones: s?.zones || [], pawnio: pw, lhm }), pawnio: pw, errors: s ? s.errors || [] : ['the sensor reader did not answer'], at: new Date().toISOString() };
     cache = { at: Date.now(), value: v };
     return v;
   })();

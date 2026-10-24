@@ -35,7 +35,7 @@ const ctl = (name, type, id) => ({ index: 0, name, vendor: 'x', type, location: 
 
 // 1. an MSI board with Mystic Light on USB, found by OpenRGB: reachable over USB, nothing wrong
 let d = diagnose({ pc: PC('Micro-Star International Co., Ltd.', 'MAG B550 TOMAHAWK (MS-7C91)', [usb('1462:7c56', 'USB Input Device'), usb('046d:c232')]), orgb: ORGB([ctl('MSI MAG B550', 'motherboard', '1462:7c56')]) });
-check(d.verdict?.kind === 'usb' && d.verdict.line === KIND.usb && d.verdict.line === 'reachable over USB: should show after Find lights', `USB controller: ${JSON.stringify(d.verdict)}`);
+check(d.verdict?.kind === 'usb' && d.verdict.line === KIND.usb && d.verdict.line === 'on USB: shows after Find lights', `USB controller: ${JSON.stringify(d.verdict)}`);
 check(d.board === 'Micro-Star MAG B550 TOMAHAWK (MS-7C91)' && d.seen.length === 1 && d.seen[0].found === true && d.seen[0].name === 'MSI Mystic Light MS_7C56', `board and the controller seen and found: ${JSON.stringify(d.seen)}`);
 check(d.seen[0].source.startsWith(`https://codeberg.org/OpenRGB/OpenRGB/src/commit/${TABLE.source.commit}/Controllers/MSIMotherboardController/`), `the source link: ${d.seen[0].source}`);
 check(d.problems.length === 0 && d.found[0].id === '1462:7c56' && d.openrgb.usbOnly && /1\.1 \(inside DeviceHub\)/.test(d.openrgb.version), `no problems, found list read: ${JSON.stringify(d.problems)}`);
@@ -52,7 +52,7 @@ check(d.verdict.kind === 'usb' && d.seen[0].found === null && d.problems.length 
 
 // 4. an ASUS board with no USB controller: on the board's SMBus, needs PawnIO; Add board, fan and RAM lights sets it up
 d = diagnose({ pc: PC('ASUSTeK COMPUTER INC.', 'PRIME B450M-A', [usb('046d:c232')]), orgb: ORGB([]) });
-check(d.verdict.kind === 'smbus' && d.verdict.line === 'on the board\'s SMBus: needs OpenRGB with PawnIO as administrator (Add board, fan and RAM lights sets it up)' && /ENESMBusController/.test(d.verdict.source), `SMBus: ${JSON.stringify(d.verdict)}`);
+check(d.verdict.kind === 'smbus' && d.verdict.line === 'on the board\'s SMBus: needs Add board, fan and RAM lights' && /ENESMBusController/.test(d.verdict.source), `SMBus: ${JSON.stringify(d.verdict)}`);
 check(d.problems.length === 1 && /SMBus/.test(d.problems[0].problem) && /PawnIO/.test(d.problems[0].fix) && /Your choice/.test(d.problems[0].fix) && /Add board, fan and RAM lights/.test(d.problems[0].fix), `the SMBus fix: ${JSON.stringify(d.problems)}`);
 // board lights set up (helpers/board-lights.mjs) and its OpenRGB serving: named, and no setup advice
 d = diagnose({ pc: PC('ASUSTeK COMPUTER INC.', 'PRIME B450M-A', []), orgb: ORGB([ctl('ASUS PRIME B450M-A', 'motherboard', '0000:0000')], { bundled: false, board: { setUp: true } }) });
@@ -63,7 +63,7 @@ check(d.verdict.kind === 'reached' && d.problems.length === 0 && d.openrgb.versi
 
 // 5. an OEM board, nothing on USB: no lighting controller found, non-addressable or remote hub
 d = diagnose({ pc: PC('Dell Inc.', '0K3CM7', [usb('046d:c232'), usb('8087:0026')], ['Intel(R) SMBus - 7AA3']), orgb: ORGB([]) });
-check(d.verdict.kind === 'none' && d.verdict.line === 'no lighting controller found: the fans may be on a non-addressable or remote-controlled hub', `none: ${JSON.stringify(d.verdict)}`);
+check(d.verdict.kind === 'none' && d.verdict.line === 'no lighting controller found: fans may be on a plain or remote hub', `none: ${JSON.stringify(d.verdict)}`);
 check(d.problems.length === 1 && /3-pin \(12 V\)/.test(d.problems[0].fix) && /remote or button/.test(d.problems[0].fix), 'how to check the fans\' wiring');
 // a board maker that uses the SMBus but Windows lists no SMBus controller: not claimed as SMBus
 d = diagnose({ pc: PC('ASUSTeK COMPUTER INC.', 'X', [], []), orgb: ORGB([]) });
@@ -112,7 +112,7 @@ const f = await help.gather(help.LIGHTS, { version: async () => 'test', windows:
 const r = help.makeIssue(f, { names: ['zorblax'] });
 check(help.LIGHTS === 'lights' && r.ok, `the lights report can open: ${JSON.stringify(r.refused)}`);
 check(/^Help: PC lights \(Micro-Star MAG B550 TOMAHAWK \(MS-7C91\)\), RGB controller on USB$/.test(r.title), `title: ${r.title}`);
-check(r.body.includes('### PC lights') && r.body.includes('- OpenRGB: 1.1 (inside DeviceHub), running (USB lights only)') && r.body.includes('MSI MAG B550 (motherboard, USB 1462:7c56)') && r.body.includes('Corsair Commander Pro (1b1c:0c10), NOT found by OpenRGB') && r.body.includes('- So: reachable over USB'), `body:\n${r.body}`);
+check(r.body.includes('### PC lights') && r.body.includes('- OpenRGB: 1.1 (inside DeviceHub), running (USB lights only)') && r.body.includes('MSI MAG B550 (motherboard, USB 1462:7c56)') && r.body.includes('Corsair Commander Pro (1b1c:0c10), NOT found by OpenRGB') && r.body.includes('- So: on USB'), `body:\n${r.body}`);
 check(r.body.includes('### What DeviceHub found') && /Corsair Commander Pro was not found by OpenRGB/.test(r.body), 'the problem goes in as a finding');
 check(!/zorblax/.test(r.body) && /PC lights/.test(r.body.split('### Log')[1] || '') && !/unrelated line/.test(r.body), 'lights log lines only, nothing personal');
 

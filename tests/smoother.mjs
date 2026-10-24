@@ -22,7 +22,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-smoother-'));
 uac.options.root = tmp;
 
 // ---------- 2. Windows' admin box ----------
-check(/click Yes \(if hidden, click the blinking shield on the taskbar\)/.test(uac.UAC_LINE), 'the line says where the box is');
+check(/Click Yes in Windows' prompt \(if hidden, the blinking taskbar shield\)/.test(uac.UAC_LINE), 'the line says where the box is');
 {
   // an installer whose box is never answered: the line while waiting, then "not answered" with Try again, recorded
   const d = inst.deps;
@@ -201,7 +201,7 @@ check(btName("Sam's AirPods") === 'a Bluetooth airpods' && btName('Bob phone') =
   let sent = null;
   const fake = { options: {}, finalCheck: (f, t, b) => ({ ok: true, body: b }), sendNow: async (p) => { sent = p; return { sent: true }; } };
   const s = await sendCaptures(data, { ar: fake, findPersonal: () => [], sendNow: fake.sendNow });
-  check(s.sent && s.line === SENT_DONE && SENT_DONE === 'Sent. A driver is usually ready in a day: DeviceHub gets it by itself.', `sent, and the person's part ends (${s.line})`);
+  check(s.sent && s.line === SENT_DONE && SENT_DONE === 'Sent. The driver usually arrives within a day.', `sent, and the person's part ends (${s.line})`);
   check(sent && /^support:learn:25a7-fa70:/.test(sent.fingerprint) && sent.body.length <= 12000 && sent.title.length <= 120, `through the relay as a support item (${sent?.fingerprint})`);
   const none = await sendCaptures({ ...data, captures: [] }, { ar: fake, findPersonal: () => [], sendNow: fake.sendNow });
   check(!none.sent && /nothing was heard/.test(none.why), 'nothing recorded: nothing sent');

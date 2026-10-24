@@ -112,8 +112,8 @@ export function commands(q, { go, pages }) {
     }
   }
 
-  out.push({ group: 'DeviceHub', icon: 'external', label: 'Copy a report for help', keywords: 'report help problem support bug issue', run: copyShortReport });
-  out.push({ group: 'DeviceHub', icon: 'external', label: 'Copy the download link to share', keywords: 'share link download send friend installer zip', run: copyDownloadLink });
+  out.push({ group: 'DeviceHub', icon: 'external', label: 'Copy help report', keywords: 'report help problem support bug issue', run: copyShortReport });
+  out.push({ group: 'DeviceHub', icon: 'external', label: 'Copy download link', keywords: 'share link download send friend installer zip', run: copyDownloadLink });
   for (const p of pages) out.push({ group: 'Go to', icon: p.icon, label: p.title, keywords: `page open ${p.id}`, run: () => go(p.id) });
   for (const p of profiles) out.push({ group: 'Profile', icon: 'profiles', label: `Apply "${p.name}"`, keywords: 'profile switch', run: () => applyWithPreview(p) });
   for (const [name, hex] of Object.entries(COLORS)) out.push({ group: 'Lighting', icon: 'lighting', label: `All lighting ${name}`, keywords: `color color rgb ${hex}`, run: () => applyColor(hex) });
@@ -133,6 +133,6 @@ export function commands(q, { go, pages }) {
     if (d.status === 'connected') out.push({ group: 'Safety', icon: 'backups', label: `Back up ${d.adapter.title} now`, keywords: 'backup save', run: async () => toast('Backup saved', 'good', { detail: await backupNow(d.id) }) });
     else out.push({ group: 'Device', icon: 'plug', label: `Connect ${d.adapter.title}`, keywords: 'connect pair', run: () => connect(d.id, d.id !== 'headset') });
   }
-  if (!q) out.unshift({ group: 'Tip', icon: 'command', label: 'Try "dpi 800", "volume 40", "mic boost 4", "eq competitive", "brightness 40 oled" or a profile name', run: () => {} });
+  if (!q) out.unshift({ group: 'Tip', icon: 'command', label: 'Try "dpi 800" or "volume 40"', run: () => {} });
   return out;
 }

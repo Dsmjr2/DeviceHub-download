@@ -126,7 +126,7 @@ function askLayouts(summary) {
 // ---------- the buttons ----------
 const noteOf = (key, text) => { st.note[key] = text; redraw(); };
 // demo: the row shows done with the answer, nothing is sent
-const demoDone = (key, text, extra = {}) => { st.over[key] = { status: 'done', action: null, ...extra, live: { ...st.over[key]?.live, ...extra.live } }; noteOf(key, `Demo mode: ${text} Nothing was changed.`); };
+const demoDone = (key, text, extra = {}) => { st.over[key] = { status: 'done', action: null, ...extra, live: { ...st.over[key]?.live, ...extra.live } }; noteOf(key, `Demo: ${text}`); };
 async function runOne(r) {
   const a = r.action, k = r.key;
   if (st.busy[k]) return;
@@ -135,7 +135,7 @@ async function runOne(r) {
     if (a.kind === 'install') {
       noteOf(k, 'Installing…');
       if (isDemo()) return demoDone(k, 'installed.');
-      try { const j = await post('/api/library/install', { name: a.name }); noteOf(k, j.loaded ? (j.note || 'Installed.') : 'Installed. Restart DeviceHub to load it.'); }
+      try { const j = await post('/api/library/install', { name: a.name }); noteOf(k, j.loaded ? (j.note || 'Installed.') : 'Installed. Restart DeviceHub.'); }
       catch (e) { noteOf(k, `Not installed: ${e.message}`); }
       loadSummary();
     } else if (a.kind === 'turn-on' || a.kind === 'check-again') {
@@ -144,31 +144,31 @@ async function runOne(r) {
       try { noteOf(k, checkAnswer(await post('/api/diagnose/action', { kind: a.kind, id: a.id }), a.kind)); }
       catch (e) { noteOf(k, `Not done: ${e.message}`); }
     } else if (a.kind === 'get-layout') {
-      noteOf(k, 'Getting the layout…');
+      noteOf(k, 'Getting layout…');
       if (isDemo()) return demoDone(k, 'layout saved.');
       const j = await post('/api/via-fetch', { vid: a.vid, pid: a.pid }).catch((e) => ({ error: e.message }));
-      noteOf(k, j.ok ? `Saved ${j.file}. Restart DeviceHub (tray icon > Quit) to show its keys.` : `Not saved. ${j.error || ''}`.trim());
+      noteOf(k, j.ok ? `Saved. Restart DeviceHub to show its keys.` : `Not saved. ${j.error || ''}`.trim());
       if (j.ok) { delete st.layoutAsked[k]; askLayouts(st.summary); }
     } else if (a.kind === 'close-app') {
       noteOf(k, 'Closing…');
-      if (isDemo()) { st.confirm[k] = false; st.over[k] = { live: { status: 'connected' } }; return noteOf(k, 'Demo mode: closed, so it connected. Nothing was changed.'); }
+      if (isDemo()) { st.confirm[k] = false; st.over[k] = { live: { status: 'connected' } }; return noteOf(k, 'Demo: closed and connected.'); }
       try {
         const j = await post('/api/diagnose/action', { kind: 'close-app', app: a.app, confirm: true });
-        noteOf(k, j.note || (j.closed?.length ? 'Closed. It connects in a few seconds.' : 'Nothing to close.'));
+        noteOf(k, j.note || (j.closed?.length ? 'Closed. Connecting…' : 'Nothing to close.'));
         delete st.diag[a.id]; delete st.diagKey[a.id];
         setTimeout(() => connect(a.id, false).catch(() => {}), 3000);
       } catch (e) { noteOf(k, `Not closed: ${e.message}`); }
       st.confirm[k] = false;
     } else if (a.kind === 'settings') {
-      if (isDemo()) return noteOf(k, 'Demo mode: in the app this opens Windows Settings.');
-      await post('/api/diagnose/action', { kind: 'settings', page: a.page }).then(() => noteOf(k, 'Windows Settings is open.'), (e) => noteOf(k, `Could not open it: ${e.message}`));
+      if (isDemo()) return noteOf(k, 'Demo: opens Windows Settings.');
+      await post('/api/diagnose/action', { kind: 'settings', page: a.page }).then(() => noteOf(k, 'Windows Settings is open.'), (e) => noteOf(k, `Not opened: ${e.message}`));
     } else if (a.kind === 'eq-on') {
-      if (isDemo()) return demoDone(k, "Equalizer APO's list would open: tick the headset, click OK, then restart the PC.");
-      noteOf(k, 'Windows is asking for permission: click Yes (if hidden, click the blinking shield on the taskbar).');   // in place while Windows asks (helpers/uac.mjs)
-      await post('/api/eq/turn-on').then(() => noteOf(k, "Equalizer APO's list is open. Tick the headset, click OK, then restart the PC."), (e) => noteOf(k, `Not opened: ${e.message}`));
+      if (isDemo()) return demoDone(k, 'tick the headset, click OK, restart.');
+      noteOf(k, 'Click Yes in Windows\' prompt (taskbar shield).');   // in place while Windows asks (helpers/uac.mjs)
+      await post('/api/eq/turn-on').then(() => noteOf(k, 'Tick the headset, click OK, then restart the PC.'), (e) => noteOf(k, `Not opened: ${e.message}`));
     } else if (a.kind === 'find-lights') {
       noteOf(k, 'Looking for lights…');
-      if (isDemo()) { st.orgb = { running: true, bundled: true, controllers: [{ name: 'Razer Basilisk V3' }, { name: 'Corsair HS80 receiver' }] }; return noteOf(k, 'Demo mode: 2 pretend lights found. Nothing was changed.'); }
+      if (isDemo()) { st.orgb = { running: true, bundled: true, controllers: [{ name: 'Razer Basilisk V3' }, { name: 'Corsair HS80 receiver' }] }; return noteOf(k, 'Demo: 2 pretend lights found.'); }
       try { st.orgb = await get('/api/openrgb?fresh=1'); noteOf(k, st.orgb.running ? null : `No lights found: ${st.orgb.reason || 'OpenRGB did not start'}.`); }
       catch (e) { noteOf(k, `Not found: ${e.message}`); }
     }
@@ -178,14 +178,14 @@ async function runOne(r) {
 // Set it all up (it was Do all): the safe steps in order, one line per device (core/setup-list.js doAllSteps)
 // close: the makers' apps the person said Yes to (makerApps); left: the ones they said Not now to
 async function doAll(steps, rows, { close = [], left = [] } = {}) {
-  st.all = { busy: true, lines: ['Working, one step at a time…'] }; redraw();
+  st.all = { busy: true, lines: ['Working…'] }; redraw();
   const lines = left.flatMap(leftLine);
   if (close.length) {
     steps = [...steps];
     for (const a of close) {
       if (isDemo()) {
         lines.push(`${a.name}: closed (demo).`);
-        for (const k of a.keys) { st.confirm[k] = false; st.over[k] = { live: { status: 'connected' } }; st.note[k] = 'Demo mode: closed, so it connected. Nothing was changed.'; }
+        for (const k of a.keys) { st.confirm[k] = false; st.over[k] = { live: { status: 'connected' } }; st.note[k] = 'Demo: closed and connected.'; }
         continue;
       }
       try {
@@ -206,7 +206,7 @@ async function doAll(steps, rows, { close = [], left = [] } = {}) {
   }
   for (const s of steps) {
     if (s.kind === 'install') {
-      if (isDemo()) { lines.push(`${s.title}: installed (demo).`); st.note[s.key] = 'Demo mode: installed. Nothing was changed.'; st.over[s.key] = { status: 'done', action: null }; continue; }
+      if (isDemo()) { lines.push(`${s.title}: installed (demo).`); st.note[s.key] = 'Demo: installed.'; st.over[s.key] = { status: 'done', action: null }; continue; }
       try { const j = await post('/api/library/install', { name: s.name }); lines.push(`${s.title}: installed.${j.loaded ? '' : ' Restart DeviceHub to load it.'}`); st.note[s.key] = 'Installed.'; }
       catch (e) { lines.push(`${s.title}: not installed: ${e.message}`); }
     } else if (s.kind === 'turn-on-all') {
@@ -215,7 +215,7 @@ async function doAll(steps, rows, { close = [], left = [] } = {}) {
         // the same answers turn-on-all gives: each waiting device in turn, a device that is not connected left for later
         for (const r of rows.filter((x) => x.status === 'needs' && x.id && x.driver === 'library' && x.action?.kind !== 'close-app')) {
           const on = r.action?.kind === 'turn-on';
-          const line = on ? `${r.title}: settings on, 6 of 6 passed (demo).` : `${r.title}: not connected, so it was left for later.`;
+          const line = on ? `${r.title}: settings on, 6 of 6 passed (demo).` : `${r.title}: not connected, skipped.`;
           lines.push(line); st.note[r.key] = line;
           if (on) st.over[r.key] = { status: 'done', action: null, live: { ...st.over[r.key]?.live, turnOn: false } };
         }
@@ -228,7 +228,7 @@ async function doAll(steps, rows, { close = [], left = [] } = {}) {
         if (!res.length) lines.push(j.line || 'Turn on settings: no device was waiting.');
       } catch (e) { lines.push(`Turn on settings: not done: ${e.message}`); }
     } else if (s.kind === 'get-layout') {
-      if (isDemo()) { lines.push(`${s.title}: layout saved (demo). Restart DeviceHub to show its keys.`); st.note[s.key] = 'Demo mode: layout saved. Nothing was changed.'; st.over[s.key] = { status: 'done', action: null }; continue; }
+      if (isDemo()) { lines.push(`${s.title}: layout saved (demo).`); st.note[s.key] = 'Demo: layout saved.'; st.over[s.key] = { status: 'done', action: null }; continue; }
       const j = await post('/api/via-fetch', { vid: s.vid, pid: s.pid }).catch((e) => ({ error: e.message }));
       lines.push(j.ok ? `${s.title}: saved ${j.file}. Restart DeviceHub to show its keys.` : `${s.title}: layout not saved. ${j.error || ''}`.trim());
       st.note[s.key] = lines[lines.length - 1];
@@ -278,7 +278,7 @@ function control(r) {
     case 'install': return button('Install', () => runOne(r), { kind: 'primary small', ic: 'plus', disabled: busy });
     case 'turn-on': return button('Turn on settings', () => runOne(r), { kind: 'primary small', ic: 'plug', disabled: busy });
     case 'check-again': return button('Check again', () => runOne(r), { kind: 'ghost small', ic: 'search', disabled: busy });
-    case 'get-layout': return button('Get the layout', () => runOne(r), { kind: 'primary small', disabled: busy });
+    case 'get-layout': return button('Get layout', () => runOne(r), { kind: 'primary small', disabled: busy });
     case 'learn': return button(a.vid ? 'Learn it for me' : 'Learn a device', () => { if (a.vid) learnThis(a.vid, a.pid, { start: true }); location.hash = '#/learn'; }, { kind: 'ghost small', ic: 'plug' });
     case 'request': return getHelp(`request:${a.vid}:${a.pid}`, null, { label: 'Request support', request: { vid: a.vid, pid: a.pid, name: a.name || '' }, kind: 'ghost small' });
     case 'works': return worksReport(devices[a.id] || { id: a.id, adapter: {} });
@@ -381,7 +381,7 @@ export default {
     const now = planNow();
     const live = now?.live || liveDevices();
     const devRows = now ? now.devRows : null;
-    const demo = isDemo() ? h('p', { class: 'su-fine' }, 'Demo mode: pretend devices and answers. Nothing is installed, sent or changed.') : null;
+    const demo = isDemo() ? h('p', { class: 'su-fine' }, 'Demo mode: nothing is changed.') : null;
     if (devRows === null) return h('div', { class: 'setup-page' }, topbar('', 'Setup', null), demo, h('section', { class: 'panel su-status' }, skeleton([40, 62])));
 
     const plan = now.plan;
@@ -404,16 +404,16 @@ export default {
         icon('plug'),
         h('div', { class: 'su-text' },
           h('h2', {}, summaryLine(n)),
-          h('small', {}, st.all?.busy ? 'Working…' : !can ? 'Each one has its own button below.'
-            : apps.length ? 'Set it all up asks once before it closes an app. It never starts learning.'
-              : 'Set it all up does the safe steps. It never closes an app or starts learning.')),
+          h('small', {}, st.all?.busy ? 'Working…' : !can ? ''
+            : apps.length ? 'Asks before closing any app.'
+              : 'Runs the safe steps only.')),
         can && !st.all?.busy && !st.ask ? button('Set it all up', () => { if (apps.length) { st.ask = true; redraw(); } else doAll(steps, devRows); }, { kind: 'primary', ic: 'check' }) : null),
       ask, lines)
       // nothing needs you: You're all set, each device with what it can do now (no button needed)
       : h('section', { class: 'panel su-status all-set su-allset' },
         h('div', { class: 'su-status-top' }, icon('check'),
           h('div', { class: 'su-text' }, h('h2', {}, "You're all set"),
-            h('small', {}, plan.devices.length ? 'Open a device to change its settings.' : 'No devices to set up yet.'))),
+            h('small', {}, plan.devices.length ? 'Open a device to change it.' : 'No devices yet.'))),
         plan.devices.length ? h('div', { class: 'su-can' }, ...plan.devices.map((r) => canTile(r, live))) : null,
         lines);
 
@@ -427,7 +427,7 @@ export default {
         h('div', { class: 'su-tiles' }, ...plan.devices.map(tile)),
         openTile ? h('ul', { class: 'su-list su-tile-open' }, rowEl(openTile)) : null) : null,
       fold('extras', 'Optional extras', plan.extras),
-      fold('done', `Everything that is done (${plan.done.length})`, plan.done));
+      fold('done', `Done (${plan.done.length})`, plan.done));
   },
 };
 let lastSig = null;

@@ -64,7 +64,30 @@ const known = (model) => (KNOWN.find(([re]) => re.test(model || '')) || [])[1];
 const IGNORES = [[/VG272UV/i, ['volume']]];
 const ignores = (model, f) => IGNORES.some(([re, fs]) => re.test(model || '') && fs.includes(f));
 
+// Color balance and the color preset (24 Oct 2026, Shawn: "the colors dont change for my oled"). Measured on the AOC
+// AGON OLED AG276QZD2: in its Standard preset a red gain write is refused (it reads 50 after 45 was sent); after one
+// switch to Custom (0x14 = 11, read back) red 45 is taken and read back. So a gain or black level is written only on a
+// Custom preset: when the monitor offers one and is not on it, it is switched there first. A monitor that refuses a
+// gain even on Custom (or that has no preset to switch to) does not take color changes from the PC: its color balance
+// is hidden for the rest of this run (noColor).
+const BALANCE_KEYS = ['red', 'green', 'blue', 'blackRed', 'blackGreen', 'blackBlue'];
+const CUSTOM_PRESETS = [11, 12, 13];
+// the preset to switch to before writing `feature`, or null when none is needed
+function customFirst(m, feature) {
+  if (!BALANCE_KEYS.includes(feature) || !m.colorPreset) return null;
+  if (CUSTOM_PRESETS.includes(m.colorPreset.value)) return null;
+  const opt = (m.colorPreset.options || []).find((o) => CUSTOM_PRESETS.includes(o.value));
+  return opt ? opt.value : null;
+}
+// a refused gain read-back: true when it means the monitor never takes color changes (it was on Custom, or has none)
+function refusesColor(m, feature) {
+  if (!BALANCE_KEYS.includes(feature)) return false;
+  return !m.colorPreset || CUSTOM_PRESETS.includes(m.colorPreset.value) || customFirst(m, feature) == null;
+}
+const noColor = new Set();   // monitor ids measured refusing color balance this run
+
 let native = null, backupDir = null, cache = { at: 0, list: null }, busy = Promise.resolve();
+const switching = new Map();   // monitor id -> its switch to Custom while one runs (live steps share it)
 // a monitor's capabilities never change and take seconds to read: read once per monitor, then only its values (0.7 s)
 const capsById = new Map();
 const lastBackupAt = new Map();   // monitor id -> when its last backup was written
@@ -90,7 +113,8 @@ function shape(m) {
     id: m.id, screen: m.screen, model, name: known(model) || model || m.name, ddc: !!m.ddc,
     brightness: num(0x10), contrast: num(0x12), volume: /\b62\b/.test(caps) && !ignores(model, 'volume') ? num(0x62) : null,
     // the picture settings this monitor lists (and answers)
-    ...Object.fromEntries(['red', 'green', 'blue', 'blackRed', 'blackGreen', 'blackBlue'].map((k) => [k, vcp[FEATURES[k]] ? num(FEATURES[k]) : null])),
+    ...Object.fromEntries(BALANCE_KEYS.map((k) => [k, vcp[FEATURES[k]] && !noColor.has(m.id) ? num(FEATURES[k]) : null])),
+    noColor: noColor.has(m.id) || undefined,
     colorPreset: vcp[0x14] && num(0x14) ? { ...num(0x14), options: vcp[0x14].filter((x) => PRESETS[x]).map((x) => ({ value: x, label: PRESETS[x] })) } : null,
     error: m.error || null,
     supports: caps ? supportsList(caps) : null,
@@ -227,18 +251,38 @@ async function set(id, feature, value, { live = false, fromQueue = false } = {})
       JSON.stringify({ at: new Date().toISOString(), monitor: m.name, model: m.model, id: m.id, ...Object.fromEntries(Object.keys(FEATURES).map((k) => [k, (lastSeen.get(id) || m)[k] ?? null])) }, null, 1));
     lastBackupAt.set(id, Date.now());
   }
+  // a gain or black level on a monitor that is not on its Custom preset: switch it there first (one write, read back)
+  let presetSwitched = null;
+  const to = customFirst(m, feature);
+  if (to != null) {
+    if (!switching.has(id)) switching.set(id, serial(() => call({ op: 'monitor-set', id, code: FEATURES.colorPreset, value: to, live: false })).finally(() => switching.delete(id)));
+    const pr = await switching.get(id);
+    if (!pr.ok || pr.cur !== to) { cache.at = 0; throw new Error('the monitor did not switch to its Custom preset'); }
+    if (customFirst(m, feature) != null) {
+      m.colorPreset = { ...m.colorPreset, value: to };
+      const s = lastSeen.get(id); if (s?.colorPreset) lastSeen.set(id, { ...s, colorPreset: { ...s.colorPreset, value: to } });
+      presetSwitched = PRESETS[to] || 'Custom';
+    }
+  }
   let r;
   try { r = await serial(() => call({ op: 'monitor-set', id, code, value, live })); }
   catch (e) { if (!live && !fromQueue && notAnswering(e)) return wait(m, feature, value); throw e; }
   // a live step is not read back (the release is): its value is kept as sent
-  if (live) { if (m[feature]) m[feature] = { ...m[feature], value }; return { name: m.name, feature, value, live: true }; }
+  if (live) { if (m[feature]) m[feature] = { ...m[feature], value }; return { name: m.name, feature, value, live: true, presetSwitched }; }
   const back = r.cur;
   if (!r.ok && !fromQueue) { cache.at = 0; return wait(m, feature, value); }
+  // a gain refused on Custom (or with no preset to switch to): this monitor does not take color changes from the PC
+  if (r.ok && back !== value && refusesColor(m, feature)) {
+    noColor.add(id); cache.at = 0;
+    for (const k of BALANCE_KEYS) m[k] = null;
+    m.noColor = true;
+    throw new Error("This monitor doesn't take color changes from the PC.");
+  }
   if (!r.ok || back !== value) { cache.at = 0; throw new Error(r.ok ? `the monitor reads ${back} instead of ${value}` : 'the monitor did not answer the read-back'); }
   // the confirmed value goes into the saved reading, so the next step does not wait for a fresh read of every monitor
   if (m[feature]) m[feature] = { ...m[feature], value: back };
   const seen = lastSeen.get(id); if (seen?.[feature]) lastSeen.set(id, { ...seen, [feature]: { ...seen[feature], value: back } });
-  return { name: m.name, feature, value: back };
+  return { name: m.name, feature, value: back, presetSwitched };
 }
 
 async function setBuiltIn(m, feature, value, live) {
@@ -264,4 +308,4 @@ function wait(m, feature, value) {
   return { name: m.name, feature, value, waiting: true };
 }
 
-module.exports = { start(nat, dir, applied) { native = nat; backupDir = dir; if (applied) onApplied = applied; keepTrying(); warm(); }, list, set, FEATURES, _test: { vcpList, supportsList, warm, age: (ms) => { cache.at -= ms; } } };
+module.exports = { start(nat, dir, applied) { native = nat; backupDir = dir; if (applied) onApplied = applied; keepTrying(); warm(); }, list, set, FEATURES, _test: { vcpList, supportsList, warm, age: (ms) => { cache.at -= ms; }, customFirst, refusesColor } };

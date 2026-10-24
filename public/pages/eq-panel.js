@@ -69,7 +69,7 @@ function curveBox() {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('id', 'eq-curve'); svg.setAttribute('class', 'eq-curve-box'); svg.setAttribute('viewBox', `0 0 ${CW} ${CH}`);
   svg.innerHTML = curveSvg();
-  return h('div', { class: 'eq-curve-wrap', title: 'What you hear: the preset plus the HS80 correction and extra filters' }, svg);
+  return h('div', { class: 'eq-curve-wrap', title: 'What you hear' }, svg);
 }
 
 async function activate(id) {
@@ -84,15 +84,15 @@ async function persist(presets, what) {
     catch (e) { toast('Equalizer not saved', 'bad', { detail: e.message }); return false; } finally { ui.saving = false; rerender(); }
   }
   if (isDemo()) { ui.eq.presets = presets.map((p) => ({ ...p, id: p.id || `d${Math.random().toString(36).slice(2, 8)}`, builtIn: !!ui.eq.presets.find((x) => x.id === p.id)?.builtIn })); ui.draft = null; toast(`${what} (demo)`, 'good'); rerender(); return true; }
-  const ok = await modal('Save to iCUE?', h('p', { style: { margin: 0 } }, `${what}. iCUE restarts to load it (about 10 s); your presets are backed up first.`),
-    [{ label: 'Cancel', value: false, kind: 'ghost' }, { label: 'Save and restart iCUE', value: true, kind: 'primary' }]);
+  const ok = await modal('Save to iCUE?', h('p', { style: { margin: 0 } }, `${what}. iCUE restarts (about 10 s).`),
+    [{ label: 'Cancel', value: false, kind: 'ghost' }, { label: 'Save', value: true, kind: 'primary' }]);
   if (!ok) return false;
   ui.saving = true; rerender();
-  const t = toast('Saving the equalizer…', 'busy', { ms: 0, detail: 'Backing up, restarting iCUE, checking' });
+  const t = toast('Saving EQ…', 'busy', { ms: 0 });
   try {
     const r = await env.api('/api/eq/save', { presets: presets.map(({ id, name, stages }) => ({ id, name, stages })) });
     ui.eq.presets = r.presets; ui.draft = null;
-    t.update(`${what}`, 'good', r.restartedIcue ? 'iCUE restarted and loaded it' : 'Saved; iCUE loads it next time it starts');
+    t.update(`${what}`, 'good', r.restartedIcue ? 'Loaded in iCUE' : 'iCUE loads it on next start');
     return true;
   } catch (e) { t.update('Equalizer not saved', 'bad', e.message); return false; } finally { ui.saving = false; load(); }
 }
@@ -159,11 +159,11 @@ function eqCard(redraw) {
   // DeviceHub shows up), never while a change is unsaved or saving
   if (!ui.loading && !ui.saving && !dirty() && (!ui.eq ? !ui.error : Date.now() - ui.at > 15000)) load();
   const head = [h('h2', {}, 'Equalizer'), APO() || !ui.eq?.available ? null : h('span', { class: 'sub' }, 'runs through iCUE')];
-  if (ui.error) return card(head, h('p', { class: 'faint' }, /fetch/i.test(ui.error) ? 'Couldn\'t reach DeviceHub for a moment; trying again by itself.' : `Could not read the equalizer: ${ui.error}`), button('Try again', () => load(), { kind: 'ghost small', ic: 'refresh' }));
+  if (ui.error) return card(head, h('p', { class: 'faint' }, /fetch/i.test(ui.error) ? 'DeviceHub not answering. Retrying…' : `EQ not read: ${ui.error}`), button('Try again', () => load(), { kind: 'ghost small', ic: 'refresh' }));
   if (!ui.eq) return card(head, h('p', { class: 'faint' }, 'Reading the equalizer…'));
   // no Equalizer APO on this PC (20 Oct 2026): what it is for and the official download, in place of iCUE's message
   if (!ui.eq.available && ui.eq.needsApo) return card(head,
-    h('p', { class: 'faint' }, 'The EQ and mic filters need Equalizer APO (free). Install it, tick your headset, then restart the PC.'),
+    h('p', { class: 'faint' }, 'Needs Equalizer APO (free). Install it, tick the headset, restart.'),
     // its button (22 Oct 2026, ui/installer-button.js): the official download in DeviceHub's own dialog, installed when
     // it can be checked, else the official page
     h('div', { class: 'actions' }, installerButton('eqapo', { onDone: () => load(), redraw: () => rerender() }),
@@ -180,12 +180,12 @@ function eqCard(redraw) {
   return card([...head, h('span', { class: 'spacer' }), APO() || ui.eq.icueRunning ? null : pill('iCUE closed', 'warn'), pick],
     // Equalizer APO installed but not switched on for the headset's sound devices (a new driver gives new ones)
     ui.eq.notOn?.length ? h('div', { class: 'eq-off' }, icon('shield'),
-      h('span', { class: 'grow' }, `Not on for ${[...new Set(ui.eq.notOn.map((d) => d.name))].join(' and ')} yet, so the EQ is not heard. Turn it on, tick ${ui.eq.notOn.length > 1 ? 'them' : 'it'}, click OK, then restart the PC.`),
+      h('span', { class: 'grow' }, `Not on for ${[...new Set(ui.eq.notOn.map((d) => d.name))].join(' and ')} yet. Turn it on, tick ${ui.eq.notOn.length > 1 ? 'them' : 'it'}, click OK, restart.`),
       // in place, no toast (24 Oct 2026): Windows' permission box line while it asks, then the answer, with Turn on again
       ui.eqOnNote ? h('span', { class: ui.eqOnNote.wait ? 'uac-wait' : 'faint', role: 'status' }, ui.eqOnNote.text) : null,
       button(ui.eqOnNote?.wait ? 'Waiting…' : ui.eqOnNote && !ui.eqOnNote.ok ? 'Try again' : 'Turn on', async () => {
-        ui.eqOnNote = { wait: true, text: 'Windows is asking for permission: click Yes (if hidden, click the blinking shield on the taskbar).' }; rerender();
-        try { await env.api('/api/eq/turn-on', {}); ui.eqOnNote = { ok: true, text: "Equalizer APO's device list is open. Tick the headset, click OK, then restart the PC." }; } catch (e) { ui.eqOnNote = { ok: false, text: `Not opened: ${e.message}` }; }
+        ui.eqOnNote = { wait: true, text: "Click Yes in Windows' prompt (taskbar shield)." }; rerender();
+        try { await env.api('/api/eq/turn-on', {}); ui.eqOnNote = { ok: true, text: 'Tick the headset, click OK, then restart the PC.' }; } catch (e) { ui.eqOnNote = { ok: false, text: `Not opened: ${e.message}` }; }
         rerender();
       }, { kind: 'primary small', disabled: !!ui.eqOnNote?.wait })) : null,
     h('div', { class: 'eq-layout' },
@@ -195,7 +195,7 @@ function eqCard(redraw) {
         h('div', { class: 'eq-bands' }, ...stages.map((v, i) => bandSlider(i, v, p.builtIn || ui.saving))),
         curveBox(),
         h('div', { class: 'actions', style: { marginTop: '14px', alignItems: 'center' } },
-          p.builtIn ? h('span', { class: 'locked' }, icon('shield'), 'built-in preset: copy it to change it') : null,
+          p.builtIn ? h('span', { class: 'locked' }, icon('shield'), 'built-in: copy to edit') : null,
           !p.builtIn ? button(APO() ? 'Save' : 'Save to iCUE', () => persist(ui.eq.presets.map((x) => (x.id === p.id ? { ...x, stages: draftStages() } : x)), `"${p.name}" saved`), { kind: 'primary small', disabled: !dirty() || ui.saving }) : null,
           dirty() ? button('Undo changes', async () => { ui.draft = null; preview(); rerender(); }, { kind: 'ghost small', ic: 'undo' }) : null,
           !p.builtIn ? button('Rename…', async () => {
@@ -204,8 +204,8 @@ function eqCard(redraw) {
             if (ui.eq.presets.some((x) => x.id !== p.id && x.name.toLowerCase() === name.toLowerCase())) { toast('That name is taken', 'bad'); return; }
             await persist(ui.eq.presets.map((x) => (x.id === p.id ? { ...x, name: name.slice(0, 40), stages: x.stages } : x)), `Renamed to "${name.slice(0, 40)}"`);
           }, { kind: 'ghost small', disabled: ui.saving || dirty() }) : null,
-          button('Save as new preset…', async () => {
-            const name = await promptText('New EQ preset', 'Preset name, e.g. "Footsteps"');
+          button('Save as…', async () => {
+            const name = await promptText('New EQ preset', 'Preset name');
             if (!name) return;
             const ok = await persist([...ui.eq.presets, { id: null, name, stages: draftStages() }], `"${name}" added`);
             const made = ok && APO() && ui.eq.presets.find((x) => x.name === name.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 40));
@@ -216,19 +216,19 @@ function eqCard(redraw) {
             await persist(ui.eq.presets.filter((x) => x.id !== p.id), `"${p.name}" deleted`);
           }, { kind: 'ghost small', ic: 'trash', disabled: ui.saving }) : null),
         APO() ? h('div', {}, h('div', { class: 'srow', style: { marginTop: '10px' } },
-          h('div', {}, h('div', { class: 'srow-title' }, 'Prevent distortion'), h('div', { class: 'srow-desc' }, 'Stops loud sounds from crackling. Slightly quieter.')),
+          h('div', {}, h('div', { class: 'srow-title' }, 'Prevent distortion'), h('div', { class: 'srow-desc' }, 'No crackle. Slightly quieter.')),
           h('div', { class: 'srow-ctl' }, toggle({ value: ui.eq.headroom, label: 'Prevent distortion', onCommit: async (on) => { try { ui.eq = await env.api('/api/eq/headroom', { on }); rerender(); } catch (e) { toast('Not changed', 'bad', { detail: e.message }); } } }))),
           // Reset sound to normal (22 Oct 2026, Shawn: "make a revert to default in the app so he can easily do it"):
           // every effect off, asked once in place; presets are kept
           h('div', { class: 'srow' },
             h('div', {}, h('div', { class: 'srow-title' }, 'Reset sound to normal'),
-              h('div', { class: 'srow-desc' }, ui.resetAsk ? 'Turn every sound effect off? Your presets are kept.' : ui.resetDone || 'Takes every EQ and sound effect off. Your presets are kept.')),
+              h('div', { class: 'srow-desc' }, ui.resetAsk ? 'All effects off? Presets are kept.' : ui.resetDone || 'All EQ and effects off.')),
             h('div', { class: 'srow-ctl' }, ui.resetAsk
               ? h('div', { class: 'actions' },
-                button('Yes, reset', async () => { try { ui.eq = await env.api('/api/eq/reset', {}); ui.resetDone = 'Done: the sound plays as it does without the EQ.'; } catch (e) { ui.resetDone = `Not reset: ${e.message}`; } ui.resetAsk = false; rerender(); }, { kind: 'primary small' }),
+                button('Yes, reset', async () => { try { ui.eq = await env.api('/api/eq/reset', {}); ui.resetDone = 'Done. EQ is off.'; } catch (e) { ui.resetDone = `Not reset: ${e.message}`; } ui.resetAsk = false; rerender(); }, { kind: 'primary small' }),
                 button('Cancel', () => { ui.resetAsk = false; rerender(); }, { kind: 'ghost small' }))
               : button('Reset', () => { ui.resetAsk = true; ui.resetDone = null; rerender(); }, { kind: 'ghost small' }))))
-          : h('p', { class: 'faint', style: { fontSize: '12.5px', marginBottom: 0 } }, 'Pick the active preset in iCUE or with a short press on the volume wheel. Saving restarts iCUE (about 10 s).'))));
+          : h('p', { class: 'faint', style: { fontSize: '12.5px', marginBottom: 0 } }, 'Pick the preset in iCUE or tap the volume wheel.'))));
 }
 
 // ---- Sound tools (Equalizer APO only): the HS80 correction, extra filters, loudness, balance, the mic,
@@ -250,7 +250,7 @@ function filterRows(x) {
     ...list.map((f, i) => h('div', { class: 'eq-filter' },
       num(f.f, '84px', (v) => put(i, 'f', v), 'Frequency, 20 to 20000 Hz'), h('span', { class: 'faint' }, 'Hz'),
       num(f.g, '64px', (v) => put(i, 'g', v), 'Gain, -12 to +12 dB'), h('span', { class: 'faint' }, 'dB'),
-      num(f.q, '58px', (v) => put(i, 'q', v), 'Width (Q): small is wide, large is narrow, 0.1 to 10'), h('span', { class: 'faint' }, 'Q'),
+      num(f.q, '58px', (v) => put(i, 'q', v), 'Width (Q), 0.1 to 10'), h('span', { class: 'faint' }, 'Q'),
       button('', () => setExtras({ filters: list.filter((_, j) => j !== i) }), { kind: 'ghost small', ic: 'trash', title: 'Remove this filter' }))),
     button('Add a filter', () => setExtras({ filters: [...list, { f: 1000, g: 0, q: 1.41 }] }), { kind: 'ghost small', ic: 'plus', disabled: list.length >= 20 }));
 }
@@ -261,9 +261,9 @@ export function soundTools() {
   const x = ui.eq.extras;
   return card([h('h2', {}, 'Sound tools')],
     // AutoEq's measurement of the HS80: offered for an HS80 only (another headset would need its own measurement)
-    !ui.eq.headsetModel || ui.eq.headsetModel === 'HS80' ? row('Natural sound', 'Evens out the HS80\'s tuning. Best with Pure Direct.',
+    !ui.eq.headsetModel || ui.eq.headsetModel === 'HS80' ? row('Natural sound', 'Best with Pure Direct.',
       toggle({ value: x.correction, label: 'Natural sound', onCommit: (on) => setExtras({ correction: on }) })) : null,
-    row('Extra filters', 'Fine-tune any frequency.', null),
+    row('Extra filters', null, null),
     filterRows(x),
     row('Loudness boost', 'Fuller sound when quiet.',
       toggle({ value: x.loudness, label: 'Loudness boost', onCommit: (on) => setExtras({ loudness: on }) })),
@@ -277,7 +277,7 @@ export function soundTools() {
       toggle({ value: x.micClarity, label: 'Voice clarity', onCommit: (on) => setExtras({ micClarity: on }) })),
     row('Smooth highs', 'Tames hiss and sharp sounds.',
       toggle({ value: !!x.micDeEss, label: 'Smooth highs', onCommit: (on) => setExtras({ micDeEss: on }) })),
-    row('Even volume', ui.eq.levelerAvailable ? 'Evens out loud and quiet. Turn off Discord\'s auto gain.' : 'Needs ReaPlugs installed.',
+    row('Even volume', ui.eq.levelerAvailable ? 'Turn off Discord\'s auto gain.' : 'Needs ReaPlugs installed.',
       toggle({ value: !!x.micLevel && ui.eq.levelerAvailable, disabled: !ui.eq.levelerAvailable, label: 'Even volume', onCommit: (on) => setExtras({ micLevel: on }) })),
-    h('p', { class: 'faint', style: { fontSize: '12.5px', margin: '12px 0 0' } }, 'Monitors and the camera mic: pick them at the top of the Equalizer.'));
+    h('p', { class: 'faint', style: { fontSize: '12.5px', margin: '12px 0 0' } }, 'Monitors and camera mic: top of the Equalizer.'));
 }

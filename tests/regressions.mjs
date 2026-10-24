@@ -241,7 +241,7 @@ check(/row\('Lift-off distance', '[^']+'/.test(mouseSrc) && /h\('h2', \{\}, 'Tra
   check(desc() === '/api/corsair/hs80-endpoints {"usb":"VID_1038&PID_12E0"} | /api/corsair/mic-rec-start {"id":"nova-mic"}' && r.headsetMic && r.recording, `mic check: another headset picked, its own mic recorded (${desc()})`);
   calls.length = 0; let err = null;
   try { await mt.startMicTest(fake([{ flow: 'recording', id: 'nova-mic', state: 4 }]), { mic: 'headset', generic: NOVA }); } catch (e) { err = e; }
-  check(/not connected/.test(err?.message || '') && !calls.some(([p]) => p.endsWith('mic-rec-start')), 'mic check: picked headset off, no recording of another mic');
+  check(/not found/.test(err?.message || '') && !calls.some(([p]) => p.endsWith('mic-rec-start')), 'mic check: picked headset off, no recording of another mic');
   const mm = fs.readFileSync(path.join(ROOT, 'public/pages/mic-meter.js'), 'utf8');
   check(/startMicTest\(env\.api/.test(mm) && /micMatcher\(/.test(mm) && !/set-default/.test(mm), 'mic check page uses the pick and never changes Windows defaults');
 }

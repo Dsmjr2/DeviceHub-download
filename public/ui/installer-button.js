@@ -46,7 +46,7 @@ function planBody(p) {
   return h('div', {},
     h('p', { style: { margin: '0 0 10px' } }, p.adds),
     line('File', `${p.file} (version ${p.version})`),
-    line('From', p.bundled ? h('span', {}, 'Inside DeviceHub (the official file from ', h('a', { href: p.page, target: '_blank', rel: 'noopener' }, p.source), '); nothing is downloaded')
+    line('From', p.bundled ? h('span', {}, 'Inside DeviceHub (from ', h('a', { href: p.page, target: '_blank', rel: 'noopener' }, p.source), ')')
       : h('span', {}, `${p.name}'s own site: `, h('a', { href: p.url, target: '_blank', rel: 'noopener' }, p.source))),
     line('Size', `${p.sizeExact ? '' : 'about '}${mb(p.size)}`),
     line('Checked', p.check),
@@ -63,10 +63,10 @@ export async function follow(id, redraw, { wait = (ms) => new Promise((r) => set
   let errors = 0;
   for (;;) {
     await wait(400);
-    if (now() > until) return { ok: false, text: 'Stopped waiting after 10 minutes. Check Windows Settings > Apps to see if it installed.' };
+    if (now() > until) return { ok: false, text: 'Timed out after 10 minutes. Check Settings > Apps.' };
     let p;
     try { p = await api('/api/installers/progress'); errors = 0; } catch (e) {   // DeviceHub busy for a moment
-      if (++errors >= FOLLOW_ERRORS) return { ok: false, text: `DeviceHub did not answer (${e.message}). Check Windows Settings > Apps to see if it installed.` };
+      if (++errors >= FOLLOW_ERRORS) return { ok: false, text: `DeviceHub did not answer (${e.message}). Check Settings > Apps.` };
       continue;
     }
     if (p.tool !== id) continue;
@@ -82,10 +82,10 @@ export async function follow(id, redraw, { wait = (ms) => new Promise((r) => set
 async function start(id, onDone, redraw) {
   if (isDemo()) { toast('Not in demo mode', 'info'); return; }
   let p;
-  try { p = await env.api(`/api/installers/plan?tool=${encodeURIComponent(id)}`); } catch (e) { toast('Could not read the download', 'bad', { detail: e.message }); return; }
+  try { p = await env.api(`/api/installers/plan?tool=${encodeURIComponent(id)}`); } catch (e) { toast('Download not read', 'bad', { detail: e.message }); return; }
   const page = p.offer !== 'install';
   const yes = await modal(page ? `Get ${p.name}` : `Install ${p.name}?`, planBody(p),
-    [{ label: 'Cancel', value: false, kind: 'ghost' }, { label: page ? 'Open the official page' : 'Install', value: true, kind: 'primary' }]);
+    [{ label: 'Cancel', value: false, kind: 'ghost' }, { label: page ? 'Open page' : 'Install', value: true, kind: 'primary' }]);
   if (!yes) return;
   if (page) { window.open(p.page, '_blank'); return; }
   return runInstall(id, p, onDone, redraw);
@@ -103,7 +103,7 @@ async function runInstall(id, p, onDone, redraw) {
   if (r.ok) toast(r.text, 'good', { ms: 9000, detail: [r.verified ? `Checked: ${r.verified}.` : null, r.partial, r.restart ? 'Restart the PC to finish.' : null].filter(Boolean).join(' ') || null });
   else {
     toast('Not installed', 'bad', { ms: 12000, detail: r.text });
-    if (r.page && !r.pageOnly && await modal(`${p.name} was not installed`, h('p', { style: { margin: 0 } }, r.text), [{ label: 'Close', value: false, kind: 'ghost' }, { label: 'Open the official page', value: true, kind: 'primary' }])) window.open(r.page, '_blank');
+    if (r.page && !r.pageOnly && await modal(`${p.name} was not installed`, h('p', { style: { margin: 0 } }, r.text), [{ label: 'Close', value: false, kind: 'ghost' }, { label: 'Open page', value: true, kind: 'primary' }])) window.open(r.page, '_blank');
   }
   redraw();
   onDone?.(r);
@@ -114,8 +114,8 @@ async function runInstall(id, p, onDone, redraw) {
 // Cancel; then the loading bar; then one line with the answer. Kept per tool across page redraws.
 //   installerInline(id, { redraw, kind }) -> an element
 const DEMO_PLAN = {
-  eqapo: { name: 'Equalizer APO', adds: 'The EQ, Natural sound, mic boost and mic filters.', file: 'EqualizerAPO-x64-1.4.2.exe', version: '1.4.2', bundled: true, page: 'https://sourceforge.net/projects/equalizerapo/', source: 'sourceforge.net', size: 2621440, sizeExact: true, check: 'SHA-256 pinned in DeviceHub', offer: 'install', folder: 'tools\\eqapo', after: 'Windows asks once; restart the PC when it says so.' },
-  usbpcap: { name: 'USBPcap', adds: "Only for learning a device: it records what the maker's app sends.", file: 'USBPcapSetup-1.5.4.0.exe', version: '1.5.4.0', bundled: false, url: 'https://github.com/desowin/usbpcap/releases', page: 'https://desowin.org/usbpcap/', source: 'github.com/desowin', size: 1153434, sizeExact: false, check: "the maker's signature", offer: 'install', folder: 'Downloads', after: 'Windows asks once; restart the PC when it says so.' },
+  eqapo: { name: 'Equalizer APO', adds: 'EQ and mic filters.', file: 'EqualizerAPO-x64-1.4.2.exe', version: '1.4.2', bundled: true, page: 'https://sourceforge.net/projects/equalizerapo/', source: 'sourceforge.net', size: 2621440, sizeExact: true, check: 'SHA-256 pinned in DeviceHub', offer: 'install', folder: 'tools\\eqapo', after: 'Restart the PC when asked.' },
+  usbpcap: { name: 'USBPcap', adds: 'For learning a device.', file: 'USBPcapSetup-1.5.4.0.exe', version: '1.5.4.0', bundled: false, url: 'https://github.com/desowin/usbpcap/releases', page: 'https://desowin.org/usbpcap/', source: 'github.com/desowin', size: 1153434, sizeExact: false, check: "the maker's signature", offer: 'install', folder: 'Downloads', after: 'Restart the PC when asked.' },
 };
 const inline = {};   // id -> { stage: 'closed'|'loading'|'plan'|'busy'|'done', plan, text, ok }
 export function installerInline(id, { redraw = () => {}, onDone, kind = 'primary small' } = {}) {
@@ -125,12 +125,12 @@ export function installerInline(id, { redraw = () => {}, onDone, kind = 'primary
   const open = async () => {
     set({ stage: 'loading', text: '' });
     try { set({ stage: 'plan', plan: isDemo() ? { id, ...DEMO_PLAN[id] } : await env.api(`/api/installers/plan?tool=${encodeURIComponent(id)}`) }); }
-    catch (e) { set({ stage: 'done', ok: false, text: `Could not read the download: ${e.message}` }); }
+    catch (e) { set({ stage: 'done', ok: false, text: `Download not read: ${e.message}` }); }
   };
   const go = async () => {
     const p = s.plan;
-    if (p.offer !== 'install') { window.open(p.page, '_blank'); set({ stage: 'done', ok: true, text: `${p.name}'s page is open in your browser. Download ${p.file} there and open it.` }); return; }
-    if (isDemo()) { set({ stage: 'done', ok: true, text: `Demo mode: nothing was installed. In the app, ${p.name}'s own installer opens here.` }); return; }
+    if (p.offer !== 'install') { window.open(p.page, '_blank'); set({ stage: 'done', ok: true, text: `Download ${p.file} from the page that opened.` }); return; }
+    if (isDemo()) { set({ stage: 'done', ok: true, text: 'Demo: nothing installed.' }); return; }
     state[id] = { busy: true, text: 'Starting', pct: null };
     set({ stage: 'busy' });
     let r;
@@ -147,7 +147,7 @@ export function installerInline(id, { redraw = () => {}, onDone, kind = 'primary
   if (s.stage === 'plan') {
     const p = s.plan;
     return h('div', { class: 'inst-inline' }, planBody(p),
-      h('div', { class: 'actions' }, button(p.offer === 'install' ? `Install ${p.name}` : 'Open the official page', go, { kind: 'primary small', ic: p.offer === 'install' ? 'plus' : 'external' }), button('Cancel', close, { kind: 'ghost small' })));
+      h('div', { class: 'actions' }, button(p.offer === 'install' ? `Install ${p.name}` : 'Open page', go, { kind: 'primary small', ic: p.offer === 'install' ? 'plus' : 'external' }), button('Cancel', close, { kind: 'ghost small' })));
   }
   // Try again: straight to the install when Windows' box was declined or not answered (s.retry), else the plan again
   if (s.stage === 'done') return h('div', { class: 'inst-inline' }, h('div', { class: `gh-note ${s.ok ? 'good' : 'bad'}` }, s.text), s.ok ? null : h('div', { class: 'actions' }, button('Try again', s.retry ? go : open, { kind: 'small' })));

@@ -207,6 +207,7 @@ function isolatedApi(req, res, url) {
     '/api/settings-sync': { isolated: true, on: false }, '/api/auto-report': { isolated: true, on: true, configured: false, owner: false, active: false }, '/api/self-update': { isolated: true, count: 0 }, '/api/publish-release': { owner: false }, '/api/self-update/progress': {},
     '/api/updates': { isolated: true, apps: [] }, '/api/openrgb': { running: false, isolated: true, controllers: [] }, '/api/openrgb/find': { running: false, isolated: true },
     '/api/board-lights': { isolated: true, pawnio: { installed: false, version: null }, setUp: false, task: false, copy: false, canSetUp: false, why: 'DeviceHub is in isolated test mode', partial: null, before: '', remove: '', busy: false },
+    '/api/cpu-sensors': { isolated: true, pawnio: { installed: false, version: null }, setUp: false, task: false, copy: false, canSetUp: false, why: 'DeviceHub is in isolated test mode', partial: null, before: [], remove: [], busy: false },
     '/api/lights/diagnose': { isolated: true, board: null, openrgb: { state: 'unknown' }, found: [], seen: [], verdict: null, problems: [], lines: [] },
   };
   if (req.method === 'GET' && p in demo) { send(res, 200, demo[p]); return true; }
@@ -662,6 +663,8 @@ async function api(req, res, url) {
   if (url.pathname.startsWith('/api/via-fetch')) { try { if (await (await import('./helpers/via-fetch.mjs')).handle(url, req, res, send, readBody)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   if (url.pathname.startsWith('/api/installers')) { try { if (await (await import('./helpers/installers.mjs')).handle(url, req, res, send, readBody)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   // board, fan and RAM lights: PawnIO and the OpenRGB inside DeviceHub as administrator, set up or removed only on a click (helpers/board-lights.mjs)
+  // CPU temperature and fan speeds: LibreHardwareMonitor's library behind an on-demand elevated reader, set up or removed only on a click (helpers/cpu-sensors.mjs)
+  if (url.pathname.startsWith('/api/cpu-sensors')) { try { if (await (await import('./helpers/cpu-sensors.mjs')).handle(url, req, res, send)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   if (url.pathname.startsWith('/api/board-lights')) { try { if (await (await import('./helpers/board-lights.mjs')).handle(url, req, res, send)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   // the plain-words list of what DeviceHub supports (reads the library, opens no device)
   if (url.pathname === '/api/supported-devices') { try { if (await (await import('./helpers/supported-devices.mjs')).handle(url, req, res, send)) return; } catch (e) { return send(res, 500, { error: e.message }); } }

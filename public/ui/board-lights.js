@@ -27,7 +27,7 @@ async function follow(redraw) {
   let errors = 0;
   for (;;) {
     await new Promise((r) => setTimeout(r, 1500));
-    if (Date.now() > until) return { done: true, ok: false, text: 'Stopped waiting after 15 minutes. Press Find lights to see if it finished.' };
+    if (Date.now() > until) return { done: true, ok: false, text: 'Timed out. Press Find lights to check.' };
     let p;
     try { p = await env.api('/api/board-lights/progress'); errors = 0; } catch (e) { if (++errors >= 5) return { done: true, ok: false, text: `DeviceHub did not answer (${e.message}).` }; continue; }
     if (p.done) return p;
@@ -38,7 +38,7 @@ async function run(kind, redraw, onDone) {
   s.confirm = false;
   if (isDemo()) {
     s.demoSetUp = kind === 'setup';
-    s.job = { done: true, ok: true, text: `Demo mode: ${kind === 'setup' ? 'in the app this sets up board lights behind one Windows prompt' : 'in the app this removes board lights behind one Windows prompt'}. Nothing was changed.` };
+    s.job = { done: true, ok: true, text: 'Demo: nothing changed.' };
     redraw(); return;
   }
   s.job = { done: false, text: 'Starting', pct: null };
@@ -74,7 +74,7 @@ export function boardLights({ redraw = () => {}, onDone } = {}) {
   const st = cachedBoard();
   // read once; an answer that failed (an older DeviceHub still running) is tried again only after 30 s
   if (!st && !s.loading && Date.now() - s.failed > 30000) boardLightsStatus().then(() => redraw());
-  const v = !st && s.failed && !s.job ? { line: 'Board lights could not be read. Restart DeviceHub (tray icon > Quit) and look again.', action: null }
+  const v = !st && s.failed && !s.job ? { line: 'Board lights not read. Restart DeviceHub.', action: null }
     : boardView(st, s.job, { confirmRemove: s.confirm });
   const btn = (action, label) => {
     if (action === 'setup') return button(label, () => run('setup', redraw, onDone), { kind: 'primary small', ic: 'plus' });

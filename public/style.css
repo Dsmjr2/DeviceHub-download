@@ -2557,6 +2557,8 @@ html[data-skin="verde"] .su-can-text b { color: #ffffff; }
 .grid.mon-cols .srow:has(.seg) .srow-text { flex-basis: 100%; }
 .grid.mon-cols .srow-ctl { flex: 1 1 140px; min-width: 0; justify-content: flex-end; }
 .grid.mon-cols .srow-ctl > *, .grid.mon-cols .cam-ctl > :last-child { flex: 1 1 auto; min-width: 0; }
+/* a switch keeps its own size in a monitor card (24 Oct 2026, Shawn: the HDR switch was "too large") */
+.grid.mon-cols .srow-ctl > .switch { flex: none; }
 .grid.mon-cols .cam-ctl { display: flex; align-items: center; gap: 10px; width: 100%; }
 .grid.mon-cols .srow-ctl > .seg { flex: 1 1 100%; }
 @media (max-width: 1100px) { .grid.mon-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); } .grid.mon-cols > .panel { max-height: none; } }
@@ -2601,17 +2603,47 @@ html[data-skin="verde"] .su-can-text b { color: #ffffff; }
 .disp-keep-btns { display: flex; gap: 8px; margin-top: 6px; }
 select.text.disp-select { width: auto; min-width: 130px; font-size: 13px; padding: 5px 30px 5px 12px; }
 .disp-night { display: inline-flex; align-items: center; gap: 10px; }
-.pcc-row { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
-.pcc-row:last-of-type { border-bottom: 0; }
-.pcc-row > div { min-width: 0; }
+/* The PC page (24 Oct 2026, Shawn: it fits the window at 1650x950): the graphics card down the left, Fan lights and
+   Temperatures beside it, the PC check across the two right columns. Two columns below 1180 px, one on a phone. */
+.grid.pc-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+.pc-grid > .pc-gpu { grid-row: span 2; }
+.pc-grid > .pc-check { grid-column: 2 / span 2; }
+@media (max-width: 1180px) { .grid.pc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .pc-grid > .pc-gpu { grid-row: auto; } .pc-grid > .pc-check { grid-column: 1 / -1; } }
+@media (max-width: 760px) { .grid.pc-grid { grid-template-columns: minmax(0, 1fr); } .pc-grid > .pc-check { grid-column: auto; } }
+/* Temperatures and fans: one short row per reading */
+.tf-list { display: grid; }
+.tf-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.tf-row:last-child { border-bottom: 0; }
+.tf-row .pcc-dot { margin-top: 0; }
+.tf-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tf-val { white-space: nowrap; }
+.tf-note { margin: 4px 0 0; font-size: 12px; }
+.tf-setup { margin-top: 8px; }
+.cpu-sensors { display: grid; gap: 2px; }
+.cpu-sensors .cpu-line { display: block; font-size: 12px; }
+.cpu-sensors .actions { margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap; }
+/* PC check: short cells in two columns; what is fine in one line that opens */
+.pcc-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 18px; }
+@media (max-width: 760px) { .pcc-grid { grid-template-columns: minmax(0, 1fr); } }
+.pcc-cell { display: flex; gap: 10px; align-items: flex-start; padding: 4px 0; font-size: 13px; min-width: 0; }
+.pcc-cell > div { min-width: 0; }
 .pcc-dot { flex: 0 0 8px; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--faint); }
 .pcc-dot.ok { background: var(--good); }
 .pcc-dot.warn { background: var(--warn); }
-.pcc-title, .pcc-src { display: block; }
-.pcc-src { margin-top: 2px; font-size: 12px; }
-.pcc-sub { margin: 12px 0 2px; font: 600 12.5px var(--ui); color: var(--muted); }
-.pcc-sum { margin: 0 0 6px; font-weight: 600; }
-.pcc-foot { margin: 10px 0 0; font-size: 12px; }
+.pcc-title { display: block; font-size: 12px; font-weight: 600; color: var(--muted); }
+.pcc-line { display: block; }
+.pcc-src { display: block; margin-top: 2px; font-size: 12px; }
+.pcc-link { display: block; margin-top: 2px; padding: 0; border: 0; background: none; color: var(--accent, var(--signal)); font: inherit; font-size: 12px; cursor: pointer; text-decoration: underline; }
+.pcc-ok .pcc-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1180px) { .pcc-ok .pcc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .pcc-ok .pcc-grid { grid-template-columns: minmax(0, 1fr); } }
+.pcc-ok { margin-top: 6px; border-top: 1px solid var(--line); padding-top: 6px; }
+.pcc-ok > summary { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; padding: 4px 0; list-style: none; }
+.pcc-ok > summary::-webkit-details-marker { display: none; }
+.pcc-ok > summary::after { content: 'Show'; margin-left: auto; font-size: 12px; color: var(--muted); }
+.pcc-ok[open] > summary::after { content: 'Hide'; }
+.pcc-ok > summary .pcc-dot { margin-top: 0; }
+.pcc-foot { margin: 8px 0 0; font-size: 12px; }
 
 /* Settings > Get help: the safety promises as one line, Show all opens the list in place, with the self-test beside it
    (24 Oct 2026). The Appearance card is alone in its column, so .settings-cols' last-child rule stretches it level. */
@@ -2622,3 +2654,109 @@ select.text.disp-select { width: auto; min-width: 130px; font-size: 13px; paddin
 .safety-more { padding: 0; border: 0; background: none; color: var(--faint); font: 500 12px var(--ui); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .safety-more:hover { color: var(--text); }
 .safety-line .safety { padding-left: 22px; }
+
+/* Backups in Settings (24 Oct 2026): one line per device, the page one click away */
+.bk-mini { display: flex; width: 100%; text-align: left; padding: 8px 4px; }
+.bk-mini small { display: block; }
+.bk-mini-foot { font-size: 12.5px; margin: 8px 0 0; }
+
+
+/* ==========================================================================================================
+   Glass dropdowns (24 Oct 2026, Shawn: "make the dropdown menus in every area that has them more appealing and more
+   liquid glass like the app"). public/ui/dropdown.js draws them; every native select became one. Closed: the app's
+   glass pill with the chosen label and a chevron. Open: a floating glass list in a top-level layer (z 80, over dialogs).
+   ========================================================================================================== */
+.text.dd { display: inline-flex; flex-wrap: nowrap; height: auto; line-height: 1.4; align-items: center; gap: 10px; text-align: left; cursor: pointer; color: var(--text); padding: 8px 12px 8px 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .075), rgba(255, 255, 255, .025)), var(--sunk);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12); transition: border-color .12s, box-shadow .12s; }
+.dd:hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent) 40%, var(--line2)); }
+.dd.open { border-color: var(--accent); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.dd:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dd:disabled { cursor: default; opacity: .55; }
+.dd-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dd.dd-empty .dd-label { color: var(--faint); }
+.dd .dd-chev { width: 16px; height: 16px; min-width: 0; flex: none; display: block; color: var(--muted); transition: transform .16s var(--ease), color .12s; }
+.dd.open .dd-chev { transform: rotate(180deg); color: var(--text); }
+:is(.dd.pending, .btnmap.pending .dd, .stepper.pending .dd) .dd-label { animation: blink .8s infinite; }
+/* the compact sizes the old selects had */
+:is(.dd.kind-select, .dd.gh-pick, .dd.disp-select, .wp-sort .dd) { width: auto; font-size: 13px; padding: 5px 10px 5px 12px; gap: 8px; }
+.dd.kind-select { min-width: 150px; }
+.dd.gh-pick { min-width: 170px; }
+.dd.disp-select { min-width: 130px; }
+.wp-sort .dd { min-width: 128px; }
+:is(.dd.kind-select, .dd.gh-pick, .dd.disp-select, .wp-sort .dd) .dd-chev { width: 14px; height: 14px; }
+.prof-use .dd { width: 100%; }
+
+/* the open list: frosted glass from the dialogs' tint, soft rim and shadow, rounded; scrolls inside past 320 px */
+.dd-list { position: fixed; z-index: 80; top: 0; left: 0; width: max-content; min-width: 140px; max-width: calc(100vw - 16px);
+  overflow-y: auto; overscroll-behavior: contain; padding: 6px; border-radius: 18px; font: 14px/1.4 var(--ui); color: var(--text);
+  background: var(--glass), linear-gradient(160deg, var(--dialog-a), var(--dialog-b));
+  border: 1px solid rgba(255, 255, 255, .12);
+  box-shadow: var(--rim), 0 24px 48px -18px rgba(0, 0, 0, .75), 0 2px 10px rgba(0, 0, 0, .22);
+  -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+  opacity: 0; transform: translateY(-4px) scale(.98); transform-origin: top center;
+  transition: opacity .12s var(--ease), transform .14s var(--ease); }
+.dd-list.above { transform: translateY(4px) scale(.98); transform-origin: bottom center; }
+.dd-list.in { opacity: 1; transform: none; }
+.dd-opt { display: grid; grid-template-columns: 16px 1fr; align-items: center; gap: 8px; padding: 7px 12px 7px 9px; border-radius: 12px;
+  color: var(--muted); cursor: pointer; white-space: nowrap; user-select: none; }
+.dd-opt + .dd-opt { margin-top: 1px; }
+.dd-opt.active { background: color-mix(in srgb, var(--signal) 12%, var(--raise)); color: var(--text); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08); }
+.dd-opt.chosen { color: var(--text); font-weight: 600; }
+.dd-opt.off { opacity: .45; cursor: default; }
+.dd-check { display: grid; place-items: center; color: var(--signal); }
+.dd-check svg { width: 16px; height: 16px; }
+.dd-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 700px) {
+  .dd-opt { white-space: normal; padding-top: 10px; padding-bottom: 10px; }
+  .dd-list { border-radius: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { .dd-list, .dd-list.above { transition: none; transform: none; } .dd-chev { transition: none; } }
+/* on battery with the saver on: no blur behind the list, a solid tinted pane as the cards get */
+html[data-saving] .dd-list { -webkit-backdrop-filter: none; backdrop-filter: none;
+  background: linear-gradient(160deg, var(--card-solid-a), var(--card-solid-b) 45%, var(--card-solid-a)); }
+/* the whole looks: each list wears its look's dialog pane, the active line as its Ctrl+K list's picked line */
+html[data-skin="old-school"] .dd-list { border-radius: 0; -webkit-backdrop-filter: none; backdrop-filter: none;
+  background: var(--stone-grain), linear-gradient(180deg, var(--os-face-hi), var(--os-face) 40%, var(--os-face-lo));
+  border: 1px solid var(--os-black); box-shadow: var(--os-bevel), 0 3px 0 rgba(0, 0, 0, .55); }
+html[data-skin="old-school"] .dd-opt { border-radius: 0; color: #e8cf9c; }
+html[data-skin="old-school"] .dd-opt.active { background: rgba(0, 0, 0, .35); color: var(--osrs-yellow); box-shadow: none; }
+html[data-skin="old-school"] .dd-check { color: var(--osrs-yellow); }
+html[data-skin="verde"] .dd-list { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--sheen), var(--specks), var(--sauce);
+  border: 2px solid var(--verde-rim); box-shadow: var(--rim), var(--lift); }
+html[data-skin="verde"] .dd-opt.active { background: rgba(184, 230, 112, .16); color: var(--text); box-shadow: inset 0 0 0 1px rgba(184, 230, 112, .34); }
+html[data-skin="verde"] .dd-check { color: var(--verde-lime); }
+html[data-skin="milk"] .dd { background-image: none; box-shadow: inset 0 1px 2px rgba(40, 70, 110, .1); }
+html[data-skin="milk"] .dd.open { box-shadow: inset 0 1px 2px rgba(40, 70, 110, .1), 0 0 0 3px var(--sky-wash); }
+html[data-skin="milk"] .dd-list { background: var(--splash), var(--ripple), linear-gradient(165deg, rgba(255, 255, 255, .97), rgba(246, 248, 251, .95));
+  border: 1px solid rgba(120, 165, 210, .34); box-shadow: var(--rim), var(--lift), 0 10px 30px -12px rgba(40, 70, 110, .3); }
+html[data-saving][data-skin="milk"] .dd-list { background: var(--splash), linear-gradient(165deg, #ffffff, var(--milk-2)); }
+html[data-skin="milk"] .dd-opt.active { background: var(--sky-wash); color: var(--ink-2); box-shadow: inset 0 0 0 1px rgba(95, 163, 216, .4); }
+html[data-skin="milk"] .dd-check { color: var(--sky-ink); }
+html[data-skin="coral-reef"] .dd-list { background: var(--bubbles), var(--glass), linear-gradient(170deg, rgba(13, 71, 86, .94), rgba(7, 48, 60, .94) 55%, rgba(6, 40, 51, .95));
+  border: 1px solid rgba(120, 230, 220, .26); }
+html[data-saving][data-skin="coral-reef"] .dd-list { background: linear-gradient(170deg, #0d4756, #07303c 55%, #062833); }
+html[data-skin="coral-reef"] .dd-opt.active { background: var(--turq-soft); color: #fff; box-shadow: inset 0 0 0 1px rgba(79, 220, 203, .34); }
+html[data-skin="coral-reef"] .dd-check { color: var(--coral-hi); }
+
+/* Monitors fit 1650x950 with no page or card scrolling (24 Oct 2026, Shawn: "make sure the monitors page isnt
+   scrollable"): color balance folds into one closed "Color balance" per monitor, rows are compact, and no card scrolls
+   inside itself. It may stack (and the page scroll) at phone width. */
+.grid.mon-cols > .panel { max-height: none; overflow: visible; }
+.grid.mon-cols .panel-head { margin-bottom: 6px; }
+.grid.mon-cols .srow { padding-top: 4px; padding-bottom: 4px; }
+.mon-balance { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.mon-balance summary { cursor: pointer; font: 600 13px var(--ui); color: var(--muted); }
+.mon-balance summary:hover { color: var(--text); }
+.mon-balance-note { margin: 6px 0 0; font-size: 12px; }
+.mon-balance-rows { margin-top: 4px; }
+.grid.mon-cols .mon-balance-rows .srow { padding-top: 2px; padding-bottom: 2px; }
+.mon-nocolor { margin: 8px 0 0; font-size: 12.5px; }
+.grid.mon-cols .disp-block { margin-top: 8px; padding-top: 6px; }
+.grid.mon-cols .disp-line { margin: 2px 0; }
+.grid.mon-cols .mon-supports { margin-top: 8px; padding-top: 8px; }
+
+/* Settings fits one screen with Backups in it (24 Oct 2026): tighter cards and a short bottom margin */
+.grid.settings-cols .panel { padding: 14px 18px; }
+.grid.settings-cols .panel-head { margin-bottom: 10px; }
+#main .page[data-no-jump] { padding-bottom: 24px; }

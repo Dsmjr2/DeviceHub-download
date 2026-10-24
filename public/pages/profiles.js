@@ -5,6 +5,7 @@
 // the "When no game is running" profile (core/profile-use.js maps the choice onto both).
 import { h, icon } from '../ui/dom.js';
 import { button, pill, card, row, toggle } from '../ui/controls.js';
+import { dropdown } from '../ui/dropdown.js';
 import { auto, saveSettings, runningWindows, onAuto, gameTitle } from '../core/autoswitch.js';
 import { devices, isDemo } from '../core/devices.js';
 import { topbar } from './common.js';
@@ -87,7 +88,7 @@ function setsLines(p, rows) {
     for (const k of Object.keys(MONITOR_KEYS)) {
       if (vals?.[k] == null) continue;
       const r = at.get(`${mid}|${k}`);
-      const now = r ? `now ${showValue('monitor', k, r.from)}` : mons && !findMonitor(mid) ? 'off or not found now' : null;
+      const now = r ? `now ${showValue('monitor', k, r.from)}` : mons && !findMonitor(mid) ? 'not found' : null;
       out.push({ dev: vals.name || 'Monitor', label: keyLabel('monitor', k), text: showValue('monitor', k, vals[k]), now });
     }
   }
@@ -108,13 +109,13 @@ function setsLines(p, rows) {
 export async function applyWithPreview(p) {
   if (p.monitors) await loadMonitors(true);
   const rows = diff(p);
-  if (!rows.length) { toast(`Already on "${p.name}"`, 'good', { detail: 'Every connected device already matches.' }); return; }
+  if (!rows.length) { toast(`Already on "${p.name}"`, 'good', { detail: 'Nothing to change.' }); return; }
   // an added device's rows carry their own words (title, label, values); a setting it will skip says why
   const body = h('div', { class: 'diff' }, ...rows.map((r) => (r.added ? h('div', {},
     h('span', { class: 'dev' }, r.title), h('span', {}, r.label), h('s', {}, r.fromText), icon('arrow', 'ic faint'), r.ready ? h('b', {}, r.toText) : h('span', { class: 'faint' }, `skipped: ${r.blocked}`)) : h('div', {},
     h('span', { class: 'dev' }, r.id === 'monitor' ? r.monitorName : devices[r.id].adapter.kind), h('span', {}, keyLabel(r.id, r.key)), h('s', {}, showValue(r.id, r.key, r.from)), icon('arrow', 'ic faint'), r.ready ? h('b', {}, showValue(r.id, r.key, r.to)) : h('span', { class: 'faint' }, 'not connected')))));
   const changes = rows.filter((r) => !r.blocked).length;
-  const ok = await modal(`Apply "${p.name}"?`, h('div', {}, h('p', { style: { marginTop: 0 } }, `${changes} change${changes === 1 ? '' : 's'}. Each is backed up, written and read back.`), body),
+  const ok = await modal(`Apply "${p.name}"?`, h('div', {}, h('p', { style: { marginTop: 0 } }, `${changes} change${changes === 1 ? '' : 's'}.`), body),
     [{ label: 'Cancel', value: false, kind: 'ghost' }, { label: 'Apply', value: true, kind: 'primary' }]);
   if (!ok) return;
   const t = toast(`Applying "${p.name}"…`, 'busy', { ms: 0 });
@@ -132,7 +133,7 @@ async function captureNow() {
   if (!Object.keys(snap).length && !Object.keys(mons).length && !Object.keys(added).length) return null;
   return { snap, mons, added };
 }
-const NOTHING = 'Nothing to save: connect a device first.';
+const NOTHING = 'Connect a device first.';
 const say = (name, text, kind = '') => { ui.note = { [name]: { text, kind } }; };
 
 // "Save my current settings here" (Update before): the same capture; the profile keeps its name, color, games and
@@ -150,7 +151,7 @@ async function saveHere(p) {
     return o;
   };
   await saveProfiles(list.map((x) => (x.name === p.name ? next(x) : x)));
-  say(p.name, 'Saved. This profile now sets your current settings.');
+  say(p.name, 'Saved.');
   await refreshList();
 }
 
@@ -199,7 +200,7 @@ async function removeGame(p, g) {
 function gamePicker(p) {
   const games = namedGames(p);
   const open = ui.picker === p.name;
-  const box = h('input', { class: 'text mono', value: ui.pickerText, placeholder: 'or type its name, e.g. VALORANT.exe', 'aria-label': 'program name',
+  const box = h('input', { class: 'text mono', value: ui.pickerText, placeholder: 'or type its .exe name', 'aria-label': 'program name',
     oninput: (e) => { ui.pickerText = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter') addGame(p, e.target.value); if (e.key === 'Escape') { ui.picker = null; rerender(); } },
     onblur: afterTyping });
   return h('div', { class: 'prof-games' },
@@ -207,10 +208,10 @@ function gamePicker(p) {
       ...games.map((g) => h('button', { class: 'pill accent', style: { cursor: 'pointer', background: 'none' }, 'aria-label': `Remove ${gameTitle(g)}`, onclick: () => removeGame(p, g) }, gameTitle(g), ' ×')),
       open ? null : h('button', { class: 'pill', style: { cursor: 'pointer', background: 'none' }, onclick: () => openPicker(p) }, '+ Add a game')),
     open ? h('div', { class: 'prof-pick' },
-      h('div', { class: 'prof-label' }, 'Programs open right now'),
+      h('div', { class: 'prof-label' }, 'Open programs'),
       ui.pickerApps == null ? h('div', { class: 'faint' }, 'Looking…')
         : ui.pickerApps.length ? h('div', { class: 'files prof-apps' }, ...ui.pickerApps.map((a) => h('button', { class: 'file prof-app', onclick: () => addGame(p, a.exe) }, h('div', {}, a.title, h('small', {}, a.exe)), icon('plus'))))
-          : h('div', { class: 'faint' }, 'No game is open. Start it, then press Add a game again, or type its name below.'),
+          : h('div', { class: 'faint' }, 'No game open. Start it, or type its name below.'),
       box,
       h('div', { class: 'actions' }, button('Add', () => addGame(p, ui.pickerText), { kind: 'primary small' }), button('Cancel', () => { ui.picker = null; rerender(); }, { kind: 'ghost small' }))) : null);
 }
@@ -220,7 +221,7 @@ function autoPanel() {
   const on = !!auto.settings.autoSwitch;
   // "New profile" sits here, small, so it is never in the way of the profiles (Shawn, 22 Oct 2026)
   const startNew = () => { ui.adding = { step: 'name', name: '', error: '' }; ui.focusNew = true; ui.note = {}; rerender(); };
-  return card(null, row('DeviceHub switches profiles for you when games start', on ? null : 'Off: profiles change only when you pick one.',
+  return card(null, row('Switch profiles when games start', null,
     h('div', { class: 'actions', style: { alignItems: 'center', flexWrap: 'nowrap' } },
       ui.adding ? null : button('New profile', startNew, { kind: 'ghost small', ic: 'plus' }),
       toggle({ value: on, label: 'Switch profiles when games start', onCommit: async (v) => { await saveSettings({ autoSwitch: v }); rerender(); } }))));
@@ -238,7 +239,7 @@ const lineEl = (l) => h('div', { class: 'prof-line' }, h('span', {}, `${l.dev} �
 // What it sets: a short list as it is; a long one as "29 settings · Mouse, Headset, Keyboard", plus the lines that
 // differ right now (what Use now would change), and the whole list behind Show
 function setsBlock(p, lines) {
-  if (!lines.length) return h('div', { class: 'prof-sets faint' }, 'Sets nothing yet. Press "Save current settings".');
+  if (!lines.length) return h('div', { class: 'prof-sets faint' }, 'Sets nothing yet.');
   if (lines.length <= SHORT) return h('div', { class: 'prof-sets' }, ...lines.map(lineEl));
   const open = ui.showAll.has(p.name);
   const differ = lines.filter((l) => l.now);
@@ -254,8 +255,8 @@ function setsBlock(p, lines) {
 // an extra line under the choice only when the choice alone does not tell the whole story
 function useNote(p, use, s) {
   const games = use === 'any' || use === 'named';
-  if (games && s.defaultProfile && p.name === s.defaultProfile) return 'Also used when no game is running.';
-  if (games && !s.autoSwitch) return 'Waits until switching is on at the top.';
+  if (games && s.defaultProfile && p.name === s.defaultProfile) return 'Also when no game runs.';
+  if (games && !s.autoSwitch) return 'Turn on switching at the top.';
   return null;
 }
 
@@ -275,13 +276,12 @@ function profileCard(p) {
   return h('div', { class: 'profile', style: { '--pc': p.color } },
     h('div', { class: 'prof-head' }, h('h3', {}, p.name, saved ? h('span', { class: 'prof-saved' }, saved) : null), active ? pill('Active', 'good') : null),
     h('div', { class: 'prof-use' },
-      h('select', { class: 'text', 'aria-label': `When to use ${p.name}`, onchange: (e) => setUse(p, e.target.value) },
-        ...USES.map((o) => h('option', { value: o.value, selected: o.value === use ? true : null }, o.label))),
+      dropdown({ label: `When to use ${p.name}`, value: use, options: USES, onChange: (v) => setUse(p, v) }),
       extra ? h('div', { class: 'prof-note' }, extra) : null,
       use === 'named' ? gamePicker(p) : null),
     setsBlock(p, lines),
-    asking === 'save' ? confirmBox('Replace what this profile sets with your current settings?', 'Yes', 'primary', () => saveHere(p))
-      : asking === 'delete' ? confirmBox('Delete this profile? Your devices stay as they are.', 'Delete', 'danger', () => deleteProfile(p))
+    asking === 'save' ? confirmBox('Replace with current settings?', 'Yes', 'primary', () => saveHere(p))
+      : asking === 'delete' ? confirmBox('Delete this profile?', 'Delete', 'danger', () => deleteProfile(p))
         : h('div', { class: 'prof-foot' },
           active ? null : button('Use now', () => { ui.note = {}; return applyWithPreview(p); }, { kind: 'primary small' }),
           h('div', { class: 'actions' },
@@ -303,7 +303,7 @@ async function flowNext() {
   const a = ui.adding;
   const name = (a.name || '').trim().slice(0, 100);
   if (!name) { a.error = 'Type a name first.'; rerender(); return; }
-  if ((list || []).some((p) => p.name.toLowerCase() === name.toLowerCase())) { a.error = `You already have a profile called "${name}". Pick another name.`; rerender(); return; }
+  if ((list || []).some((p) => p.name.toLowerCase() === name.toLowerCase())) { a.error = `"${name}" exists. Pick another name.`; rerender(); return; }
   const now = await captureNow();
   if (!now) { a.error = NOTHING; rerender(); return; }
   ui.adding = { step: 'pick', name, ...now, off: new Set(), error: '' };
@@ -326,7 +326,7 @@ async function flowSave() {
   const color = PROFILE_COLORS[others.length % PROFILE_COLORS.length];
   await saveProfiles([...others, { name: a.name, color, games: [], devices: devs, ...(Object.keys(mons).length ? { monitors: mons } : {}), ...(Object.keys(added).length ? { added } : {}), savedAt: new Date().toISOString() }]);
   ui.adding = null;
-  say(a.name, 'Saved. Pick when to use it at the top of the card.');
+  say(a.name, 'Saved. Pick when to use it.');
   await refreshList();
 }
 
@@ -366,7 +366,7 @@ function newTile() {
       h('div', { class: 'actions' }, button('Next', () => flowNext(), { kind: 'primary small' }), button('Cancel', cancel, { kind: 'ghost small' })));
   }
   return h('div', { class: 'profile prof-flow' }, h('h3', {}, `New profile: ${a.name}`),
-    h('div', { class: 'prof-when' }, 'Your current settings. Untick anything this profile should leave alone.'),
+    h('div', { class: 'prof-when' }, 'Untick what to leave alone.'),
     ...flowKeys(a).map((g) => flowGroup(a, g)),
     err,
     h('div', { class: 'actions' }, button('Save', () => flowSave(), { kind: 'primary small' }), button('Cancel', cancel, { kind: 'ghost small' })));

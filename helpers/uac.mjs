@@ -16,7 +16,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-export const UAC_LINE = 'Windows is asking for permission: click Yes (if hidden, click the blinking shield on the taskbar).';
+export const UAC_LINE = "Click Yes in Windows' prompt (if hidden, the blinking taskbar shield).";
 export const UAC_WAIT_MS = 2 * 60 * 1000;
 export const declinedText = (what) => `${what}: Windows' permission box was declined. Nothing was changed.`;
 export const unansweredText = (what) => `${what}: Windows' permission box was not answered within 2 minutes. Close it if it is still open, then press Try again.`;

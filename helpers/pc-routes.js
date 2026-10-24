@@ -7,6 +7,7 @@
 //   POST /api/display/open-settings { page: 'display' | 'nightlight' | 'hdr' }: Windows Settings at that page
 //   GET  /api/temps                 temperatures and fans, read only (helpers/pc-sensors.js)
 //   GET  /api/pc-check[?fresh=1]    the PC check (helpers/pc-check.js)
+//   POST /api/pc-check/open-app     { app: 'nvidia' | 'amd' }: starts the maker's app the last check found, nothing else
 const { spawn } = require('child_process');
 
 const SETTINGS = { display: 'ms-settings:display', nightlight: 'ms-settings:nightlight', hdr: 'ms-settings:display-advancedcolor' };
@@ -36,10 +37,14 @@ async function handle(req, res, url, { send, readBody, backups, log = () => {} }
     }
     if (p === '/api/temps' && req.method === 'GET') return send(res, 200, await require('./pc-sensors').read());
     if (p === '/api/pc-check' && req.method === 'GET') return send(res, 200, await require('./pc-check').check(url.searchParams.has('fresh')));
+    if (p === '/api/pc-check/open-app' && req.method === 'POST') {
+      const { app } = await readBody(req);
+      return send(res, 200, require('./pc-check').openApp(String(app || '')));
+    }
     return send(res, 404, { error: 'not found' });
   } catch (e) { return send(res, 400, { error: e.message }); }
 }
 
-const handles = (p) => p === '/api/display' || p.startsWith('/api/display/') || p === '/api/temps' || p === '/api/pc-check';
+const handles = (p) => p === '/api/display' || p.startsWith('/api/display/') || p === '/api/temps' || p === '/api/pc-check' || p === '/api/pc-check/open-app';
 
 module.exports = { handle, handles };

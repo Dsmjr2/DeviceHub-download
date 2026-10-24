@@ -49,7 +49,7 @@ async function start(o, c) {
     const r = isDemo() ? demoStart(o, c) : await env.api('/api/openrgb/find-start', { target: c.index });
     if (Array.isArray(r.controllers)) o.controllers = r.controllers;
     go({ step: 'test', index: r.index, name: r.name, zones: r.zones, seen: {}, names: {} });
-  } catch (e) { go({ error: `The test colors did not go on: ${say(e)}` }); }
+  } catch (e) { go({ error: `Test colors failed: ${say(e)}` }); }
 }
 
 // a color counts as lit when it was tapped or given a name; an empty, untapped one lit nothing
@@ -72,8 +72,8 @@ async function save(o) {
     }
     const list = Object.values(names);
     const result = [list.length ? `Saved: ${list.join(', ')}.` : 'No names saved.',
-      hidden.length ? `${hidden.length} zone${hidden.length === 1 ? '' : 's'} that lit nothing ${hidden.length === 1 ? 'is' : 'are'} hidden.` : null,
-      'Your colors are back.'].filter(Boolean).join(' ');
+      hidden.length ? `${hidden.length} unlit zone${hidden.length === 1 ? '' : 's'} hidden.` : null,
+      'Colors restored.'].filter(Boolean).join(' ');
     go({ step: 'idle', result, zones: [], seen: {}, names: {} });
   } catch (e) { go({ error: say(e) }); }
 }
@@ -83,8 +83,8 @@ async function cancel(o) {
   try {
     if (isDemo()) demoPutBack(o.controllers.find((x) => x.index === s.index));
     else { const r = await env.api('/api/openrgb/find-cancel', {}); if (Array.isArray(r.controllers)) o.controllers = r.controllers; }
-    go({ step: 'idle', result: 'Canceled. Your colors are back.', zones: [], seen: {}, names: {} });
-  } catch (e) { go({ error: `The colors did not go back: ${say(e)}` }); }
+    go({ step: 'idle', result: 'Canceled. Colors restored.', zones: [], seen: {}, names: {} });
+  } catch (e) { go({ error: `Colors not restored: ${say(e)}` }); }
 }
 
 const line = (text, kind = '') => h('p', { class: `gh-note ${kind}`, style: { margin: '6px 0 0' } }, text);
@@ -92,7 +92,7 @@ const dot = (hex) => h('span', { 'aria-hidden': 'true', style: { width: '18px', 
 
 function colorAnswer(z, n) {
   const status = h('small', { class: 'faint', style: { flex: '0 0 auto', minWidth: '150px' } });
-  const showStatus = () => { status.textContent = lit(z.index) ? (named(z.index) ? 'Will be named' : 'Lit, no name') : 'Nothing lit in this color'; };
+  const showStatus = () => { status.textContent = lit(z.index) ? (named(z.index) ? 'Will be named' : 'Lit, no name') : 'Nothing lit'; };
   const chip = h('button', { class: `btn small${s.seen[z.index] ? '' : ' ghost'}`, 'aria-pressed': String(!!s.seen[z.index]), style: { display: 'inline-flex', alignItems: 'center', gap: '6px', minWidth: '112px' },
     onclick: () => { s.seen[z.index] = !s.seen[z.index]; chip.classList.toggle('ghost', !s.seen[z.index]); chip.setAttribute('aria-pressed', String(!!s.seen[z.index])); showStatus(); if (s.seen[z.index]) box.focus(); } },
   dot(z.color), h('span', {}, z.colorName));
@@ -107,11 +107,11 @@ function testStep(o) {
   const tested = s.zones.filter((z) => z.color);
   const empty = s.zones.filter((z) => !z.leds).length, past = s.zones.filter((z) => z.notInTest).length;
   return h('div', {},
-    h('p', { style: { margin: '4px 0 2px', fontWeight: 600 } }, 'What lit up in this color?'),
+    h('p', { style: { margin: '4px 0 2px', fontWeight: 600 } }, 'What lit up?'),
     h('p', { class: 'faint', style: { fontSize: '12.5px', margin: '0 0 4px' } }, `Each part of ${s.name} now has its own color. Name each one you see; leave it empty if nothing lit.`),
     ...tested.map((z, n) => colorAnswer(z, n)),
-    empty ? line(`${empty} zone${empty === 1 ? ' has' : 's have'} no lights set up in OpenRGB, so ${empty === 1 ? 'it is' : 'they are'} not in this test.`) : null,
-    past ? line(`${past} more zone${past === 1 ? ' is' : 's are'} not in this test (it has ${DEMO_COLORS.length} colors).`) : null,
+    empty ? line(`${empty} zone${empty === 1 ? '' : 's'} without lights skipped.`) : null,
+    past ? line(`${past} more zone${past === 1 ? '' : 's'} skipped.`) : null,
     s.error ? line(s.error, 'bad') : null,
     h('div', { class: 'actions', style: { margin: '8px 0 0' } },
       button('Save names', () => save(o), { kind: 'primary small', ic: 'check' }),
@@ -121,7 +121,7 @@ function testStep(o) {
 function introStep(o) {
   const list = lights(o);
   return h('div', {},
-    h('p', { class: 'faint', style: { fontSize: '12.5px', margin: '4px 0' } }, 'Each part briefly gets its own color so you can tell them apart; your colors come back after.'),
+    h('p', { class: 'faint', style: { fontSize: '12.5px', margin: '4px 0' } }, 'Each part lights its own color. Yours come back after.'),
     s.error ? line(s.error, 'bad') : null,
     h('div', { class: 'actions', style: { margin: '6px 0 0', flexWrap: 'wrap' } },
       ...(list.length === 1 ? [button('Start', () => start(o, list[0]), { kind: 'primary small' })]

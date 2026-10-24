@@ -1,6 +1,8 @@
 // Controls. Each one takes the confirmed value and an async onCommit(value).
 // While a commit runs the control shows "pending"; it settles on the value the device read back.
 import { h, icon, clamp, svgEl } from './dom.js';
+import { dropdown } from './dropdown.js';
+export { dropdown } from './dropdown.js';
 
 // "pending" (the blink) only if the change takes longer than 500 ms (a mouse change is ~0.4 s), so quick changes just happen
 async function run(el, fn) {
@@ -258,11 +260,10 @@ export function lineList(lines) {
   return h('div', { class: 'kind-list' }, ...lines.flatMap(([name, ctl]) => [h('span', { class: 'kind-name' }, name), h('div', { class: 'kind-ctl' }, ctl)]));
 }
 
-// A button -> action choice: one select per button, holding only the targets the driver lists.
+// A button -> action choice: one glass dropdown per button (ui/dropdown.js), holding only the targets the driver lists.
 export function remapSelect({ value, targets, onCommit, label, disabled }) {
-  const sel = h('select', { class: 'text kind-select', disabled, 'aria-label': label },
-    ...(targets.some((t) => t.value === value) ? [] : [h('option', { value: '', disabled: true, selected: true }, value == null ? '—' : `unknown (${value})`)]),
-    ...targets.map((t) => h('option', { value: t.value, selected: t.value === value || null }, t.label)));
+  const sel = dropdown({ cls: 'kind-select', disabled, label, options: targets,
+    value: targets.some((t) => t.value === value) ? value : null, placeholder: value == null ? '—' : `unknown (${value})` });
   sel.addEventListener('change', () => { if (sel.value !== value) run(sel, () => onCommit(sel.value)).catch(() => {}); });
   return sel;
 }

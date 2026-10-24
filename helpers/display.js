@@ -174,6 +174,13 @@ function create({ run = runPs, now = () => Date.now(), setTimer = setTimeout, cl
         last = { ok: false, text: `${s.name}: Windows did not take ${p.text}, so it is back as it was.` };
         return state();
       }
+      // HDR never leaves a screen blank, so it is done at once (24 Oct 2026, Shawn: "hdr button is
+      // slow"); a resolution, refresh rate or main screen change still waits 15 s for Keep
+      if (kind === 'hdr') {
+        last = { ok: true, text: `${s.name}: ${p.text}.` };
+        log(`display: ${last.text}`);
+        return state();
+      }
       p.until = now() + KEEP_MS;
       p.timer = setTimer(() => { revert('timeout').catch(() => {}); }, KEEP_MS);
       pending = p; last = null;
