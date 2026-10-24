@@ -334,6 +334,24 @@ if (!DEMO) {
   };
   setTimeout(ask, 130000); setTimeout(ask, 300000);
 }
+// One click, always (24 Oct 2026, Shawn: "why is it making click the buttons twice to update or publish"): a page that
+// redraws (Settings does whenever one of its checks answers) replaces the button between the press and the release, and
+// the browser then drops the click. When the pressed button is gone by the release, the release clicks the button that
+// took its place: the same label, under the pointer.
+{
+  let pressed = null;
+  const labelOf = (b) => (b?.textContent || '').replace(/\s+/g, ' ').trim();
+  document.addEventListener('pointerdown', (e) => {
+    const b = e.target?.closest?.('button');
+    pressed = b && !b.disabled && e.button === 0 ? { b, label: labelOf(b) } : null;
+  }, true);
+  document.addEventListener('pointerup', (e) => {
+    const p = pressed; pressed = null;
+    if (!p || p.b.isConnected || e.button !== 0) return;
+    const now = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('button');
+    if (now && !now.disabled && labelOf(now) === p.label) now.click();
+  }, true);
+}
 if ('serviceWorker' in navigator && !DEMO) navigator.serviceWorker.register('/sw.js').catch(() => {});
 if (LOCAL) {
   navigator.hid?.addEventListener('connect', () => { for (const d of Object.values(devices)) if (d.status !== 'connected') connect(d.id, false); });
