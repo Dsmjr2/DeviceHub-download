@@ -85,6 +85,9 @@ function diagnose({ pc = null, orgb = null } = {}) {
     ...found.filter((c) => c.zones.length > 1).map((c) => `- ${c.name} zones: ${c.zones.map((z) => `${z.name} (${z.leds} lights${z.color ? `, ${z.color}` : ''}${z.hidden ? ', hidden' : ''})`).join('; ')}`),
     `- Board: ${board || 'not read'}${pc?.smbus?.length ? ` (SMBus: ${pc.smbus.join(', ')})` : ''}`,
     `- Lighting controllers on USB: ${seen.length ? seen.map((s) => `${s.name} (${s.id})${s.found === true ? ', found' : s.found === false ? ', NOT found by OpenRGB' : ''}`).join('; ') : 'none known'}`,
+    // every USB device by id and Windows' name, so a fan controller DeviceHub does not know yet still shows (23 Oct 2026,
+    // Shawn: "He has a controller for his fans"; the report said none known and listed nothing else)
+    `- All USB devices: ${(pc?.usb || []).map((u) => `${String(u.id || `${u.vid}:${u.pid}`).toLowerCase()}${u.name ? ` ${u.name}` : ''}`).filter((x, i, all) => all.indexOf(x) === i).join('; ') || 'not read'}`,
     `- So: ${verdict ? verdict.line : 'the PC was not read yet'}`,
   ];
   return { board, openrgb, found, seen, verdict, problems, lines, table: { entries: TABLE.controllers.length, source: SOURCE } };
