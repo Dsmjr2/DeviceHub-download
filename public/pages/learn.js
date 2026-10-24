@@ -20,7 +20,7 @@
 import { h } from '../ui/dom.js';
 import { card, row, segmented, button, pill } from '../ui/controls.js';
 import { installerButton } from '../ui/installer-button.js';
-import { isDemo } from '../core/devices.js';
+import { isDemo, devices, connect } from '../core/devices.js';
 import { topbar, checkAnswer } from './common.js';
 import { genericDongle } from '../core/generic-dongle.js';
 import { getHelp, helpHere } from '../ui/get-help.js';
@@ -268,15 +268,16 @@ function pickStep() {
         button('Learn it for me', () => { st.pfFor = d; st.step = 'preflight'; redrawPage(); }, { kind: primary(d) || d === only ? 'primary small' : 'ghost small', ic: 'plug' }),
         button('Choose the settings', () => pick(d), { kind: 'ghost small' })));
   const head = (t) => h('h3', { class: 'learn-group' }, t);
-  return card([h('h2', {}, learnable.length ? 'Pick the device' : 'Nothing to learn'), h('span', { class: 'spacer' }), learnable.length ? stepNo('pick') : null],
+  return card([h('h2', {}, learnable.length ? 'Pick the device' : working.length ? 'Your devices' : 'Nothing to learn'), h('span', { class: 'spacer' }), learnable.length ? stepNo('pick') : null],
     learnable.length ? null
-      : p('Nothing to learn.'),
+      : p(working.length ? 'Nothing here needs learning: each device has a driver. What is left for each is below.' : 'Nothing to learn.'),
     st.want && !wanted ? faint(`USB ${st.want.toLowerCase()} is not in the list: nothing to learn on it.`) : null,
     learnable.length ? [head('Can be learned'), ...learnable.map(learnRow)] : null,
-    working.length ? [head('Already works'), ...working.map((d) => row(d.title || d.name, `${short(d)} · USB ${d.vid}:${d.pid}`,
+    working.length ? [learnable.length ? head('Already works') : null, ...working.map((d) => h('div', {}, row(d.title || d.name, `${short(d)} · USB ${d.vid}:${d.pid}`,
       h('span', { class: 'actions', style: { margin: 0 } },
-        button('Open its page', () => { location.hash = d.ready?.page || '#/setup'; }, { kind: 'primary small' }),
-        d.ready || d.driver ? button('A setting is missing?', () => missingFor(d), { kind: 'ghost small' }) : null))),
+        button('Open its page', () => { location.hash = runningCopy(d)?.page || d.ready?.page || '#/setup'; }, { kind: 'ghost small' }),
+        d.ready || d.driver ? button('A setting is missing?', () => missingFor(d), { kind: 'ghost small' }) : null)),
+      nextStep(d))),
       h('div', { class: 'actions', style: { margin: '4px 0 8px' } }, button('Open Setup', () => { location.hash = '#/setup'; }, { kind: 'ghost small' }))] : null,
     cannot.length ? [head('Cannot be learned here'), ...cannot.map((d) => row(d.title || d.name, `${why(d)} · USB ${d.vid}:${d.pid}`,
       genericDongle({ ...d, name: /^USB device /.test(d.name) ? null : d.name }) || d.vendor ? getHelp(`request:${d.vid.toLowerCase()}:${d.pid.toLowerCase()}`, null, { label: 'Request support', request: { vid: d.vid, pid: d.pid, name: '' }, kind: 'ghost small' }) : null))] : null,
@@ -284,6 +285,60 @@ function pickStep() {
     checkResult(),
     h('div', { class: 'actions', style: { marginTop: '12px' } }, button('Look again', loadDevices, { kind: 'ghost small', ic: 'refresh' }),
       isDemo() ? null : button(st.check === 'running' ? 'Testing…' : 'Test my learning setup', () => checkSetup(), { kind: 'ghost small', disabled: st.check === 'running' })));
+}
+
+// ---------- a device that already works: its page, and its one next step (24 Oct 2026) ----------
+// Shawn, on a friend's PC: "the learn a device area is still completely unusable for his setup and I cant go through ANY
+// steps": every device had a driver, so the page only said "Already works". Now each one shows what still stands in the
+// way, from its own diagnosis (GET /api/diagnose, the same answer as its page), as one button: closing the maker's app
+// also turns the settings on right after (the G HUB tray kept a Logitech mouse read-only).
+// the driver that runs the device: of the copies on its USB id, one shown (not stepped aside), connected first
+function runningCopy(d) {
+  const all = [d.ready, ...(d.ready?.others || [])].filter((x) => x?.id);
+  const live = (x) => devices[x.id] && !devices[x.id].absent;
+  return all.find((x) => live(x) && devices[x.id].status === 'connected') || all.find(live) || all[0] || null;
+}
+const nextCache = {};   // id -> { at, data, note, busy }
+const diagPost = async (body) => {
+  const r = await fetch('/api/diagnose/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.error) throw new Error(j.error || r.statusText);
+  return j;
+};
+function nextStep(d) {
+  const copy = runningCopy(d);
+  if (!copy || isDemo()) return null;
+  const id = copy.id, c = (nextCache[id] ||= { at: 0, data: null, note: null, busy: false });
+  if (!c.data && Date.now() - c.at > 15000) {
+    c.at = Date.now();
+    fetch(`/api/diagnose?id=${encodeURIComponent(id)}`).then((r) => r.json()).then((j) => { c.data = j; redrawPage(); }).catch(() => {});
+  }
+  const top = (c.data?.findings || []).find((f) => f.action) || null;
+  const say = (t) => { c.note = t; c.busy = false; c.data = null; c.at = 0; redrawPage(); };
+  const go = async () => {
+    if (c.busy) return;
+    c.busy = true; redrawPage();
+    const a = top.action;
+    try {
+      if (a.kind === 'close-app') {
+        const r = await diagPost({ kind: 'close-app', app: a.app, confirm: true });
+        if (r.ok === false) return say(r.error || 'It is still running.');
+        await new Promise((ok) => setTimeout(ok, 3000));
+        await connect(id, false).catch(() => {});
+        const t = await diagPost({ kind: 'turn-on', id });
+        return say(`${a.label.replace(/^Close /, '')} closed. ${checkAnswer(t, 'turn-on')}`);
+      }
+      if (a.kind === 'turn-on' || a.kind === 'check-again') return say(checkAnswer(await diagPost({ kind: a.kind, id }), a.kind));
+      if (a.kind === 'retry') { await connect(id, false); return say('Connecting…'); }
+      if (a.kind === 'settings' || a.kind === 'open-folder') { await diagPost({ kind: a.kind, page: a.page }); return say('Opened.'); }
+      say('');
+    } catch (e) { say(`Not done: ${e.message}`); }
+  };
+  const label = !top ? null : top.action.kind === 'close-app' ? `${top.action.label} and turn on settings` : top.action.label || (top.action.kind === 'turn-on' ? 'Turn on settings' : top.action.kind === 'retry' ? 'Connect again' : 'Check again');
+  return h('div', { class: 'learn-next' },
+    top ? h('small', {}, h('b', {}, `${top.problem}. `), top.fix ? `Fix: ${top.fix}` : '') : c.data ? h('small', { class: 'faint' }, 'Nothing to do: it works.') : null,
+    top && ['close-app', 'turn-on', 'check-again', 'retry', 'settings', 'open-folder'].includes(top.action.kind) ? button(c.busy ? 'Working…' : label, go, { kind: 'primary small', ic: 'plug', disabled: c.busy }) : null,
+    c.note ? h('small', { role: 'status' }, c.note) : null);
 }
 
 // the pre-flight before Learn it for me: its settings are the ones the plan will tick (the device's kind), so the lines

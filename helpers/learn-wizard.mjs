@@ -1264,12 +1264,19 @@ export function peek() {
 // its brand): { name, id, where, page } so Learn names it and sends the person to its page (Turn on settings) instead
 async function readyOf(d, own, root) {
   const k = `${d.vid}:${d.pid}`;
-  const copy = (own.copies || []).find((c) => c.ids.includes(k)) || (vendorRefusal(d.vid) && /ready-made/.test(vendorRefusal(d.vid)) ? (own.copies || []).find((c) => c.ids.some((x) => x.startsWith(`${d.vid}:`))) : null);
-  if (copy) {
-    const dir = path.join(root, 'my-devices', copy.name);
-    const mark = libraryMark(dir) || {};
-    const id = mark.id || readJson(path.join(dir, 'device.json'))?.id || readJson(path.join(dir, 'driver.json'))?.id || copy.name;
-    return { name: copy.name, id, where: 'my-devices', page: `#/${id}`, learned: !!mark.learned };
+  // every copy on this id (a receiver can carry a mouse and a keyboard driver: 24 Oct 2026, a friend's C54D led to the
+  // keyboard driver that had stepped aside): all are listed (others), the page shows the one that runs the device
+  let copies = (own.copies || []).filter((c) => c.ids.includes(k));
+  if (!copies.length && vendorRefusal(d.vid) && /ready-made/.test(vendorRefusal(d.vid))) copies = (own.copies || []).filter((c) => c.ids.some((x) => x.startsWith(`${d.vid}:`)));
+  if (copies.length) {
+    const one = (copy) => {
+      const dir = path.join(root, 'my-devices', copy.name);
+      const mark = libraryMark(dir) || {};
+      const id = mark.id || readJson(path.join(dir, 'device.json'))?.id || readJson(path.join(dir, 'driver.json'))?.id || copy.name;
+      return { name: copy.name, id, where: 'my-devices', page: `#/${id}`, learned: !!mark.learned };
+    };
+    const all = copies.map(one);
+    return { ...all[0], others: all.slice(1) };
   }
   // a library entry not installed yet: ready only when it writes something (Setup installs it)
   if (d.driver && d.driver.writes) return { name: d.driver.name, id: null, where: d.driver.where, page: '#/setup' };
