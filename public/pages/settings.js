@@ -200,6 +200,10 @@ function publishRow() {
   if (running) return row('Publish', `Publishing: ${run.step || 'Building'}… (${mins} min)`, null);
   // no signing key on this PC: the release would stop at signing, so say where it is first
   if (pub.keyHere === false) return row('Publish', 'No signing key here. Publish from the last PC.', null);
+  // nothing to publish (24 Oct 2026, Shawn: "make it so the publish doesnt show if it isnt necessary"): friends already
+  // have this PC's version and nothing failed; a publish that just finished stays said for 10 minutes
+  const justDone = run?.state === 'done' && Date.now() - (run.endedAt || 0) < 10 * 60000;
+  if (pub.ahead === 0 && run?.state !== 'failed' && !justDone) return null;
   const start = async () => {
     try { const r = await env.api('/api/publish-release', {}); pub = { ...pub, run: r.run }; } catch (e) { pub = { ...pub, run: { state: 'failed', error: e.message } }; }
     pubAt = 0; rerender();
