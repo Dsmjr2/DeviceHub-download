@@ -69,3 +69,14 @@ bytes seen in a capture or documented, one setting at a time with a read-back.
 
 Folders starting with `_` are examples. `_example-light` is a pretend light (FFFF:FFE0 is not a real product) that is
 offered and installs only in demo and tests (`DEVICEHUB_EXAMPLE_DEVICE=1`).
+
+## family: models an entry does not list (24 Oct 2026)
+
+`"family": ["FF00:0002"]` in device.json: the brand's protocol by its vendor HID collection (usage page:usage, as Windows
+lists it; helpers/pc-map.js `pages`). A device of the same vendor id whose product id NO entry lists, and which has that
+collection, matches the entry too (helpers/device-library.mjs `match`, `familyPids`). The install keeps those ids in the
+copy's library.json `familyPids` (a copy already installed gets them added, with no restart: helpers/my-devices.mjs
+`addFamilyPids`), the channels are opened, and the driver tries them after its own ids (`this.familyPids`). Only for a
+driver that identifies the device with the protocol's own documented reads and steps aside (`notMine`) when it is not one
+it runs. Today: logitech-hidpp-mouse and logitech-hidpp-keyboard (HID++ 2.0: a ping and the feature list; the mouse
+needs a DPI feature, the keyboard refuses one). Test: tests/library-family.mjs.

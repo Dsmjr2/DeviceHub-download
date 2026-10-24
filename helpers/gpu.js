@@ -1,5 +1,5 @@
-// The graphics card's temperature, fan speed, load and power (20 Oct 2026, the Fans page), read-only through NVIDIA's
-// own nvidia-smi (installed with every NVIDIA driver; nothing added). Read only while the Fans page is open, at most
+// The graphics card's temperature, fan speed, load and power (20 Oct 2026, the PC page), read-only through NVIDIA's
+// own nvidia-smi (installed with every NVIDIA driver; nothing added). Read only while the PC page is open, at most
 // every 1.5 s. Other makers' cards are not read (AMD and Intel have no such tool that needs no install).
 const { execFile } = require('child_process');
 const fs = require('fs');

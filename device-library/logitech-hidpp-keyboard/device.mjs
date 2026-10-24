@@ -209,11 +209,15 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
       return out;
     },
 
+    // product ids added by the library's family match (numbers), none when there are none
+    familyIds() { return (this.familyPids || []).map((p) => parseInt(p, 16)).filter((n) => Number.isInteger(n) && !PIDS.includes(n) && !(n >= 0xc500 && n <= 0xc5ff)); },
     async connect() {
       releaseSlots(this.id);
       this.dev = null; this.chan = null; this.features = {}; this.caps = {}; this.asleep = false; this.usbId = null; this.wokeAt = 0; this.pendingNotMine = null;
       let dev = null;
-      for (const pid of PIDS) { dev = await open(pid); if (dev) break; }
+      // then a model not listed here, matched by its HID++ collection (device.json family, helpers/my-devices.mjs
+      // familyPids): it must answer HID++ 2.0 as a keyboard, else the driver steps aside
+      for (const pid of [...PIDS, ...this.familyIds()]) { dev = await open(pid); if (dev) break; }
       if (!dev) return false;
       if (!dev.opened && dev.open) await dev.open();
       this.dev = dev;
@@ -235,7 +239,8 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
       }
       this.index = DEV_WIRED;
       let ver = null;
-      try { ver = await this.ping(); } catch (e) { if (e instanceof HidppError) throw e; }
+      try { ver = await this.ping(); } catch (e) { if (e instanceof HidppError && !this.familyIds().includes(this.pid)) throw e; }
+      if (!ver && this.familyIds().includes(this.pid)) { this.stepAside(); throw notMine(`this Logitech device (${hex4(this.pid)}) does not answer HID++ 2.0, so the keyboard driver leaves it alone`); }
       if (!ver) throw new Error('no reply from the keyboard');
       this.protocol = ver;
       return this.finishConnect();

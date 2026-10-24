@@ -7,8 +7,6 @@ const { execFile } = require('child_process');
 
 // Programs that ship in game folders but are not games (helpers, tools, Wallpaper Engine, Java's own tools).
 const SKIP = /crash|unins|redist|setup|install|update|patch|launcher|helper|report|easyanticheat|eac|battleye|beservice|vanguard|vgc|dotnet|vc_?redist|directx|dxsetup|cef|webview|overlay|benchmark|3dmark|systeminfo|sentry|bugsplat|prereq|anticheat|wallpaper|diagnostic|dump|info|util|busybox|^java|^jaccess|^jabswitch|^jfr|^jrun|^jweb|^keytool|^kinit|^klist|^ktab|^rmiregistry|storagereader|collector|repair|quickedit|resourcecompiler|vconsole|winmtr|redownload|iigw|crs-handler|linkshandler|skse|start_protected|_be\.exe|_zk\.exe|detectarchitecture|server\.exe|bootstrapper|^ui32|^sheep|^execpubg/i;
-// Whole folders that are not games.
-const SKIP_DIRS = /^(_commonredist|redist|redistributables|directx|support|tools|wallpaper_engine|steamvr|steamworks shared|3dmark)$/i;
 let cache = { at: 0, names: [], titles: {} };
 
 function steamLibraries() {

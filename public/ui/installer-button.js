@@ -6,7 +6,7 @@
 //   installerButton(id, { onDone, compact }) -> an element that keeps its state across page redraws
 //   installing() -> the id being installed from this window, or null
 //   installerStatus(fresh) -> [{ id, name, installed, version, offer, ... }] (cached; demo mode has pretend ones)
-import { h, icon } from './dom.js';
+import { h } from './dom.js';
 import { button } from './controls.js';
 import { modal, toast } from './overlay.js';
 import { env } from '../core/env.js';

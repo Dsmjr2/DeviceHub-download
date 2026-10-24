@@ -42,14 +42,6 @@ export async function loadPicture() {
   if (new URLSearchParams(location.search).has('demo')) return;
   try { const r = await (await fetch('/api/background?check')).json(); showPicture(r.picture ? `/api/background?v=${Date.now()}` : null); } catch {}
 }
-export async function savePicture(file) {
-  if (new URLSearchParams(location.search).has('demo') || window.DEVICEHUB_DEMO === true) { showPicture(URL.createObjectURL(file)); return { demo: true }; }
-  const r = await fetch('/api/background', { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || r.statusText);
-  showPicture(`/api/background?v=${Date.now()}`);
-  return j;
-}
 export async function removePicture() {
   if (!new URLSearchParams(location.search).has('demo')) await fetch('/api/background/remove', { method: 'POST' });
   showPicture(null);

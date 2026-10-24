@@ -63,17 +63,20 @@ function zoneTemp(z) {
 const LHM_SRC = 'LibreHardwareMonitor';
 // the CPU card (24 Oct 2026, Shawn: "make the cpu temperature and fans show a card like the graphics card"): Windows' own
 // load and clock (helpers/pc-sensors.ps1), and with LibreHardwareMonitor its temperature, hottest core and the CPU fan
-// (the board's header named CPU, else the pump)
+// (the board's header named CPU, else the pump). Many boards' fan chips are not named by LibreHardwareMonitor and read
+// "Fan #1", "Fan #2" (24 Oct 2026, Shawn: "why doesnt mine show the cpu fan speed?"): then Fan #1, the chip's first input,
+// which is the CPU_FAN header on ITE (Gigabyte) and Nuvoton (ASUS, MSI, ASRock) boards; the card says it is a guess.
 function cpuCard(win, lhm) {
   const c = lhm?.setUp && lhm.state === 'ok' ? (lhm.cpu || [])[0] || null : null;
   const fans = lhm?.setUp && lhm.state === 'ok' ? lhm.fans || [] : [];
-  const fan = fans.find((f) => /cpu/i.test(f.name) && !/opt/i.test(f.name)) || fans.find((f) => /cpu|pump|aio/i.test(f.name)) || null;
+  const named = fans.find((f) => /cpu/i.test(f.name) && !/opt/i.test(f.name)) || fans.find((f) => /cpu|pump|aio/i.test(f.name)) || null;
+  const fan = named || (fans.some((f) => /cpu|system|chassis|pump/i.test(f.name)) ? null : fans.find((f) => /^fan #?1$/i.test(f.name.trim())) || null);
   if (!win?.name && !c) return null;
   return {
     name: win?.name || c?.name || 'Processor',
     tempC: c?.packageC ?? null, coresMaxC: c?.coresMaxC ?? null,
     loadPct: win?.loadPct ?? null, clockMHz: win?.clockMHz ?? null,
-    fanRpm: fan?.rpm ?? null, fanName: fan?.name ?? null, sensors: !!c,
+    fanRpm: fan?.rpm ?? null, fanName: fan?.name ?? null, fanGuess: !!fan && !named, fanCount: fans.length, sensors: !!c,
   };
 }
 function decide({ nvidia = null, kmt = [], zones = [], pawnio: hasPawnio = false, lhm = null, cpu = null } = {}) {
@@ -117,15 +120,44 @@ function decide({ nvidia = null, kmt = [], zones = [], pawnio: hasPawnio = false
   return { readings, notReadable, cpuSensors: sensors, cpu: cpuCard(cpu, lhm) };
 }
 
+// ---- the CPU from Node itself (24 Oct 2026, Shawn: "make the processor be read quicker when I open the pc area") ----
+// os.cpus() answers at once: the name, and the load from the time each core spent busy since the last reading (the first
+// reading takes two samples 250 ms apart). The live clock still comes from the PowerShell reader once it is running.
+const os = require('os');
+let lastTimes = null;
+const totals = () => os.cpus().reduce((a, c) => { const t = c.times; a.busy += t.user + t.nice + t.sys + t.irq; a.all += t.user + t.nice + t.sys + t.irq + t.idle; return a; }, { busy: 0, all: 0 });
+async function nodeCpu({ cpus = os.cpus, sample = totals, wait = (ms) => new Promise((r) => setTimeout(r, ms)), now = Date.now } = {}) {
+  const list = cpus();
+  if (!list?.length) return null;
+  let prev = lastTimes && now() - lastTimes.at < 15000 ? lastTimes : null;
+  if (!prev) { prev = { ...sample(), at: now() }; await wait(250); }
+  const cur = { ...sample(), at: now() };
+  lastTimes = cur;
+  const d = cur.all - prev.all;
+  const loadPct = d > 0 ? Math.max(0, Math.min(100, Math.round(((cur.busy - prev.busy) / d) * 100))) : null;
+  return { name: String(list[0].model || '').trim() || null, loadPct, clockMHz: null };
+}
+
 // ---- the read ----
 let cache = { at: 0, value: null }, pending = null;
+// the PowerShell reader's last answer, and the question it is working on: /api/temps waits at most FIRST_WAIT_MS for it
+// (its first answer, which loads its code, takes a few seconds), then answers with what it has; the slow answer fills the
+// next reading (5 s later)
+const FIRST_WAIT_MS = 1500;
+let lastSession = null, asking = null;
+function sessionNow() {
+  if (!asking) asking = askSession().then((v) => { if (v) lastSession = v; return v; }).finally(() => { asking = null; });
+  return Promise.race([asking, new Promise((r) => setTimeout(() => r(lastSession), FIRST_WAIT_MS))]);
+}
 async function read({ gpu = require('./gpu'), cpuReader = require('./cpu-sensors-read') } = {}) {
   if (cache.value && Date.now() - cache.at < 4500) return cache.value;
   if (pending) return pending;
   pending = (async () => {
     if (process.platform !== 'win32') return { readings: [], notReadable: [], errors: ['only on Windows'] };
-    const [nvidia, s, pw, lhm] = await Promise.all([gpu.read().catch(() => null), askSession(), pawnioInstalled(), cpuReader.read().catch((e) => ({ setUp: true, state: 'error', why: e.message }))]);
-    const v = { ...decide({ nvidia, kmt: s?.gpus || [], zones: s?.zones || [], pawnio: pw, lhm, cpu: s?.cpu || null }), pawnio: pw, errors: s ? s.errors || [] : ['the sensor reader did not answer'], at: new Date().toISOString() };
+    const [nvidia, s, pw, lhm, nc] = await Promise.all([gpu.read().catch(() => null), sessionNow(), pawnioInstalled(), cpuReader.read().catch((e) => ({ setUp: true, state: 'error', why: e.message })), nodeCpu().catch(() => null)]);
+    // the CPU: Node's name and load at once; the reader's name (Windows' own wording) and live clock when it has answered
+    const cpu = nc || s?.cpu ? { name: s?.cpu?.name || nc?.name || null, loadPct: nc?.loadPct ?? s?.cpu?.loadPct ?? null, clockMHz: s?.cpu?.clockMHz ?? null } : null;
+    const v = { ...decide({ nvidia, kmt: s?.gpus || [], zones: s?.zones || [], pawnio: pw, lhm, cpu }), pawnio: pw, errors: s ? s.errors || [] : asking ? [] : ['the sensor reader did not answer'], at: new Date().toISOString() };
     cache = { at: Date.now(), value: v };
     return v;
   })();
@@ -133,4 +165,4 @@ async function read({ gpu = require('./gpu'), cpuReader = require('./cpu-sensors
 }
 function stop() { if (proc) { try { proc.kill(); } catch {} proc = null; } }
 
-module.exports = { read, stop, _test: { decide, zoneTemp, cpuCard } };
+module.exports = { read, stop, _test: { decide, zoneTemp, cpuCard, nodeCpu } };

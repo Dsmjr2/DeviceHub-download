@@ -203,8 +203,6 @@ delete process.env.DEVICEHUB_LIBRARY_UPDATES;
   fs.writeFileSync(path.join(root3, 'package.json'), JSON.stringify({ version: '1.0.1' }));
   x = await lu.startup({ root: root3, url: url3, timeoutMs: 1500, waitMs: 3000 });
   check(x.ok && x.reason === 'app updated' && lu.readState(root3).lastReason === 'app updated', `startup after a version change says "app updated" (${x.reason})`);
-  x = await lu.afterAppUpdate({ root: root3, url: url3, timeoutMs: 1500 });
-  check(x.ok && seenHeaders.length === 6, 'afterAppUpdate checks at once');
   // a server that hangs at start: startup gives up waiting on time and lets the check go on
   const hang2 = http.createServer(() => {}); await new Promise((res) => hang2.listen(0, '127.0.0.1', res));
   const t1 = Date.now();

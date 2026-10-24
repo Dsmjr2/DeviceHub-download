@@ -1,8 +1,8 @@
 # Fan settings in the BIOS (Gigabyte B450 AORUS PRO WIFI, Ryzen 7 5800X3D)
 
 The CPU and case fans follow the motherboard's own fan curve. It runs in the board's chip, reacts every second, uses no
-CPU, and keeps working if Windows or DeviceHub stops, so it is the safest place to tune them. DeviceHub's Fans page shows
-the graphics card live; it does not read or change these fans.
+CPU, and keeps working if Windows or DeviceHub stops, so it is the safest place to tune them. DeviceHub's PC page shows
+the graphics card live, and these fans once the CPU sensors add-on is in; it never changes them.
 
 Written 20 Oct 2026 from Gigabyte's Smart Fan 5 settings. Menu names can differ slightly between BIOS versions; the
 numbers are a starting point, not a rule.
@@ -55,7 +55,7 @@ numbers are a starting point, not a rule.
 
 - Play a game for 15 minutes. If it is quiet and the CPU stays under about 85 °C, you are done.
 - Too loud while gaming: lower the 70 °C and 80 °C points by 5-10 %. Too hot: raise them.
-- The BIOS shows the CPU temperature under its PC health / hardware monitor screen. DeviceHub's Fans page shows the
+- The BIOS shows the CPU temperature under its PC health / hardware monitor screen. DeviceHub's PC page shows the
   graphics card; with a cool card its fans stop, which is normal.
 - To undo everything: set Fan Speed Control back to **Normal** on each fan, or load the BIOS defaults (F7).
 

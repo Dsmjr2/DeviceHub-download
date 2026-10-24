@@ -2,7 +2,7 @@
 // at its top (Shawn, 19 Oct 2026: "a small breakup ... to show my headset vs monitor speakers"). Separate from the
 // headset's presets. Runs through Equalizer APO (helpers/eqapo.js); a change plays at once.
 import { h } from '../ui/dom.js';
-import { card, button, toggle } from '../ui/controls.js';
+import { button, toggle } from '../ui/controls.js';
 import { isDemo } from '../core/devices.js';
 import { env } from '../core/env.js';
 import { toast } from '../ui/overlay.js';

@@ -6,8 +6,8 @@
 //
 // When (24 Oct 2026, docs/handoff/smoother-for-friends.md; a friend's PC kept an old mouse driver for hours after a fix
 // was published, because this ran at most once a day): at every DeviceHub start (startup(), before the drivers load,
-// so a fix published since the last start runs at once), right after an app update (afterAppUpdate(), and startup()
-// notices a new version by itself), when a device page shows a driver problem (POST /api/library/update?soon=1), and
+// so a fix published since the last start runs at once; it notices a new app version by itself), when a device page
+// shows a driver problem (POST /api/library/update?soon=1), and
 // every 3 hours. A fetch is cheap when nothing changed: GitHub's release file host answers If-None-Match /
 // If-Modified-Since with 304 and no body (checked 24 Oct 2026), and a "soon" fetch is not repeated within 10 minutes.
 // After every good check, helpers/library-refresh.mjs puts a newer driver into the my-devices copies installed from
@@ -28,7 +28,6 @@
 //   checkSoon(opts)                       check() unless the last one is under 10 minutes old (a device page's ask)
 //   checkIfDue(opts)                      check() only when the last check is 3 h old or more
 //   startup({ root, log, waitMs })        at start: check now (waits up to waitMs for it), then refresh the copies
-//   afterAppUpdate({ root, log })         right after an app update: check now and refresh the copies (for the update code)
 //   schedule({ root, log })               checkIfDue every hour (timers unref'd); startup() does the first check
 //   status(root)                          the last check, the cached entries and any errors
 //   handle(url, req, res, send)           GET /api/library/updates, POST /api/library/update; true when it answered
@@ -310,14 +309,6 @@ export async function startup({ root = ROOT, log = () => {}, waitMs = 5000, ...r
   return { reason, pending: true, refreshed: await refreshCopies(root, log, rest.now, rest) };
 }
 
-// For the app-update code (helpers/self-update.js / the removed auto-update): call right after a new version is in place. A
-// check now (no 10-minute wait) and the my-devices copies refreshed. startup() also notices the new version by itself
-// at the next start, so this is a speed-up, never needed for correctness.
-export function afterAppUpdate({ root = ROOT, log = () => {}, ...rest } = {}) {
-  if (!enabled(root)) return Promise.resolve({ ...status(root), skipped: 'library updates are off' });
-  return check({ root, log, reason: 'app updated', ...rest });
-}
-
 let timers = null;
 export function schedule({ root = ROOT, log = () => {}, everyMs = 60 * 60 * 1000, ...rest } = {}) {
   if (timers) return false;
@@ -326,7 +317,6 @@ export function schedule({ root = ROOT, log = () => {}, everyMs = 60 * 60 * 1000
   for (const t of timers) t.unref?.();
   return true;
 }
-export function unschedule() { if (timers) { for (const t of timers) clearInterval(t); timers = null; } }
 
 export function status(root = ROOT) {
   const s = readState(root);

@@ -328,7 +328,7 @@ function setupCard() {
 // of each device, and the whole page one click away; the page itself left the sidebar
 let cardAsked = false;
 export function backupsCard(redraw) {
-  if (files === null && !cardAsked) { cardAsked = true; source.list().then((f) => { files = f; }).catch(() => { files = []; }).finally(() => { cardAsked = false; redraw(); }); }
+  if (files === null && !cardAsked) { cardAsked = true; Promise.resolve(source.list()).then((f) => { files = f; }).catch(() => { files = []; }).finally(() => { cardAsked = false; redraw(); }); }
   const groups = new Map();
   for (const d of shownDevices()) groups.set(d.id, []);
   const ids = Object.keys(devices);

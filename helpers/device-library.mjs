@@ -46,6 +46,10 @@ export function validateMeta(m) {
   if (!STATUSES.includes(m.status)) return `status must be ${STATUSES.join(', ')}`;
   if (!Array.isArray(m.works)) return 'works must be a list (what was checked to work)';
   // a "read-only" or "untested" entry may have no test record yet (22 Oct 2026); a "tested" one must have one
+  // family (24 Oct 2026): the brand's protocol by its vendor HID collections ("FF00:0002" = page:usage), so a model the
+  // entry does not list is matched too; the driver itself identifies the device with the protocol's own documented reads
+  // and steps aside when it is not one it runs (helpers/my-devices.mjs stepAside)
+  if (m.family !== undefined && (!Array.isArray(m.family) || !m.family.length || m.family.some((f) => !/^FF[0-9A-F]{2}:[0-9A-F]{4}$/i.test(String(f))))) return 'family must list vendor HID collections as "FF00:0002"';
   if (!Array.isArray(m.tested) || (m.status === 'tested' && !m.tested.length) || m.tested.some((t) => !t || typeof t.date !== 'string' || typeof t.devicehub !== 'string')) return 'tested must list who tested it, when (date) and on which DeviceHub version (devicehub)';
   return null;
 }
@@ -102,18 +106,24 @@ const allowedText = (readOnly, untested) => `only tested${readOnly ? (untested ?
 export function match(usb, { root = ROOT, examples = showsExamples(), readOnly = false, untested = false } = {}) {
   const have = (Array.isArray(usb) ? usb : []).map((u) => ({ vid: hex4(u.vid), pid: hex4(u.pid), name: u.name || '' }));
   const out = [];
-  for (const e of list({ root, examples })) {
-    if (e.error) continue;
+  const entries = list({ root, examples }).filter((e) => !e.error);
+  // every id an entry lists by name: a family never takes one of those (the entry that names it does)
+  const named = new Set(entries.flatMap((e) => e.meta.pids.map((p) => `${hex4(e.meta.vid)}:${hex4(p)}`)));
+  const pagesOf = new Map((Array.isArray(usb) ? usb : []).map((u) => [`${hex4(u.vid)}:${hex4(u.pid)}`, (Array.isArray(u.pages) ? u.pages : []).map((x) => String(x).toUpperCase())]));
+  for (const e of entries) {
     const vid = hex4(e.meta.vid), pids = e.meta.pids.map(hex4);
-    const matched = have.filter((u) => u.vid === vid && pids.includes(u.pid));
+    const fam = (e.meta.family || []).map((x) => String(x).toUpperCase());
+    const byFamily = fam.length ? have.filter((u) => u.vid === vid && !named.has(`${u.vid}:${u.pid}`) && (pagesOf.get(`${u.vid}:${u.pid}`) || []).some((p) => fam.includes(p))) : [];
+    const matched = [...have.filter((u) => u.vid === vid && pids.includes(u.pid)), ...byFamily];
     if (!matched.length) continue;
+    const familyPids = byFamily.map((u) => u.pid);
     const installed = fs.existsSync(path.join(root, 'my-devices', e.name));
     const ok = allowed(e.meta.status, readOnly, untested);
     const why = installed ? 'already in my-devices' : !ok ? `its status is "${e.meta.status}": ${allowedText(readOnly, untested)} install by themselves` : null;
     // the driver's SHA-256: a "Works on my device" record counts only for the driver text it was made with
     const driverSha = driverShaOf(e.dir);
     const note = !why ? installNote(e.meta, driverSha) : undefined;
-    out.push({ name: e.name, meta: e.meta, matched, installed, installable: !why, why, driverSha, ...(note ? { note } : {}) });
+    out.push({ name: e.name, meta: e.meta, matched, installed, installable: !why, why, driverSha, ...(familyPids.length ? { familyPids } : {}), ...(note ? { note } : {}) });
   }
   return out;
 }
@@ -127,7 +137,8 @@ export function installNote(meta, driverSha = null) {
 }
 
 // copies a "tested" entry into my-devices/<name>/. Never over an existing folder, never anywhere but my-devices.
-export async function installFromLibrary(name, { root = ROOT, examples = showsExamples(), readOnly = false, untested = false, now = () => new Date() } = {}) {
+// familyPids: product ids matched by the entry's family (not listed in it), kept in library.json for the driver to open
+export async function installFromLibrary(name, { root = ROOT, examples = showsExamples(), readOnly = false, untested = false, now = () => new Date(), familyPids = [] } = {}) {
   const fail = (error) => ({ ok: false, name, error });
   if (typeof name !== 'string' || !NAME.test(name)) return fail('not a library entry name');
   if (isExample(name) && !examples) return fail('examples install only in demo/test (DEVICEHUB_EXAMPLE_DEVICE=1)');
@@ -153,7 +164,8 @@ export async function installFromLibrary(name, { root = ROOT, examples = showsEx
   for (const f of [...DRIVER_FILES.filter((x) => fs.existsSync(path.join(entry.dir, x))), 'device.json']) fs.copyFileSync(path.join(entry.dir, f), path.join(to, f), fs.constants.COPYFILE_EXCL);
   // the marker my-devices.mjs loads it guarded by (its source and status; nothing about the PC or the person)
   const last = entry.meta.tested.at(-1) || {};
-  const mark = { source: `${entry.origin || 'device-library'}/${name}`, name, id: entry.meta.id, status: entry.meta.status, installedAt: now().toISOString(), devicehub: devicehubVersion(root), libraryTested: last.date || null, libraryDevicehub: last.devicehub || null };
+  const mark = { source: `${entry.origin || 'device-library'}/${name}`, name, id: entry.meta.id, status: entry.meta.status, installedAt: now().toISOString(), devicehub: devicehubVersion(root), libraryTested: last.date || null, libraryDevicehub: last.devicehub || null,
+    ...(familyPids.length ? { familyPids: [...new Set(familyPids.map(hex4))].filter((p) => /^[0-9a-f]{4}$/.test(p)) } : {}) };
   fs.writeFileSync(path.join(to, 'library.json'), JSON.stringify(mark, null, 2) + '\n', { flag: 'wx' });
   const sha = driverShaOf(to);
   return { ok: true, name, to, id: entry.meta.id, status: entry.meta.status, proven: hasRealRecord(entry.meta, { driverSha: sha || 'none' }), note: `Installed: ${installNote(entry.meta, sha || 'none')}.` };

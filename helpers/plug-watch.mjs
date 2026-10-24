@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { brandsByVid, startup } from './auto-setup.mjs';
-import { vendorRefusal, deps as wizardDeps } from './learn-wizard.mjs';
+import { vendorRefusal, deps as wizardDeps, settable } from './learn-wizard.mjs';
 
 const idOf = (u) => `${String(u.vid).toUpperCase().padStart(4, '0')}:${String(u.pid).toUpperCase().padStart(4, '0')}`;
 
@@ -29,7 +29,9 @@ export const metaOnlyIfFound = (root) => (name, id) => {
     return (m.onlyIfFound || []).some((p) => String(p).toUpperCase() === String(id).split(':')[1]);
   } catch { return false; }
 };
-export function describe(added, { usb = [], rec = null, brands = {}, own = { mine: [], copies: [] }, onlyIfFound = () => false } = {}) {
+// canSet(id): true / false from the device's own HID collections (learn-wizard settable: a settings channel), null when
+// not read; a device with nothing to set is never offered Learn (24 Oct 2026: a plain keyboard or a G HUB virtual device)
+export function describe(added, { usb = [], rec = null, brands = {}, own = { mine: [], copies: [] }, onlyIfFound = () => false, canSet = () => null } = {}) {
   const out = [];
   const mine = new Set([...(own.mine || []), ...(own.copies || []).flatMap((c) => c.ids || [])].map((x) => String(x).toUpperCase()));
   for (const k of added) {
@@ -44,13 +46,15 @@ export function describe(added, { usb = [], rec = null, brands = {}, own = { min
     if (inst) { out.push({ vid, pid, name: inst.product || name, brand: b?.name || null, installed: { name: inst.name, id: inst.id || null } }); continue; }
     if (mine.has(k) || !b || b.shared || vendorRefusal(vid)) continue;
     if (!b.kinds.some((x) => ['mouse', 'keyboard', 'headset'].includes(x))) continue;
+    if (canSet(k) === false) continue;
     out.push({ vid, pid, name, brand: b.name, learn: true });
   }
   return out;
 }
 
 // the agent's side: start() once (the list as DeviceHub found it), then check() on each device change
-export function watcher({ root, pcMap, log = () => {}, send = () => {}, setup = startup, owned = (r) => wizardDeps.owned(r), brands = () => brandsByVid(root) }) {
+// hid(): the HID collections (learn-wizard's listHid, read only), asked only when something new was plugged in
+export function watcher({ root, pcMap, log = () => {}, send = () => {}, setup = startup, owned = (r) => wizardDeps.owned(r), brands = () => brandsByVid(root), hid = () => wizardDeps.listHid() }) {
   let prev = null, busy = false, again = false;
   const seen = new Set();
   const check = async () => {
@@ -67,7 +71,19 @@ export function watcher({ root, pcMap, log = () => {}, send = () => {}, setup = 
       try { rec = await setup({ root, pcMap, log }); } catch (e) { console.error('[plug] auto setup:', e.message); }
       let own = { mine: [], copies: [] };
       try { own = owned(root); } catch {}
-      const said = describe(fresh, { usb, rec, brands: brands(), own, onlyIfFound: metaOnlyIfFound(root) });
+      // every collection by id (not only the writable ones); an id not listed yet (Windows still adding it) is unknown
+      let cols = null;
+      try {
+        cols = new Map();
+        for (const c of [].concat((await hid())?.collections || [])) {
+          if (!c?.vid || !c?.pid) continue;
+          const id = `${String(c.vid).toUpperCase().padStart(4, '0')}:${String(c.pid).toUpperCase().padStart(4, '0')}`;
+          if (!cols.has(id)) cols.set(id, []);
+          cols.get(id).push({ page: String(c.page || '0').toUpperCase().padStart(4, '0'), outLen: c.outLen || 0, featLen: c.featLen || 0 });
+        }
+      } catch { cols = null; }
+      const canSet = (k) => (cols?.has(k.toUpperCase()) ? settable(cols.get(k.toUpperCase())) : null);
+      const said = describe(fresh, { usb, rec, brands: brands(), own, onlyIfFound: metaOnlyIfFound(root), canSet });
       for (const x of said) {
         console.log(`[plug] ${x.vid}:${x.pid} ${x.name}: ${x.installed ? `library driver ${x.installed.name} installed` : 'can be learned'}`);
         send('newdevice', x);

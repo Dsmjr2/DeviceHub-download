@@ -24,6 +24,7 @@ import { isDemo } from '../core/devices.js';
 import { topbar, checkAnswer } from './common.js';
 import { genericDongle } from '../core/generic-dongle.js';
 import { getHelp, helpHere } from '../ui/get-help.js';
+import { shareAsk } from '../ui/driver-share.js';
 
 // the state of the page (kept across redraws)
 const newForm = () => ({ label: '', kind: 'number', role: 'battery', unit: '', a: '', b: '' });
@@ -249,7 +250,7 @@ function pickStep() {
   // three groups (23 Oct 2026, Shawn on a friend's PC: "the learn a device area doesnt seem to help" when every row was a
   // long refusal): what can be learned, what already works with a driver (nothing to learn), and what cannot be learned
   // a ready driver (24 Oct 2026): never learned; its row names the driver and sends the person to its page
-  const works = (d) => (d.ready && !d.ready.learned) || (d.refused && (d.driver || d.library || (d.vendor && /ready-made|driver written as code|already has a driver/i.test(d.refused))));
+  const works = (d) => d.asIs || (d.ready && !d.ready.learned) || (d.refused && (d.driver || d.library || (d.vendor && /ready-made|driver written as code|already has a driver/i.test(d.refused))));
   const learnable = list.filter((d) => !d.refused && !works(d)), working = list.filter(works), cannot = list.filter((d) => d.refused && !works(d));
   const short = (d) => {
     if (d.ready) return `Works with its driver (${d.ready.name}).`;
@@ -671,6 +672,8 @@ function autoDone(a) {
     p(`Recorded: ${(r.learned || []).join(', ')}.`, 'faint'),
     ...(r.skipped || []).map((x) => faint(`Not learned: ${x.label}${x.why && x.why !== 'skipped' ? ` (${x.why})` : ''}.`)),
     ...(r.leftAt || []).map((x) => faint(`${x.label} was left at ${x.value}.`)),
+    // a driver was saved: the one-time yes to share drivers that work (ui/driver-share.js)
+    r.saved ? shareAsk(redrawPage) : null,
     f?.done ? p(checkAnswer(f, 'turn-on')) : f?.error ? h('div', { class: 'learn-problem', role: 'status' }, p(f.error))
       : sent?.sent || sent?.queued ? faint('Nothing more to do.')
       : p(r.appOpen && r.app ? `One click closes ${r.app} and checks each setting.` : 'One click checks each setting.'),

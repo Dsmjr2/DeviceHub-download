@@ -37,7 +37,6 @@ function readJsonFile(file, fallback) {
     return fallback;
   }
 }
-let clientStatus = null;
 fs.mkdirSync(BACKUPS, { recursive: true });
 
 // Vendor apps the dashboard may open. Fixed list: the browser can only name a key, never a path.
@@ -191,7 +190,7 @@ const HOSTS = new Set([`localhost:${PORT}`, `127.0.0.1:${PORT}`]);
 // Isolated test mode only (DEVICEHUB_ISOLATED=1): answers every route that would reach a device, the native helper,
 // iCUE, OpenRGB, Equalizer APO, Windows (sound, pointer, startup, processes, PnP/WMI reads), GitHub or another program,
 // and returns true. The routes left to api() read or write only files in this copy's own folder.
-const ISOLATED_PASS = new Set(['/api/version', '/api/windows', '/api/backup', '/api/backups', '/api/client-status', '/api/activity', '/api/settings', '/api/profiles', '/api/vendor-apps', '/api/quit', '/api/supported-devices']);
+const ISOLATED_PASS = new Set(['/api/version', '/api/windows', '/api/backup', '/api/backups', '/api/activity', '/api/settings', '/api/profiles', '/api/vendor-apps', '/api/quit', '/api/supported-devices']);
 function isolatedApi(req, res, url) {
   const p = url.pathname;
   if (ISOLATED_PASS.has(p) || (p.startsWith('/api/backups/') && req.method === 'GET')
@@ -204,7 +203,7 @@ function isolatedApi(req, res, url) {
     '/api/setups': [], '/api/monitors': [], '/api/cameras': [], '/api/power': { saver: false, isolated: true },
     '/api/startup': { enabled: false, isolated: true }, '/api/processes': [], '/api/games': [],
     '/api/battery-estimate': {}, '/api/helper-calls': { uptimeS: Math.round(process.uptime()), calls: {} },
-    '/api/settings-sync': { isolated: true, on: false }, '/api/auto-report': { isolated: true, on: true, configured: false, owner: false, active: false }, '/api/self-update': { isolated: true, count: 0 }, '/api/publish-release': { owner: false }, '/api/self-update/progress': {},
+    '/api/settings-sync': { isolated: true, on: false }, '/api/auto-report': { isolated: true, on: true, configured: false, owner: false, active: false }, '/api/self-update': { isolated: true, count: 0 }, '/api/publish-release': { owner: false }, '/api/driver-share': { choice: null, owner: true }, '/api/self-update/progress': {},
     '/api/updates': { isolated: true, apps: [] }, '/api/openrgb': { running: false, isolated: true, controllers: [] }, '/api/openrgb/find': { running: false, isolated: true },
     '/api/board-lights': { isolated: true, pawnio: { installed: false, version: null }, setUp: false, task: false, copy: false, canSetUp: false, why: 'DeviceHub is in isolated test mode', partial: null, before: '', remove: '', busy: false },
     '/api/cpu-sensors': { isolated: true, pawnio: { installed: false, version: null }, setUp: false, task: false, copy: false, canSetUp: false, why: 'DeviceHub is in isolated test mode', partial: null, before: [], remove: [], busy: false },
@@ -219,11 +218,11 @@ function isolatedApi(req, res, url) {
 let publishRun = null;
 // a signed new version found by the one check after start (helpers/update-notice.mjs); the window asks Update or Later
 let updateNotice = null;
-// what the server does once an update is ready, for the Update button and an update by itself alike: a copy from the
-// zip is already being installed (its installer quits and restarts DeviceHub); a git copy restarts with code 3
-function afterSelfUpdate(r, { auto = false } = {}) {
-  if (r.installing) serverLog({ kind: 'good', text: `Installing the ${r.latest}${auto ? ' by itself' : ''}; DeviceHub restarts by itself` });
-  else if (r.updated) { serverLog({ kind: 'good', text: `DeviceHub updated${auto ? ' by itself' : ''} (${r.count} change${r.count === 1 ? '' : 's'}): restarting` }); setTimeout(() => process.exit(3), 600); }
+// what the server does once Update has the new version: a copy from the zip is already being installed (its installer
+// quits and restarts DeviceHub); a git copy restarts with code 3
+function afterSelfUpdate(r) {
+  if (r.installing) serverLog({ kind: 'good', text: `Installing the ${r.latest}; DeviceHub restarts by itself` });
+  else if (r.updated) { serverLog({ kind: 'good', text: `DeviceHub updated (${r.count} change${r.count === 1 ? '' : 's'}): restarting` }); setTimeout(() => process.exit(3), 600); }
 }
 async function api(req, res, url) {
   // Only the dashboard itself may call the API: other web pages are refused by Origin, and anything that changes
@@ -354,11 +353,7 @@ async function api(req, res, url) {
     if (!name.endsWith('.json') || !fs.existsSync(file)) return send(res, 404, { error: 'no such backup' });
     return send(res, 200, fs.readFileSync(file, 'utf8'));
   }
-  // The app reports what it sees (for troubleshooting) and keeps a change history across restarts.
-  if (url.pathname === '/api/client-status') {
-    if (req.method === 'POST') { clientStatus = { at: new Date(), ...(await readBody(req)) }; return send(res, 200, { ok: true }); }
-    return send(res, 200, clientStatus || {});
-  }
+  // the change history, kept across restarts
   if (url.pathname === '/api/activity') {
     if (req.method === 'POST') {
       const e = await readBody(req);
@@ -390,6 +385,8 @@ async function api(req, res, url) {
     return send(res, 200, { ok: true });
   }
   // automatic problem reports (helpers/auto-report.mjs): { on, configured, owner, active } for Settings and the Set up card
+  // share learned drivers that work (helpers/driver-share.mjs): the person's yes, asked once when a Learn finishes
+  if (url.pathname === '/api/driver-share') { try { if (await (await import('./helpers/driver-share.mjs')).handle(url, req, res, { send, readBody, root: ROOT })) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   if (url.pathname === '/api/auto-report') { try { if (await (await import('./helpers/auto-report.mjs')).handle(url, req, res, send)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   if (url.pathname === '/api/settings') {
     if (req.method === 'GET')return send(res, 200, readJsonFile(SETTINGS, {}));
@@ -398,7 +395,7 @@ async function api(req, res, url) {
       // setupSeen: the window opened once on this PC, so it no longer opens Setup by itself (public/core/first-run.js).
       const cur = readJsonFile(SETTINGS, {});
       const b = await readBody(req);
-      for (const [k, type] of Object.entries({ autoSwitch: 'boolean', defaultProfile: 'string', artStyle: 'string', themeAccent: 'string', themeBg: 'string', ankerGuard: 'boolean', batterySaver: 'boolean', settingsSync: 'boolean', lightWindow: 'boolean', batteryCare: 'boolean', oneDriveCopy: 'boolean', autoReport: 'boolean', setupSeen: 'boolean' }))if (typeof b[k] === type) cur[k] = type === 'string' ? b[k].slice(0, 100) : b[k];
+      for (const [k, type] of Object.entries({ autoSwitch: 'boolean', defaultProfile: 'string', artStyle: 'string', themeAccent: 'string', themeBg: 'string', ankerGuard: 'boolean', batterySaver: 'boolean', settingsSync: 'boolean', lightWindow: 'boolean', batteryCare: 'boolean', oneDriveCopy: 'boolean', autoReport: 'boolean', shareDrivers: 'boolean', setupSeen: 'boolean' }))if (typeof b[k] === type) cur[k] = type === 'string' ? b[k].slice(0, 100) : b[k];
       // the theme (Settings > Appearance): an accent color as #rrggbb and one of the backdrops
       if (cur.themeAccent && !/^#[0-9a-f]{6}$/i.test(cur.themeAccent)) delete cur.themeAccent;
       if (cur.themeBg && !['graphite', 'black', 'ocean', 'midnight', 'espresso', 'old-school', 'verde', 'milk', 'coral-reef', 'taco-night', 'slate', 'plum', 'forest', 'cream', 'paper'].includes(cur.themeBg)) delete cur.themeBg;
@@ -596,7 +593,7 @@ async function api(req, res, url) {
   if (url.pathname === '/api/pc') {
     try { return send(res, 200, await pcMap.get(url.searchParams.has('fresh'))); } catch (e) { return send(res, 500, { error: e.message }); }
   }
-  // the graphics card's temperature, fan, load and power, read-only (helpers/gpu.js; the Fans page)
+  // the graphics card's temperature, fan, load and power, read-only (helpers/gpu.js; the PC page)
   if (url.pathname === '/api/gpu') return send(res, 200, await require('./helpers/gpu').read());
   // A background picture of the person's own (22 Oct 2026, Shawn: the OSRS map behind the Old School theme): one image
   // they pick, kept in this folder only (background-picture.*, in .gitignore, so never in git, the installer or sync).
@@ -793,7 +790,7 @@ async function api(req, res, url) {
     let keyHere = null;
     try { keyHere = (await import('./helpers/signing-key.mjs')).keyAvailable(); } catch {}
     if (publishRun?.state === 'running') {
-      try { const t = fs.readFileSync(publishRun.log, 'utf8'); publishRun.step = /Uploading/.test(t) ? 'Uploading' : /built .*Setup\.exe/.test(t) ? 'Uploading' : /built .*setup\.zip/.test(t) ? 'Building the installer' : /library bundle signed/.test(t) ? 'Packing the zip' : 'Building'; } catch {}
+      try { const t = fs.readFileSync(publishRun.log, 'utf8'); publishRun.step = /Published\./.test(t) ? 'friends have it; finishing Setup.exe' : /Uploading/.test(t) ? 'Uploading' : /built .*Setup\.exe/.test(t) ? 'Uploading' : /built .*setup\.zip/.test(t) ? 'Building the installer' : /library bundle signed/.test(t) ? 'Packing the zip' : 'Building'; } catch {}
     }
     return send(res, 200, { owner: true, published, ahead, keyHere, run: publishRun });
   }
@@ -942,11 +939,13 @@ http.createServer(async (req, res) => {
     setTimeout(() => { try { autoReport.checkCrash(); } catch {} }, 120000).unref();
   } catch (e) { console.error('[report] not started:', e.message); }
   // just updated: a minute running well keeps the new version (else the keep-running loop goes back, self-update.js)
-  require('./helpers/self-update').confirm(serverLog);
+  const justUpdated = require('./helpers/self-update').confirm(serverLog);
   // A NEW VERSION IS READY (helpers/update-notice.mjs, 24 Oct 2026, Shawn: no updates by themselves and no checks every
   // 6 hours, but a pop-up that says there is an update): one check 2 minutes after start, never on the owner's PC; the
-  // window then asks once, Update or Later. Updating stays the person's click.
-  if (process.env.DEVICEHUB_TEST !== '1') {
+  // window then asks once, Update or Later. Updating stays the person's click. Not on the start right after an update
+  // (24 Oct 2026, Shawn: no second update offered straight after one); the next start checks as usual.
+  if (justUpdated) console.log('[update] just updated: no update check this start');
+  else if (process.env.DEVICEHUB_TEST !== '1') {
     const t = setTimeout(async () => {
       try {
         const owner = await import('./helpers/auto-report.mjs').then((m) => m.isOwnerPc(ROOT)).catch(() => true);

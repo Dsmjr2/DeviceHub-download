@@ -4,7 +4,6 @@
 import { BRANDS, SHARED, LABEL, ROUTE } from './brands-data.js';
 
 export { BRANDS, LABEL, ROUTE };
-export const RISK_TEXT = { low: 'low', medium: 'medium', high: 'high (a wrong write can damage it)' };
 const RANK = { low: 0, medium: 1, high: 2 };
 
 // One brand across the device types it makes (Corsair: headsets, mice, keyboards, cases, coolers...), merged.
@@ -35,16 +34,4 @@ export function brandForUsb(vid) {
   // several brands under one id are one company's lines (Logitech, Corsair...): keep the first brand's own entries
   const name = hits[0]?.name.replace(/\s*\(.*\)$/, '');
   return merged(hits.filter((b) => b.name.replace(/\s*\(.*\)$/, '') === name));
-}
-
-// By a maker's name as Windows reports it ("Gigabyte Technology Co., Ltd.", "MSI"), within one device type.
-const words = (s) => String(s || '').toLowerCase().split(/[^a-z0-9!.]+/).filter((w) => w.length >= 3 && !['the', 'and', 'incl', 'legacy', 'series', 'technology', 'computer'].includes(w));
-// the company names Windows reports for the brands' own names
-const ALIAS = [[/asustek/i, 'asus'], [/micro-star|\bmsi\b/i, 'msi'], [/giga-?byte/i, 'gigabyte'], [/evga/i, 'evga'], [/asrock/i, 'asrock'], [/g\.?skill/i, 'g.skill']];
-export function brandNamed(text, category) {
-  const t = [...words(text), ...ALIAS.filter(([re]) => re.test(text || '')).map(([, w]) => w)];
-  if (!t.length) return null;
-  const fits = (b) => words(b.name).some((w) => t.includes(w));
-  const inType = BRANDS.filter((b) => b.category === category && fits(b));
-  return merged(inType.length ? inType.slice(0, 1) : BRANDS.filter(fits).slice(0, 1));
 }

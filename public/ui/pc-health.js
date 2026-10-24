@@ -34,8 +34,11 @@ const DEMO_TEMPS = () => {
 };
 let temps = null, tempsErr = null, tempsTimer = null, onScreen = false, observer = null, redrawTemps = () => {};
 const canRead = (page) => shouldRead({ hash: location.hash, page, hidden: document.hidden, onScreen });
+// the CPU temperature over the last 2 minutes (one reading every 5 s; the graphics card keeps 2 minutes too), kept only while the page is open
+let cpuHistory = [];
 async function loadTemps() {
   try { temps = isDemo() ? DEMO_TEMPS() : await env.api('/api/temps'); tempsErr = null; } catch (e) { tempsErr = e.message; }
+  const t = temps?.cpu?.tempC; if (t != null) { cpuHistory.push(t); if (cpuHistory.length > 24) cpuHistory.shift(); }
   redrawTemps();
 }
 // every 5 s, only while the card is on screen and the window is shown
@@ -63,7 +66,9 @@ export function tempsCard(rerender, page = 'fans') {
   if (!temps && !tempsErr) { queueMicrotask(() => { if (canRead(page) || typeof IntersectionObserver !== 'function') loadTemps(); }); const el = loadingCard('Temperatures and fans', 3); watchVisible(el, page); return el; }
   const cs = temps?.cpuSensors || {};
   // the CPU's own readings are on the Processor card (cpuCard below); the rest stays here
-  const rows = (temps?.readings || []).filter((r) => r.kind !== 'cpu');
+  // the CPU and the graphics card have their own cards (cpuCard, the graphics card in pages/fans.js); the rest stays here
+  const rows = (temps?.readings || []).filter((r) => r.kind !== 'cpu' && !(r.kind === 'gpu' && /nvidia-smi/.test(r.source || '')))
+    .map((r) => (r.kind === 'fan' && temps.cpu?.fanName === r.name ? { ...r, name: `${r.name} · CPU fan` } : r));
   const sources = [...new Set(rows.map((r) => srcName(r.source || '')).filter(Boolean))];
   const el = card([h('h2', {}, 'Temperatures and fans'), h('span', { class: 'sub' }, 'Read only')],
     tempsErr ? h('p', { class: 'faint' }, `Could not read them: ${tempsErr}`) : null,
@@ -80,6 +85,36 @@ export function tempsCard(rerender, page = 'fans') {
   return el;
 }
 
+// ---------- one look for the graphics card and the processor (24 Oct 2026, Shawn: "make this look more cohesive") ----------
+// a title and the part's name; temperature, fan and load as three meters in a row; the temperature over the last minutes;
+// then three rows of details; any note last. public/pages/fans.js draws the graphics card with it too.
+export function historyGraph(values, everyS) {
+  const v = (values || []).filter((x) => x != null);
+  if (v.length < 2) return h('div', { class: 'temp-graph-wrap waiting' }, h('small', { class: 'faint' }, 'The graph fills in as it reads.'));
+  const W = 300, H = 48, mn = Math.min(...v), mx = Math.max(...v), lo = mn - 3, hi = mx + 3;
+  const x = (i) => (i / (v.length - 1)) * W, y = (t) => H - ((t - lo) / Math.max(1, hi - lo)) * H;
+  const pts = v.map((t, i) => `${x(i).toFixed(1)},${y(t).toFixed(1)}`).join(' ');
+  const span = v.length * everyS, spanText = span >= 90 ? `last ${Math.round(span / 60)} min` : `last ${span} s`;
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('class', 'temp-graph'); svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', `temperature, ${spanText}: ${mn} to ${mx} °C`);
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.innerHTML = `<polygon points="0,${H} ${pts} ${W},${H}" fill="var(--signal)" opacity=".12"/><polyline points="${pts}" fill="none" stroke="var(--signal)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`;
+  return h('div', { class: 'temp-graph-wrap' }, svg, h('div', { class: 'temp-graph-scale' },
+    mx === mn ? h('span', {}, `${mx} °C`) : [h('span', {}, `${mx} °C`), h('span', {}, `${mn} °C`)], h('small', { class: 'faint' }, spanText)));
+}
+const pctOf = (v, top) => (v == null ? null : Math.max(0, Math.min(100, Math.round((v / top) * 100))));
+export function chipCard({ title, name, tempC, fan, loadPct, history, everyS, rows = [], note = null }) {
+  return card([h('h2', {}, title), name ? h('span', { class: 'sub' }, name) : null],
+    h('div', { class: 'pc-meters' },
+      meter({ ic: 'thermo', pct: pctOf(tempC, 95), value: tempC == null ? '—' : `${Math.round(tempC)} °C`, label: 'temperature', big: true }),
+      meter({ ic: 'fan', pct: fan?.pct ?? null, value: fan?.value ?? '—', label: fan?.label || 'fan', big: true }),
+      meter({ ic: 'gauge', pct: loadPct, value: loadPct == null ? '—' : `${Math.round(loadPct)}%`, label: 'load', big: true })),
+    historyGraph(history, everyS),
+    ...rows.map(([label, value]) => row(label, null, h('b', {}, value ?? '—'))),
+    note ? h('p', { class: 'faint tf-note' }, note) : null);
+}
+
 // ---------- Processor ----------
 // The CPU as a card like the graphics card's (24 Oct 2026, Shawn): temperature, CPU fan and load as meters, then the
 // clock and the hottest core. Load and clock come from Windows; temperature and fan need the add-on (Temperatures and
@@ -89,16 +124,14 @@ export function cpuCard() {
   if (!temps && !tempsErr) return loadingCard('Processor', 3);
   const c = temps?.cpu;
   if (!c) return card([h('h2', {}, 'Processor')], h('p', { class: 'faint' }, tempsErr ? `Not read: ${tempsErr}` : 'Not read on this PC.'));
-  const tempPct = c.tempC == null ? null : Math.min(100, Math.round((c.tempC / 95) * 100));
-  const fanPct = c.fanRpm == null ? null : Math.min(100, Math.round((c.fanRpm / 2500) * 100));
-  return card([h('h2', {}, 'Processor'), h('span', { class: 'sub' }, shortCpu(c.name))],
-    h('div', { class: 'hero-stats', style: { marginBottom: '8px' } },
-      meter({ ic: 'thermo', pct: tempPct, value: c.tempC == null ? '—' : `${c.tempC} °C`, label: 'temperature', big: true }),
-      meter({ ic: 'fan', pct: fanPct, value: c.fanRpm == null ? '—' : `${c.fanRpm} RPM`, label: 'CPU fan', big: true }),
-      meter({ ic: 'gauge', pct: c.loadPct, value: c.loadPct == null ? '—' : `${c.loadPct}%`, label: 'load', big: true })),
-    row('Clock', null, h('b', {}, c.clockMHz == null ? '—' : `${(c.clockMHz / 1000).toFixed(2)} GHz`)),
-    c.coresMaxC != null && c.coresMaxC !== c.tempC ? row('Hottest core', null, h('b', {}, `${c.coresMaxC} °C`)) : null,
-    c.sensors ? null : h('p', { class: 'faint tf-note' }, 'Temperature and fan: add the CPU reader in Temperatures and fans.'));
+  // the CPU fan: named for the CPU, or the board's first fan input (CPU_FAN on most boards: helpers/pc-sensors.js)
+  const fanRow = c.fanRpm == null ? (c.sensors ? (c.fanCount ? 'none named' : 'not read') : '—') : c.fanGuess ? `${c.fanName} (CPU_FAN)` : c.fanName;
+  return chipCard({
+    title: 'Processor', name: shortCpu(c.name), tempC: c.tempC, loadPct: c.loadPct, history: cpuHistory, everyS: 5,
+    fan: { pct: pctOf(c.fanRpm, 2500), value: c.fanRpm == null ? '—' : `${c.fanRpm} RPM`, label: 'CPU fan' },
+    rows: [['Clock', c.clockMHz == null ? null : `${(c.clockMHz / 1000).toFixed(2)} GHz`], ['Hottest core', c.coresMaxC == null ? null : `${c.coresMaxC} °C`], ['CPU fan header', fanRow]],
+    note: c.sensors ? null : 'Temperature and fan: add the CPU reader in Temperatures and fans.',
+  });
 }
 
 // ---------- PC check ----------

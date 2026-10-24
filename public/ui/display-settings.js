@@ -103,6 +103,4 @@ export function displayOnlyScreens(monitors) {
   return disp.screens.filter((s) => !ids.has(s.id) && !screens.has(s.screen));
 }
 export const displayBlockFor = (s) => block(s);
-// a result about no single screen (Windows refused a request before naming one)
-export const displayNote = () => (note && !note.ok && !disp?.screens?.some((s) => note.text?.startsWith(s.name)) ? line(note.text, 'bad') : null);
 export const displayError = () => (error ? line(`Display settings not read: ${error}`) : null);

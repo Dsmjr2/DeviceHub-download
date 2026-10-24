@@ -107,7 +107,7 @@ async function person(w, { never = false } = {}) {
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-learn-auto-'));
 lw.options.root = root;
-lw.options.preflight = false;   // the steps after the pre-flight (tests/learn-preflight.mjs checks the pre-flight itself)
+lw.options.preflight = false;   // the steps after the pre-flight (tests/smoother.mjs checks the pre-flight itself)
 
 // 1. everything: the app opened, DPI driven, Polling rate noticed
 {

@@ -45,6 +45,8 @@ export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // name (RAM, GPU, Wi-Fi, DeviceHub, Windows: 24 Oct 2026, Shawn: "it says rAM instead of RAM")
 const KEEP_CASE = /^(?:[A-Z0-9]{2,}|Windows|DeviceHub|Xbox|NVIDIA|AMD|Intel|Ethernet|Game Mode|Bluetooth|G HUB|iCUE|OpenRGB|Equalizer APO)\b/;
 export const lowerFirst = (s) => { const t = String(s ?? ''); return !t || KEEP_CASE.test(t) || /^[A-Z][A-Z]|^[A-Z][a-z]*-[A-Z]/.test(t) ? t : t.charAt(0).toLowerCase() + t.slice(1); };
+// a date and time, short: "Oct 24, 3:05 PM"
+export const dateTime = (t) => new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 export const fmt = (n) => (n == null ? '—' : Number(n).toLocaleString());
 
 // Icons, 24px. Small utility icons are 2 px strokes.

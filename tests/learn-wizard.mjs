@@ -215,7 +215,7 @@ function pro(value) {
 pro.files = {};
 const session = { state: null, cmds: [], started: 0 };
 lw.options.root = root;
-lw.options.preflight = false;   // the steps after the pre-flight (tests/learn-preflight.mjs checks the pre-flight itself)
+lw.options.preflight = false;   // the steps after the pre-flight (tests/smoother.mjs checks the pre-flight itself)
 lw.options.deps = {
   ...lw.deps,
   usbpcapInstalled: () => true,

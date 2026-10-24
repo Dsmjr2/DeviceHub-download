@@ -34,7 +34,8 @@ if exist update-rollback.txt (
   >> server.log echo [launcher] %date:~4% %time:~0,8% the new version stopped with code !code! on start; going back to !old!
   rem remember the version that failed, so Update does not offer it again (helpers/self-update.js)
   git rev-parse HEAD > update-failed.txt 2>nul
-  git reset --quiet --hard !old! >> server.log 2>&1
+  rem --keep: files changed on this PC and not committed stay as they are (24 Oct 2026)
+  git reset --quiet --keep !old! >> server.log 2>&1
   del /q update-rollback.txt
   goto loop
 )

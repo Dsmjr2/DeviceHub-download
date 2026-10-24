@@ -1,6 +1,6 @@
 // Mouse page: DPI stages on a track, performance settings, device info.
 import { h, icon, fmt } from '../ui/dom.js';
-import { card, row, toggle, segmented, slider, stepper, ring, button, pill } from '../ui/controls.js';
+import { card, row, toggle, segmented, slider, stepper, button, pill } from '../ui/controls.js';
 import { batteryCell, loadBatteryEstimates } from '../ui/controls.js';
 import { dropdown } from '../ui/dropdown.js';
 import { devices, write, isDemo, prepare } from '../core/devices.js';

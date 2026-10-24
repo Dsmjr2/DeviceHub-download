@@ -6,7 +6,7 @@
 // straight back to the old version if the check fails. update-rollback.txt holds the old version until the new one
 // has run well for a minute (server.js clears it); if the new version crashes on start before then, the keep-running
 // loop (helpers/keep-running.bat) goes back to the old version by itself.
-const { execFile, spawnSync } = require('child_process');
+const { execFile } = require('child_process');
 const fs = require('fs');
 const { writeAtomic } = require('./safe-write');  // crash-proof saving (helpers/safe-write.js)
 const path = require('path');
@@ -80,7 +80,7 @@ async function zipStatus() {
     let failed = null; try { failed = fs.readFileSync(path.join(ROOT, 'update-failed.txt'), 'utf8').trim(); } catch {}
     const newer = rel.commit && rel.commit !== own.commit && rel.builtAt > own.builtAt && failed !== rel.commit;
     const blocked = newer ? changedFiles() : [];
-    // version, versionAt: the signed version's id and date (the removed auto-update (24 Oct 2026) installs it by itself)
+    // version, versionAt: the signed version's id and date (the update pop-up, helpers/update-notice.mjs)
     return { git: false, zip: true, behind: newer ? 1 : 0, blocked: blocked.length ? blockedText(blocked) : undefined, blockedFiles: blocked.length ? blocked : undefined, latest: newer ? `a new version from ${new Date(rel.builtAt).toLocaleDateString()}` : null, at: own.builtAt, skipped: failed === rel.commit ? 'the newest version' : undefined, version: newer ? rel.commit : undefined, versionAt: newer ? rel.builtAt : undefined };
   } catch (e) { return { git: false, zip: true, error: e.message }; }
 }
@@ -92,7 +92,7 @@ const getProgress = () => progress;
 // a program run without stopping DeviceHub meanwhile (spawnSync held the whole server, the loading bar too)
 const runAsync = (cmd, args, opts) => new Promise((resolve) => execFile(cmd, args, { encoding: 'utf8', windowsHide: true, maxBuffer: 8 << 20, ...opts }, (e, stdout, stderr) => resolve({ status: e ? (typeof e.code === 'number' ? e.code : 1) : 0, stdout, stderr })));
 
-async function zipUpdate({ overwrite = false, auto = false } = {}) {
+async function zipUpdate({ overwrite = false } = {}) {
   step('Checking for the new version');
   const own = mine(), rel = await releaseInfo();
   if (!own) throw new Error('this copy does not know its version');
@@ -128,8 +128,7 @@ async function zipUpdate({ overwrite = false, auto = false } = {}) {
     if (c.status !== 0) throw new Error('the new version failed its checks; kept this one');
   }
   // its installer replaces this copy (it quits this DeviceHub first and starts the new one); run on its own, outside
-  // this folder, with no new shortcuts. An update by itself (auto, the removed auto-update (24 Oct 2026)) passes -Background: with no
-  // window open before, DeviceHub comes back in the tray only and no window opens.
+  // this folder, with no new shortcuts.
   const { spawn } = require('child_process');
   // the Windows Apps entry this copy was installed under (DeviceHub, or a test install's own name) stays the same
   let key = 'DeviceHub';
@@ -146,7 +145,7 @@ async function zipUpdate({ overwrite = false, auto = false } = {}) {
   // and the installer ends this DeviceHub (21 Oct 2026: it ended itself with it, halfway, and the copy stayed stopped).
   // Its output goes to install.log in the download folder.
   const q = (s) => `"${s}"`;
-  const inner = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', q(path.join(src, 'helpers', 'install.ps1')), '-Target', q(ROOT), '-NoShortcuts', '-AppsKey', q(key), ...(kept ? ['-Overwrite'] : []), ...(auto ? ['-Background'] : []), ...(process.env.DEVICEHUB_TEST === '1' ? ['-NoLaunch'] : [])].join(' ');
+  const inner = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', q(path.join(src, 'helpers', 'install.ps1')), '-Target', q(ROOT), '-NoShortcuts', '-AppsKey', q(key), ...(kept ? ['-Overwrite'] : []), ...(process.env.DEVICEHUB_TEST === '1' ? ['-NoLaunch'] : [])].join(' ');
   const sq = (s) => `'${String(s).replace(/'/g, "''")}'`;
   const launcher = `Start-Process -FilePath powershell.exe -WindowStyle Hidden -WorkingDirectory ${sq(dir)} -RedirectStandardOutput ${sq(path.join(dir, 'install.log'))} -ArgumentList ${sq(inner)}`;
   const p = spawn('powershell.exe', ['-NoProfile', '-EncodedCommand', Buffer.from(launcher, 'utf16le').toString('base64')], { cwd: dir, stdio: 'ignore', windowsHide: true });
@@ -191,7 +190,7 @@ async function statusNow() {
     const shownLatest = shared && behind ? `a new version from ${new Date(versionAt).toLocaleDateString()}${changed ? '; your changes are kept' : ''}` : latest;
     if (failed && behind && failed === (await git(['rev-parse', target]))) return { git: true, shared, behind: 0, changed, latest: null, at, skipped: shownLatest };
     // the files this PC changed since the published version it last took (committed or not): Update brings them
-    // together with the new version; an update by itself never does (the removed auto-update (24 Oct 2026))
+    // together with the new version
     let localFiles;
     if (shared && behind) {
       try {
@@ -218,8 +217,16 @@ async function updateSteps(opts = {}) {
   if (!s.git) throw new Error('this copy of DeviceHub is not connected to GitHub');
   if (s.error) throw new Error(s.error);
   if (s.shared) return mergeUpdate(s);
-  if (s.changed) throw new Error(`${s.changed} file(s) were changed on this PC; not updating over them`);
   if (!s.behind) return { updated: false };
+  // files changed on this PC and not committed (24 Oct 2026, Shawn's own PC: "34 file(s) were changed", work in progress
+  // in that folder): the update goes ahead when none of them is in the new changes (git moves forward around them and
+  // they stay as they are); when some are, nothing changes and those files are named
+  if (s.changed) {
+    const list = async (args) => (await git(['diff', '--name-only', ...args])).split(/\r?\n/).map((f) => f.trim()).filter(Boolean);
+    const mine = new Set(await list(['HEAD']));
+    const both = (await list(['HEAD', '@{u}'])).filter((f) => mine.has(f));
+    if (both.length) throw new Error(`${both.length} file(s) changed on this PC are also in the new version (${both.slice(0, 4).join(', ')}${both.length > 4 ? ', …' : ''}); commit or put them back first`);
+  }
   const old = await git(['rev-parse', 'HEAD']);
   step('Getting the new changes');
   // fetched moments ago (status): moved forward from what is already here; else fetched now
@@ -231,7 +238,8 @@ async function updateSteps(opts = {}) {
     step('Checking the new version');
     const r = await runAsync(process.execPath, [check], { cwd: ROOT, timeout: 120000 });
     if (r.status !== 0) {
-      await git(['reset', '--quiet', '--hard', old]);
+      // --keep: back to the old version, the files changed on this PC (not in the new changes) left as they are
+      await git(['reset', '--quiet', s.changed ? '--keep' : '--hard', old]);
       const why = `${r.stdout || ''}${r.stderr || ''}`.split('\n').find((l) => l.startsWith('- ')) || 'its checks failed';
       throw new Error(`the new version failed its checks; kept this one (${why.replace(/^- /, '').slice(0, 160)})`);
     }
@@ -276,19 +284,13 @@ async function mergeUpdate(s) {
 }
 
 // called once the new version has run well for a minute: it is kept
+// true when this start is the one right after an update (server.js then skips its update check: 24 Oct 2026, Shawn:
+// "when someone updates it doesnt check for another update right after")
 function confirm(log) {
   const f = path.join(ROOT, 'update-rollback.txt');
-  if (!fs.existsSync(f)) return;
+  if (!fs.existsSync(f)) return false;
   setTimeout(() => { try { fs.unlinkSync(f); log && log({ kind: 'good', text: 'DeviceHub update running well' }); } catch {} }, 60000);
+  return true;
 }
 
-// this copy's version now: the git commit, else the release it was installed from (the removed auto-update (24 Oct 2026) compares it
-// before and after an update by itself)
-function currentVersion() {
-  if (fs.existsSync(path.join(ROOT, '.git'))) {
-    try { return require('child_process').execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, windowsHide: true, encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch {}
-  }
-  return mine()?.commit || null;
-}
-
-module.exports = { status, update, confirm, getProgress, releaseInfo, currentVersion, _test: { changedFiles, keepChanged, blockedText } };
+module.exports = { status, update, confirm, getProgress, releaseInfo, _test: { changedFiles, keepChanged, blockedText } };

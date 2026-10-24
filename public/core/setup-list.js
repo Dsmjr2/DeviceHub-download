@@ -24,7 +24,6 @@
 // Since 22 Oct 2026 (Shawn: "is currently overwhelming for a new user") the page shows only what needs the person
 // (planSetup), devices as small tiles, and folds the rest. Reset sound to normal is on the Headset page's EQ card
 // only; the problem reports switch and Get help are in Settings.
-export const STATUS_TEXT = { done: 'Done', needs: 'Needs you', optional: 'Optional', none: 'Not needed' };
 const BUILTIN = ['mouse', 'headset', 'keyboard'];
 const splitUsb = (usb) => { const [vid, pid] = String(usb || '').split(':'); return { vid, pid }; };
 

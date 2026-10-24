@@ -1,11 +1,10 @@
 // Overview: one bay per device, quick profiles and the activity feed.
-import { h, icon, fmt } from '../ui/dom.js';
+import { h, icon, fmt, dateTime } from '../ui/dom.js';
 import { env } from '../core/env.js';
-import { ring, button, card, pill, batteryCell, loadBatteryEstimates, skeleton } from '../ui/controls.js';
+import { button, card, pill, batteryCell, loadBatteryEstimates, skeleton } from '../ui/controls.js';
 import { devices, activity, connect, isDemo, isRemote, shownDevices, noDevicesYet, stillLooking } from '../core/devices.js';
 import { artOf, genericArtFor } from '../ui/art.js';
 import { prettyExe } from '../core/autoswitch.js';
-import { statusPill } from './common.js';
 import { loadProfiles, apply } from '../core/profiles.js';
 import { EFFECTS } from '../devices/keycodes.js';
 import { meter, micState, dots, signal, colorDot } from '../ui/gauges.js';
@@ -113,7 +112,7 @@ function oneDriveBanner(redraw, fresh) {
   if (!oneDriveAsked) { oneDriveAsked = true; fetch('/api/onedrive').then((r) => (r.ok ? r.json() : null)).then((j) => { oneDriveOffer = j?.others?.find((o) => !o.seen) || null; if (oneDriveOffer) redraw(); }).catch(() => {}); }
   const o = oneDriveOffer;
   if (!o) return null;
-  const when = new Date(o.savedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const when = dateTime(o.savedAt);
   const notNow = () => { oneDriveOffer = null; redraw(); fetch('/api/onedrive/dismiss', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pc: o.pc }) }).catch(() => {}); };
   const review = async () => {
     try {
@@ -259,7 +258,7 @@ function feed() {
 }
 
 // the graphics card's temperature in a small chip (20 Oct 2026): read every 5 s only while the overview is open (it
-// changes its own text, never redraws the page) and stops as soon as the overview is left; click = the Fans page
+// changes its own text, never redraws the page) and stops as soon as the overview is left; click = the PC page
 let gpuTimer = null, gpuText = null;
 function gpuChip(go) {
   const el = h('button', { class: 'pill gpu-chip', title: 'GPU temperature', onclick: () => go('fans') }, icon('thermo'), h('span', {}, gpuText || 'GPU'));

@@ -11,7 +11,7 @@ $o.gpus = @(Get-CimInstance Win32_VideoController | Where-Object { $_.PNPDeviceI
 $b = Get-CimInstance Win32_BaseBoard | Select-Object -First 1
 $o.board = [ordered]@{ maker = $b.Manufacturer; model = $b.Product }
 $o.ram = @(Get-CimInstance Win32_PhysicalMemory | ForEach-Object { [ordered]@{ part = ($_.PartNumber + '').Trim(); gb = [math]::Round($_.Capacity / 1GB); slot = $_.DeviceLocator; bank = $_.BankLabel } })
-$o.usb = @(Get-PnpDevice -PresentOnly | Where-Object { $_.InstanceId -match '^(USB|HID)\\\\VID_[0-9A-F]{4}&PID_[0-9A-F]{4}' } | ForEach-Object { if ($_.InstanceId -match 'VID_([0-9A-F]{4})&PID_([0-9A-F]{4})') { [ordered]@{ vid = $matches[1].ToLower(); pid = $matches[2].ToLower(); name = $_.FriendlyName; kb = [bool](@($_.HardwareID) -match 'UP:0001_U:0006'); mouse = [bool](@($_.HardwareID) -match 'UP:0001_U:0002'); onUsb = [bool]($_.InstanceId -match '^USB\\\\') } } })
+$o.usb = @(Get-PnpDevice -PresentOnly | Where-Object { $_.InstanceId -match '^(USB|HID)\\\\VID_[0-9A-F]{4}&PID_[0-9A-F]{4}' } | ForEach-Object { if ($_.InstanceId -match 'VID_([0-9A-F]{4})&PID_([0-9A-F]{4})') { [ordered]@{ vid = $matches[1].ToLower(); pid = $matches[2].ToLower(); name = $_.FriendlyName; kb = [bool](@($_.HardwareID) -match 'UP:0001_U:0006'); mouse = [bool](@($_.HardwareID) -match 'UP:0001_U:0002'); onUsb = [bool]($_.InstanceId -match '^USB\\\\'); pages = @(@($_.HardwareID) | ForEach-Object { if ($_ -match 'UP:(FF[0-9A-F]{2})_U:([0-9A-F]{4})') { $matches[1] + ':' + $matches[2] } }) } } })
 $o.lampArrays = @(Get-PnpDevice -PresentOnly | Where-Object { $_.InstanceId -match '^HID\\\\' -and ($_.HardwareID -match 'UP:0059') }).Count
 $o.smbus = @(Get-PnpDevice -PresentOnly | Where-Object { $_.FriendlyName -match 'SMBus' } | ForEach-Object { $_.FriendlyName })
 $o | ConvertTo-Json -Depth 4 -Compress
@@ -74,8 +74,12 @@ function shape(raw) {
     const k = `${u.vid}:${u.pid}`, cur = byId.get(k);
     // usages (23 Oct 2026): what the device's HID collections say it is, from Windows' own hardware ids
     // (HID_DEVICE_UP:0001_U:0006 keyboard, _U:0002 mouse), across all its collections; nothing is opened
-    if (!cur) byId.set(k, { id: k, vid: u.vid, pid: u.pid, name: u.name, runs: RUNS[k] || null, usages: { keyboard: !!u.kb, mouse: !!u.mouse } });
+    // pages (24 Oct 2026): its vendor-defined HID collections as "FF00:0002" (page:usage), from the same hardware ids;
+    // the device library knows a brand's protocol by them (device.json family; helpers/device-library.mjs match)
+    const pg = arr(u.pages).map(String).filter((x) => /^FF[0-9A-F]{2}:[0-9A-F]{4}$/i.test(x)).map((x) => x.toUpperCase());
+    if (!cur) byId.set(k, { id: k, vid: u.vid, pid: u.pid, name: u.name, runs: RUNS[k] || null, usages: { keyboard: !!u.kb, mouse: !!u.mouse }, pages: [...new Set(pg)] });
     else {
+      cur.pages = [...new Set([...(cur.pages || []), ...pg])];
       if (GENERIC.test(cur.name || '') && u.name && !GENERIC.test(u.name)) cur.name = u.name;
       cur.usages.keyboard ||= !!u.kb; cur.usages.mouse ||= !!u.mouse;
     }

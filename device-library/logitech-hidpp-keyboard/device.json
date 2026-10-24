@@ -23,6 +23,9 @@
     "b35f",
     "b389"
   ],
+  "family": [
+    "FF00:0002"
+  ],
   "models": [
     "G915",
     "G915 TKL (also on Bluetooth, B35F)",

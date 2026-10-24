@@ -55,4 +55,4 @@ function install({ log = (t) => console.log(t), exit = (code) => process.exit(co
   });
 }
 
-module.exports = { install, driverOf, handle, setDriverFaultHandler, _counts: counts };
+module.exports = { install, driverOf, handle, setDriverFaultHandler };

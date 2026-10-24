@@ -386,8 +386,6 @@ export function checkPlan(a, verified, info, { now = () => new Date(), version =
   if (!due.length) return null;
   return { why: updated ? `DeviceHub was updated (${verified.devicehub || 'unknown'} -> ${version})` : `${due.length === 1 ? 'a setting' : 'settings'} that failed or waited, tried again after a day`, only: due.map((s) => s.key) };
 }
-// does it need a self-check now? the reason, or null
-export const needsCheck = (a, verified, info, opts) => checkPlan(a, verified, info, opts)?.why ?? null;
 
 // DeviceHub's own version, read where its files are (a my-devices folder's root): release.json's commit, else package.json's
 function versionAt(folder) {
@@ -406,7 +404,9 @@ async function agentDeps() {
     if (!env.agent || !env.api) return {};
     // selfChecked: a self-check that ran, for the automatic problem reports (helpers/auto-report.mjs: a failed setting)
     return { log: (text, kind, id) => core.log(text, kind, id), backup: (body) => env.api('/api/backup', body), makerApp: makerAppByVid,
-      selfChecked: (a, r) => import('./auto-report.mjs').then((m) => m.selfCheckResult(a, r)).catch(() => {}) };
+      // and a learned driver whose settings passed, shared when the person said yes (helpers/driver-share.mjs)
+      selfChecked: (a, r) => Promise.all([import('./auto-report.mjs').then((m) => m.selfCheckResult(a, r)).catch(() => {}),
+        import('./driver-share.mjs').then((m) => m.afterCheck(a, r)).catch(() => {})]) };
   } catch { return {}; }
 }
 async function makerAppByVid(vid) {
@@ -700,10 +700,44 @@ async function loadOne(dir, name, { register, addSpec, taken, selfCheck: deps })
     }
     if (mark) { guard(a, folder, mark, deps); watchDriverFile(a, folder); }
     stepAside(a);
+    // a brand's model the entry does not list, matched by its protocol (device-library family): its product ids are
+    // opened too, and the driver tries them (a.familyPids) after its own
+    if (mark?.familyPids?.length && a.hid && Array.isArray(a.hid.pids)) withFamily(a, mark.familyPids);
     for (const s of hidSpecs(a)) addSpec(s);
     register(a);
+    loadedByName.set(name, a);
     return mark ? { name, id: a.id, library: mark.status || 'unknown' } : { name, id: a.id };
   } catch (e) { return { name, error: String(e.message || e).split('\n')[0] }; }
+}
+
+// ---- family product ids (24 Oct 2026: a brand's new model works without anyone learning it) ----
+const loadedByName = new Map();
+const hex4u = (p) => String(p).trim().toUpperCase().replace(/^0X/, '').padStart(4, '0');
+function withFamily(a, pids) {
+  const add = pids.map(hex4u).filter((p) => /^[0-9A-F]{4}$/.test(p) && !a.hid.pids.map(hex4u).includes(p));
+  a.familyPids = [...new Set([...(a.familyPids || []), ...add])];
+  a.hid = { ...a.hid, pids: [...a.hid.pids, ...add] };
+  return add;
+}
+// a family match on a copy already installed (helpers/auto-setup.mjs): kept in its library.json, and when the driver is
+// loaded, its channels for the new ids are added and it looks again at once (no restart). Returns the ids added.
+export function addFamilyPids(root, name, pids) {
+  const folder = path.join(root, 'my-devices', name);
+  const mark = libraryMark(folder);
+  if (!mark) return [];
+  const have = new Set((mark.familyPids || []).map(hex4u));
+  const fresh = (pids || []).map(hex4u).filter((p) => /^[0-9A-F]{4}$/.test(p) && !have.has(p));
+  if (!fresh.length) return [];
+  saveMark(folder, { familyPids: [...have, ...fresh].map((p) => p.toLowerCase()) });
+  const a = loadedByName.get(name);
+  if (a?.hid && Array.isArray(a.hid.pids) && last?.opts?.addSpec) {
+    const added = withFamily(a, fresh);
+    const { pids: _p, byPid: _b, ...base } = a.hid;
+    for (const pid of added) last.opts.addSpec({ id: a.id, ...base, pid });
+    a.notMineRetry?.();
+    import('../public/core/devices.js').then((core) => core.connect(a.id, false)).catch(() => {});
+  }
+  return fresh;
 }
 
 const folders = (dir) => { try { return fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort(); } catch { return []; } };

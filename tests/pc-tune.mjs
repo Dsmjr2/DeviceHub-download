@@ -92,5 +92,16 @@ const bare = sensors.cpuCard({ name: 'Intel(R) Core(TM) i7', loadPct: 3, clockMH
 check(bare.tempC === null && bare.fanRpm === null && bare.loadPct === 3 && !bare.sensors, 'without the add-on: load and clock only');
 check(sensors.cpuCard(null, null) === null, 'nothing read: no card data');
 
+// the CPU fan on a board whose fan chip is not named (24 Oct 2026): Fan #1, said to be a guess; a named one wins
+{ const ok = { setUp: true, state: 'ok', cpu: [{ packageC: 50 }] };
+  const g = sensors.cpuCard({ name: 'x' }, { ...ok, fans: [{ name: 'Fan #2', rpm: 700 }, { name: 'Fan #1', rpm: 900 }] });
+  check(g.fanRpm === 900 && g.fanGuess, 'unnamed fan inputs: Fan #1, marked as a guess');
+  const n = sensors.cpuCard({ name: 'x' }, { ...ok, fans: [{ name: 'Fan #1', rpm: 900 }, { name: 'CPU Fan', rpm: 1100 }] });
+  check(n.fanRpm === 1100 && !n.fanGuess, 'a fan named CPU wins');
+  check(sensors.cpuCard({ name: 'x' }, { ...ok, fans: [{ name: 'System Fan #1', rpm: 800 }, { name: 'Fan #1', rpm: 900 }] }).fanRpm === null, 'named fans, none for the CPU: no guess'); }
+// the CPU from Node at once (24 Oct 2026): name and load from two samples, no PowerShell
+{ let n = 0, t = 0; const c = await sensors.nodeCpu({ cpus: () => [{ model: 'AMD Ryzen 7 5800X3D 8-Core Processor' }], sample: () => ({ busy: (n++) * 30, all: n * 100 }), wait: async () => {}, now: () => (t += 10) });
+  check(c?.name === 'AMD Ryzen 7 5800X3D 8-Core Processor' && c.loadPct === 30, 'CPU name and load from Node, at once'); }
+check((await sensors.nodeCpu({ cpus: () => [] })) === null, 'no CPU list: nothing');
 if (fails.length) { console.log('pc-tune: FAILED:\n- ' + fails.join('\n- ')); process.exit(1); }
 console.log('pc-tune (game and network checks only when they can be done; the power plan fix; the CPU card): all good');

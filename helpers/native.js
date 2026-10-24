@@ -118,7 +118,6 @@ async function heartbeat() {
   const r = await request('watchdog', 'PING', 10000);
   if (r === 'TIMEOUT') restartFrozen('no answer to the heartbeat for 10 s');
 }
-const watchdogState = () => ({ restartsLastHour: restarts.filter((t) => Date.now() - t < 3600000).length });
 
 // requests by kind (the channel's first part: hid, hs80, audio, monitor ...), counted since start: Settings > Health and
 // the daily check can see a part that keeps asking more and more (21 Oct 2026: CPU crept up over a night)
@@ -160,4 +159,4 @@ const onEvent = (chan, fn) => { if (fn) eventHandlers.set(chan, fn); else eventH
 const onExit = (fn) => exitHandlers.add(fn);
 function stop() { const p = proc; proc = null; if (p) p.stdin.end(); }
 
-module.exports = { request, onEvent, onExit, onProblem, stop, start, watchdogState, heartbeat, callCounts, buildHelper: build };
+module.exports = { request, onEvent, onExit, onProblem, stop, start, heartbeat, callCounts, buildHelper: build };

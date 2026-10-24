@@ -18,7 +18,6 @@ const MOVE_KEYS = new Set(['ArrowDown', 'ArrowUp', 'Home', 'End', 'PageDown', 'P
 let seq = 0;
 let openOne = null;   // the open dropdown's close(), so opening another closes it
 export const dropdownOpen = () => !!openOne;
-export const closeDropdowns = () => openOne?.(false);
 const reduced = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
 
 export function dropdown({ options = [], value, onChange, label, disabled, cls = '', style, placeholder = '—' } = {}) {

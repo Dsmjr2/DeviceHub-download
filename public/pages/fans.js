@@ -1,7 +1,6 @@
-// Fans (20 Oct 2026), read-only for now: the graphics card's temperature, fan, load and power (helpers/gpu.js,
-// NVIDIA's own nvidia-smi), refreshed every 2 s while this page is open and never in the background. The CPU and case
-// fans run on the motherboard's own curve (its BIOS); reading the CPU temperature or the board's fans needs a kernel
-// driver, so they are not read here. docs/FANS.md has the BIOS settings to tune that curve.
+// The PC page (id 'fans': it began as the Fans page, 20 Oct 2026). The graphics card's temperature, fan, load and power
+// (helpers/gpu.js, NVIDIA's own nvidia-smi), refreshed every 2 s while this page is open and never in the background.
+// Fan speeds stay on the motherboard's own curve (its BIOS; docs/FANS.md); DeviceHub only reads them.
 // Fan lights (23 Oct 2026, Shawn: fan colours "why isnt it shown in here, it should"): the lights OpenRGB sees on fans,
 // fan hubs, coolers and the board's fan headers, each with a colour and Undo (the same backed-up, read-back path as
 // Lighting > PC lights, helpers/openrgb.js). When OpenRGB sees none, it says why for this PC and what fixes it.
@@ -14,35 +13,19 @@ import { boardLights } from '../ui/board-lights.js';
 import { env } from '../core/env.js';
 import { isDemo } from '../core/devices.js';
 import { topbar } from './common.js';
-import { meter } from '../ui/gauges.js';
 // Temperatures and fans, and the PC check (24 Oct 2026, docs/handoff/display-health.md): this page became "PC" so the
 // readings, the fans and the check of the whole PC are one place in the sidebar (Settings > Health stays about DeviceHub)
-import { tempsCard, pcCheckCard, cpuCard } from '../ui/pc-health.js';
+import { tempsCard, pcCheckCard, cpuCard, chipCard } from '../ui/pc-health.js';
 
 const DEMO = { available: true, gpus: [{ name: 'NVIDIA GeForce RTX 4070', tempC: 62, fanPct: 38, loadPct: 71, powerW: 142, powerLimitW: 200, memUsedMB: 6100, memTotalMB: 12282, clockMHz: 2610, headroomC: 22 }] };
 let gpu = null, error = null, timer = null, rerender = () => {};
 // the temperature over the last 2 minutes, kept only while the page is open (one reading every 2 s)
 let history = [];
-function graph() {
-  if (history.length < 2) return null;
-  const W = 300, H = 56, mn = Math.min(...history), mx = Math.max(...history), lo = mn - 3, hi = mx + 3;
-  // the readings so far across the whole width (2 s apart), the newest at the right
-  const x = (i) => (i / (history.length - 1)) * W, y = (t) => H - ((t - lo) / Math.max(1, hi - lo)) * H;
-  const pts = history.map((t, i) => `${x(i).toFixed(1)},${y(t).toFixed(1)}`).join(' ');
-  const span = history.length * 2, spanText = span >= 90 ? `last ${Math.round(span / 60)} min` : `last ${span} s`;
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('class', 'temp-graph'); svg.setAttribute('role', 'img');
-  svg.setAttribute('aria-label', `temperature over the last ${Math.round(history.length * 2 / 60 * 10) / 10} minutes: ${Math.min(...history)} to ${Math.max(...history)} °C`);
-  svg.setAttribute('preserveAspectRatio', 'none');
-  svg.innerHTML = `<polygon points="0,${H} ${pts} ${W},${H}" fill="var(--signal)" opacity=".12"/><polyline points="${pts}" fill="none" stroke="var(--signal)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`;
-  return h('div', { class: 'temp-graph-wrap' }, svg, h('div', { class: 'temp-graph-scale' },
-    mx === mn ? h('span', {}, `${mx} °C`) : [h('span', {}, `${mx} °C`), h('span', {}, `${mn} °C`)], h('small', { class: 'faint' }, spanText)));
-}
 
 async function load() {
   if (isDemo()) { gpu = { ...DEMO, gpus: [{ ...DEMO.gpus[0], tempC: 60 + Math.round(Math.random() * 5) }] }; }
   else try { gpu = await env.api('/api/gpu'); error = null; } catch (e) { error = e.message; }
-  const t = gpu?.gpus?.[0]?.tempC; if (t != null) { history.push(t); if (history.length > 60) history.shift(); }
+  const t = gpu?.gpus?.[0]?.tempC; if (t != null) { history.push(Math.round(t)); if (history.length > 60) history.shift(); }
   rerender();
 }
 // refresh while the page is open; stop as soon as it is left
@@ -51,17 +34,15 @@ function keepFresh() {
   timer = setInterval(() => { if (location.hash !== '#/fans' || document.hidden) { clearInterval(timer); timer = null; history = []; return; } load(); }, 2000);
 }
 
+// the same card as the processor's (ui/pc-health.js chipCard, 24 Oct 2026: one look for both)
 function gpuCard(g) {
-  const tempPct = g.tempC == null ? null : Math.min(100, Math.round((g.tempC / 90) * 100));
-  return card([h('h2', {}, 'Graphics card'), h('span', { class: 'sub' }, g.name)],
-    h('div', { class: 'hero-stats', style: { marginBottom: '8px' } },
-      meter({ ic: 'thermo', pct: tempPct, value: g.tempC == null ? '—' : `${g.tempC} °C`, label: 'temperature', big: true }),
-      meter({ ic: 'fan', pct: g.fanPct, value: g.fanPct == null ? '—' : g.fanPct === 0 ? 'Stopped' : `${g.fanPct}%`, label: 'fans', big: true }),
-      meter({ ic: 'gauge', pct: g.loadPct, value: g.loadPct == null ? '—' : `${g.loadPct}%`, label: 'load', big: true })),
-    graph(),
-    row('Power', null, h('b', {}, g.powerW == null ? '—' : `${Math.round(g.powerW)} W of ${Math.round(g.powerLimitW || 0)} W`)),
-    g.headroomC != null ? row('Headroom', 'Until it slows down.', h('b', {}, `${g.headroomC} °C`)) : null,
-    row('Video memory', null, h('b', {}, g.memUsedMB == null ? '—' : `${(g.memUsedMB / 1024).toFixed(1)} of ${(g.memTotalMB / 1024).toFixed(0)} GB`)));
+  return chipCard({
+    title: 'Graphics card', name: g.name.replace(/^NVIDIA (GeForce )?/i, ''), tempC: g.tempC, loadPct: g.loadPct, history, everyS: 2,
+    fan: { pct: g.fanPct, value: g.fanPct == null ? '—' : g.fanPct === 0 ? 'Stopped' : `${g.fanPct}%`, label: 'fans' },
+    rows: [['Power', g.powerW == null ? null : `${Math.round(g.powerW)} of ${Math.round(g.powerLimitW || 0)} W`],
+      ['Headroom', g.headroomC == null ? null : `${g.headroomC} °C before it slows`],
+      ['Video memory', g.memUsedMB == null ? null : `${(g.memUsedMB / 1024).toFixed(1)} of ${(g.memTotalMB / 1024).toFixed(0)} GB`]],
+  });
 }
 
 // ---------- fan lights (OpenRGB) ----------
@@ -98,7 +79,6 @@ async function undoFans() {
   try { await env.api('/api/openrgb/restore', {}); toast('Fan lights undone', 'good'); } catch (e) { toast('Nothing to undo', 'bad', { detail: e.message }); }
   loadLights(true);
 }
-const link = (text, url) => h('a', { href: url, target: '_blank', rel: 'noopener' }, text);
 // why no fan light shows, for this PC (helpers/lights-diagnose.js, the same answer as Lighting > PC lights): where the
 // fan lights sit (a USB controller the OpenRGB inside DeviceHub reaches, the board's SMBus that needs the person's own
 // OpenRGB with PawnIO, or nothing a PC can reach) and each problem with its fix; then Get help for lights

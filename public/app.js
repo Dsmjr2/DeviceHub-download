@@ -1,5 +1,5 @@
 // DeviceHub shell: navigation, routing, shortcuts and the command palette.
-import { h, icon, $ } from './ui/dom.js';
+import { h, icon, $, dateTime } from './ui/dom.js';
 import { setCommands, openPalette, toast } from './ui/overlay.js';
 import { paintLive } from './ui/live-art.js';
 import { devices, register, connect, onChange, startPolling, markMissing, setDemo, isBusy, useRemote, shownDevices } from './core/devices.js';
@@ -131,7 +131,7 @@ function paintShield() {
   if (!el) return;
   const fresh = lastBackupAt && Date.now() - lastBackupAt < FRESH_MS;
   el.classList.toggle('fresh', !!fresh);
-  el.ariaLabel = lastBackupAt ? `Last backup ${new Date(lastBackupAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'No backups yet';
+  el.ariaLabel = lastBackupAt ? `Last backup ${dateTime(lastBackupAt)}` : 'No backups yet';
 }
 setInterval(readLastBackup, 30000);
 setTimeout(readLastBackup, 500);
@@ -197,7 +197,6 @@ function go(id) {
 }
 
 let pending = false;
-let transitioning = false;
 let seq = 0; // render counter: a late swap from an older render never replaces a newer page
 function render(fresh) {
   const id = location.hash.replace(/^#\//, '') || 'overview';

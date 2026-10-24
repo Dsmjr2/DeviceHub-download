@@ -921,6 +921,18 @@ export function withRange(learned, { min, max, step } = {}, taken = []) {
 
 // ---------------------------------------------------------------- the devices (a)
 // learn-hid-list.ps1's JSON -> [{ vid, pid, name, collections, vendor, why? }], one per vid:pid
+// Has the device anything to set? (24 Oct 2026, Shawn: "make connecting unknown devices absolutely seamless": no Learn
+// offered for a plain keyboard or mouse.) Yes when a collection on a vendor page (0xFF00 and up) takes a report out or a
+// feature report, when it speaks Windows Dynamic Lighting (page 0x59), or when any collection takes a report longer than
+// 8 bytes (Razer and others send settings as 90-byte feature reports on the mouse's own page). A keyboard's Caps Lock
+// light (one byte out on page 1) and a headset's mute light are not settings.
+export function settable(collections) {
+  return (collections || []).some((c) => {
+    const page = parseInt(c.page, 16);
+    return (page >= 0xff00 && (c.outLen > 1 || c.featLen > 1)) || page === 0x59 || c.outLen > 9 || c.featLen > 9;
+  });
+}
+export const AS_IS = 'Nothing on it to set: it works as it is (no settings channel).';
 export function groupDevices(json, { runs = [], mine = [], library = [] } = {}) {
   const arr = (x) => (Array.isArray(x) ? x : x == null ? [] : [x]);
   const by = new Map();
@@ -940,6 +952,7 @@ export function groupDevices(json, { runs = [], mine = [], library = [] } = {}) 
     d.vendor = d.collections.some((c) => parseInt(c.page, 16) >= 0xff00);
     d.writable = d.collections.some((c) => c.outLen > 1 || c.featLen > 1);
     if (!d.writable) continue;
+    d.settable = settable(d.collections);
     if (lib.has(k)) d.library = true;
     d.name = d.name || `USB device ${k}`;
     out.push(d);
@@ -1361,6 +1374,8 @@ async function listDevices() {
       d.driver = await driverFor(`${d.vid}:${d.pid}`, own, root);
       d.refused = d.refused || coverageRefusal(d.driver);
     }
+    // nothing to set: listed under Already works, never offered for learning
+    if (!d.refused && !d.library && !d.settable) { d.refused = AS_IS; d.asIs = true; }
     d.ready = await readyOf(d, own, root);
     d.note = coverageNote(d);
     // 23 Oct 2026: a device no brand owns is shown by its own ids (title: "Unknown 2.4G receiver (25A7:FA70)"; name stays

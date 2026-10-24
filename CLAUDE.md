@@ -198,7 +198,11 @@ helpers/native/            the Windows helper (C#, built on start with Windows' 
                            file) rebuilds when a source is newer (helpers/helper-sources.js)
 public/devices/            the drivers: one adapter per device slot (mouse-adapter.js, headset-adapter.js,
                            keyboard-adapter.js) over a protocol file (pulsar.js, via.js, the HS80 code in helpers/)
-public/pages/              one page per sidebar entry (mouse.js, headset.js, keyboard.js, ...)
+public/pages/              one page per sidebar entry (mouse.js, headset.js, keyboard.js, ...; fans.js is the PC page)
+public/ui/                 shared pieces: dom.js (h(), icons, dateTime), controls.js, dropdown.js (the glass dropdowns),
+                           pc-health.js (the PC page's Temperatures and fans and PC check cards), get-help.js
+public/style.css           every look: base sections first, then the whole looks (Old School, Verde, Milk, Coral Reef),
+                           then the newer page sections (Monitors, Learn, PC page) and the glass dropdowns
 public/ui/art.js, img/     the device drawings and product photos (the Realistic look)
 public/devices/demo.js     pretend devices for demo mode
 public/core/brands.js      the brand guide (made from docs/brands.json by helpers/make-brands.mjs; docs/BRANDS.md)
@@ -208,6 +212,7 @@ helpers/onedrive-setup.mjs the opt-in OneDrive copy of this PC's setup, and the 
 helpers/get-help.mjs      Get help: a short report, personal data taken out, a pre-filled GitHub issue opened on click
 helpers/auto-report.mjs   problem reports that send themselves from other PCs to the relay (never from the owner's PC)
 helpers/update-notice.mjs  a new version is ready: one check 2 min after start, the window asks Update or Later (never the owner's PC)
+helpers/self-update.js     Settings > Update: a git copy pulls (fast-forward), a zip copy installs the signed release; nothing updates by itself
 helpers/learn-apps.mjs     Learn without typing: the maker's app (installed, running), the tick-list (app files > brand sheet > usual list)
 helpers/learn-wizard.mjs   Learn a device: USB recordings -> driver.json (settings, readings, a second USB id), read-only toward the device (public/pages/learn.js)
 helpers/declarative-driver.mjs   driver.json drivers (docs/DRIVER-FORMAT.md): checked, then run with the device.mjs contract
@@ -223,11 +228,13 @@ helpers/pc-map.js          This PC, read-only: CPU, graphics card, board, RAM, U
 helpers/openrgb.js         PC lights through OpenRGB's SDK server (127.0.0.1:6742), backed up and read back
 helpers/board-lights.mjs   Add board, fan and RAM lights / Remove board lights: PawnIO + the elevated OpenRGB task, on a click
 helpers/camera.cs, .js     webcam picture settings (DirectShow's standard controls), backed up, one at a time, read back
-helpers/gpu.js             the graphics card's temperature, fans, load, power (NVIDIA's nvidia-smi), read-only: the Fans page
+helpers/gpu.js             the graphics card's temperature, fans, load, power (NVIDIA's nvidia-smi), read-only: the PC page
 helpers/display.js         each screen's resolution, refresh rate, HDR, main screen (backed up, tested, 15 s Keep or put back); Night light read only (docs/handoff/display-health.md)
-helpers/pc-sensors.js      Temperatures and fans, read only (nvidia-smi, D3DKMT, ACPI zones); helpers/pc-check.js the PC check (a list of check functions); the PC page (was Fans)
+helpers/pc-sensors.js      Temperatures and fans, read only (nvidia-smi, D3DKMT, ACPI zones); helpers/pc-check.js the PC check (a list of check functions); both on the PC page
+helpers/cpu-sensors.mjs    the CPU temperature and board fans add-on (LibreHardwareMonitor, on the person's click), read only
 docs/FANS.md               BIOS fan curve settings; DeviceHub never writes to the board's fan chip (it would need a kernel driver)
-tests/                     npm test: offline checks, then every page opened live and in demo
+tests/                     npm test: offline checks, then every page opened live and in demo; npm run test:offline needs
+                           no running DeviceHub; node tests/isolated.mjs opens every page in demo mode in a copy beside it
 ```
 
 ## Adding your own devices
@@ -376,7 +383,7 @@ its SDK server on; DeviceHub reads its controllers, backs them up, sets one colo
 back (Lighting > PC lights). Use OpenRGB 1.1 or newer (1.0 mixed up device numbers for clients on protocol
 versions below 6, which DeviceHub uses). On Windows, motherboard and RAM lights also need PawnIO (pawnio.eu, a signed
 kernel driver) with OpenRGB run as administrator (OpenRGB has no Windows service): the person's own decision, never
-done for them without their click. **Add board, fan and RAM lights** (Lighting > PC lights, the Fans page's Fan lights,
+done for them without their click. **Add board, fan and RAM lights** (Lighting > PC lights, the PC page's Fan lights,
 and a Setup row when lights-diagnose says "smbus"; `helpers/board-lights.mjs`, 22 Oct 2026) is that click: PawnIO
 2.2.0's official installer when it is missing (signed by namazso AND its published SHA-256), then one Windows admin
 prompt copies the bundled OpenRGB 1.1 with its six PawnIO modules into C:\Program Files\DeviceHub board lights\OpenRGB\

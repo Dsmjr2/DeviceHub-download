@@ -25,6 +25,7 @@ check((await post('x'.repeat(20000))).status === 413, 'too large 413');
 let r = await post(good());
 check(r.status === 202 && issues.length === 1, 'files one issue');
 check(issues[0].url.endsWith('/repos/Dsmjr2/DeviceHub-support/issues') && issues[0].body.labels[0] === 'problem' && issues[0].auth === 'Bearer tok', 'to the private repo, labeled problem, with the secret');
+{ const w = await import('../relay/worker.js'); check(w.labelOf('support:x') === 'support' && w.labelOf('driver:3710abcd:12') === 'driver' && w.labelOf('crash:devicehub') === 'problem', 'labels: support, driver (a shared learned driver), problem'); }
 check(/Install: `a1b2c3d4e5f6`/.test(issues[0].body.body) && !/a1b2c3d4e5f60718/.test(issues[0].body.body), 'only a short install id in the issue');
 r = await post(good());
 check(r.status === 200 && issues.length === 1, 'same problem again today: no second issue');

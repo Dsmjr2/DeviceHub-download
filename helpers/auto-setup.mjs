@@ -27,7 +27,7 @@ import { createRequire } from 'node:module';
 import { match, installFromLibrary, ROOT, hex4, devicehubVersion } from './device-library.mjs';
 import { genericDongle } from '../public/core/generic-dongle.js';
 import { plainName } from '../public/core/device-name.js';
-import { libraryMark, readVerified, loadNew, ownClash, hasRealRecord, provenCopy, needsTurnOn, writable, TURN_ON_LINE } from './my-devices.mjs';
+import { libraryMark, readVerified, loadNew, ownClash, addFamilyPids, hasRealRecord, provenCopy, needsTurnOn, writable, TURN_ON_LINE } from './my-devices.mjs';
 
 export const SETUP_FILE = 'setup.json';
 export const cache = { at: 0, value: null };  // server.js keeps /api/setup's last answer here for a minute
@@ -57,22 +57,36 @@ export async function run({ root = ROOT, usb = [], busy = [], log = () => {}, ex
   const ever = new Set(rec.installed.map((x) => x.name));
   for (const m of match(usb, { root, readOnly: true, ...(examples != null ? { examples } : {}) })) {
     const ids = m.matched.map(idOf);
-    const line = { name: m.name, product: product(m.meta), status: m.meta.status, usb: ids };
+    const line = { name: m.name, product: product(m.meta), status: m.meta.status, usb: ids, ...(m.familyPids ? { family: m.familyPids } : {}) };
+    // a model the entry does not list, matched by its brand's protocol (device.json family): never one DeviceHub's own
+    // drivers run; on a copy already installed its id is added there (helpers/my-devices.mjs addFamilyPids, no restart)
+    if (m.familyPids?.length && ownClash(m.meta.vid, m.familyPids).length) { rec.lastRun.skipped.push({ ...line, why: 'DeviceHub\'s own driver already runs it' }); continue; }
+    if (m.installed && m.familyPids?.length) {
+      let added = [];
+      try { added = addFamilyPids(root, m.name, m.familyPids); } catch {}
+      if (added.length) {
+        const got = { ...line, at, family: added, familyOnly: true };
+        rec.lastRun.installed.push(got);
+        try { log({ kind: 'good', text: `Set up: the ${product(m.meta)} driver also runs ${added.map((p) => `${hex4(m.meta.vid)}:${p.toLowerCase()}`).join(', ')}, a model it knows by its protocol` }); } catch {}
+      }
+      continue;
+    }
     if (m.installed) continue;  // already there: summary() reports it
     // ANY id DeviceHub's own drivers run (plugged in, or declared by the entry): never installed (safety round 2)
     if (ids.some((id) => own.has(id)) || ownClash(m.meta.vid, m.meta.pids).length) { rec.lastRun.skipped.push({ ...line, why: 'DeviceHub\'s own driver already runs it' }); continue; }
     if (ever.has(m.name)) { rec.lastRun.skipped.push({ ...line, why: 'installed before and removed since: not installed again' }); continue; }
     if (!m.installable) { rec.lastRun.offered.push({ ...line, why: m.why }); continue; }
-    const r = await installFromLibrary(m.name, { root, readOnly: true, ...(examples != null ? { examples } : {}), now });
+    const r = await installFromLibrary(m.name, { root, readOnly: true, ...(examples != null ? { examples } : {}), now, familyPids: m.familyPids || [] });
     if (!r.ok) { rec.lastRun.skipped.push({ ...line, why: r.error }); continue; }
     const got = { ...line, id: r.id, at, proven: !!r.proven };
     rec.installed.push(got); rec.lastRun.installed.push(got); ever.add(m.name);
   }
-  if (rec.lastRun.installed.length) {
+  if (rec.lastRun.installed.some((x) => !x.familyOnly)) {
     let loaded = null;
     try { loaded = await load(root); } catch {}
     rec.lastRun.loaded = loaded ? loaded.filter((x) => x.id).map((x) => x.name) : null;
     for (const x of rec.lastRun.installed) {
+      if (x.familyOnly) continue;   // said above
       const live = loaded?.some((l) => l.name === x.name && l.id);
       const how = !x.proven ? `: it reads the device; its settings change only after you press Turn on settings on its page (${TURN_ON_LINE})`
         : x.status === 'tested' ? '' : ': each setting opens once DeviceHub has written its current value back and read it the same, when the device connects';

@@ -19,8 +19,6 @@ export function seemsFrom(usages) {
   const k = !!usages?.keyboard, m = !!usages?.mouse;
   return k && m ? 'a keyboard and a mouse' : k ? 'a keyboard' : m ? 'a mouse' : null;
 }
-// one plain line about what its interfaces say, or null
-export const seemsLine = (usages) => { const s = seemsFrom(usages); return s ? `Its USB interfaces say: ${s}.` : null; };
 
 // u: { vid, pid, name, usages? } -> { title, seems, unknown: true } for a device no brand owns, else null (the caller
 // keeps its own name: a brand the vendor id belongs to, a generic chip's receiver line)

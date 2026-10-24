@@ -1,5 +1,5 @@
 // Settings: appearance, startup and updates, Get help (with the safety line and the read-only self-test), health and files.
-import { h, icon, lowerFirst } from '../ui/dom.js';
+import { h, icon, lowerFirst, dateTime } from '../ui/dom.js';
 import { card, row, toggle, button, pill } from '../ui/controls.js';
 import { dropdown } from '../ui/dropdown.js';
 import { devices, isDemo, readNow, shownDevices } from '../core/devices.js';
@@ -30,6 +30,7 @@ import { smoothBar } from '../ui/progress.js';
 import { loadSetupFile, backupsCard } from './backups.js';
 import { saveSetup } from '../core/setup.js';
 import { setupNeeds, watchSetup } from './setup.js';
+import { shareSwitch } from '../ui/driver-share.js';
 
 let startup = null;
 // DeviceHub's own updates from GitHub (helpers/self-update.js): null = not read yet
@@ -126,7 +127,7 @@ async function loadSyncPower() {
   try { [syncSt, powerSt, opts] = await Promise.all(['/api/settings-sync', '/api/power', '/api/settings'].map(async (u) => (await fetch(u)).json())); } catch {}
   rerender();
 }
-const syncAgo = (iso) => { if (!iso) return 'not yet'; const m = Math.round((Date.now() - new Date(iso)) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); };
+const syncAgo = (iso) => { if (!iso) return 'not yet'; const m = Math.round((Date.now() - new Date(iso)) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : dateTime(iso); };
 async function setOpt(k, v) { try { await env.api('/api/settings', { [k]: v }); } catch (e) { toast('Not changed', 'bad', { detail: e.message }); } loadSyncPower(); }
 function syncRows() {
   if (isDemo()) return [];
@@ -190,11 +191,13 @@ function publishRow() {
   const running = pub?.run?.state === 'running';
   if (Date.now() - pubAt > (running ? 3000 : 60000)) { pubAt = Date.now(); fetch('/api/publish-release').then((r) => r.json()).then((j) => { pub = j; if (location.hash === '#/settings') rerender(); }).catch(() => {}); }
   if (!pub?.owner) return null;
-  const at = (t) => new Date(t).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
-  const when = pub.published?.builtAt ? at(pub.published.builtAt) : null;
+  const when = pub.published?.builtAt ? dayTime(pub.published.builtAt) : null;
   const run = pub.run;
   if (running) setTimeout(() => { if (location.hash === '#/settings') rerender(); }, 3100);
-  if (running) return row('Publish', `Publishing: ${run.step || 'Building'}… (${Math.max(1, Math.round((Date.now() - run.startedAt) / 60000))} min)`, null);
+  const mins = running ? Math.max(1, Math.round((Date.now() - run.startedAt) / 60000)) : 0;
+  // the zip and version file are up: friends have it while Setup.exe (for new people) finishes (helpers/publish-release.ps1)
+  if (running && /^friends/.test(run.step || '')) return row('Publish', `Published: friends get it with Update. Finishing Setup.exe… (${mins} min)`, null);
+  if (running) return row('Publish', `Publishing: ${run.step || 'Building'}… (${mins} min)`, null);
   // no signing key on this PC: the release would stop at signing, so say where it is first
   if (pub.keyHere === false) return row('Publish', 'No signing key here. Publish from the last PC.', null);
   const start = async () => {
@@ -202,7 +205,7 @@ function publishRow() {
     pubAt = 0; rerender();
   };
   const text = run?.state === 'failed' ? `Not published: ${run.error || 'it stopped'}.`
-    : run?.state === 'done' && pub.ahead === 0 ? `Published ${at(run.endedAt)}. Friends get it with Update.`
+    : run?.state === 'done' && pub.ahead === 0 ? `Published ${dayTime(run.endedAt)}. Friends get it with Update.`
     : pub.ahead > 0 ? `Friends have the version from ${when}; this PC has ${pub.ahead} newer change${pub.ahead === 1 ? '' : 's'}.` : when ? `Friends have this PC's version (${when}).` : 'Send this version to friends.';
   return row('Publish', text, button(run?.state === 'failed' ? 'Try again' : 'Publish', start, { kind: pub.ahead > 0 || run?.state === 'failed' ? 'primary small' : 'ghost small', ic: 'external' }));
 }
@@ -334,10 +337,12 @@ function dailyLine(line) {
   if (!daily) return null;
   const items = Object.entries(daily.items || {});
   const bad = items.filter(([, v]) => v.ok === false), later = items.filter(([, v]) => v.ok === null);
-  const when = daily.at ? new Date(daily.at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : 'not run yet';
+  const when = daily.at ? dayTime(daily.at) : 'not run yet';
   const text = bad.length ? `${bad.length} to look at: ${bad.map(([k]) => k).join(', ')}` : later.length ? `all good · ${later.map(([k]) => k).join(', ')} when next connected` : 'all good';
   return h('div', { title: items.map(([k, v]) => `${k}: ${v.text}`).join('\n') }, line('Daily check', `${text} · ${when}`, !bad.length));
 }
+// a weekday and time: "Sat 3:05 PM" (the daily check, the last publish)
+const dayTime = (t) => new Date(t).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
 const ago = (iso) => { const m = Math.round((Date.now() - new Date(iso)) / 60000); return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; };
 const upFor = (s) => (s < 3600 ? `${Math.round(s / 60)} min` : s < 86400 ? `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min` : `${Math.floor(s / 86400)} days ${Math.floor((s % 86400) / 3600)} h`);
 const stableFor = (iso) => {
@@ -380,7 +385,7 @@ function helpCard() {
   box.style.marginTop = '0';
   // the automatic problem reports' switch (helpers/auto-report.mjs) on the same line as the Get help button, so the
   // card is no taller (Settings fits one screen at 1650 x 910); an open report pushes it under the report
-  return card([h('h2', {}, 'Get help'), h('span', { class: 'spacer' }), pick], h('div', { class: 'gh-line' }, box, autoReportSwitch()), safetyLine());
+  return card([h('h2', {}, 'Get help'), h('span', { class: 'spacer' }), pick], h('div', { class: 'gh-line' }, box, autoReportSwitch(), shareSwitch(rerender)), safetyLine());
 }
 // Safety (24 Oct 2026, Shawn: "the safety box in settings can just be minimized somewhere on the get help area"): one
 // line in Get help; Show all opens the full list in place; the Self-test button and its results stay with it

@@ -15,7 +15,7 @@ const { writeAtomic } = createRequire(import.meta.url)('./safe-write.js');
 
 let ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 let BACKUPS = path.join(ROOT, 'backups'), SETTINGS = path.join(ROOT, 'settings.json');
-// tests/onedrive-setup.mjs: a copy's folder instead of this one
+// tests/setup-extras.mjs: a copy's folder instead of this one
 export function useRoot(root) { ROOT = root; BACKUPS = path.join(root, 'backups'); SETTINGS = path.join(root, 'settings.json'); }
 const SUFFIX = '.devicehub-setup.json';
 const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };

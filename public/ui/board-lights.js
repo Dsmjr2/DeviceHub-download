@@ -1,5 +1,5 @@
 // The Add board, fan and RAM lights control (22 Oct 2026, Shawn: "I want the app to be able to set it up"), on
-// Lighting > PC lights, the Fans page's Fan lights card and the Setup page (helpers/board-lights.mjs does the work).
+// Lighting > PC lights, the PC page's Fan lights card and the Setup page (helpers/board-lights.mjs does the work).
 // In place, no pop-ups or notifications: the one plain line before the click, the one button, the step while it runs,
 // then the plain result line. When set up: Remove board lights, confirmed in place.
 //   boardLights({ redraw, onDone }) -> an element; its state is kept across page redraws

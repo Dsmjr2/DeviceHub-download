@@ -18,6 +18,9 @@ export function checkReport(r) {
   return null;
 }
 
+// the issue's label by the fingerprint's first part: a Get help request, a learned driver shared by its owner
+// (helpers/driver-share.mjs, 24 Oct 2026), else an automatic problem report
+export const labelOf = (fp) => (fp.startsWith('support:') ? 'support' : fp.startsWith('driver:') ? 'driver' : 'problem');
 const json = (status, o) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json' } });
 const day = () => new Date().toISOString().slice(0, 10);
 const hour = () => new Date().toISOString().slice(0, 13);
@@ -51,7 +54,7 @@ export default {
     const gh = await fetch(`https://api.github.com/repos/${env.REPO}/issues`, {
       method: 'POST',
       headers: { authorization: `Bearer ${env.GITHUB_TOKEN}`, accept: 'application/vnd.github+json', 'user-agent': 'devicehub-relay', 'content-type': 'application/json' },
-      body: JSON.stringify({ title: r.title, body, labels: [r.fingerprint.startsWith('support:') ? 'support' : 'problem'] }),
+      body: JSON.stringify({ title: r.title, body, labels: [labelOf(r.fingerprint)] }),
     });
     if (!gh.ok) { await kv.delete(seen); return json(502, { error: `github ${gh.status}` }); }
     return json(202, { ok: true });

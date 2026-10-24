@@ -10,13 +10,10 @@ import { card, button, pill, skeleton, offSwatch, isOff, OFF } from '../ui/contr
 import { env } from '../core/env.js';
 import { isDemo } from '../core/devices.js';
 import { toast } from '../ui/overlay.js';
-import { brandForUsb, brandNamed, ROUTE } from '../core/brands.js';
-import { learnThis } from './learn.js';
+import { brandForUsb, ROUTE } from '../core/brands.js';
 import { getHelp } from '../ui/get-help.js';
 import { boardLights } from '../ui/board-lights.js';
 import { findLights, shownZones, hiddenZoneCount } from '../ui/find-lights.js';
-import { genericDongle } from '../core/generic-dongle.js';
-import { viaFileNote, isViaKeyboard } from './keyboard.js';
 
 const DEMO_PC = {
   cpu: 'AMD Ryzen 7 5800X3D', gpus: [{ name: 'NVIDIA GeForce RTX 4070', maker: 'MSI' }], board: { maker: 'Gigabyte Technology Co., Ltd.', model: 'B450 AORUS PRO WIFI-CF' },
@@ -81,50 +78,6 @@ export const pcAvailable = () => !!st.orgb?.running && st.orgb.controllers.lengt
 export const pcIncluded = () => st.include && pcAvailable();
 export const setPcIncluded = (on) => { st.include = on; };
 
-const cleanMaker = (s) => (s || '').replace(/Technology|Co\.|Ltd\.?|Inc\.?|Corporation|International|Computer|,/gi, '').replace(/\s+/g, ' ').trim();
-function line(label, what, lights, how, brand) {
-  return h('div', { class: 'pc-part' },
-    h('div', { class: 'pc-part-head' }, h('span', { class: 'muted' }, label), h('b', {}, what || 'not found'),
-      lights === 'yes' ? pill('lights', 'good') : lights === 'no' ? pill('no lights') : lights ? pill(lights) : null),
-    how ? h('small', { class: 'faint' }, how) : null,
-    brand ? h('small', { class: 'faint' }, brandLine(brand)) : null);
-}
-const brandLine = (b) => [b.vendorApp ? `App: ${b.vendorApp}` : null, b.openProjects?.length ? `Open: ${b.openProjects.map((p) => p.name).join(', ')}` : null, b.risk ? `Risk: ${b.risk}` : null].filter(Boolean).join(' · ');
-
-function thisPc() {
-  const pc = st.pc;
-  if (!pc) return card([h('h2', {}, 'This PC')], h('p', { class: 'faint' }, st.error ? `PC not read: ${st.error}` : 'Reading…'));
-  const board = `${cleanMaker(pc.board?.maker)} ${pc.board?.model || ''}`.trim();
-  const boardBrand = brandNamed(pc.board?.maker, 'motherboard');
-  const ramLit = pc.ram?.some((r) => r.lights === 'yes' || r.lights === 'likely');
-  const ramNone = pc.ram?.length && pc.ram.every((r) => r.lights === 'no');
-  const ramParts = [...new Set((pc.ram || []).map((r) => `${r.maker || 'unknown maker'} ${r.part}`))];
-  const boardSmbus = boardBrand?.transport?.includes('smbus') || pc.smbus?.length;
-  // only makers the guide knows (Bluetooth adapters, hubs and the like are left out)
-  const others = otherDevices();
-  return card([h('h2', {}, 'This PC'), h('span', { class: 'spacer' }), button('', () => loadPc(true), { kind: 'ghost small', ic: 'refresh', title: 'Read again' })],
-    h('div', { class: 'pc-parts' },
-      line('Processor', pc.cpu, null, null, null),
-      line(pc.gpus?.length > 1 ? 'Graphics' : 'Graphics card', (pc.gpus || []).map((g) => `${g.maker ? g.maker + ' ' : ''}${g.name}`).join(', ') || null, null, 'Lights via OpenRGB.', null),
-      line('Motherboard', board, null, boardSmbus ? 'Lights and RGB headers via OpenRGB.' : 'Lights via OpenRGB.', null),
-      line('Memory', ramParts.join(', '), ramLit ? 'yes' : ramNone ? 'no' : 'unknown', ramLit ? 'Via OpenRGB.' : null, null),
-      line('Case and fans', 'lit fans and strips', null, 'Follow the board\'s RGB headers.', null),
-      // Windows Dynamic Lighting: the lights work in Windows itself, no driver; one click opens that page (22 Oct 2026)
-      pc.lampArrays ? h('div', {}, line('Dynamic Lighting', `${pc.lampArrays} device${pc.lampArrays === 1 ? '' : 's'}`, 'yes', 'Set in Windows Settings.', null),
-        h('div', { class: 'actions', style: { margin: '6px 0 0' } }, button('Open Dynamic Lighting', openDynamicLighting, { kind: 'ghost small', ic: 'external' }))) : null),
-    others.length ? h('div', { class: 'pc-others' }, h('h3', {}, 'Other devices plugged in'),
-      ...others.map((u) => { const gd = genericDongle(u); return h('div', { class: 'pc-other' }, line(u.brand.shared ? 'USB device' : u.brand.name, u.name || (gd ? 'USB receiver' : `${u.brand.name} device`), null, gd ? gd.line : null, gd ? null : u.brand),
-        // a VIA keyboard needs no learning, only its layout file when VIA's library lacks it (keyboard.js viaFileNote)
-        isViaKeyboard(u) ? viaFileNote(u.vid, u.pid, u.brand.name) : null,
-        // a generic 2.4G receiver (core/generic-dongle.js): no Learn it, Learn a device refuses its chip's id
-        h('div', { class: 'actions' }, gd ? null : button('Learn it', () => { learnThis(u.vid, u.pid); location.hash = '#/learn'; }, { kind: 'ghost small', ic: 'plug' }),
-          button('Copy prompt', () => copyPrompt(u), { kind: 'ghost small' })),
-        // or ask for it: sent to Shawn in one click where reports go, otherwise a short request for GitHub (ui/get-help.js)
-        getHelp(`request:${u.vid}:${u.pid}`, null, { label: 'Request support', request: { vid: u.vid, pid: u.pid, name: u.name || '' } })); })) : null,
-    // paired Bluetooth devices: connected or off, and the battery Windows last read
-    st.bt?.length ? h('div', { class: 'pc-others' }, h('h3', {}, 'Bluetooth'),
-      ...st.bt.map((d) => line(d.connected ? 'connected' : 'off', d.name, null, d.battery != null ? `Battery ${d.battery}%${d.connected ? '' : ' when last connected'}` : null, null))) : null);
-}
 
 // A ready prompt for Claude Code to add a device DeviceHub does not run yet, filled in from the brand guide.
 export function devicePrompt(u) {
@@ -147,7 +100,6 @@ export async function copyPrompt(u) {
   catch { toast('Could not copy', 'bad'); }
 }
 
-const openDynamicLighting = () => env.api('/api/diagnose/action', { kind: 'settings', page: 'lighting' }).catch((e) => toast('Settings not opened', 'bad', { detail: e.message }));
 
 // Board, fan and RAM lights (22 Oct 2026, Shawn: "I want the app to be able to set it up"): one button sets up PawnIO
 // and runs the OpenRGB inside DeviceHub as administrator (helpers/board-lights.mjs, ui/board-lights.js), and Remove
@@ -240,11 +192,6 @@ export function pcLightsCard(onRedraw) {
   redraw = onRedraw;
   if (!st.pc && !st.loading) queueMicrotask(() => loadPc());
   return pcLights();
-}
-export function pcSection(onRedraw) {
-  redraw = onRedraw;
-  if (!st.pc && !st.loading) queueMicrotask(() => loadPc());
-  return h('div', { class: 'grid two top' }, thisPc(), pcLights());
 }
 
 // OpenRGB's device type with a capital first letter ("motherboard" reads Motherboard; RAM and LED strip kept as words)

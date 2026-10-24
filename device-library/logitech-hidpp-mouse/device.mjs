@@ -319,6 +319,8 @@ const adapter = {
   dev: null, chan: null, index: DEV_WIRED, features: {}, caps: {}, asleep: false, usbId: null,
   pingMs: 2600,   // how long a slot's ping waits (tests shorten it)
 
+  // product ids added by the library's family match (numbers), none when there are none
+  familyIds() { return (this.familyPids || []).map((p) => parseInt(p, 16)).filter((n) => Number.isInteger(n) && !RECEIVERS.includes(n) && !WIRED[n] && !BLE[n]); },
   async connect(prompt) {
     releaseSlots(this.id);
     this.dev = null; this.chan = null; this.features = {}; this.caps = {}; this.profileReadBase = undefined; this.asleep = false; this.usbId = null; this.wokeAt = 0; this.pendingNotMine = null; this.superstrike = false; this.shownOnly = new Set();
@@ -330,6 +332,9 @@ const adapter = {
       }
       // Bluetooth: no usage page in the filter (BLE_HID picks the collection)
       for (const pid of Object.keys(BLE).map(Number)) { if (dev) break; dev = await getDevice([{ vendorId: VID, productId: pid }], { prompt: false }); }
+      // a model not listed here, matched by its HID++ collection (device.json family, helpers/my-devices.mjs familyPids):
+      // tried last, and it must answer HID++ 2.0 and have a DPI feature, else the driver steps aside
+      for (const pid of this.familyIds()) { if (dev) break; dev = await getDevice([{ vendorId: VID, productId: pid, usagePage: 0xff00, usage: 0x0002 }], { prompt: false }); }
       if (!dev && prompt) dev = await getDevice(RECEIVERS.concat(Object.keys(WIRED).map(Number)).map((p) => ({ vendorId: VID, productId: p, usagePage: 0xff00, usage: 0x0002 })));
     }
     if (!dev) return false;
@@ -345,7 +350,8 @@ const adapter = {
       // wired / Bluetooth: index 0xFF
       this.index = DEV_WIRED;
       let ver = null;
-      try { ver = await this.ping(); } catch (e) { if (e instanceof HidppError) throw e; }
+      try { ver = await this.ping(); } catch (e) { if (e instanceof HidppError && !this.familyIds().includes(this.pid)) throw e; }
+      if (!ver && this.familyIds().includes(this.pid)) { this.stepAside(); throw notMine(`this Logitech device (${hex4(this.pid)}) does not answer HID++ 2.0, so the mouse driver leaves it alone`); }
       if (!ver) throw new Error('no reply from the mouse');
       this.protocol = ver;
       return this.finishConnect();

@@ -239,11 +239,13 @@ export async function report(ev) {
 // fallback: this copy does not send (or the relay refused it): the page does what it did before (the GitHub request).
 // already sent (or being sent) today: a second click needs no new request built
 export const sentToday = (fp) => loadState().sent[fp] === day() || inFlight.has(fp);
-export async function sendNow({ fingerprint: fp, title, body, version }) {
+// channel 'driver': a learned driver the person chose to share (helpers/driver-share.mjs, settings.json shareDrivers), sent
+// whatever the problem-report switch says; everything else here (owner's PC, the relay, the caps) applies the same
+export async function sendNow({ fingerprint: fp, title, body, version, channel = 'support' }) {
   if (!started) return { sent: false, fallback: true, why: 'not started' };
   const url = relayUrl();
   if (!url) return { sent: false, fallback: true, why: 'no relay set up (helpers/report-config.json)' };
-  if (!enabled()) return { sent: false, fallback: true, why: 'switched off in Settings' };
+  if (channel !== 'driver' && !enabled()) return { sent: false, fallback: true, why: 'switched off in Settings' };
   if (await isOwnerPc()) return { sent: false, fallback: true, why: "the owner's own PC" };
   const st = loadState();
   if (st.sent[fp] === day() || inFlight.has(fp)) return { sent: true, already: true };
