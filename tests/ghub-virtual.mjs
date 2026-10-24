@@ -3,7 +3,7 @@
 // absent whether or not it was seen once (helpers/my-devices.mjs isAbsent).
 import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
-import { isAbsent } from '../helpers/my-devices.mjs';
+import { isAbsent, stepAside } from '../helpers/my-devices.mjs';
 const require = createRequire(import.meta.url);
 const { _test: { shape } } = require('../helpers/pc-map.js');
 const base = { cpu: null, gpus: [], board: null, ram: [], smbus: [] };
@@ -13,4 +13,16 @@ assert.deepEqual(pc.usb.map((u) => u.id), ['046d:c54d'], 'G HUB virtual devices 
 pc = shape({ ...base, usb: [hid('046d', 'c232', { onUsb: true, name: 'USB Composite Device' }), hid('046d', 'c232', { kb: true })] });
 assert.deepEqual(pc.usb.map((u) => u.id), ['046d:c232'], 'a real G813 on USB stays');
 assert.equal(isAbsent({ plugin: true, notMine: { why: 'x' } }, 'connecting', true), true, 'stepped aside: absent while it retries');
+// a driver whose connect says yes on a shared receiver and steps aside at its first read (the Logitech keyboard driver):
+// absent the whole time, also between that yes and the read, until a read of its own succeeds
+{ let mine = false;
+  const nm = () => Object.assign(new Error('no keyboard answered'), { notMine: true, gone: true });
+  const a = stepAside({ plugin: true, connect: async () => true, read: async () => { if (!mine) throw nm(); return {}; } }, { log: () => {} });
+  assert.equal(await a.connect(), true);
+  await a.read().catch(() => {});
+  assert.equal(isAbsent(a, 'missing', true), true, 'stepped aside: absent');
+  await a.connect();
+  assert.equal(isAbsent(a, 'connecting', true), true, 'its next connect says yes: still absent (it used to show here)');
+  mine = true; await a.read();
+  assert.equal(isAbsent(a, 'connected', true), false, 'a read of its own: shown'); }
 console.log('ghub-virtual (G HUB virtual keyboard not listed, a stepped-aside driver stays hidden): all good');

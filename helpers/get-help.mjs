@@ -524,11 +524,11 @@ export const AREAS = {
   },
 };
 // the page's own context: these keys only, short plain strings (public/ui/get-help.js sends them on the click)
-export const CONTEXT_KEYS = { page: 'Page', error: 'Shown on the page', step: 'Step', progress: 'Progress', heard: 'Heard so far', results: 'Settings so far', item: 'Row', status: 'Status shown', detail: 'Detail' };
+export const CONTEXT_KEYS = { page: 'Page', error: 'Shown on the page', step: 'Step', progress: 'Progress', heard: 'Heard so far', results: 'Settings so far', item: 'Row', status: 'Status shown', detail: 'Detail', listed: 'Devices on the page' };
 export function pageContext(c) {
   if (!c || typeof c !== 'object' || Array.isArray(c)) return [];
   return Object.entries(CONTEXT_KEYS).filter(([k]) => typeof c[k] === 'string' && c[k].trim())
-    .map(([k, label]) => [label, c[k].replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, k === 'results' || k === 'error' ? 600 : 300)]);
+    .map(([k, label]) => [label, c[k].replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, k === 'results' || k === 'error' || k === 'listed' ? 900 : 300)]);
 }
 async function gatherArea(area, device, deps) {
   const A = AREAS[area];

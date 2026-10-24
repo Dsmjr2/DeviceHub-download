@@ -611,8 +611,13 @@ export function guard(a, folder, mark, deps = null) {
 // (notMine), or it shows only once found (adapter.onlyIfFound: a shared receiver) and never was. Not connected or asleep
 // now. Such a device gets no tile, sidebar entry, Setup row, Turn on settings or report line (public/core/devices.js
 // shownDevices, public/core/setup-list.js, helpers/auto-setup.mjs summary, helpers/get-help.mjs, helpers/turn-on-all.mjs).
+// strayed (24 Oct 2026, a friend's PC: "the logitech keyboard keeps appearing"): a driver that stepped aside this run
+// stays absent until a read of its own succeeds. Its connect() can answer yes on a shared receiver and step aside only
+// at the first read, and that yes used to clear notMine for the moment between, so it showed at every start and retry.
 export function isAbsent(a, status, wasSeen) {
-  if (!a?.plugin || ['connected', 'asleep'].includes(status)) return false;
+  if (!a?.plugin) return false;
+  if (a.strayed) return true;
+  if (['connected', 'asleep'].includes(status)) return false;
   return !!a.notMine || (!!a.onlyIfFound && !wasSeen);
 }
 // "not this driver's device" (see the header): connect() and read() errors with notMine become a quiet "not connected".
@@ -623,6 +628,7 @@ export function stepAside(a, { now = () => Date.now(), log = (t) => console.log(
   let said = null;
   const note = (e) => {
     a.notMine = { why: String(e.message || e).split(/\r?\n/)[0], at: now() };
+    a.strayed = true;
     if (said !== a.notMine.why) { said = a.notMine.why; log(`[my-devices] ${a.id}: not this driver's device: ${a.notMine.why}`); }
   };
   a.connect = async function (prompt, ...rest) {
@@ -634,7 +640,7 @@ export function stepAside(a, { now = () => Date.now(), log = (t) => console.log(
     } catch (e) { if (!e?.notMine) throw e; note(e); return false; }
   };
   a.read = async function (...args) {
-    try { return await read.apply(this, args); } catch (e) { if (e?.notMine) note(e); throw e; }
+    try { const r = await read.apply(this, args); a.strayed = false; return r; } catch (e) { if (e?.notMine) note(e); throw e; }
   };
   // a Windows device change (something plugged in or out) is worth one look at once
   a.notMineRetry = () => { if (a.notMine) a.notMine.retry = true; };

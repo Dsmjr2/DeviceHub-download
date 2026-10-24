@@ -253,7 +253,7 @@ function pickStep() {
   const works = (d) => d.asIs || (d.ready && !d.ready.learned) || (d.refused && (d.driver || d.library || (d.vendor && /ready-made|driver written as code|already has a driver/i.test(d.refused))));
   const learnable = list.filter((d) => !d.refused && !works(d)), working = list.filter(works), cannot = list.filter((d) => d.refused && !works(d));
   const short = (d) => {
-    if (d.ready) return `Works with its driver (${d.ready.name}).`;
+    if (d.ready) return `Works with its driver (${runningCopy(d)?.name || d.ready.name}).`;
     if (d.driver) return `Works with its driver (${d.driver.name}).`;
     const brand = /No learning needed for ([^:]+):/.exec(d.refused || '')?.[1];
     if (brand) return `Works with DeviceHub's ${brand} driver.`;
@@ -273,7 +273,7 @@ function pickStep() {
       : p(working.length ? 'Nothing here needs learning: each device has a driver. What is left for each is below.' : 'Nothing to learn.'),
     st.want && !wanted ? faint(`USB ${st.want.toLowerCase()} is not in the list: nothing to learn on it.`) : null,
     learnable.length ? [head('Can be learned'), ...learnable.map(learnRow)] : null,
-    working.length ? [learnable.length ? head('Already works') : null, ...working.map((d) => h('div', {}, row(d.title || d.name, `${short(d)} · USB ${d.vid}:${d.pid}`,
+    working.length ? [learnable.length ? head('Already works') : null, ...working.map((d) => h('div', {}, row(devices[runningCopy(d)?.id]?.adapter?.title || d.title || d.name, `${devices[runningCopy(d)?.id]?.adapter?.title ? `${d.title || d.name} · ` : ''}${short(d)} · USB ${d.vid}:${d.pid}`,
       h('span', { class: 'actions', style: { margin: 0 } },
         button('Open its page', () => { location.hash = runningCopy(d)?.page || d.ready?.page || '#/setup'; }, { kind: 'ghost small' }),
         d.ready || d.driver ? button('A setting is missing?', () => missingFor(d), { kind: 'ghost small' }) : null)),
@@ -296,7 +296,7 @@ function pickStep() {
 function runningCopy(d) {
   const all = [d.ready, ...(d.ready?.others || [])].filter((x) => x?.id);
   const live = (x) => devices[x.id] && !devices[x.id].absent;
-  return all.find((x) => live(x) && devices[x.id].status === 'connected') || all.find(live) || all[0] || null;
+  return all.find((x) => live(x) && devices[x.id].status === 'connected') || all.find((x) => live(x) && devices[x.id].status === 'asleep') || all.find(live) || all[0] || null;
 }
 const nextCache = {};   // id -> { at, data, note, busy }
 const diagPost = async (body) => {
@@ -1006,6 +1006,13 @@ function learnContext() {
     heard: [st.heard != null ? `the last recording heard ${st.heard} messages` : '', f ? (f.ok === false || f.error ? `not found: ${(f.why || [f.error]).filter(Boolean).join('; ')}` : f.needMore ? 'needs one more recording' : 'found it') : ''].filter(Boolean).join('; '),
     results: (st.log || []).map((l) => `${l.label}: ${l.ok ? 'learned' : `skipped (${l.why})`}`).join('; '),
     detail: [st.error, ...(Array.isArray(st.why) ? st.why : st.why ? [st.why] : []), st.nothing?.says, st.pf?.lines ? `pre-flight: ${st.pf.lines.map((x) => `${x.ok ? 'pass' : 'fail'} ${x.says}`).join(' / ')}` : ''].filter(Boolean).join(' '),
+    // what the device list showed (24 Oct 2026: a report from this page said only "pick the device"): each row, its group,
+    // the driver its page opens and its next step with what the button answered
+    listed: st.step !== 'pick' ? '' : !st.devices ? 'the list was not read yet' : !st.devices.length ? 'no devices listed' : st.devices.map((d) => {
+      const c = runningCopy(d), n = c ? nextCache[c.id] : null, top = (n?.data?.findings || []).find((f) => f.action);
+      const group = d.asIs || d.ready || (d.refused && (d.driver || d.library)) ? 'works' : d.refused ? 'cannot' : 'learnable';
+      return `${d.title || d.name} (${d.vid}:${d.pid}): ${group}${c ? `, page ${c.id}${devices[c.id] ? ` (${devices[c.id].status}${devices[c.id].absent ? ', hidden' : ''})` : ' (not loaded)'}` : ''}${top ? `, next: ${top.problem} [${top.action.kind}]` : n?.data ? ', next: none' : c ? ', next: not read' : ''}${n?.note ? `, answered: ${n.note}` : ''}`;
+    }).join('; '),
   };
 }
 
@@ -1057,7 +1064,10 @@ function style() {
 }
 
 export default {
-  id: 'learn', title: 'Learn a device', icon: 'plug', watches: [],
+  id: 'learn', title: 'Learn a device', icon: 'plug',
+  // the device list redraws when a device's state changes (which driver runs it, its next step); nowhere else, so a
+  // learning session is never redrawn under the person (24 Oct 2026)
+  get watches() { return st.step === 'pick' ? Object.keys(devices) : []; },
   render({ redraw }) {
     redrawPage = redraw;
     style();
