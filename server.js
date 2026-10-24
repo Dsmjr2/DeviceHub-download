@@ -783,6 +783,13 @@ async function api(req, res, url) {
     }
     let published = null, ahead = null;
     try { const v = await require('./helpers/self-update').releaseInfo(); published = { commit: v.commit, builtAt: v.builtAt }; } catch {}
+    // what this PC itself last published (dist\published.json, written by helpers/publish-release.ps1 only once the
+    // upload succeeded): GitHub's download servers can hand out the old version.json for some minutes after a publish
+    // (24 Oct 2026, Shawn: "i publish and this is still here"), so the newer of the two counts
+    try {
+      const local = JSON.parse(fs.readFileSync(path.join(ROOT, 'dist', 'published.json'), 'utf8').replace(/^\uFEFF/, ''));
+      if (local?.commit && (!published || Date.parse(local.builtAt) > Date.parse(published.builtAt))) published = { commit: local.commit, builtAt: local.builtAt };
+    } catch {}
     if (published?.commit) {
       const c = String(published.commit).replace(/-modified$/, '');
       try { ahead = Number(require('child_process').execFileSync('git', ['rev-list', '--count', `${c}..HEAD`], { cwd: ROOT, windowsHide: true, timeout: 10000, encoding: 'utf8' }).trim()); } catch {}

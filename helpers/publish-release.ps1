@@ -50,6 +50,8 @@ if ($gh -and $signedIn) {
   Write-Host "  zip uploaded [$([int]$clock.Elapsed.TotalSeconds) s]"
   & gh release upload $Tag $files[1] $files[2] --repo $Repo --clobber
   if ($LASTEXITCODE) { $exeUp.WaitForExit(); throw 'the upload of version.json and the library failed (see above)' }
+  # what was published, for Settings' Publish row while GitHub's download servers still hand out the old version.json
+  try { $v = Get-Content (Join-Path $dist 'version.json') -Raw | ConvertFrom-Json; @{ commit = $v.commit; builtAt = $v.builtAt } | ConvertTo-Json -Compress | Set-Content (Join-Path $dist 'published.json') -Encoding ascii } catch {}
   Write-Host ''
   Write-Host "Published. Every copy sees the new version on its next check (Settings > DeviceHub updates > Check). [$([int]$clock.Elapsed.TotalSeconds) s]" -ForegroundColor Green
   Write-Host 'Finishing Setup.exe (the download for new people)...'
