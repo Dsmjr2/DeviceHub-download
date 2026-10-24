@@ -147,7 +147,7 @@ async function runOne(r) {
       noteOf(k, 'Getting the layout…');
       if (isDemo()) return demoDone(k, 'layout saved.');
       const j = await post('/api/via-fetch', { vid: a.vid, pid: a.pid }).catch((e) => ({ error: e.message }));
-      noteOf(k, j.ok ? `Saved ${j.file}. Restart DeviceHub to show its keys (tray icon > Quit, then open it).` : `Not saved. ${j.error || ''}`.trim());
+      noteOf(k, j.ok ? `Saved ${j.file}. Restart DeviceHub (tray icon > Quit) to show its keys.` : `Not saved. ${j.error || ''}`.trim());
       if (j.ok) { delete st.layoutAsked[k]; askLayouts(st.summary); }
     } else if (a.kind === 'close-app') {
       noteOf(k, 'Closing…');
@@ -164,6 +164,7 @@ async function runOne(r) {
       await post('/api/diagnose/action', { kind: 'settings', page: a.page }).then(() => noteOf(k, 'Windows Settings is open.'), (e) => noteOf(k, `Could not open it: ${e.message}`));
     } else if (a.kind === 'eq-on') {
       if (isDemo()) return demoDone(k, "Equalizer APO's list would open: tick the headset, click OK, then restart the PC.");
+      noteOf(k, 'Windows is asking for permission: click Yes (if hidden, click the blinking shield on the taskbar).');   // in place while Windows asks (helpers/uac.mjs)
       await post('/api/eq/turn-on').then(() => noteOf(k, "Equalizer APO's list is open. Tick the headset, click OK, then restart the PC."), (e) => noteOf(k, `Not opened: ${e.message}`));
     } else if (a.kind === 'find-lights') {
       noteOf(k, 'Looking for lights…');
@@ -350,9 +351,14 @@ export function setupNeeds({ refresh = false } = {}) {
     bgAt = Date.now(); lastLive = sig;
     load();
   }
+  // no number while the devices are still connecting after DeviceHub starts (24 Oct 2026, Shawn: "why is set up randomly
+  // appearing when everything is already set up on my pc?": for a few seconds a device not yet answering counted)
+  if (Date.now() - pageOpenedAt < 45000) { if (!graceTimer) graceTimer = setTimeout(() => { for (const w of watchers) try { w(); } catch {} }, 46000); return null; }
   const p = planNow();
   return p ? p.plan.needs.length : null;
 }
+const pageOpenedAt = Date.now();
+let graceTimer = null;
 export function watchSetup(fn) { watchers.add(fn); return () => watchers.delete(fn); }
 
 function fold(key, title, rows) {

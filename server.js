@@ -216,6 +216,14 @@ function isolatedApi(req, res, url) {
 
 // the Publish button's run (helpers/publish-release.ps1, hidden): running / done / failed, with its step
 let publishRun = null;
+// a signed new version found by the one check after start (helpers/update-notice.mjs); the window asks Update or Later
+let updateNotice = null;
+// what the server does once an update is ready, for the Update button and an update by itself alike: a copy from the
+// zip is already being installed (its installer quits and restarts DeviceHub); a git copy restarts with code 3
+function afterSelfUpdate(r, { auto = false } = {}) {
+  if (r.installing) serverLog({ kind: 'good', text: `Installing the ${r.latest}${auto ? ' by itself' : ''}; DeviceHub restarts by itself` });
+  else if (r.updated) { serverLog({ kind: 'good', text: `DeviceHub updated${auto ? ' by itself' : ''} (${r.count} change${r.count === 1 ? '' : 's'}): restarting` }); setTimeout(() => process.exit(3), 600); }
+}
 async function api(req, res, url) {
   // Only the dashboard itself may call the API: other web pages are refused by Origin, and anything that changes
   // state must be a POST (a page can make a browser send a GET, e.g. with an <img>, without an Origin header).
@@ -236,6 +244,8 @@ async function api(req, res, url) {
   // front instead of opening another (20 Oct 2026)
   if (url.pathname === '/api/windows') return send(res, 200, { open: openWindows });
   if (url.pathname === '/api/version') return send(res, 200, { version: appVersion() });
+  // a new version is ready (helpers/update-notice.mjs): the window asks once, Update or Later
+  if (url.pathname === '/api/update-notice') return send(res, 200, { notice: updateNotice });
   // the weekly setup files (helpers/weekly-setup.mjs): list, read one, or save one now
   if (url.pathname === '/api/setups' && req.method === 'GET') return send(res, 200, agent ? agent.setups.list() : []);
   if (url.pathname === '/api/setups/save-now' && req.method === 'POST') return send(res, 200, { name: agent ? await agent.setups.saveNow() : null });
@@ -567,6 +577,8 @@ async function api(req, res, url) {
   if (url.pathname === '/api/settings-sync/role' && req.method === 'POST') { const { role } = await readBody(req); return send(res, 200, await settingsSync.setRole(role)); }
   if (url.pathname === '/api/settings-sync') return send(res, 200, req.method === 'POST' ? await settingsSync.sync() : settingsSync.status());
   if (url.pathname === '/api/power') return send(res, 200, require('./helpers/power').state());
+  // display modes, HDR and main screen; temperatures; the PC check (helpers/pc-routes.js, docs/handoff/display-health.md)
+  if (require('./helpers/pc-routes').handles(url.pathname)) return require('./helpers/pc-routes').handle(req, res, url, { send, readBody, backups: BACKUPS, log: (text) => serverLog({ kind: 'info', text }) });
   // monitors over DDC/CI (helpers/monitors.js): read, and one setting at a time (backed up, read back)
   if (url.pathname === '/api/monitors') {
     try { return send(res, 200, await monitors.list(url.searchParams.has('fresh'))); } catch (e) { return send(res, 500, { error: e.message }); }
@@ -785,15 +797,18 @@ async function api(req, res, url) {
   if (url.pathname === '/api/self-update/progress') return send(res, 200, require('./helpers/self-update').getProgress() || {});
   if (url.pathname === '/api/self-update') {
     const su = require('./helpers/self-update');
-    if (req.method === 'GET') return send(res, 200, await su.status());
+    if (req.method === 'GET') {
+      const st = await su.status();
+      if (!st.behind) updateNotice = null;
+      return send(res, 200, st);
+    }
     try {
       // Update anyway (23 Oct 2026): over files changed on this PC, a copy of each kept first (self-update.js)
       const body = await readBody(req).catch(() => ({}));
       const r = await su.update({ overwrite: body?.overwrite === true });
       send(res, 200, r);
       // a copy installed from the zip: the new version's installer is already running; it quits and restarts DeviceHub
-      if (r.installing) serverLog({ kind: 'good', text: `Installing the ${r.latest}; DeviceHub restarts by itself` });
-      else if (r.updated) { serverLog({ kind: 'good', text: `DeviceHub updated (${r.count} change${r.count === 1 ? '' : 's'}): restarting` }); setTimeout(() => process.exit(3), 600); }
+      afterSelfUpdate(r);
       return;
     } catch (e) { return send(res, 400, { error: e.message }); }
   }
@@ -925,14 +940,35 @@ http.createServer(async (req, res) => {
   } catch (e) { console.error('[report] not started:', e.message); }
   // just updated: a minute running well keeps the new version (else the keep-running loop goes back, self-update.js)
   require('./helpers/self-update').confirm(serverLog);
+  // A NEW VERSION IS READY (helpers/update-notice.mjs, 24 Oct 2026, Shawn: no updates by themselves and no checks every
+  // 6 hours, but a pop-up that says there is an update): one check 2 minutes after start, never on the owner's PC; the
+  // window then asks once, Update or Later. Updating stays the person's click.
+  if (process.env.DEVICEHUB_TEST !== '1') {
+    const t = setTimeout(async () => {
+      try {
+        const owner = await import('./helpers/auto-report.mjs').then((m) => m.isOwnerPc(ROOT)).catch(() => true);
+        updateNotice = (await import('./helpers/update-notice.mjs')).notice({ owner, status: await require('./helpers/self-update').status() });
+      } catch (e) { console.error('[update] check:', e.message); }
+    }, 120000);
+    t.unref?.();
+  }
   // The agent owns the devices (set DEVICEHUB_AGENT=0 to fall back to the browser's own WebHID connection).
   if (AGENT_ON) {
+    // LIBRARY AT START (helpers/library-updates.mjs startup, 24 Oct 2026): the signed library fetched now (a 304 when
+    // nothing changed), waited for up to 4 s, and any newer driver put into its my-devices copy BEFORE the drivers load,
+    // so a fix published since the last start (or shipped in an app update) runs at once
+    if (process.env.DEVICEHUB_TEST !== '1') {
+      try {
+        const r = await (await import('./helpers/library-updates.mjs')).startup({ root: ROOT, log: serverLog, waitMs: 4000 });
+        console.log(`[library] at start (${r.reason || 'start'}): ${r.skipped || (r.pending ? 'still fetching' : r.ok ? (r.unchanged ? 'unchanged' : `${(r.changed || []).length} changed`) : r.error)}; ${(r.refreshed?.replaced || []).length} driver(s) updated`);
+      } catch (e) { console.error('[library] at start:', e.message); }
+    }
     try {
       agent = await import('./helpers/agent.mjs');
       await agent.start({ port: PORT, corsairHelper: corsair });
       console.log('[agent] running');
       if (process.env.DEVICEHUB_TEST !== '1') import('./helpers/auto-setup.mjs').then((m) => m.startup({ root: ROOT, pcMap, log: serverLog })).catch((e) => console.error('[setup] auto setup:', e.message));  // AUTO SETUP (helpers/auto-setup.mjs): library drivers for this PC's USB devices
-      if (process.env.DEVICEHUB_TEST !== '1') import('./helpers/library-updates.mjs').then((m) => m.schedule({ root: ROOT, log: serverLog })).catch((e) => console.error('[library] updates:', e.message));  // LIBRARY UPDATES: the signed library bundle, at most once a day
+      if (process.env.DEVICEHUB_TEST !== '1') import('./helpers/library-updates.mjs').then((m) => m.schedule({ root: ROOT, log: serverLog })).catch((e) => console.error('[library] updates:', e.message));  // LIBRARY UPDATES: the signed library bundle every 3 hours (and at start, above)
     } catch (e) { agent = null; console.error('[agent] could not start:', e); autoReport?.agentFailed(String(e?.message || e)); }
   }
   // DeviceHub's handling of Windows' speakers (helpers/audio-follow.js: one HS80 connection at a time, apps following

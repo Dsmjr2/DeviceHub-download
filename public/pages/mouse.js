@@ -89,10 +89,10 @@ function stageCard(v, i, count) {
   return h('div', { class: `stage${active ? ' on' : ''}${unused ? ' unused' : ''}` },
     h('div', { class: 'stage-top' }, h('span', { style: { display: 'flex', alignItems: 'center', gap: '6px' } },
       v[`color${i}`] ? h('input', { type: 'color', value: v[`color${i}`], title: `Stage ${i + 1} light color`, 'aria-label': `Stage ${i + 1} light color`, disabled: locked(`color${i}`) ? true : null, style: { width: '18px', height: '18px', padding: 0, border: 0, background: 'none', cursor: 'pointer' }, onchange: (e) => set(`color${i}`, e.target.value, `Stage ${i + 1} color`, e.target.value) }) : null,
-      `Stage ${i + 1}`), active ? pill('active', 'accent') : unused ? h('span', { title: 'Probably not in the DPI-button cycle (the mouse reports a stage count that has not been confirmed yet)' }, 'spare') : null),
+      `Stage ${i + 1}`), active ? pill('active', 'accent') : unused ? h('span', { title: 'Probably outside the DPI-button cycle (stage count not confirmed yet)' }, 'spare') : null),
     stepper({ value: dpi, min: 50, max: DPI_MAX, step: 50, disabled: dpi == null, label: `DPI stage ${i + 1}`, onCommit: (n) => set(`dpi${i}`, snapDpi(n), `DPI stage ${i + 1}`, `${fmt(snapDpi(n))} DPI`) }),
     active ? h('div', { class: 'faint', style: { fontSize: '12px', textAlign: 'center' } }, 'in use now')
-      : unused ? h('div', { class: 'faint', style: { fontSize: '12px', textAlign: 'center' }, title: 'The DPI button only cycles through the first stages; change how many with "stages in cycle" above.' }, 'outside the cycle')
+      : unused ? h('div', { class: 'faint', style: { fontSize: '12px', textAlign: 'center' }, title: 'The DPI button cycles only the first stages; set how many with "stages in cycle" above.' }, 'outside the cycle')
         : button('Use this stage', () => set('dpiStage', i + 1, 'Active DPI stage', `stage ${i + 1} (${fmt(dpi)} DPI)`), { kind: 'ghost small', disabled: locked('dpiStage') }));
 }
 
@@ -166,7 +166,7 @@ export default {
     const a = dev.adapter;
     const head = topbar('Pulsar · 8K wireless mouse', a.title, null, h('div', { class: 'chips' }, undoButton(dev), statusPill(dev)), deviceHelp(dev));
     if (dev.status !== 'connected' && !isAway(dev)) {
-      return h('div', {}, head, connectState(dev, 'Plug in the Pulsar 8K dongle, press Connect and pick "Pulsar 8K Dongle". Close the Pulsar app first: both use the same channel.'));
+      return h('div', {}, head, connectState(dev, 'Plug in the Pulsar 8K dongle, press Connect and pick "Pulsar 8K Dongle". Close the Pulsar app first (same channel).'));
     }
     const v = dev.values;
     const count = v.stageCount;

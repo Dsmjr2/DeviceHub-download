@@ -35,7 +35,12 @@ function turnOn() {
   return new Promise((resolve, reject) => {
     if (!require('fs').existsSync(exe)) return reject(new Error('Equalizer APO\'s Device Selector is not on this PC'));
     const p = spawn('powershell.exe', ['-NoProfile', '-Command', cmd], { windowsHide: true });
-    p.on('exit', (code) => { cache.at = 0; code === 0 ? resolve({ started: true }) : reject(new Error('the Device Selector did not start (the Windows prompt was declined?)')); });
+    // Windows' permission box (24 Oct 2026, helpers/uac.mjs): Start-Process -Verb RunAs returns once it is answered;
+    // not answered within 2 minutes, the wait stops. Declined or not answered is recorded for Get help.
+    const say = (outcome) => import('./uac.mjs').then((u) => u.record({ area: 'sound', action: "open Equalizer APO's Device Selector", outcome })).catch(() => {});
+    let gaveUp = false;
+    const timer = setTimeout(() => { gaveUp = true; say('unanswered'); try { spawn('taskkill.exe', ['/PID', String(p.pid), '/T', '/F'], { windowsHide: true }); } catch {} reject(Object.assign(new Error("Windows' permission box was not answered within 2 minutes. If it is still open, close it (No), then press Turn on again."), { uac: 'unanswered' })); }, 2 * 60 * 1000);
+    p.on('exit', (code) => { clearTimeout(timer); if (gaveUp) return; cache.at = 0; say(code === 0 ? 'yes' : 'declined'); code === 0 ? resolve({ started: true }) : reject(Object.assign(new Error("Windows' permission box was declined, so the Device Selector did not open. Press Turn on again and choose Yes."), { uac: 'declined' })); });
   });
 }
 

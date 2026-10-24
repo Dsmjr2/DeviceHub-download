@@ -252,7 +252,7 @@ export function summary({ root = ROOT, sources = {} } = {}) {
       ? `${product(m.meta)}: a library driver is there for it, written from the maker's protocol but not yet run on a real device. After Install ${after}`
       : `${product(m.meta)}: a library driver (${m.meta.status}) is there for it but not installed (removed earlier, or auto setup is off). After Install ${after}`;
     const action = m.installable ? { kind: 'library-install', name: m.name, label: `Install the ${m.meta.vendor} driver` } : null;
-    const short2 = m.meta.status === 'untested' ? 'A ready-made driver is there, not yet tried on this model. Install it, then turn on its settings.' : 'A ready-made driver is there. Install it.';
+    const short2 = m.meta.status === 'untested' ? 'A ready-made driver, not yet tried on this model. Install it, then turn on its settings.' : 'A ready-made driver is there. Install it.';
     learn.push({ what: m.meta.status === 'untested' ? 'library-untested' : 'library-install', name: m.name, title: plainProduct(m.meta), state: 'one-click', short: short2, line, ...(action ? { action } : {}) }); attention.push(line);
   }
   // devices from a known brand that nothing runs yet

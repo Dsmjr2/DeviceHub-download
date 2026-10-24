@@ -265,7 +265,7 @@ export function needsTurnOn(mark, proven, key) {
   if (!on) return true;
   return learned && !!mark.learnedAt && mark.learnedAt > on;
 }
-export const TURN_ON_LINE = "DeviceHub writes each setting's current value back once to make sure it works.";
+export const TURN_ON_LINE = "DeviceHub writes each setting's current value back once to check it.";
 
 // A setting that refuses only because of how the device is set right now (a mouse on its onboard profiles, the maker's
 // app open) is WAITING, not failed (22 Oct 2026): the driver throws an error with `waiting: true` (or one that says the
@@ -460,6 +460,8 @@ export function guard(a, folder, mark, deps = null) {
   const write = a.write, connect = a.connect;
   const hints = Object.fromEntries(a.settings.map((s) => [s.key, s.hint]));
   let verified = readVerified(folder);
+  // a check made before a newer library driver was put in (helpers/library-refresh.mjs) was for the old driver: run it again
+  if (mark.updatedFromLibrary?.at && verified.checkedAt && verified.checkedAt < mark.updatedFromLibrary.at) verified = { keys: {} };
   // the ids its device.json declares count for the HS80 / own-device guard (ownDevice), whatever path it talks over
   const meta = readJson(path.join(folder, 'device.json'));
   if (meta?.vid && Array.isArray(meta.pids)) declared.set(a, [{ vid: meta.vid, pids: meta.pids }]);
@@ -654,6 +656,26 @@ export function hidSpecs(a) {
 
 // the last load()'s callbacks, so a driver installed while DeviceHub runs can be loaded without a restart (loadNew)
 let last = null;
+// have the drivers been loaded in this process? (helpers/library-refresh.mjs: a driver put in before that loads at once)
+export const loadedYet = () => !!last;
+
+// A newer library driver put into a loaded copy (helpers/library-refresh.mjs, 24 Oct 2026) runs only after a restart:
+// swapping a loaded driver would drop its open HID channel and its lock mid-use, so it is not done. a.library.newerDriver
+// is then the plain line the device page and Get help show (read on each snapshot, the file hash kept for 5 seconds).
+export const NEWER_DRIVER_LINE = 'A newer driver is ready: it loads when DeviceHub restarts (tray icon > Quit, then open DeviceHub again).';
+export function loadedDriverChanged(folder, loadedSha) {
+  const now = driverShaOf(folder);
+  return !!(loadedSha && now && now !== loadedSha);
+}
+function watchDriverFile(a, folder) {
+  if (!a.library) return;
+  const loadedSha = driverShaOf(folder);
+  let seen = { at: 0, v: null };
+  Object.defineProperty(a.library, 'newerDriver', { enumerable: true, configurable: true, get() {
+    if (Date.now() - seen.at > 5000) seen = { at: Date.now(), v: loadedDriverChanged(folder, loadedSha) ? NEWER_DRIVER_LINE : null };
+    return seen.v;
+  } });
+}
 
 async function loadOne(dir, name, { register, addSpec, taken, selfCheck: deps }) {
   const folder = path.join(dir, name);
@@ -676,7 +698,7 @@ async function loadOne(dir, name, { register, addSpec, taken, selfCheck: deps })
       const clash = [...new Set(ids.flatMap((d) => ownClash(d.vid, d.pids)))];
       if (clash.length) return { name, error: `not loaded: ${clash.join(', ')} is a USB id DeviceHub's own driver already runs (the mouse, headset or keyboard page), and two programs driving one device fight` };
     }
-    if (mark) guard(a, folder, mark, deps);
+    if (mark) { guard(a, folder, mark, deps); watchDriverFile(a, folder); }
     stepAside(a);
     for (const s of hidSpecs(a)) addSpec(s);
     register(a);

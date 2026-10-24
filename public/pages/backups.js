@@ -170,7 +170,7 @@ async function yesSetup() {
     const r = await loadSetup(file, planned);
     // another PC's OneDrive copy, loaded: not offered again on the Overview (until it changes)
     if (pc && !r.failed) fetch('/api/onedrive/dismiss', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pc }) }).catch(() => {});
-    const restart = r.restart ? ' Restart DeviceHub (tray icon > Quit, then the DeviceHub shortcut) to load the added devices.' : '';
+    const restart = r.restart ? ' Restart DeviceHub (tray icon > Quit) to load the added devices.' : '';
     note(key, (r.failed ? `Finished with problems: ${r.done} changed, ${r.failed} not (see Activity).` : `Done. ${plural(r.done, 'setting')} changed.`) + restart, r.failed ? 'bad' : 'good');
   } catch (e) { note(key, `Not finished: ${e.message}.`, 'bad'); }
   ui.busy = null;
@@ -220,9 +220,9 @@ const LIST_MAX = 6;
 
 function deviceAsk(c) {
   const d = devices[c.id];
-  return askBox(`Put your ${d.adapter.title} back to how it was ${c.when}? Settings you changed since then will be replaced.`,
+  return askBox(`Put your ${d.adapter.title} back to how it was ${c.when}? Later changes are replaced.`,
     [h('div', { class: 'bk-sub' }, `${plural(c.plan.length, 'setting')} will change:`), changeList(c.plan.slice(0, LIST_MAX), c.plan.length - LIST_MAX),
-      h('div', { class: 'bk-sub' }, 'DeviceHub saves how it is now first, so you can come back to that too.')],
+      h('div', { class: 'bk-sub' }, 'How it is now is saved first.')],
     'Yes, go back', yesDevice);
 }
 
@@ -240,7 +240,7 @@ function setupAsk(c) {
     [h('div', { class: 'bk-sub' }, `It holds: ${has.join(', ') || 'nothing DeviceHub knows'}.`),
       h('div', { class: 'bk-sub' }, `${plural(c.count, 'setting')} will change:`), changeList(rows.slice(0, LIST_MAX), rows.length - LIST_MAX),
       p.notConnected.length ? h('div', { class: 'bk-sub' }, `Not connected, so left as they are: ${p.notConnected.join(', ')}.`) : null,
-      h('div', { class: 'bk-sub' }, 'Each device is saved first, so you can come back to how it is now. Added devices and pictures already on this PC are kept.')],
+      h('div', { class: 'bk-sub' }, 'Each device is saved first. Added devices and pictures on this PC are kept.')],
     'Yes, load it', yesSetup);
 }
 
@@ -292,7 +292,7 @@ function deviceCard(id, list) {
     rest.length && open ? h('div', { class: 'bk-list bk-older' }, ...rest.map((f) => backupRow(f, id, canRestore))) : null,
     rest.length ? h('button', { class: 'bk-more', 'aria-expanded': String(open), onclick: () => { if (open) ui.older.delete(id); else ui.older.add(id); rerender(); } },
       open ? 'Show fewer' : `Show ${rest.length} older`) : null,
-    canRestore ? null : h('div', { class: 'bk-sub' }, 'You can look at these; they are not put back from here.'));
+    canRestore ? null : h('div', { class: 'bk-sub' }, 'View only; not restored from here.'));
 }
 
 function weeklyRow(f) {
@@ -318,7 +318,7 @@ function setupCard() {
       h('input', { type: 'checkbox', checked: ui.withWallpapers, onchange: (e) => { ui.withWallpapers = e.target.checked; } }),
       ` Put my ${plural(wallpaperSize.wallpaperCount, 'wallpaper')} in the copy too (${mb(wallpaperSize.wallpaperBytes)})`) : null,
     noteLine('setup'), noteLine('file'),
-    h('div', { class: 'bk-label' }, 'Weekly copies of every device, profile and setting · the last 6 are kept'),
+    h('div', { class: 'bk-label' }, 'Weekly copies of everything · the last 6 are kept'),
     weeklyFiles === null ? h('div', { class: 'faint' }, 'Reading…')
       : list.length ? h('div', { class: 'bk-list' }, ...list.map(weeklyRow))
         : h('div', { class: 'feed-empty' }, 'The first one is saved a minute or so after DeviceHub starts.'));

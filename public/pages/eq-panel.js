@@ -84,7 +84,7 @@ async function persist(presets, what) {
     catch (e) { toast('Equalizer not saved', 'bad', { detail: e.message }); return false; } finally { ui.saving = false; rerender(); }
   }
   if (isDemo()) { ui.eq.presets = presets.map((p) => ({ ...p, id: p.id || `d${Math.random().toString(36).slice(2, 8)}`, builtIn: !!ui.eq.presets.find((x) => x.id === p.id)?.builtIn })); ui.draft = null; toast(`${what} (demo)`, 'good'); rerender(); return true; }
-  const ok = await modal('Save to iCUE?', h('p', { style: { margin: 0 } }, `${what}. iCUE closes and opens again to load it (about 10 seconds). Your current presets are backed up first.`),
+  const ok = await modal('Save to iCUE?', h('p', { style: { margin: 0 } }, `${what}. iCUE restarts to load it (about 10 s); your presets are backed up first.`),
     [{ label: 'Cancel', value: false, kind: 'ghost' }, { label: 'Save and restart iCUE', value: true, kind: 'primary' }]);
   if (!ok) return false;
   ui.saving = true; rerender();
@@ -163,8 +163,7 @@ function eqCard(redraw) {
   if (!ui.eq) return card(head, h('p', { class: 'faint' }, 'Reading the equalizer…'));
   // no Equalizer APO on this PC (20 Oct 2026): what it is for and the official download, in place of iCUE's message
   if (!ui.eq.available && ui.eq.needsApo) return card(head,
-    h('p', { class: 'faint' }, 'The EQ, Natural sound, mic boost and mic filters need Equalizer APO, a free sound add-on for Windows.'),
-    h('p', { class: 'faint' }, 'Install it, tick your headset when its installer asks, then restart the PC.'),
+    h('p', { class: 'faint' }, 'The EQ and mic filters need Equalizer APO (free). Install it, tick your headset, then restart the PC.'),
     // its button (22 Oct 2026, ui/installer-button.js): the official download in DeviceHub's own dialog, installed when
     // it can be checked, else the official page
     h('div', { class: 'actions' }, installerButton('eqapo', { onDone: () => load(), redraw: () => rerender() }),
@@ -182,7 +181,13 @@ function eqCard(redraw) {
     // Equalizer APO installed but not switched on for the headset's sound devices (a new driver gives new ones)
     ui.eq.notOn?.length ? h('div', { class: 'eq-off' }, icon('shield'),
       h('span', { class: 'grow' }, `Not on for ${[...new Set(ui.eq.notOn.map((d) => d.name))].join(' and ')} yet, so the EQ is not heard. Turn it on, tick ${ui.eq.notOn.length > 1 ? 'them' : 'it'}, click OK, then restart the PC.`),
-      button('Turn on', async () => { try { await env.api('/api/eq/turn-on', {}); toast('Equalizer APO\'s device list is open', 'good', { detail: 'Tick the headset, click OK, then restart the PC.' }); } catch (e) { toast('Not opened', 'bad', { detail: e.message }); } }, { kind: 'primary small' })) : null,
+      // in place, no toast (24 Oct 2026): Windows' permission box line while it asks, then the answer, with Turn on again
+      ui.eqOnNote ? h('span', { class: ui.eqOnNote.wait ? 'uac-wait' : 'faint', role: 'status' }, ui.eqOnNote.text) : null,
+      button(ui.eqOnNote?.wait ? 'Waiting…' : ui.eqOnNote && !ui.eqOnNote.ok ? 'Try again' : 'Turn on', async () => {
+        ui.eqOnNote = { wait: true, text: 'Windows is asking for permission: click Yes (if hidden, click the blinking shield on the taskbar).' }; rerender();
+        try { await env.api('/api/eq/turn-on', {}); ui.eqOnNote = { ok: true, text: "Equalizer APO's device list is open. Tick the headset, click OK, then restart the PC." }; } catch (e) { ui.eqOnNote = { ok: false, text: `Not opened: ${e.message}` }; }
+        rerender();
+      }, { kind: 'primary small', disabled: !!ui.eqOnNote?.wait })) : null,
     h('div', { class: 'eq-layout' },
       h('div', { class: 'eq-presets' }, ...[...ui.eq.presets.filter((q) => !q.builtIn), ...ui.eq.presets.filter((q) => q.builtIn)].map((x) => h('button', { class: `eq-preset${x.id === ui.sel ? ' sel' : ''}`, disabled: ui.saving, onclick: () => { if (x.id === ui.sel && (!APO() || ui.eq.activeId === x.id)) return; ui.sel = x.id; ui.draft = null; if (APO()) activate(x.id); rerender(); } },
         h('span', {}, x.name), x.builtIn ? h('small', {}, 'built-in') : null, inUse.has(x.id) ? h('small', { class: 'inuse' }, 'in use') : null))),
@@ -217,13 +222,13 @@ function eqCard(redraw) {
           // every effect off, asked once in place; presets are kept
           h('div', { class: 'srow' },
             h('div', {}, h('div', { class: 'srow-title' }, 'Reset sound to normal'),
-              h('div', { class: 'srow-desc' }, ui.resetAsk ? 'Turn every sound effect off, so it plays as it did before? Your presets are kept.' : ui.resetDone || 'Takes every EQ and sound effect off. Your presets are kept.')),
+              h('div', { class: 'srow-desc' }, ui.resetAsk ? 'Turn every sound effect off? Your presets are kept.' : ui.resetDone || 'Takes every EQ and sound effect off. Your presets are kept.')),
             h('div', { class: 'srow-ctl' }, ui.resetAsk
               ? h('div', { class: 'actions' },
                 button('Yes, reset', async () => { try { ui.eq = await env.api('/api/eq/reset', {}); ui.resetDone = 'Done: the sound plays as it does without the EQ.'; } catch (e) { ui.resetDone = `Not reset: ${e.message}`; } ui.resetAsk = false; rerender(); }, { kind: 'primary small' }),
                 button('Cancel', () => { ui.resetAsk = false; rerender(); }, { kind: 'ghost small' }))
               : button('Reset', () => { ui.resetAsk = true; ui.resetDone = null; rerender(); }, { kind: 'ghost small' }))))
-          : h('p', { class: 'faint', style: { fontSize: '12.5px', marginBottom: 0 } }, 'Pick which preset is active in iCUE (or with a short press on the headset\'s volume wheel). Saving restarts iCUE for about 10 seconds.'))));
+          : h('p', { class: 'faint', style: { fontSize: '12.5px', marginBottom: 0 } }, 'Pick the active preset in iCUE or with a short press on the volume wheel. Saving restarts iCUE (about 10 s).'))));
 }
 
 // ---- Sound tools (Equalizer APO only): the HS80 correction, extra filters, loudness, balance, the mic,

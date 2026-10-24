@@ -6,6 +6,10 @@
 // then the driver saved. It ends with one button, "Turn on settings" (closing the maker's app first when it is open):
 // the person's go-ahead for the first write, as every learned driver needs (CLAUDE.md, safety round 2).
 //
+// Since 24 Oct 2026 (docs/handoff/smoother-for-friends.md): the pre-flight (learn-wizard preflight) must pass before it
+// listens, else it stops with each failing line and its fix (r.preflight); while it waits for a change it says how many
+// messages it heard (r.heard), and nothing at all within lw.NOTHING_MS stops it with what to try; at the end the
+// recordings go to Shawn by themselves (lw.act 'send', r.sent), done or not.
 // It uses the learning wizard's own steps (helpers/learn-wizard.mjs act), so every rule there holds: read-only toward
 // the device while learning, nothing sent that was not heard, firmware/reset/pairing never touched, refused vendors
 // refused. Readings (battery, charging) are left for the wizard's own steps: they need the person to say what the app
@@ -18,6 +22,7 @@
 //   POST /api/learn/auto/finish            close the maker's app (when open) and turn on the saved driver's settings
 import { execFile } from 'node:child_process';
 import * as lw from './learn-wizard.mjs';
+import { UAC_LINE } from './uac.mjs';
 import { openMaker as openMakerApp, findMaker, PRESETS } from './learn-apps.mjs';
 
 export const options = {
@@ -54,7 +59,7 @@ export const state = () => (run ? view(run) : { phase: 'idle' });
 export function reset() { run = null; }
 
 function view(r) {
-  return { phase: r.phase, device: r.device, app: r.app, steps: r.steps, items: r.items.map(({ it, ...x }) => x), ask: r.ask, result: r.result, error: r.error };
+  return { phase: r.phase, device: r.device, app: r.app, steps: r.steps, items: r.items.map(({ it, ...x }) => x), ask: r.ask, result: r.result, error: r.error, heard: r.heard ?? null, sent: r.sent || null, preflight: r.preflight || null, uac: lw.current()?.uac || null };
 }
 const say = (r, text, ok = true) => { r.steps.push({ text, ok }); };
 
@@ -97,6 +102,12 @@ export async function start({ vid, pid, kind = null } = {}) {
 }
 
 const fail = (r, text, next) => { r.phase = 'failed'; r.ask = null; r.error = { text, next }; return false; };
+// the recordings so far, to Shawn (nothing when nothing was recorded)
+async function sendAll(r, why) {
+  if (!lw.current()?.captures?.length) return null;
+  try { r.sent = await lw.act('send', { why }); } catch (e) { r.sent = { sent: false, why: e.message }; }
+  return r.sent;
+}
 const stopped = (r) => { if (r.stop) { r.phase = 'stopped'; r.ask = null; return true; } return false; };
 
 async function session(r) {
@@ -106,7 +117,7 @@ async function session(r) {
   let devices;
   try { devices = await lw.refreshDevices(); } catch (e) { return fail(r, e.message, 'Press Learn it for me again.'); }
   const dev = devices.find((x) => x.vid === r.device.vid && x.pid === r.device.pid);
-  if (!dev) return fail(r, `USB ${r.device.vid}:${r.device.pid} is not plugged in, or DeviceHub runs it already.`, 'Plug it in (a port on the PC itself, not a hub), then press Learn it for me again.');
+  if (!dev) return fail(r, `USB ${r.device.vid}:${r.device.pid} is not plugged in, or already works.`, 'Plug it into the PC, then try again.');
   r.device.name = dev.title || dev.name;
   if (dev.refused) return fail(r, dev.refused, 'Request support (on the device\'s row) sends Shawn its details instead.');
   // kind: the answer to "Is this a mouse or a keyboard?" for a device whose USB interfaces say both (asked on its row)
@@ -140,25 +151,31 @@ async function session(r) {
         if (now?.running) { m = { ...m, ...now }; break; }
       }
       if (m.running) { await d.sleep(LIMITS.appSettleMs); lw.current().plan.maker = m; say(r, `${m.name} is open.`); }
-      else say(r, `${m.name} did not open by itself; DeviceHub asks you to change each setting there instead.`, false);
+      else say(r, `${m.name} did not open, so you change each setting.`, false);
     }
   }
   if (stopped(r)) return quit(r);
   // a web configurator: USBPcap hears the browser as it hears an app, so it is opened and the person changes each setting
   if (m.web && m.page) {
     d.openPage(m.page);
-    say(r, `Opening ${m.name} in your browser. Connect the device there when it asks (it needs Chrome or Edge).`);
+    say(r, `Opening ${m.name} in your browser (Chrome or Edge).`);
   } else if (m.known && !m.installed && !m.running) {
-    return fail(r, `${m.name} is not installed. DeviceHub learns a device by listening to its maker's app.`, `Install ${m.name}${m.page ? ` from ${m.page}` : ' from its maker\'s site'}, then press Learn it for me again.`);
+    return fail(r, `${m.name} is not installed.`, `Install it${m.page ? ` from ${m.page}` : ''}, then try again.`);
   }
   // no app DeviceHub knows (23 Oct 2026, Dsmjr2/DeviceHub-support#11: a recording that heard nothing): learning listens to
   // the app, so without one there is nothing to record. Never started into nothing; the person can still say they
   // have an app open and choose the settings themselves.
-  if (!m.known) return fail(r, `DeviceHub does not know which app sets the ${dev.title || dev.name}. It learns a device by listening to that app, so without one there is nothing to record.`, 'If you have an app for it, open it, then use Choose the settings myself (below) and press I have its app open.');
+  if (!m.known) return fail(r, `DeviceHub does not know the ${dev.title || dev.name}'s app.`, 'Open its app, then use Choose the settings myself.');
 
-  // 4. listening: Windows' one prompt
+  // 4. the pre-flight: every line must pass before anything is recorded
+  if (lw.options.preflight !== false) {
+    const pf = await lw.preflight({ vid: dev.vid, pid: dev.pid, labels: items.map((i) => i.label), kind: r.kind });
+    r.preflight = pf;
+    if (!pf.ok) { await lw.act('quit', {}).catch(() => {}); const bad = pf.lines.filter((x) => !x.ok); return fail(r, bad.map((x) => x.says).join(' '), bad.map((x) => x.fix).filter(Boolean).join(' ')); }
+  }
+  // 5. listening: Windows' one prompt
   r.phase = 'listen';
-  r.ask = { kind: 'prompt', line: 'Press Yes on Windows\' prompt: DeviceHub listens to USB while it learns. It only listens.' };
+  r.ask = { kind: 'prompt', line: UAC_LINE, note: 'DeviceHub listens to USB while it learns. It only listens.' };
   const l = await lw.act('listen', {});
   if (l.ok === false) return fail(r, l.error || 'DeviceHub could not start listening.', /declined/i.test(l.error || '') ? 'Press Learn it for me again and press Yes on the prompt.' : 'Press Test my learning setup (below) to see what is missing.');
   const until = d.now() + LIMITS.listenMs;
@@ -176,8 +193,15 @@ async function session(r) {
   // 5. each setting
   r.phase = 'learn';
   for (const x of r.items) {
+    if (r.nothing) break;
     if (stopped(r)) return quit(r);
     await learnOne(r, x, m);
+  }
+  if (r.nothing) {
+    const n = r.nothing;
+    await sendAll(r, 'nothing was heard from the device');
+    await lw.act('quit', {}).catch(() => {});
+    return fail(r, n?.says || 'Nothing was heard from the device, so DeviceHub stopped recording.', (n?.tries || []).join(' '));
   }
   if (stopped(r)) return quit(r);
 
@@ -185,14 +209,16 @@ async function session(r) {
   r.phase = 'save';
   const learned = r.items.filter((x) => x.status === 'learned');
   if (!learned.length) {
+    await sendAll(r, 'no setting could be learned on this PC');
     await lw.act('quit', {});
-    return fail(r, 'No setting could be learned.', 'Each one says why above. Get help (top right) sends Shawn what was found; Choose the settings myself (below) tries one at a time.');
+    return fail(r, 'No setting could be learned.', 'The recordings went to Shawn.');
   }
   const kind = plan.kind && plan.kind !== 'device' ? plan.kind[0].toUpperCase() + plan.kind.slice(1) : 'Device';
   const sv = await lw.act('save', { title: dev.name, kind });
   if (sv.ok === false) return fail(r, [].concat(sv.why || sv.error || 'The driver could not be saved.').join(' '), 'Get help (top right) sends Shawn what was found.');
   say(r, `Saved: ${learned.map((x) => x.label).join(', ')}.`);
   const now = await d.findMaker(dev.vid).catch(() => null);
+  await sendAll(r, 'the session ended');
   r.result = { saved: sv.saved || null, learned: learned.map((x) => x.label), leftAt: learned.filter((x) => x.leftAt).map((x) => ({ label: x.label, value: x.leftAt })), skipped: r.items.filter((x) => x.status !== 'learned').map((x) => ({ label: x.label, why: x.why })),
     appOpen: !!now?.running, app: m.known ? m.name : null, appKey: m.key || null };
   r.phase = 'done';
@@ -235,6 +261,13 @@ async function learnOne(r, x, m) {
         ...(tries ? { note: `DeviceHub did not notice a change, so ${appName(m)} probably showed ${showV(vals[0])} already.` } : {}) };
       const got = await waitForChange(r, phase === 0 && !tries ? LIMITS.firstMs : LIMITS.changeMs);
       r.ask = null;
+      if (got === 'nothing') {
+        // not one message to or from the device: the wrong device, or the app is not talking to it (support #10, #11)
+        const n = await lw.nothingCheck(Date.now() + lw.NOTHING_MS);
+        x.status = 'skipped'; x.why = 'nothing was heard from the device';
+        r.nothing = n || { says: 'Nothing was heard from the device, so DeviceHub stopped recording.', tries: [] };
+        return;
+      }
       if (got === 'quiet') {
         // nothing at all happened: start over the other way round (the recording so far is dropped with the setting)
         await lw.act('stop', {});
@@ -270,6 +303,8 @@ async function waitForChange(r, limit = LIMITS.changeMs) {
     const p = lw.peek();
     if (!p) continue;
     const msgs = p.messages || [];
+    r.heard = msgs.length;
+    if (!msgs.length && d.now() - t0 >= lw.NOTHING_MS) return 'nothing';
     if (!base) {
       if (d.now() - t0 < LIMITS.baselineMs) continue;
       base = baselineOf(msgs);

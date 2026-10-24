@@ -111,7 +111,7 @@ try {
   ok(g.body.includes('[battery] <Bluetooth device>: could not read the Bluetooth battery') && !/Zorb Buds/.test(g.body), `a Bluetooth device's name is not in the log lines (${g.body.split('\n').filter((l) => /battery\]/.test(l)).join(' | ')})`);
   ok(!/my-devices\\acme|DeviceHub\\my-devices/.test(r.body) && r.body.includes('%USERPROFILE%\\<path>'), 'the path after %USERPROFILE% is blanked, not only the user name');
   const nb = await report('', { ...deps, bluetooth: async () => { throw new Error('no list'); } });
-  ok(nb.ok && !/Bluetooth|Zorb/.test(nb.body), 'Bluetooth names that cannot be read: every log line about Bluetooth is left out');
+  ok(nb.ok && !/Zorb/.test(nb.body) && !nb.body.split('\n').some((l) => /bluetooth/i.test(l) && !/^- Bluetooth: /.test(l)), 'Bluetooth names that cannot be read: every log line about Bluetooth is left out (the picture says only that the list could not be read)');
   ok(dropBluetooth(['a Pad Pro b', 'Pad Prox'], ['Pad Pro']).join('|') === 'a <Bluetooth device> b|Pad Prox' && dropBluetooth(['x Bluetooth y', 'z'], null).join() === 'z', 'dropBluetooth: whole names only; no list = no Bluetooth lines');
   ok(strip('C:\\Users\\zorblax\\Documents\\My Secret Project\\notes for sam.txt (read)').text === '%USERPROFILE%\\<path> (read)' && strip('saved C:\\Users\\zorblax\\a b\\x.json and more').text === 'saved %USERPROFILE%\\<path> and more',`folder and file names with spaces go too (${strip('C:\\Users\\zorblax\\Documents\\My Secret Project\\notes for sam.txt (read)').text})`);
 

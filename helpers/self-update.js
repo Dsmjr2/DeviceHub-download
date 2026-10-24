@@ -60,7 +60,7 @@ function changedFiles(root = ROOT) {
 }
 // No dead end for someone without Claude: Update anyway keeps a copy of each changed file first (backups\changed-before-
 // update-<time>\), then installs the new version over it (23 Oct 2026)
-const blockedText = (c) => `${c.length} of DeviceHub's files ${c.length === 1 ? 'was' : 'were'} changed on this PC (${c.slice(0, 4).join(', ')}${c.length > 4 ? ', …' : ''}). Update anyway keeps a copy of ${c.length === 1 ? 'it' : 'them'} in DeviceHub's backups folder, then installs the new version.`;
+const blockedText = (c) => `${c.length} of DeviceHub's files ${c.length === 1 ? 'was' : 'were'} changed on this PC (${c.slice(0, 4).join(', ')}${c.length > 4 ? ', …' : ''}). Update anyway keeps a copy of ${c.length === 1 ? 'it' : 'them'} in backups first.`;
 function keepChanged(files, root = ROOT) {
   const dir = path.join(root, 'backups', `changed-before-update-${new Date().toISOString().replace(/[:.]/g, '-')}`);
   for (const f of files) {
@@ -80,7 +80,8 @@ async function zipStatus() {
     let failed = null; try { failed = fs.readFileSync(path.join(ROOT, 'update-failed.txt'), 'utf8').trim(); } catch {}
     const newer = rel.commit && rel.commit !== own.commit && rel.builtAt > own.builtAt && failed !== rel.commit;
     const blocked = newer ? changedFiles() : [];
-    return { git: false, zip: true, behind: newer ? 1 : 0, blocked: blocked.length ? blockedText(blocked) : undefined, blockedFiles: blocked.length ? blocked : undefined, latest: newer ? `a new version from ${new Date(rel.builtAt).toLocaleDateString()}` : null, at: own.builtAt, skipped: failed === rel.commit ? 'the newest version' : undefined };
+    // version, versionAt: the signed version's id and date (the removed auto-update (24 Oct 2026) installs it by itself)
+    return { git: false, zip: true, behind: newer ? 1 : 0, blocked: blocked.length ? blockedText(blocked) : undefined, blockedFiles: blocked.length ? blocked : undefined, latest: newer ? `a new version from ${new Date(rel.builtAt).toLocaleDateString()}` : null, at: own.builtAt, skipped: failed === rel.commit ? 'the newest version' : undefined, version: newer ? rel.commit : undefined, versionAt: newer ? rel.builtAt : undefined };
   } catch (e) { return { git: false, zip: true, error: e.message }; }
 }
 // How far an update has got (21 Oct 2026, for Settings' loading bar): the step in words and, while downloading, a
@@ -91,7 +92,7 @@ const getProgress = () => progress;
 // a program run without stopping DeviceHub meanwhile (spawnSync held the whole server, the loading bar too)
 const runAsync = (cmd, args, opts) => new Promise((resolve) => execFile(cmd, args, { encoding: 'utf8', windowsHide: true, maxBuffer: 8 << 20, ...opts }, (e, stdout, stderr) => resolve({ status: e ? (typeof e.code === 'number' ? e.code : 1) : 0, stdout, stderr })));
 
-async function zipUpdate({ overwrite = false } = {}) {
+async function zipUpdate({ overwrite = false, auto = false } = {}) {
   step('Checking for the new version');
   const own = mine(), rel = await releaseInfo();
   if (!own) throw new Error('this copy does not know its version');
@@ -127,7 +128,8 @@ async function zipUpdate({ overwrite = false } = {}) {
     if (c.status !== 0) throw new Error('the new version did not pass its checks, so DeviceHub stayed on this one');
   }
   // its installer replaces this copy (it quits this DeviceHub first and starts the new one); run on its own, outside
-  // this folder, with no new shortcuts
+  // this folder, with no new shortcuts. An update by itself (auto, the removed auto-update (24 Oct 2026)) passes -Background: with no
+  // window open before, DeviceHub comes back in the tray only and no window opens.
   const { spawn } = require('child_process');
   // the Windows Apps entry this copy was installed under (DeviceHub, or a test install's own name) stays the same
   let key = 'DeviceHub';
@@ -144,7 +146,7 @@ async function zipUpdate({ overwrite = false } = {}) {
   // and the installer ends this DeviceHub (21 Oct 2026: it ended itself with it, halfway, and the copy stayed stopped).
   // Its output goes to install.log in the download folder.
   const q = (s) => `"${s}"`;
-  const inner = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', q(path.join(src, 'helpers', 'install.ps1')), '-Target', q(ROOT), '-NoShortcuts', '-AppsKey', q(key), ...(kept ? ['-Overwrite'] : []), ...(process.env.DEVICEHUB_TEST === '1' ? ['-NoLaunch'] : [])].join(' ');
+  const inner = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', q(path.join(src, 'helpers', 'install.ps1')), '-Target', q(ROOT), '-NoShortcuts', '-AppsKey', q(key), ...(kept ? ['-Overwrite'] : []), ...(auto ? ['-Background'] : []), ...(process.env.DEVICEHUB_TEST === '1' ? ['-NoLaunch'] : [])].join(' ');
   const sq = (s) => `'${String(s).replace(/'/g, "''")}'`;
   const launcher = `Start-Process -FilePath powershell.exe -WindowStyle Hidden -WorkingDirectory ${sq(dir)} -RedirectStandardOutput ${sq(path.join(dir, 'install.log'))} -ArgumentList ${sq(inner)}`;
   const p = spawn('powershell.exe', ['-NoProfile', '-EncodedCommand', Buffer.from(launcher, 'utf16le').toString('base64')], { cwd: dir, stdio: 'ignore', windowsHide: true });
@@ -185,9 +187,20 @@ async function statusNow() {
     // the newest version already crashed on start here once (helpers/keep-running.bat wrote update-failed.txt): not
     // offered again; a newer one (a fix) is
     let failed = null; try { failed = fs.readFileSync(path.join(ROOT, 'update-failed.txt'), 'utf8').trim(); } catch {}
-    const shownLatest = shared && behind ? `a new version from ${new Date(await git(['log', '-1', '--format=%cI', target])).toLocaleDateString()}${changed ? '; your changes are kept' : ''}` : latest;
+    const versionAt = shared && behind ? await git(['log', '-1', '--format=%cI', target]) : undefined;
+    const shownLatest = shared && behind ? `a new version from ${new Date(versionAt).toLocaleDateString()}${changed ? '; your changes are kept' : ''}` : latest;
     if (failed && behind && failed === (await git(['rev-parse', target]))) return { git: true, shared, behind: 0, changed, latest: null, at, skipped: shownLatest };
-    return { git: true, shared, behind, changed, latest: shownLatest, at, target };
+    // the files this PC changed since the published version it last took (committed or not): Update brings them
+    // together with the new version; an update by itself never does (the removed auto-update (24 Oct 2026))
+    let localFiles;
+    if (shared && behind) {
+      try {
+        const base = await git(['merge-base', 'HEAD', target]);
+        const names = async (args) => (await git(['diff', '--name-only', ...args])).split(/\r?\n/);
+        localFiles = [...new Set([...(await names([base, 'HEAD'])), ...(await names(['HEAD']))].map((f) => f.trim()).filter(Boolean))];
+      } catch { localFiles = changed ? ['(could not tell which)'] : []; }
+    }
+    return { git: true, shared, behind, changed, latest: shownLatest, at, target, ...(shared && behind ? { version: target, versionAt, localFiles } : {}) };
   } catch (e) { return { git: true, error: e.message }; }
 }
 
@@ -269,4 +282,13 @@ function confirm(log) {
   setTimeout(() => { try { fs.unlinkSync(f); log && log({ kind: 'good', text: 'DeviceHub update running well' }); } catch {} }, 60000);
 }
 
-module.exports = { status, update, confirm, getProgress, releaseInfo, _test: { changedFiles, keepChanged, blockedText } };
+// this copy's version now: the git commit, else the release it was installed from (the removed auto-update (24 Oct 2026) compares it
+// before and after an update by itself)
+function currentVersion() {
+  if (fs.existsSync(path.join(ROOT, '.git'))) {
+    try { return require('child_process').execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, windowsHide: true, encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch {}
+  }
+  return mine()?.commit || null;
+}
+
+module.exports = { status, update, confirm, getProgress, releaseInfo, currentVersion, _test: { changedFiles, keepChanged, blockedText } };

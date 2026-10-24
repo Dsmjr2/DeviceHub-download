@@ -85,7 +85,7 @@ export function deviceRows(summary, { live = {}, diag = {}, layouts = {}, isVia 
     const { vid, pid } = splitUsb(i.usb);
     if (i.what === 'packet-size') { rows.push({ key: i.usb, title: i.title, status: 'optional', line: 'Not supported yet. You can ask for it.', action: { kind: 'request', vid, pid, name: i.title } }); continue; }
     const L = layouts[String(i.usb || '').toLowerCase()];
-    if (isVia(i.usb, i.title) && L?.have) rows.push({ key: i.usb, title: i.title, device: true, kind: 'keyboard', status: 'needs', line: 'Restart DeviceHub to show its keys (tray icon > Quit, then open it).' });
+    if (isVia(i.usb, i.title) && L?.have) rows.push({ key: i.usb, title: i.title, device: true, kind: 'keyboard', status: 'needs', line: 'Restart DeviceHub (tray icon > Quit) to show its keys.' });
     else if (isVia(i.usb, i.title) && L?.source) rows.push({ key: i.usb, title: i.title, device: true, kind: 'keyboard', status: 'needs', line: "Get its maker's layout file to change its keys.", action: { kind: 'get-layout', vid, pid } });
     else rows.push({ key: i.usb, title: i.title, device: true, status: 'needs', line: 'No driver yet. Learn it to change its settings.', action: { kind: 'learn', vid, pid } });
   }
@@ -138,7 +138,7 @@ export function soundRows(tool, eq) {
 // Lights: the OpenRGB inside DeviceHub (GET /api/openrgb), why nothing was found (GET /api/lights/diagnose,
 // helpers/lights-diagnose.js), and Windows Dynamic Lighting from the summary
 const NO_LIGHTS = {
-  smbus: { status: 'needs', line: "Your board's lights (SMBus) need board lights added. Lighting shows how." },
+  smbus: { status: 'needs', line: "Board lights (SMBus) need adding. Lighting shows how." },
   none: { status: 'none', line: 'No lights to change: the fans are plain 3-pin RGB or on a hub with a remote.' },
   usb: { status: 'needs', line: "A light is plugged in but not found. Close its maker's app, then look again." },
 };

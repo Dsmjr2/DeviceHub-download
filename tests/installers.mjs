@@ -6,6 +6,8 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import * as inst from '../helpers/installers.mjs';
+import * as uac from '../helpers/uac.mjs';
+uac.options.root = fs.mkdtempSync(path.join((await import('os')).tmpdir(), 'dh-uac-'));   // the prompt log goes to TEMP, never this copy's logs\
 
 const fails = [];
 const check = (ok, what) => { if (!ok) fails.push(what); };

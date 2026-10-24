@@ -16,6 +16,7 @@ import https from 'https';
 import crypto from 'crypto';
 import { execFile, spawn } from 'child_process';
 import { fileURLToPath } from 'url';
+import { UAC_LINE, UAC_WAIT_MS, record as recordUac, declinedText, unansweredText } from './uac.mjs';
 
 const PF = process.env.ProgramFiles || 'C:\\Program Files';
 // tools shipped inside DeviceHub (22 Oct 2026, the owner's decision; helpers/bundled-tools.json, helpers/fetch-bundled.mjs):
@@ -47,7 +48,7 @@ export const TOOLS = [
     marker: path.join(PF, 'EqualizerAPO', 'config', 'config.txt'), uninstallName: /^Equalizer ?APO/i,
     // which device it works on cannot be set from outside: its Configurator (DeviceSelector.exe) has no command line
     // and records the choice by rewriting Windows' protected audio-effect registry keys, which DeviceHub never edits
-    after: 'Click Yes on the Windows prompt, then Next, I Agree, Next, Install. Its Configurator then opens: on Playback devices tick your headset (and on Capture devices its mic), click OK, and restart the PC when it asks. Anything left unticked shows up on DeviceHub\'s Equalizer card with a Turn on button.',
+    after: 'Click Yes, then Next, I Agree, Next, Install. In its Configurator, on Playback devices tick your headset (and its mic under Capture devices), click OK, then restart the PC.',
     restart: true,
   },
   {
@@ -59,19 +60,19 @@ export const TOOLS = [
     hosts: ['www.reaper.fm', 'reaper.fm'],
     signer: null, sha256: null,  // not signed (its installed DLLs and uninstaller read NotSigned, 22 Oct 2026); no published hash
     marker: path.join(PF, 'VSTPlugins', 'ReaPlugs', 'reacomp-standalone.dll'), uninstallName: /^ReaPlugs/i,
-    after: 'Click Yes on the Windows prompt, then keep the suggested folder (C:\\Program Files\\VSTPlugins) and click Install. Then turn on Even volume under Sound tools.',
+    after: 'Click Yes, keep the suggested folder and click Install. Then turn on Even volume under Sound tools.',
     restart: false,
   },
   {
     id: 'usbpcap', name: 'USBPcap', version: '1.5.4.0',
-    adds: 'Only for learning a device whose protocol is not known: it records what the maker\'s app sends.',
+    adds: 'Only for learning a device: it records what the maker\'s app sends.',
     page: 'https://desowin.org/usbpcap/',
     url: 'https://github.com/desowin/usbpcap/releases/download/1.5.4.0/USBPcapSetup-1.5.4.0.exe',
     file: 'USBPcapSetup-1.5.4.0.exe', approxBytes: 195040,
     hosts: ['github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com'],
     signer: /Tomasz Mo|Wireshark Foundation/i, signerName: 'Tomasz Moń (its author) or the Wireshark Foundation', sha256: null,
     marker: path.join(PF, 'USBPcap', 'USBPcapCMD.exe'), uninstallName: /^USBPcap/i,
-    after: 'Click Yes on the Windows prompt, then I Agree, Next, Install (and Yes if Windows asks to trust the driver). Restart the PC before a learning session.',
+    after: 'Click Yes, then I Agree, Next, Install (and Yes to trust the driver). Restart the PC before learning.',
     restart: true,
   },
 ];
@@ -138,14 +139,27 @@ export const deps = {
   },
   // The maker's installer, started the ordinary way (ShellExecute through Start-Process): Windows shows its own admin
   // prompt and the installer its own windows. No silent switches, no -Verb RunAs from here. Waits for it to close.
-  run(file) {
-    const ps = 'try { $p = Start-Process -FilePath $env:DH_FILE -WorkingDirectory (Split-Path $env:DH_FILE) -PassThru -Wait -ErrorAction Stop; "exit|$($p.ExitCode)" } catch { "error|$($_.Exception.Message)" }';
+  // Start-Process returns only once Windows' permission box is answered, so "started" (printed then) means Yes
+  // (onStarted). Not answered within waitMs (24 Oct 2026, UAC_WAIT_MS): the waiting PowerShell is stopped and the
+  // answer is { started: false, unanswered: true }.
+  run(file, { waitMs = UAC_WAIT_MS, onStarted = () => {} } = {}) {
+    const ps = 'try { $p = Start-Process -FilePath $env:DH_FILE -WorkingDirectory (Split-Path $env:DH_FILE) -PassThru -ErrorAction Stop; $null = $p.Handle; [Console]::Out.WriteLine("started|$($p.Id)"); [Console]::Out.Flush(); $p.WaitForExit(); "exit|$($p.ExitCode)" } catch { "error|$($_.Exception.Message)" }';
     return new Promise((resolve) => {
       const p = spawn('powershell.exe', ['-NoProfile', '-Command', ps], { windowsHide: true, env: { ...process.env, DH_FILE: file } });
-      let out = '';
-      p.stdout.on('data', (c) => { out += c; });
+      let out = '', started = false, gaveUp = false;
+      const timer = setTimeout(() => {
+        if (started) return;
+        gaveUp = true;
+        try { execFile('taskkill.exe', ['/PID', String(p.pid), '/T', '/F'], { windowsHide: true }, () => {}); } catch {}
+        resolve({ started: false, unanswered: true, error: "Windows' permission box was not answered" });
+      }, waitMs);
+      timer.unref?.();
+      p.stdout.on('data', (c) => { out += c; if (!started && /(^|\n)started\|/.test(out)) { started = true; clearTimeout(timer); try { onStarted(); } catch {} } });
       p.on('exit', () => {
-        const [kind, ...rest] = out.trim().split('|'), msg = rest.join('|');
+        clearTimeout(timer);
+        if (gaveUp) return;
+        const last = out.trim().split(/\r?\n/).filter((l) => !/^started\|/.test(l)).pop() || '';
+        const [kind, ...rest] = last.split('|'), msg = rest.join('|');
         if (kind === 'exit') resolve({ started: true, exitCode: Number(msg) });
         else resolve({ started: false, declined: /cancel/i.test(msg), error: msg || 'the installer did not start' });
       });
@@ -234,6 +248,20 @@ export const getProgress = () => progress;
 const step = (t, text, pct = null, extra = {}) => { progress = { tool: t.id, name: t.name, text, pct, done: false, at: Date.now(), ...extra }; };
 const finish = (t, ok, text, extra = {}) => { progress = { tool: t.id, name: t.name, text, pct: null, done: true, ok, at: Date.now(), ...extra }; return progress; };
 
+// the maker's installer behind Windows' prompt: UAC_LINE while Windows asks, the next step once it was answered Yes;
+// declined or not answered: recorded (helpers/uac.mjs, Get help reports it) and the result says so with Try again
+async function runInstaller(t, file, v) {
+  step(t, UAC_LINE, null, { verified: v.how, uac: 'waiting' });
+  const r = await deps.run(file, { onStarted: () => { recordUac({ area: 'installers', action: `install ${t.name}`, outcome: 'yes' }); step(t, `${t.name}'s installer is open: follow it`, null, { verified: v.how }); } });
+  if (r.started) return { r };
+  if (r.unanswered || r.declined) {
+    const outcome = r.unanswered ? 'unanswered' : 'declined';
+    recordUac({ area: 'installers', action: `install ${t.name}`, outcome });
+    return { done: finish(t, false, (outcome === 'declined' ? declinedText : unansweredText)('Not installed'), { verified: v.how, uac: outcome, retry: true }) };
+  }
+  return { done: finish(t, false, `Not installed: ${r.error}`, { verified: v.how }) };
+}
+
 export async function install(id) {
   const t = tool(id);
   if (!t) throw new Error('no such tool');
@@ -251,9 +279,9 @@ export async function install(id) {
     step(t, 'Checking the download');
     const v = await verify(t, file);
     if (!v.ok) { try { fs.rmSync(file, { force: true }); } catch {} return finish(t, false, `Not installed: ${v.why}. The download was deleted; get it from the official page instead.`, { page: t.page }); }
-    step(t, `${t.name}'s installer is open: answer Windows' prompt, then follow it`, null, { verified: v.how });
-    const r = await deps.run(file);
-    if (!r.started) return finish(t, false, r.declined ? 'Not installed: the Windows prompt was declined.' : `Not installed: ${r.error}`, { verified: v.how });
+    const ran = await runInstaller(t, file, v);
+    if (ran.done) { try { fs.rmSync(file, { force: true }); } catch {} return ran.done; }
+    const r = ran.r;
     step(t, 'Checking it is installed');
     const st = (await status({ fresh: true })).find((x) => x.id === t.id);
     try { fs.rmSync(file, { force: true }); } catch {}
@@ -272,9 +300,9 @@ async function installBundled(t) {
     step(t, 'Checking the installer inside DeviceHub');
     const v = await verify(t, t.bundled);
     if (!v.ok) return finish(t, false, `Not installed: the copy inside DeviceHub fails its check (${v.why}), so it was not run. Reinstall DeviceHub, or get it from the official page.`, { page: t.page });
-    step(t, `${t.name}'s installer is open: answer Windows' prompt, then follow it`, null, { verified: v.how });
-    const r = await deps.run(t.bundled);
-    if (!r.started) return finish(t, false, r.declined ? 'Not installed: the Windows prompt was declined.' : `Not installed: ${r.error}`, { verified: v.how });
+    const ran = await runInstaller(t, t.bundled, v);
+    if (ran.done) return ran.done;
+    const r = ran.r;
     step(t, 'Checking it is installed');
     const st = (await status({ fresh: true })).find((x) => x.id === t.id);
     if (!st.installed) return finish(t, false, `${t.name}'s installer closed (code ${r.exitCode}) but it is not installed. Run it again or use the official page.`, { verified: v.how, page: t.page });

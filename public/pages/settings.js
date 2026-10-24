@@ -1,4 +1,4 @@
-// Settings: start with Windows, self-test (read-only), where files live, and what DeviceHub will never do.
+// Settings: appearance, startup and updates, Get help (with the safety line and the read-only self-test), health and files.
 import { h, icon } from '../ui/dom.js';
 import { card, row, toggle, button, pill } from '../ui/controls.js';
 import { devices, isDemo, readNow, shownDevices } from '../core/devices.js';
@@ -10,7 +10,7 @@ import { toast, modal } from '../ui/overlay.js';
 // Uninstall from here (20 Oct 2026, Shawn: "make the uninstall easy"): one question, then helpers/uninstall.ps1 closes
 // this window and removes DeviceHub; it says something only if it could not finish
 async function uninstall() {
-  const yes = await modal('Uninstall DeviceHub?', h('p', {}, 'DeviceHub closes and is removed from this PC. Your backups go to Documents\\DeviceHub backups, and your devices keep their settings.'),
+  const yes = await modal('Uninstall DeviceHub?', h('p', {}, 'DeviceHub closes and is removed. Backups move to Documents\\DeviceHub backups; devices keep their settings.'),
     [{ label: 'Cancel', value: false, kind: 'ghost' }, { label: 'Uninstall', value: true, kind: 'primary' }]);
   if (!yes) return;
   try {
@@ -103,14 +103,15 @@ async function reloadWhenRestarted(before) {
     } catch { gone = true; ok = 0; }
   }
 }
-async function runSelfUpdate({ overwrite = false } = {}) {
+// also the update pop-up's Update (public/app.js)
+export async function runSelfUpdate({ overwrite = false } = {}) {
   let before = null;
   try { before = (await (await fetch('/api/version', { cache: 'no-store' })).json()).version; } catch {}
   selfBusy = true; selfBar?.stop(); selfBar = smoothBar(); rerender();
   showStep({ text: 'Looking for the new version', pct: null }); watchSteps();
   try {
     const r = await env.api('/api/self-update', overwrite ? { overwrite: true } : {});
-    if (r.installing) toast('Updating DeviceHub', 'busy', { detail: `Downloaded and checked.${r.kept ? ` A copy of the changed file${self?.blockedFiles?.length === 1 ? ' is' : 's are'} in ${r.kept}.` : ''} Installing; DeviceHub restarts by itself in under a minute.`, ms: 30000 });
+    if (r.installing) toast('Updating DeviceHub', 'busy', { detail: `Installing; it restarts in under a minute.${r.kept ? ` Your changed file${self?.blockedFiles?.length === 1 ? ' is' : 's are'} in ${r.kept}.` : ''}`, ms: 30000 });
     else if (r.updated) toast('Updating DeviceHub', 'busy', { detail: `${r.count} new change${r.count === 1 ? '' : 's'}. Restarting…`, ms: 8000 });
     else { toast('Already up to date', 'good'); selfBusy = false; selfBar?.stop(); selfBar = null; loadSelf(); }
     // updated: the bar stays ("Restarting") until the window reloads itself with the new version
@@ -129,7 +130,7 @@ async function setOpt(k, v) { try { await env.api('/api/settings', { [k]: v }); 
 function syncRows() {
   if (isDemo()) return [];
   const sy = syncSt || {}, pw = powerSt || {};
-  const syncText = !syncSt ? 'Checking…' : sy.notSetUp ? 'Not set up: it needs your own private GitHub copy of DeviceHub.' : opts?.settingsSync === false ? 'Off.' : sy.error ? `Couldn't sync: ${sy.error}` : sy.role === 'main' ? `This PC sends its EQ, sound tools, options and profiles to your other PCs. Checked ${syncAgo(sy.last)}.` : `Follows ${sy.mainName || 'your main PC'}: its settings load here. Checked ${syncAgo(sy.last)}.`;
+  const syncText = !syncSt ? 'Checking…' : sy.notSetUp ? 'Not set up: it needs your own private GitHub copy of DeviceHub.' : opts?.settingsSync === false ? 'Off.' : sy.error ? `Couldn't sync: ${sy.error}` : sy.role === 'main' ? `Sends its settings and profiles to your other PCs. Checked ${syncAgo(sy.last)}.` : `Follows ${sy.mainName || 'your main PC'}: its settings load here. Checked ${syncAgo(sy.last)}.`;
   const powerText = !powerSt ? 'Checking…' : !pw.hasBattery ? 'No battery on this PC: always full speed.' : pw.onBattery ? (pw.saving ? 'On battery: background checks slowed.' : 'On battery.') : 'On the charger: full speed.';
   return [
     // only on a PC with its own private copy of DeviceHub (Shawn's PCs); a friend's PC has nothing to sync with
@@ -146,7 +147,7 @@ function syncRows() {
     // the low memory window does anything actually happen"): said in the row and when it is switched
     row('Low-memory window', 'Opens inside your Chrome, about 350 MB less. From the next time DeviceHub opens.', toggle({ value: opts?.lightWindow ?? !!pw.hasBattery, label: 'Low-memory window', onCommit: async (on) => {
       await setOpt('lightWindow', on);
-      toast(on ? 'Low-memory window on' : 'Low-memory window off', 'good', { detail: on ? 'The next time DeviceHub opens, it opens inside your Chrome (about 350 MB less while Chrome is already running).' : 'The next time DeviceHub opens, it opens in its own window again.' });
+      toast(on ? 'Low-memory window on' : 'Low-memory window off', 'good', { detail: on ? 'Next time DeviceHub opens, it uses your Chrome.' : 'Next time DeviceHub opens, it uses its own window.' });
     } })),
   ];
 }
@@ -194,13 +195,13 @@ function publishRow() {
   if (running) setTimeout(() => { if (location.hash === '#/settings') rerender(); }, 3100);
   if (running) return row('Publish', `Publishing: ${run.step || 'Building'}… (${Math.max(1, Math.round((Date.now() - run.startedAt) / 60000))} min; about 3 in all)`, null);
   // no signing key on this PC: the release would stop at signing, so say where it is first
-  if (pub.keyHere === false) return row('Publish', 'The signing key is not on this PC: publish from the PC that published last time, or restore the key here (node helpers/signing-key.mjs --restore).', null);
+  if (pub.keyHere === false) return row('Publish', 'No signing key here: publish from the last PC, or run node helpers/signing-key.mjs --restore.', null);
   const start = async () => {
     try { const r = await env.api('/api/publish-release', {}); pub = { ...pub, run: r.run }; } catch (e) { pub = { ...pub, run: { state: 'failed', error: e.message } }; }
     pubAt = 0; rerender();
   };
   const text = run?.state === 'failed' ? `Not published: ${run.error || 'it stopped'}. The full output is in logs\\publish.log.`
-    : run?.state === 'done' && pub.ahead === 0 ? `Published ${at(run.endedAt)}. Friends get it when they press Update in Settings.`
+    : run?.state === 'done' && pub.ahead === 0 ? `Published ${at(run.endedAt)}. Friends get it with Update.`
     : pub.ahead > 0 ? `Friends have the version from ${when}; this PC has ${pub.ahead} newer change${pub.ahead === 1 ? '' : 's'}.` : when ? `Friends have this PC's version (${when}).` : 'Builds, signs and uploads this PC\'s version for friends.';
   return row('Publish', text, button(run?.state === 'failed' ? 'Try again' : 'Publish', start, { kind: pub.ahead > 0 || run?.state === 'failed' ? 'primary small' : 'ghost small', ic: 'external' }));
 }
@@ -214,7 +215,7 @@ function setupRow() {
 function selfRow() {
   if (isDemo()) return null;
   const s = self || {};
-  const text = s.checking && selfBar ? selfBar.el : !self || s.checking ? 'Checking…' : !s.git && !s.zip ? 'Not set up for this copy.' : s.error ? `Couldn't check: ${s.error}` : s.blocked ? `A new version is ready, but ${s.blocked.charAt(0).toLowerCase()}${s.blocked.slice(1)}` : s.behind ? (s.zip ? `Ready: ${s.latest}` : `${s.behind} new change${s.behind === 1 ? '' : 's'}: ${s.latest}`) : s.skipped ? 'The newest version did not start here, so DeviceHub stayed on this one. A fix will show up here.' : 'Up to date.';
+  let text = s.checking && selfBar ? selfBar.el : !self || s.checking ? 'Checking…' : !s.git && !s.zip ? 'Not set up for this copy.' : s.error ? `Couldn't check: ${s.error}` : s.blocked ? `A new version is ready, but ${s.blocked.charAt(0).toLowerCase()}${s.blocked.slice(1)}` : s.behind ? (s.zip ? `Ready: ${s.latest}` : `${s.behind} new change${s.behind === 1 ? '' : 's'}: ${s.latest}`) : s.skipped ? 'The newest version did not start here, so this one stays. A fix will show here.' : 'Up to date.';
   // while it looks or updates, the bar has the whole row (no button beside it: on a narrow window the two did not fit
   // and ran off the card, 22 Oct 2026)
   if ((selfBusy || s.checking) && selfBar) return row('DeviceHub updates', selfBar.el, null);
@@ -379,7 +380,20 @@ function helpCard() {
   box.style.marginTop = '0';
   // the automatic problem reports' switch (helpers/auto-report.mjs) on the same line as the Get help button, so the
   // card is no taller (Settings fits one screen at 1650 x 910); an open report pushes it under the report
-  return card([h('h2', {}, 'Get help'), h('span', { class: 'spacer' }), pick], h('div', { class: 'gh-line' }, box, autoReportSwitch()));
+  return card([h('h2', {}, 'Get help'), h('span', { class: 'spacer' }), pick], h('div', { class: 'gh-line' }, box, autoReportSwitch()), safetyLine());
+}
+// Safety (24 Oct 2026, Shawn: "the safety box in settings can just be minimized somewhere on the get help area"): one
+// line in Get help; Show all opens the full list in place; the Self-test button and its results stay with it
+const SAFETY = ['Never flashes firmware', 'Never sends reset or bootloader commands', 'Backs up and reads back every change', 'Stays offline, except to check for updates and send problem reports (if on)'];
+let safetyOpen = false;
+function safetyLine() {
+  return h('div', { class: 'safety-line' },
+    h('div', { class: 'safety-head' }, icon('shield'),
+      h('span', { class: 'grow' }, 'Safety: never flashes firmware, backs up before every change'),
+      h('button', { class: 'safety-more', 'aria-expanded': String(safetyOpen), onclick: () => { safetyOpen = !safetyOpen; rerender(); } }, safetyOpen ? 'Hide' : 'Show all'),
+      button('Self-test', selfTest, { kind: 'ghost small', ic: 'shield' })),
+    safetyOpen ? h('ul', { class: 'safety' }, ...SAFETY.map((t) => h('li', {}, icon('check'), t))) : null,
+    results ? h('div', { class: 'diff' }, ...results.map(([dev, st, msg]) => h('div', { style: { gridTemplateColumns: '120px 52px 1fr' } }, h('span', { class: 'dev' }, dev), pill(st, st === 'pass' ? 'good' : st === 'fail' ? 'bad' : st === 'warn' ? 'warn' : ''), h('span', {}, msg)))) : null);
 }
 // "Send problem reports to Shawn" (on by default; settings.json autoReport): hidden where no report can go (the owner's
 // own PC, or no relay set up), so it never promises something this copy does not do
@@ -483,18 +497,13 @@ export default {
     if (self === null) loadSelf();
     if (syncSt === null) loadSyncPower();
     if (oneDrive === null) loadOneDrive();
-    // what DeviceHub always does to keep the devices safe (short, plain; 20 Oct 2026)
-    const SAFETY = ['Never flashes firmware', 'Never sends reset or bootloader commands', 'Backs up and reads back every change', 'Stays offline, except to check for updates and send problem reports (if on)'];
-    // one screen, no scrolling and nothing folded (Shawn, 21 Oct 2026): three columns that keep their own heights; the
-    // self-test and the safety promises share one small card. (data-no-jump only scopes the tighter rows now).
+    // one screen, no scrolling (Shawn, 21 Oct 2026): three columns; Appearance is alone in the first and stretches to
+    // the tallest column (style.css .settings-cols); the safety promises are one line in Get help (24 Oct 2026).
+    // (data-no-jump only scopes the tighter rows now).
     return h('div', { 'data-no-jump': '' },
       topbar('App', 'Settings', null),
       h('div', { class: 'grid settings-cols top' },
-        h('div', { class: 'stack' }, appearanceCard(),
-          card([icon('shield'), h('h2', {}, 'Safety'), h('span', { class: 'spacer' }), button('Self-test', selfTest, { kind: 'small', ic: 'shield' })],
-            results ? h('div', { class: 'diff', style: { marginBottom: '10px' } }, ...results.map(([dev, st, msg]) => h('div', { style: { gridTemplateColumns: '120px 52px 1fr' } }, h('span', { class: 'dev' }, dev), pill(st, st === 'pass' ? 'good' : st === 'fail' ? 'bad' : st === 'warn' ? 'warn' : ''), h('span', {}, msg)))) : null,
-            h('ul', { class: 'safety' }, ...SAFETY.map((t) => h('li', {}, icon('check'), t))),
-            null)),
+        h('div', { class: 'stack' }, appearanceCard()),
         h('div', { class: 'stack' }, card([h('h2', {}, 'Startup')],
           selfRow(),
           row('Start with Windows', 'Starts in the tray.',

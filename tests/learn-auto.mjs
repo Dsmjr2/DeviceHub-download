@@ -107,6 +107,7 @@ async function person(w, { never = false } = {}) {
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-learn-auto-'));
 lw.options.root = root;
+lw.options.preflight = false;   // the steps after the pre-flight (tests/learn-preflight.mjs checks the pre-flight itself)
 
 // 1. everything: the app opened, DPI driven, Polling rate noticed
 {
@@ -157,7 +158,7 @@ lw.options.root = root;
 
 // 3. the ways it stops, each with what to do next
 const stops = [
-  ['app not installed', { appInstalled: false }, /not installed/, /Install Pretend Hub/],
+  ['app not installed', { appInstalled: false }, /not installed/, /Install it from https:\/\/example\.invalid/],
   ['refused vendor', { vid: '258A' }, /./, /Request support/],
   ['prompt declined', { prompt: false }, /declined|not listening/i, /press Yes/],
 ];

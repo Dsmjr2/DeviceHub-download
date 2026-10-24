@@ -215,6 +215,7 @@ function pro(value) {
 pro.files = {};
 const session = { state: null, cmds: [], started: 0 };
 lw.options.root = root;
+lw.options.preflight = false;   // the steps after the pre-flight (tests/learn-preflight.mjs checks the pre-flight itself)
 lw.options.deps = {
   ...lw.deps,
   usbpcapInstalled: () => true,
@@ -282,8 +283,13 @@ check(/Sinowealth/.test(lw.vendorRefusal('258a') || '') && /Laview/.test(lw.vend
   check(!ds.some((d) => d.driver?.dir), 'the page never gets a folder path');
   check(/Sinowealth/.test((await route('POST', 'begin', { vid: '258A', pid: '0036' })).error || ''), 'begin refuses a Sinowealth id with a plain reason');
   check(/refuses every write/.test((await route('POST', 'begin', { vid: '7777', pid: '0001' })).error || ''), 'begin refuses a device whose driver never writes');
-  const bg = await route('POST', 'begin', { vid: '1234', pid: '5678' });
-  check(bg.ok && bg.addsTo?.name === shared.name && bg.addsTo.where === 'my-devices', `begin on a covered device says where the settings go (${JSON.stringify(bg.addsTo || bg.error)})`);
+  // 24 Oct 2026: a device with a ready driver is never learned from the start: Learn names its driver and its page
+  const no = await route('POST', 'begin', { vid: '1234', pid: '5678' });
+  check(no.ok === false && /already has a driver/.test(no.error || '') && no.ready?.name === shared.name && /^#\//.test(no.ready.page || ''), `begin on a device with a ready driver names it and its page (${JSON.stringify(no)})`);
+  check(by['1234'].ready?.name === shared.name, `the list names its ready driver (${JSON.stringify(by['1234'].ready)})`);
+  // "A setting is missing?": recordings only, for Shawn; nothing is added to the driver here
+  const bg = await route('POST', 'begin', { vid: '1234', pid: '5678', capture: true });
+  check(bg.ok && bg.capture === true && !bg.addsTo, `A setting is missing? opens a recordings-only session (${JSON.stringify(bg.addsTo || bg.error)})`);
   await route('POST', 'quit');
 
   // merging: a second setting learned on the Acme mouse goes into a copy of its driver

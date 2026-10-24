@@ -1300,6 +1300,8 @@ select.text.kind-select { width: auto; min-width: 150px; font-size: 13px; paddin
 .gh-note { font-size: 12.5px; color: var(--muted); }
 .gh-note.bad { color: var(--bad); }
 .gh-note.good { color: var(--good); display: flex; gap: 6px; align-items: center; }
+/* Windows' permission box is open (helpers/uac.mjs): the line that says where to find it, plain to see (24 Oct 2026) */
+.uac-wait { font-size: 13px; color: var(--text); padding: 8px 10px; border-left: 3px solid var(--warn); background: var(--panel-2); border-radius: 6px; }
 .gh-report summary { cursor: pointer; font: 600 12.5px var(--ui); color: var(--muted); }
 .gh-report summary:hover { color: var(--text); }
 .gh-report pre.json { white-space: pre-wrap; word-break: break-word; max-height: 300px; margin: 8px 0 0; font-size: 11.5px; }
@@ -2584,3 +2586,39 @@ html[data-skin="verde"] .su-can-text b { color: #ffffff; }
 .srow.stack .srow-desc { max-width: none; }
 .srow.stack .seg { width: 100%; min-width: 0; }
 .srow.stack .seg button { white-space: normal; line-height: 1.25; }
+
+/* Display settings on the Monitors page, and the PC page's Temperatures and fans and PC check cards (24 Oct 2026,
+   public/ui/display-settings.js, public/ui/pc-health.js; docs/handoff/display-health.md) */
+.disp-block { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.disp-head { margin: 0 0 4px; font: 600 12.5px var(--ui); color: var(--muted); }
+.disp-line { margin: 4px 0; font-size: 12.5px; }
+.disp-line.warn { color: var(--warn); }
+.disp-line.good { color: var(--good); }
+.disp-line.bad { color: var(--bad); }
+.disp-flag { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 4px 0 6px; }
+.disp-keep { margin: 6px 0 8px; padding: 10px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line)); background: color-mix(in srgb, var(--warn) 10%, var(--panel)); }
+.disp-keep p { margin: 0 0 4px; }
+.disp-keep-btns { display: flex; gap: 8px; margin-top: 6px; }
+select.text.disp-select { width: auto; min-width: 130px; font-size: 13px; padding: 5px 30px 5px 12px; }
+.disp-night { display: inline-flex; align-items: center; gap: 10px; }
+.pcc-row { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.pcc-row:last-of-type { border-bottom: 0; }
+.pcc-row > div { min-width: 0; }
+.pcc-dot { flex: 0 0 8px; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--faint); }
+.pcc-dot.ok { background: var(--good); }
+.pcc-dot.warn { background: var(--warn); }
+.pcc-title, .pcc-src { display: block; }
+.pcc-src { margin-top: 2px; font-size: 12px; }
+.pcc-sub { margin: 12px 0 2px; font: 600 12.5px var(--ui); color: var(--muted); }
+.pcc-sum { margin: 0 0 6px; font-weight: 600; }
+.pcc-foot { margin: 10px 0 0; font-size: 12px; }
+
+/* Settings > Get help: the safety promises as one line, Show all opens the list in place, with the self-test beside it
+   (24 Oct 2026). The Appearance card is alone in its column, so .settings-cols' last-child rule stretches it level. */
+.safety-line { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
+.safety-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
+.safety-head > svg { width: 14px; height: 14px; color: var(--good); flex: none; }
+.safety-head .grow { flex: 1 1 180px; min-width: 0; }
+.safety-more { padding: 0; border: 0; background: none; color: var(--faint); font: 500 12px var(--ui); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.safety-more:hover { color: var(--text); }
+.safety-line .safety { padding-left: 22px; }

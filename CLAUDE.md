@@ -207,6 +207,7 @@ helpers/setup-extras.js    the setup file's extras (headset names, background pi
 helpers/onedrive-setup.mjs the opt-in OneDrive copy of this PC's setup, and the other PCs' copies (Overview offer)
 helpers/get-help.mjs      Get help: a short report, personal data taken out, a pre-filled GitHub issue opened on click
 helpers/auto-report.mjs   problem reports that send themselves from other PCs to the relay (never from the owner's PC)
+helpers/update-notice.mjs  a new version is ready: one check 2 min after start, the window asks Update or Later (never the owner's PC)
 helpers/learn-apps.mjs     Learn without typing: the maker's app (installed, running), the tick-list (app files > brand sheet > usual list)
 helpers/learn-wizard.mjs   Learn a device: USB recordings -> driver.json (settings, readings, a second USB id), read-only toward the device (public/pages/learn.js)
 helpers/declarative-driver.mjs   driver.json drivers (docs/DRIVER-FORMAT.md): checked, then run with the device.mjs contract
@@ -223,6 +224,8 @@ helpers/openrgb.js         PC lights through OpenRGB's SDK server (127.0.0.1:674
 helpers/board-lights.mjs   Add board, fan and RAM lights / Remove board lights: PawnIO + the elevated OpenRGB task, on a click
 helpers/camera.cs, .js     webcam picture settings (DirectShow's standard controls), backed up, one at a time, read back
 helpers/gpu.js             the graphics card's temperature, fans, load, power (NVIDIA's nvidia-smi), read-only: the Fans page
+helpers/display.js         each screen's resolution, refresh rate, HDR, main screen (backed up, tested, 15 s Keep or put back); Night light read only (docs/handoff/display-health.md)
+helpers/pc-sensors.js      Temperatures and fans, read only (nvidia-smi, D3DKMT, ACPI zones); helpers/pc-check.js the PC check (a list of check functions); the PC page (was Fans)
 docs/FANS.md               BIOS fan curve settings; DeviceHub never writes to the board's fan chip (it would need a kernel driver)
 tests/                     npm test: offline checks, then every page opened live and in demo
 ```

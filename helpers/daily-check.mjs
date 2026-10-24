@@ -112,3 +112,5 @@ export function start(root, coreModule) {
 }
 
 export const result = () => read();
+// a check running now (the removed auto-update (24 Oct 2026) waits for it to end)
+export const running = () => busy;

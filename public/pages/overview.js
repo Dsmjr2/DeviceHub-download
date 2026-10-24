@@ -75,8 +75,8 @@ function firstRun(go, redraw) {
   }
   return h('div', { class: 'panel first-run' },
     h('h2', {}, 'None of your devices are set up yet'),
-    h('p', {}, 'DeviceHub sets up known devices by itself: when a device is in its shared library, its driver is installed and it shows up here. Sound, monitors, webcams and most VIA keyboards need no setup.'),
-    h('p', {}, 'For any other mouse, headset or keyboard, Learn a device walks you through it: DeviceHub listens while you change one setting at a time in the maker\'s app.'),
+    h('p', {}, 'Known devices set themselves up and show here. Sound, monitors, webcams and most VIA keyboards need no setup.'),
+    h('p', {}, 'For any other mouse, headset or keyboard, use Learn a device.'),
     // devices on this PC from a known brand, each with a ready prompt for Claude Code (the brand guide, docs/BRANDS.md)
     (() => {
       if (!pcLoaded()) { loadPc(false, redraw); return null; }
@@ -123,7 +123,7 @@ function oneDriveBanner(redraw, fresh) {
     } catch (e) { toast('Could not read it', 'bad', { detail: e.message }); }
   };
   return h('div', { class: 'banner info od-offer' }, icon('backups'),
-    h('div', { class: 'grow' }, h('b', {}, `Bring your settings from ${o.pc}?`), h('small', {}, `Saved in your OneDrive ${when}. You see every change before anything is loaded.`)),
+    h('div', { class: 'grow' }, h('b', {}, `Bring your settings from ${o.pc}?`), h('small', {}, `Saved in your OneDrive ${when}. You review every change first.`)),
     h('div', { class: 'actions' }, button('Review', review, { kind: 'primary small' }), button('Not now', notNow, { kind: 'ghost small' })));
 }
 
@@ -328,7 +328,7 @@ export default {
     return h('div', { class: 'ov' },
 
       isDemo() ? h('div', { class: 'banner info' }, icon('shield'), h('div', { class: 'grow' }, h('b', {}, 'Demo with pretend devices'),
-        h('small', {}, 'Click anything: change DPI, remap keys, switch profiles. The values start from a real Pulsar X-Lite, Corsair HS80 and Epomaker P75, and nothing leaves this page. The real app runs on the PC and talks to the devices over USB.'))) : null,
+        h('small', {}, 'Click anything: change DPI, remap keys, switch profiles. Nothing leaves this page.'))) : null,
       oneDriveBanner(redraw, fresh),
       setupCard(redraw),
       noDevicesYet() ? firstRun(go, redraw)
@@ -341,7 +341,7 @@ export default {
               const r = await apply(p);
               toast(`Profile "${p.name}" applied`, r.failed ? 'bad' : 'good', { detail: `${r.done} changed, ${r.failed} failed, ${r.skipped} skipped` });
             }, { kind: 'small', ic: 'profiles' })))
-            : h('div', { class: 'feed-empty' }, 'No profiles yet. Set things up the way you like, then save it as a profile.')),
+            : h('div', { class: 'feed-empty' }, 'No profiles yet. Set things up, then save them as a profile.')),
         card([h('h2', {}, 'Activity'), h('span', { class: 'spacer' }), gpuChip(go)], feed())));
   },
 };

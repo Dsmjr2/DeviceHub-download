@@ -114,7 +114,7 @@ export async function applyWithPreview(p) {
     h('span', { class: 'dev' }, r.title), h('span', {}, r.label), h('s', {}, r.fromText), icon('arrow', 'ic faint'), r.ready ? h('b', {}, r.toText) : h('span', { class: 'faint' }, `skipped: ${r.blocked}`)) : h('div', {},
     h('span', { class: 'dev' }, r.id === 'monitor' ? r.monitorName : devices[r.id].adapter.kind), h('span', {}, keyLabel(r.id, r.key)), h('s', {}, showValue(r.id, r.key, r.from)), icon('arrow', 'ic faint'), r.ready ? h('b', {}, showValue(r.id, r.key, r.to)) : h('span', { class: 'faint' }, 'not connected')))));
   const changes = rows.filter((r) => !r.blocked).length;
-  const ok = await modal(`Apply "${p.name}"?`, h('div', {}, h('p', { style: { marginTop: 0 } }, `${changes} change${changes === 1 ? '' : 's'}. Each one is backed up, written and read back, one at a time.`), body),
+  const ok = await modal(`Apply "${p.name}"?`, h('div', {}, h('p', { style: { marginTop: 0 } }, `${changes} change${changes === 1 ? '' : 's'}. Each is backed up, written and read back.`), body),
     [{ label: 'Cancel', value: false, kind: 'ghost' }, { label: 'Apply', value: true, kind: 'primary' }]);
   if (!ok) return;
   const t = toast(`Applying "${p.name}"…`, 'busy', { ms: 0 });

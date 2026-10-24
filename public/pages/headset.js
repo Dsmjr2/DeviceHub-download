@@ -39,7 +39,7 @@ function genericCard(a) {
   const maker = u.brand && !u.brand.shared ? u.brand.name.toLowerCase().split(' ')[0] : null;
   const own = maker ? Object.values(devices).find((x) => x.adapter?.plugin && /headset/i.test(x.adapter.kind || '') && ['connected', 'asleep'].includes(x.status) && String(x.adapter.title || '').toLowerCase().includes(maker)) : null;
   return card([h('h2', {}, 'Lights & battery')],
-    h('p', { class: 'faint', style: { margin: '0 0 10px' } }, 'Sound, mic and EQ work for any USB headset. Its lights, battery and own settings need DeviceHub to learn this model.'),
+    h('p', { class: 'faint', style: { margin: '0 0 10px' } }, 'Sound, mic and EQ work for any USB headset; lights, battery and its own settings need this model learned.'),
     own ? h('p', { style: { margin: '0 0 10px' } }, `Battery and its own settings: on its ${own.adapter.title} page. `, h('a', { href: `#/${own.id}` }, 'Open it')) : null,
     h('div', { class: 'actions' }, button('Copy a prompt for Claude', () => copyPrompt(u), { kind: 'small' })));
 }
@@ -92,7 +92,7 @@ export default {
     const generic = a.mode === 'generic';
     const head = topbar(generic ? `${isJack(a.generic?.usb) ? 'Wired headset' : 'USB headset'} · sound features` : direct ? 'Corsair · Wireless headset' : 'Corsair · Wireless headset · iCUE open', a.title, null, h('div', { class: 'chips' }, headsetPicker(a, redraw), undoButton(dev), dev.status === 'connected' && !dev.values?.headsetOn ? pill('headset off', 'warn') : statusPill(dev)), deviceHelp(dev));
     if (dev.status !== 'connected' && !(isAway(dev) && a.endpoints)) {
-      return h('div', {}, head, connectState(dev, 'Plug in the HS80 receiver. DeviceHub finds it automatically within a few seconds, with or without iCUE.'));
+      return h('div', {}, head, connectState(dev, 'Plug in the HS80 receiver; DeviceHub finds it in seconds, with or without iCUE.'));
     }
     const v = dev.values;
     const props = a.props || {};

@@ -209,7 +209,7 @@ async function useAsBackground(name) {
   await post('/api/wallpapers/use-as-background', { name });
   await loadPicture();
   rerender();
-  return 'Now behind DeviceHub. Remove DeviceHub background (above the pictures) goes back to the plain backdrop.';
+  return 'Now behind DeviceHub. Remove DeviceHub background (above) undoes it.';
 }
 async function reveal(name) {
   if (isDemo()) return DEMO_SAID;
@@ -311,8 +311,8 @@ export default {
             items.length ? grid()
               : h('div', { class: 'wp-empty' },
                 icon('wallpapers', 'ic wp-empty-ic'),
-                h('p', {}, 'Keep your wallpapers here: add pictures or a whole folder, or drop them on this page.'),
-                h('p', { class: 'faint' }, 'They stay in your Pictures folder, so they are kept even if DeviceHub is removed.'))));
+                h('p', {}, 'Add pictures or a whole folder, or drop them on this page.'),
+                h('p', { class: 'faint' }, 'They stay in your Pictures folder, even if DeviceHub is removed.'))));
     // drop pictures or folders anywhere on the page
     page.addEventListener('dragover', (e) => { if ([...(e.dataTransfer?.types || [])].includes('Files')) { e.preventDefault(); page.classList.add('wp-drop'); } });
     page.addEventListener('dragleave', (e) => { if (!page.contains(e.relatedTarget)) page.classList.remove('wp-drop'); });

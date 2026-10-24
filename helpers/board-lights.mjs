@@ -20,6 +20,10 @@
 //      for a person's own OpenRGB: backed up, read back, DeviceHub's own devices left alone.
 // Remove board lights (POST /api/board-lights/remove): one admin prompt stops it and deletes the task and the folder;
 // DeviceHub goes back to USB lights only. PawnIO stays installed (Windows Settings > Apps removes it).
+// Windows' prompt (24 Oct 2026, helpers/uac.mjs): while Windows asks, the step is UAC_LINE (where to find the box). The
+// elevated script first writes a "started" file (so DeviceHub knows the box was answered Yes) and exits at once if a
+// "cancel" file is there: not answered within 2 minutes, DeviceHub writes that file and stops waiting, so a Yes
+// pressed later changes nothing. Declined or not answered: recorded for Get help, and the result offers Try again.
 // Why a scheduled task: OpenRGB has no Windows service (its only service file is Linux's systemd unit, qt/openrgb.service
 // in release_1.1, and its --autostart-enable starts it without administrator), and a task with highest rights is
 // Windows' own way to start one program elevated at sign-in without a prompt each time.
@@ -30,7 +34,9 @@ import path from 'path';
 import { execFile } from 'child_process';
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 import * as inst from './installers.mjs';
+import { UAC_LINE, UAC_WAIT_MS, record as recordUac, declinedText, unansweredText } from './uac.mjs';
 
 const require = createRequire(import.meta.url);
 const orgb = require('./openrgb.js');
@@ -53,7 +59,7 @@ export const PAWNIO = {
   sha256: '1f519a22e47187f70a1379a48ca604981c4fcf694f4e65b734aaa74a9fba3032',
   signer: [/(^|,\s*)CN=namazso\.eu(,|$)/, /(^|,\s*)O=namazso(,|$)/],
 };
-export const PAWNIO_REMOVE = 'PawnIO stays installed; to remove it, open Windows Settings > Apps > Installed apps, find PawnIO and choose Uninstall.';
+export const PAWNIO_REMOVE = 'PawnIO stays installed (remove it in Windows Settings > Apps > Installed apps).';
 const user = () => `${process.env.USERDOMAIN || os.hostname()}\\${os.userInfo().username}`;
 
 // every file of the protected copy, flat beside OpenRGB.exe, with its pinned hash
@@ -122,6 +128,9 @@ export function removeScript({ result = RESULT } = {}) {
 }
 // the outer, ordinary PowerShell: Start-Process -Verb RunAs shows Windows' own prompt (nothing gets round it); the script
 // goes as -EncodedCommand through an environment variable, so it is never a file on disk
+// the two lines put in front of the script on the admin side (uacMarks): a "cancel" file means DeviceHub stopped
+// waiting (exit 4, nothing done); else the "started" file says the box was answered Yes
+export const uacMarks = ({ started, cancel }) => [`if (Test-Path -LiteralPath ${q(cancel)}) { exit 4 }`, `Set-Content -LiteralPath ${q(started)} -Value 'started' -Encoding UTF8 -ErrorAction SilentlyContinue`].join('\r\n');
 export const elevateCommand = "try { $p = Start-Process powershell.exe -Verb RunAs -WindowStyle Hidden -ArgumentList '-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',$env:DH_SCRIPT -PassThru -Wait -ErrorAction Stop; \"exit|$($p.ExitCode)\" } catch { \"error|$($_.Exception.Message)\" }";
 
 // ---- the parts that touch Windows or the network, swappable for tests (tests/board-lights.mjs) ----
@@ -140,14 +149,17 @@ export const deps = {
   },
   // the logon task is there (read with the person's own rights)
   task: () => new Promise((resolve) => execFile('schtasks.exe', ['/Query', '/TN', BOARD.task], { windowsHide: true, timeout: 15000 }, (err) => resolve(!err))),
-  // one admin prompt: { ok, declined, code, error }
-  elevate(script) {
-    return new Promise((resolve) => execFile('powershell.exe', ['-NoProfile', '-Command', elevateCommand], { windowsHide: true, timeout: 600000, env: { ...process.env, DH_SCRIPT: Buffer.from(script, 'utf16le').toString('base64') } }, (err, out) => {
+  // one admin prompt: { ok, declined, code, error }. marks: { started, cancel } (uacMarks); signal: stops waiting
+  elevate(script, { marks = null, signal } = {}) {
+    const full = marks ? `${uacMarks(marks)}\r\n${script}` : script;
+    return new Promise((resolve) => execFile('powershell.exe', ['-NoProfile', '-Command', elevateCommand], { windowsHide: true, timeout: 600000, ...(signal ? { signal } : {}), env: { ...process.env, DH_SCRIPT: Buffer.from(full, 'utf16le').toString('base64') } }, (err, out) => {
       const [kind, ...rest] = String(out || '').trim().split('|'), msg = rest.join('|');
       if (kind === 'exit') resolve({ ok: Number(msg) === 0, code: Number(msg) });
       else resolve({ ok: false, declined: /cancel/i.test(msg), error: msg || err?.message || 'Windows did not start it' });
     }));
   },
+  writeFile: (f, text) => { try { fs.writeFileSync(f, text); } catch {} },
+  uacWaitMs: UAC_WAIT_MS,
   readResult: (f) => { try { return fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, '').trim(); } catch { return ''; } },
   clearResult: (f) => { try { fs.rmSync(f, { force: true }); } catch {} },
   stopBundled: () => orgb.stop(),
@@ -176,9 +188,9 @@ export async function status({ fresh = false } = {}) {
     partial: task !== copy ? (task ? 'The task is there but its OpenRGB copy is not.' : 'The OpenRGB copy is there but its task is not.') : null,
     // the one plain line before the click
     before: pawnio.installed
-      ? "Sets the OpenRGB inside DeviceHub to start as administrator when you sign in (PawnIO is already installed). Windows asks once. OpenRGB will then be allowed to change your board's lighting chip."
-      : `Installs PawnIO ${PAWNIO.version} (a signed driver, from its maker, checked first), then sets the OpenRGB inside DeviceHub to start as administrator when you sign in. Windows asks twice: once for PawnIO, once for OpenRGB. OpenRGB will then be allowed to change your board's lighting chip.`,
-    remove: `Stops it and deletes its task and copy: back to USB lights only. Windows asks once. ${PAWNIO_REMOVE}`,
+      ? "Runs DeviceHub's OpenRGB as administrator at sign-in (PawnIO is already installed). Windows asks once, then OpenRGB is allowed to change your board's lighting chip."
+      : `Installs PawnIO ${PAWNIO.version} (a signed driver, checked first) and runs DeviceHub's OpenRGB as administrator at sign-in. Windows asks twice, then OpenRGB is allowed to change your board's lighting chip.`,
+    remove: `Stops it and deletes its task: back to USB lights only. Windows asks once. ${PAWNIO_REMOVE}`,
   };
   cache = { at: Date.now(), value };
   return { ...value, busy: !!(job && !job.done) };
@@ -204,9 +216,14 @@ async function installPawnIO() {
     step(`Checking ${PAWNIO.file}`);
     const v = await verifyPawnIO(file);
     if (!v.ok) return { ok: false, text: `Not set up: PawnIO was not run because ${v.why}. The download was deleted; nothing was changed.` };
-    step("PawnIO's installer is open: answer Windows' prompt, then click Install in it");
-    const r = await deps.run(file);
-    if (!r.started) return { ok: false, text: r.declined ? "Not set up: Windows' prompt for PawnIO was declined. Nothing was changed." : `Not set up: PawnIO's installer did not start (${r.error}). Nothing was changed.` };
+    step(UAC_LINE, null, { uac: 'waiting' });
+    const r = await deps.run(file, { onStarted: () => { recordUac({ area: 'board lights', action: 'install PawnIO', outcome: 'yes' }); step("PawnIO's installer is open: click Install in it"); } });
+    if (!r.started && (r.declined || r.unanswered)) {
+      const outcome = r.unanswered ? 'unanswered' : 'declined';
+      recordUac({ area: 'board lights', action: 'install PawnIO', outcome });
+      return { ok: false, uac: outcome, text: (outcome === 'declined' ? declinedText : unansweredText)('Not set up: PawnIO') };
+    }
+    if (!r.started) return { ok: false, text: `Not set up: PawnIO's installer did not start (${r.error}). Nothing was changed.` };
     step('Checking PawnIO is installed');
     const p = await deps.pawnio().catch(() => ({}));
     if (!(p.app || p.service)) return { ok: false, text: `Not set up: PawnIO's installer closed (code ${r.exitCode}) but PawnIO is not installed. Nothing else was changed.` };
@@ -221,11 +238,44 @@ async function installPawnIO() {
 // ---- one job at a time; GET /api/board-lights/progress follows it ----
 let job = null;
 export const getProgress = () => job;
-const step = (text, pct = null) => { job = { ...job, text, pct, done: false, at: Date.now() }; };
+const step = (text, pct = null, extra = {}) => { const { uac, ...rest } = job || {}; job = { ...rest, text, pct, done: false, at: Date.now(), ...extra }; };
 const finish = (ok, text, extra = {}) => { job = { ...job, text, pct: null, done: true, ok, at: Date.now(), ...extra }; cache.at = 0; deps.forget(); return job; };
 // a job started more than 15 minutes ago and never finished (a prompt nobody answered) no longer holds the next one back
 const running = () => !!job && !job.done && Date.now() - (job.startedAt || job.at) < 15 * 60 * 1000;
 const begin = (kind) => { if (running()) throw new Error('board lights are being set up or removed; wait for it to finish'); job = { kind, startedAt: Date.now(), text: 'Starting', pct: null, done: false, at: Date.now() }; };
+
+// one admin prompt, watched: UAC_LINE until the elevated script says it started (the box was answered Yes), then
+// `next`; not answered within deps.uacWaitMs: the cancel file is written (a later Yes does nothing) and the wait stops.
+// { ok, declined, unanswered, code, error }
+async function elevateWatched(script, action, next) {
+  const id = crypto.randomBytes(6).toString('hex');
+  const marks = { started: path.join(DIR, `uac-started-${id}.txt`), cancel: path.join(DIR, `uac-cancel-${id}.txt`) };
+  tidyMarks();
+  step(UAC_LINE, null, { uac: 'waiting' });
+  const ac = new AbortController();
+  let answered = false, unanswered = false;
+  const yes = () => { if (answered) return; answered = true; recordUac({ area: 'board lights', action, outcome: 'yes' }); step(next); };
+  // looked at once a second only while this click's prompt is open (no timer of its own outlives it)
+  let settled = false;
+  const p = deps.elevate(script, { marks, signal: ac.signal }).then((x) => { settled = true; return x; }, (e) => { settled = true; return { ok: false, error: e.message }; });
+  const until = Date.now() + deps.uacWaitMs;
+  while (!settled) {
+    await Promise.race([p, new Promise((res) => setTimeout(res, Math.min(1000, deps.uacWaitMs)))]);
+    if (settled) break;
+    if (deps.exists(marks.started)) yes();
+    else if (!answered && Date.now() >= until) { unanswered = true; deps.writeFile(marks.cancel, 'cancel'); ac.abort(); break; }
+  }
+  const r = await p;
+  try { fs.rmSync(marks.started, { force: true }); } catch {}
+  if (unanswered) { recordUac({ area: 'board lights', action, outcome: 'unanswered' }); return { ok: false, unanswered: true }; }
+  if (r.declined) recordUac({ area: 'board lights', action, outcome: 'declined' });
+  else if (!answered && (r.ok || r.code != null)) recordUac({ area: 'board lights', action, outcome: 'yes' });
+  return r;
+}
+// cancel files older than a day are no longer needed (a prompt left open that long is gone)
+function tidyMarks() {
+  try { for (const f of fs.readdirSync(DIR)) if (/^uac-(cancel|started)-[0-9a-f]+\.txt$/.test(f) && Date.now() - fs.statSync(path.join(DIR, f)).mtimeMs > 864e5) fs.rmSync(path.join(DIR, f), { force: true }); } catch {}
+}
 
 export async function setUp() {
   begin('setup');
@@ -239,18 +289,18 @@ export async function setUp() {
     // 1. PawnIO, only when it is missing
     if (!s.pawnio.installed) {
       const p = await installPawnIO();
-      if (!p.ok) return finish(false, p.text);
+      if (!p.ok) return finish(false, p.text, p.uac ? { uac: p.uac, retry: true } : {});
       pawnNew = true;
     }
     // 2. two OpenRGBs must not share the USB lights: DeviceHub's own one stops (Find lights starts it again if this fails)
     deps.stopBundled();
     // 3. the one admin prompt: protected copy, checked, and the logon task; the script undoes itself on any failure
-    step("Windows asks once: press Yes to let OpenRGB run as administrator for your board's lights. No prompt? It may be behind this window: look for the flashing shield on the taskbar.");
     fs.mkdirSync(DIR, { recursive: true });
     deps.clearResult(RESULT);
-    const r = await deps.elevate(setupScript());
+    const r = await elevateWatched(setupScript(), 'set up board lights', 'Setting up OpenRGB as administrator');
     const said = deps.readResult(RESULT);
     deps.clearResult(RESULT);
+    if (r.unanswered || r.declined) return finish(false, `${(r.unanswered ? unansweredText : declinedText)('Not set up')}${kept()}`, { uac: r.unanswered ? 'unanswered' : 'declined', retry: true });
     if (!r.ok) {
       const why = r.declined ? "Windows' prompt was declined" : said.startsWith('failed|') ? said.slice(7) : r.error || `the setup stopped (code ${r.code})`;
       // the script removes what it made; if Windows still lists any of it, say so plainly
@@ -263,8 +313,8 @@ export async function setUp() {
     if (!after.setUp) return finish(false, `Not set up: ${after.partial || 'Windows did not keep the task'} Press Remove board lights, then try again.${kept()}`, { left: true });
     step('Waiting for OpenRGB to find the board (up to 45 s)');
     const up = await deps.waitServer(BOARD.port, 45000);
-    return finish(true, up ? 'Board, fan and RAM lights are set up: OpenRGB runs as administrator and starts when you sign in. Press Find lights.'
-      : 'Board lights are set up, but OpenRGB has not answered yet (it may still be looking). Press Find lights in a minute.', { pawnio: pawnNew });
+    return finish(true, up ? 'Board, fan and RAM lights are set up. Press Find lights.'
+      : 'Board lights are set up, but OpenRGB has not answered yet. Press Find lights in a minute.', { pawnio: pawnNew });
   } catch (e) {
     return finish(false, `Not set up: ${e.message}.${kept()}`);
   }
@@ -276,13 +326,13 @@ export async function remove() {
     step('Checking what is set up');
     const s = await status({ fresh: true });
     if (!s.task && !s.copy) return finish(true, `Board lights are not set up; nothing to remove. ${PAWNIO_REMOVE}`, { already: true });
-    step('Windows asks once: allow DeviceHub to remove the board-lights task');
     fs.mkdirSync(DIR, { recursive: true });
     deps.clearResult(RESULT);
-    const r = await deps.elevate(removeScript());
+    const r = await elevateWatched(removeScript(), 'remove board lights', 'Removing the board-lights task');
     const said = deps.readResult(RESULT);
     deps.clearResult(RESULT);
-    if (!r.ok) return finish(false, r.declined ? "Not removed: Windows' prompt was declined. Nothing was changed." : `Not removed: ${said.startsWith('failed|') ? said.slice(7) : r.error || `code ${r.code}`}.`);
+    if (r.unanswered || r.declined) return finish(false, (r.unanswered ? unansweredText : declinedText)('Not removed'), { uac: r.unanswered ? 'unanswered' : 'declined', retry: true });
+    if (!r.ok) return finish(false, `Not removed: ${said.startsWith('failed|') ? said.slice(7) : r.error || `code ${r.code}`}.`);
     const after = await status({ fresh: true });
     if (after.task || after.copy) return finish(false, `Not fully removed: ${after.task ? 'the task' : 'the OpenRGB copy'} is still there. Press Remove board lights again.`);
     return finish(true, `Board lights removed: back to USB lights only. ${PAWNIO_REMOVE}`);

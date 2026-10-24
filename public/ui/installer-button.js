@@ -31,7 +31,10 @@ export const cachedStatus = () => (isDemo() ? DEMO : cache);
 const state = {};
 const mb = (b) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 
-function bar(id, text, pct) {
+// while Windows' permission box is open (progress uac 'waiting', helpers/uac.mjs): its line in plain sight, in place
+// of the loading bar; never a pop-up, toast or tooltip
+function bar(id, text, pct, uac = null) {
+  if (uac === 'waiting') return h('div', { class: 'uac-wait', id: `inst-bar-${id}`, role: 'status' }, text);
   return h('div', { class: 'loadbar-wrap', id: `inst-bar-${id}`, style: { minWidth: '180px' } },
     h('div', { class: `loadbar${pct == null ? ' sweep' : ''}`, role: 'progressbar', 'aria-label': text, 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': pct == null ? null : String(pct) },
       h('span', { style: pct == null ? {} : { width: `${pct}%` } })),
@@ -60,18 +63,18 @@ export async function follow(id, redraw, { wait = (ms) => new Promise((r) => set
   let errors = 0;
   for (;;) {
     await wait(400);
-    if (now() > until) return { ok: false, text: 'DeviceHub stopped waiting for the installer after 10 minutes. Look in Windows Settings > Apps whether it finished.' };
+    if (now() > until) return { ok: false, text: 'Stopped waiting after 10 minutes. Check Windows Settings > Apps to see if it installed.' };
     let p;
     try { p = await api('/api/installers/progress'); errors = 0; } catch (e) {   // DeviceHub busy for a moment
-      if (++errors >= FOLLOW_ERRORS) return { ok: false, text: `DeviceHub did not answer about the installer (${e.message}). Look in Windows Settings > Apps whether it finished.` };
+      if (++errors >= FOLLOW_ERRORS) return { ok: false, text: `DeviceHub did not answer (${e.message}). Check Windows Settings > Apps to see if it installed.` };
       continue;
     }
     if (p.tool !== id) continue;
     if (p.done) return p;
-    if (p.text !== state[id].text || p.pct !== state[id].pct) {
-      Object.assign(state[id], { text: p.text, pct: p.pct });
+    if (p.text !== state[id].text || p.pct !== state[id].pct || p.uac !== state[id].uac) {
+      Object.assign(state[id], { text: p.text, pct: p.pct, uac: p.uac || null });
       const el = document.getElementById(`inst-bar-${id}`);
-      if (el) el.replaceWith(bar(id, p.text, p.pct)); else redraw();
+      if (el) el.replaceWith(bar(id, p.text, p.pct, p.uac)); else redraw();
     }
   }
 }
@@ -85,6 +88,9 @@ async function start(id, onDone, redraw) {
     [{ label: 'Cancel', value: false, kind: 'ghost' }, { label: page ? 'Open the official page' : 'Install', value: true, kind: 'primary' }]);
   if (!yes) return;
   if (page) { window.open(p.page, '_blank'); return; }
+  return runInstall(id, p, onDone, redraw);
+}
+async function runInstall(id, p, onDone, redraw) {
   state[id] = { busy: true, text: 'Starting', pct: null };
   redraw();
   let r;
@@ -92,6 +98,8 @@ async function start(id, onDone, redraw) {
   catch (e) { r = { ok: false, text: `Not installed: ${e.message}` }; }
   delete state[id];
   cache = null;
+  // Windows' permission box declined or not answered (r.retry): the line in place, with Try again (no toast, no dialog)
+  if (r.retry) { state[id] = { busy: false, said: r.text, retry: () => runInstall(id, p, onDone, redraw) }; redraw(); onDone?.(r); return; }
   if (r.ok) toast(r.text, 'good', { ms: 9000, detail: [r.verified ? `Checked: ${r.verified}.` : null, r.partial, r.restart ? 'Restart the PC to finish.' : null].filter(Boolean).join(' ') || null });
   else {
     toast('Not installed', 'bad', { ms: 12000, detail: r.text });
@@ -130,18 +138,19 @@ export function installerInline(id, { redraw = () => {}, onDone, kind = 'primary
     catch (e) { r = { ok: false, text: `Not installed: ${e.message}` }; }
     delete state[id];
     cache = null;
-    set({ stage: 'done', ok: !!r.ok, text: r.ok ? [r.text, r.verified ? `Checked: ${r.verified}.` : null, r.partial, r.restart ? 'Restart the PC to finish.' : null].filter(Boolean).join(' ') : `Not installed. ${r.text || ''}`.trim() });
+    set({ stage: 'done', ok: !!r.ok, retry: !!r.retry, text: r.retry ? r.text : r.ok ? [r.text, r.verified ? `Checked: ${r.verified}.` : null, r.partial, r.restart ? 'Restart the PC to finish.' : null].filter(Boolean).join(' ') : `Not installed. ${r.text || ''}`.trim() });
     onDone?.(r);
   };
   const close = () => set({ stage: 'closed', plan: null, text: '' });
-  if (s.stage === 'busy' && state[id]?.busy) return bar(id, state[id].text, state[id].pct);
+  if (s.stage === 'busy' && state[id]?.busy) return bar(id, state[id].text, state[id].pct, state[id].uac);
   if (s.stage === 'loading') return h('small', { class: 'faint' }, 'Reading the download…');
   if (s.stage === 'plan') {
     const p = s.plan;
     return h('div', { class: 'inst-inline' }, planBody(p),
       h('div', { class: 'actions' }, button(p.offer === 'install' ? `Install ${p.name}` : 'Open the official page', go, { kind: 'primary small', ic: p.offer === 'install' ? 'plus' : 'external' }), button('Cancel', close, { kind: 'ghost small' })));
   }
-  if (s.stage === 'done') return h('div', { class: 'inst-inline' }, h('div', { class: `gh-note ${s.ok ? 'good' : 'bad'}` }, s.text), s.ok ? null : h('div', { class: 'actions' }, button('Try again', open, { kind: 'small' })));
+  // Try again: straight to the install when Windows' box was declined or not answered (s.retry), else the plan again
+  if (s.stage === 'done') return h('div', { class: 'inst-inline' }, h('div', { class: `gh-note ${s.ok ? 'good' : 'bad'}` }, s.text), s.ok ? null : h('div', { class: 'actions' }, button('Try again', s.retry ? go : open, { kind: 'small' })));
   return button(`Install ${name}`, open, { kind, ic: 'plus' });
 }
 
@@ -152,7 +161,9 @@ export const installing = () => Object.keys(state).find((id) => state[id]?.busy)
 export function installerButton(id, { onDone, redraw, label, kind = 'primary small', offer, style } = {}) {
   const s = state[id];
   const again = () => (redraw || (() => onDone?.()))();
-  if (s?.busy) return bar(id, s.text, s.pct);
+  if (s?.busy) return bar(id, s.text, s.pct, s.uac);
+  if (s?.said) return h('div', { class: 'inst-inline' }, h('div', { class: 'gh-note bad' }, s.said),
+    h('div', { class: 'actions' }, button('Try again', () => { const go = s.retry; delete state[id]; go(); }, { kind: 'small' }), button('Not now', () => { delete state[id]; again(); }, { kind: 'ghost small' })));
   // not read yet: read it once, then the page draws the right label ("Install" or "Get")
   if (!cachedStatus() && !loading) installerStatus().then(again, () => {});
   const st = (cachedStatus() || []).find((t) => t.id === id);

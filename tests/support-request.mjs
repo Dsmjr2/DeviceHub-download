@@ -146,7 +146,7 @@ try {
 
   // ---- generic 2.4G receivers
   ok(genericDongle({ vid: '258a', pid: '1007', name: null })?.chip === 'Sinowealth', 'a nameless Sinowealth receiver is generic');
-  ok(genericDongle({ vid: '258A', pid: '1007', name: '2.4G Wireless Receiver' })?.line === 'A generic 2.4G receiver (Sinowealth chip). These usually have no settings to learn; it works as a normal mouse or keyboard.', 'the plain line');
+  ok(genericDongle({ vid: '258A', pid: '1007', name: '2.4G Wireless Receiver' })?.line === 'A generic 2.4G receiver (Sinowealth chip). Nothing to learn; it works as a normal mouse or keyboard.', 'the plain line');
   ok(!genericDongle({ vid: '258a', pid: '2022', name: null }), "a Glorious Model O Wireless dongle (the sheet's own id) is not generic");
   ok(!genericDongle({ vid: '258a', pid: '1007', name: 'Redragon M686' }), 'a branded name is not generic');
   ok(genericDongle({ vid: '04d9', pid: 'a0f8', name: 'USB Receiver' })?.chip === 'Holtek' && !genericDongle({ vid: '04d9', pid: 'a0f8', name: null }), 'Holtek counts only when Windows names it a receiver');

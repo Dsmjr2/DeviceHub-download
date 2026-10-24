@@ -1,8 +1,17 @@
 // Device library updates between app releases (22 Oct 2026; docs/handoff/library-updates.md). New and changed
 // device-library entries reach every copy by themselves: the publisher builds dist\device-library.json
 // (helpers/make-library-bundle.mjs, signed with the same Ed25519 key as an app release but over a payload of its own),
-// uploads it beside version.json, and each copy fetches it at most once a day (and on demand), checks the signature
-// with helpers/release-public-key.pem and every entry's SHA-256, and writes the entries to library-cache\<name>\.
+// uploads it beside version.json, and each copy fetches it, checks the signature with helpers/release-public-key.pem
+// and every entry's SHA-256, and writes the entries to library-cache\<name>\.
+//
+// When (24 Oct 2026, docs/handoff/smoother-for-friends.md; a friend's PC kept an old mouse driver for hours after a fix
+// was published, because this ran at most once a day): at every DeviceHub start (startup(), before the drivers load,
+// so a fix published since the last start runs at once), right after an app update (afterAppUpdate(), and startup()
+// notices a new version by itself), when a device page shows a driver problem (POST /api/library/update?soon=1), and
+// every 3 hours. A fetch is cheap when nothing changed: GitHub's release file host answers If-None-Match /
+// If-Modified-Since with 304 and no body (checked 24 Oct 2026), and a "soon" fetch is not repeated within 10 minutes.
+// After every good check, helpers/library-refresh.mjs puts a newer driver into the my-devices copies installed from
+// the library (they were never replaced before: the root cause of the old driver).
 //
 // Safety: nothing fetched is ever run here (no import, no eval, no child process): the cache holds text only, and a
 // driver from it runs only the way a shipped library entry does (installFromLibrary, then my-devices.mjs, guarded). An
@@ -15,9 +24,12 @@
 //   entryVersion(meta)                    the version an entry is compared by (newer wins over device-library\)
 //   payload(bundle)                       what the signature covers (helpers/make-library-bundle.mjs signs the same)
 //   verifyBundle(bundle, publicKeyPem)    { ok, entries, refused } or { ok: false, error }
-//   check({ root, url, force, ... })      fetch, verify and write the cache now (force: also when checked today)
-//   checkIfDue(opts)                      check() only when the last check is 24 h old or more
-//   schedule({ root, log })               checkIfDue a few minutes after start, then every hour (timers unref'd)
+//   check({ root, url, reason, ... })     fetch (conditional), verify and write the cache now; then refresh my-devices copies
+//   checkSoon(opts)                       check() unless the last one is under 10 minutes old (a device page's ask)
+//   checkIfDue(opts)                      check() only when the last check is 3 h old or more
+//   startup({ root, log, waitMs })        at start: check now (waits up to waitMs for it), then refresh the copies
+//   afterAppUpdate({ root, log })         right after an app update: check now and refresh the copies (for the update code)
+//   schedule({ root, log })               checkIfDue every hour (timers unref'd); startup() does the first check
 //   status(root)                          the last check, the cached entries and any errors
 //   handle(url, req, res, send)           GET /api/library/updates, POST /api/library/update; true when it answered
 import fs from 'node:fs';
@@ -30,7 +42,8 @@ export const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..'
 export const BUNDLE_FILE = 'device-library.json';
 export const KIND = 'devicehub-library-bundle';
 export const FORMAT = 1;
-const DAY = 24 * 60 * 60 * 1000;
+export const EVERY_MS = 3 * 60 * 60 * 1000;   // the periodic check (was once a day until 24 Oct 2026)
+export const SOON_MS = 10 * 60 * 1000;        // a "soon" check (a device page's ask) is not repeated within this
 const MAX_BUNDLE = 8 * 1024 * 1024, MAX_DRIVER = 1024 * 1024;
 const NAME = /^[a-z0-9][a-z0-9-]{1,60}$/;  // no "_" examples, no dots, no slashes: one plain folder name
 const RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/;  // Windows device names, never a folder
@@ -131,15 +144,24 @@ export function cachedEntries(root = ROOT) {
 }
 
 // ---- fetching (no code is run: the bundle is text, read and hashed) ----
-async function download(url, timeoutMs) {
-  const r = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), redirect: 'follow', headers: { accept: 'application/json, application/octet-stream' } });
+// since: { etag, lastModified } of the bundle already cached: sent as If-None-Match / If-Modified-Since (fetch keeps
+// them through GitHub's redirects), so an unchanged bundle is a 304 with no body. Returns { notModified: true } or
+// { bundle, etag, lastModified }.
+async function download(url, timeoutMs, since = null) {
+  const headers = { accept: 'application/json, application/octet-stream' };
+  if (since?.etag) headers['if-none-match'] = since.etag;
+  if (since?.lastModified) headers['if-modified-since'] = since.lastModified;
+  const r = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), redirect: 'follow', headers });
+  if (r.status === 304 && since) { try { await r.arrayBuffer(); } catch {} return { notModified: true }; }
   if (r.status === 404) throw new Error('no library bundle is published yet (404)');
   if (!r.ok) throw new Error(`the download page answered ${r.status}`);
   const len = Number(r.headers.get('content-length') || 0);
   if (len > MAX_BUNDLE) throw new Error('the library bundle is too large');
   const buf = Buffer.from(await r.arrayBuffer());
   if (buf.length > MAX_BUNDLE) throw new Error('the library bundle is too large');
-  try { return JSON.parse(buf.toString('utf8').replace(/^﻿/, '')); } catch { throw new Error('the library bundle is not JSON'); }
+  let bundle;
+  try { bundle = JSON.parse(buf.toString('utf8').replace(/^﻿/, '')); } catch { throw new Error('the library bundle is not JSON'); }
+  return { bundle, etag: r.headers.get('etag') || null, lastModified: r.headers.get('last-modified') || null };
 }
 
 // writes the good entries to library-cache\<name>\ (staged, then swapped in one folder at a time); removes cached
@@ -186,16 +208,23 @@ async function writeCache(root, v) {
 }
 
 let inflight = null;
-// fetch, verify, write. Never throws: the outcome is in the returned state (and library-cache\state.json).
+// fetch, verify, write; then the my-devices copies get any newer driver (helpers/library-refresh.mjs; refresh: false
+// leaves them). Never throws: the outcome is in the returned state (and library-cache\state.json).
+// reason: why it ran ('start', 'app updated', 'device page', 'every 3 hours', 'button'), kept in the state.
 export function check(opts = {}) {
   if (inflight) return inflight;
   inflight = doCheck(opts).finally(() => { inflight = null; });
   return inflight;
 }
-async function doCheck({ root = ROOT, url = DEFAULT_URL(), publicKeyFile = PUBLIC_KEY(root), timeoutMs = 20000, now = () => new Date(), log = () => {} } = {}) {
+async function refreshCopies(root, log, now, opts = {}) {
+  if (opts.refresh === false) return null;
+  try { return await (await import('./library-refresh.mjs')).refreshInstalled({ root, log, ...(now ? { now } : {}) }); } catch (e) { return { replaced: [], skipped: [], error: e.message }; }
+}
+async function doCheck(opts = {}) {
+  const { root = ROOT, url = DEFAULT_URL(), publicKeyFile = PUBLIC_KEY(root), timeoutMs = 20000, now = () => new Date(), log = () => {}, reason = null } = opts;
   const s = readState(root);
   const at = now().toISOString();
-  const next = { ...s, lastCheckAt: at, errors: [], refused: [] };
+  const next = { ...s, lastCheckAt: at, lastReason: reason || null, errors: [], refused: [] };
   const fail = async (msg) => {
     next.errors = [msg];
     next.lastError = { at, error: msg };
@@ -204,8 +233,19 @@ async function doCheck({ root = ROOT, url = DEFAULT_URL(), publicKeyFile = PUBLI
   };
   let pem;
   try { pem = await fsp.readFile(publicKeyFile, 'utf8'); } catch { return fail('the publisher\'s public key (helpers/release-public-key.pem) is missing, so no library update is believed'); }
-  let b;
-  try { b = await download(url, timeoutMs); } catch (e) { return fail(`could not fetch the library bundle (${e.name === 'TimeoutError' || e.name === 'AbortError' ? 'timed out' : e.cause?.code || e.message}); the cached entries stay`); }
+  // a conditional fetch only when the bundle those headers name is the one in the cache
+  const since = s.etagFor && s.etagFor === s.bundleBuiltAt && cachedEntries(root).length ? { etag: s.etag || null, lastModified: s.lastModified || null } : null;
+  let got;
+  try { got = await download(url, timeoutMs, since); } catch (e) { return fail(`could not fetch the library bundle (${e.name === 'TimeoutError' || e.name === 'AbortError' ? 'timed out' : e.cause?.code || e.message}); the cached entries stay`); }
+  if (got.notModified) {
+    next.lastSuccessAt = at;
+    next.refused = s.refused || [];
+    delete next.lastError;
+    try { await writeState(root, next); } catch {}
+    const refreshed = await refreshCopies(root, log, now, opts);
+    return { ...status(root), ok: true, unchanged: true, changed: [], removed: [], refreshed };
+  }
+  const b = got.bundle;
   const v = verifyBundle(b, pem);
   if (!v.ok) return fail(`the library bundle was refused: ${v.error}; the cached entries stay`);
   // never go back to an older bundle (a replayed old one could bring back a withdrawn driver)
@@ -216,32 +256,77 @@ async function doCheck({ root = ROOT, url = DEFAULT_URL(), publicKeyFile = PUBLI
   next.lastSuccessAt = at;
   next.bundleBuiltAt = b.builtAt;
   next.refused = v.refused;
+  // what the next fetch sends back (If-None-Match / If-Modified-Since), for this bundle only
+  next.etag = got.etag; next.lastModified = got.lastModified; next.etagFor = got.etag || got.lastModified ? b.builtAt : null;
   next.lastChange = done.changed.length || done.removed.length ? { at, changed: done.changed, removed: done.removed } : s.lastChange || null;
   delete next.lastError;
   try { await writeState(root, next); } catch {}
   for (const c of done.changed) try { log({ kind: 'good', text: `Device library: ${c.name} ${c.was == null ? 'added' : 'updated'} from the published library` }); } catch {}
   for (const r of v.refused) try { log({ kind: 'warn', text: `Device library update: ${r.name} refused (${r.why})` }); } catch {}
-  return { ...status(root), ok: true, changed: done.changed, removed: done.removed };
+  const refreshed = await refreshCopies(root, log, now, opts);
+  return { ...status(root), ok: true, changed: done.changed, removed: done.removed, refreshed };
 }
 
+const sinceLast = (root, opts) => {
+  const last = Date.parse(readState(root).lastCheckAt || '');
+  const now = (opts.now || (() => new Date()))().getTime();
+  return Number.isNaN(last) || now < last ? Infinity : now - last;
+};
+// the periodic check: only when the last one is EVERY_MS old or more
 export async function checkIfDue(opts = {}) {
   const root = opts.root || ROOT;
   if (!enabled(root)) return { ...status(root), skipped: 'library updates are off' };
-  const last = Date.parse(readState(root).lastCheckAt || '');
-  const now = (opts.now || (() => new Date()))().getTime();
-  if (!Number.isNaN(last) && now - last < DAY && now >= last) return { ...status(root), skipped: 'checked within the last day' };
-  return check(opts);
+  if (sinceLast(root, opts) < (opts.everyMs || EVERY_MS)) return { ...status(root), skipped: 'checked within the last 3 hours' };
+  return check({ reason: 'every 3 hours', ...opts });
+}
+// a device page that shows a driver problem asks for this: a check now, unless one ran in the last 10 minutes
+export async function checkSoon(opts = {}) {
+  const root = opts.root || ROOT;
+  if (!enabled(root)) return { ...status(root), ok: true, skipped: 'library updates are off' };
+  if (inflight) return inflight;
+  if (sinceLast(root, opts) < (opts.soonMs || SOON_MS)) return { ...status(root), ok: true, skipped: 'checked in the last 10 minutes' };
+  return check({ reason: 'device page', ...opts });
+}
+
+// At DeviceHub's start, before the drivers load (server.js): a check now (the first after an app update says so), waited
+// for up to waitMs so a driver published since the last start loads at once; then the my-devices copies are refreshed
+// (also with no network: a newer driver may have come with the app update itself). A check still running after waitMs
+// goes on by itself and refreshes the copies when it ends (the device page then says a restart loads it).
+export async function startup({ root = ROOT, log = () => {}, waitMs = 5000, ...rest } = {}) {
+  let version = null;
+  try { version = (await import('./device-library.mjs')).devicehubVersion(root); } catch {}
+  const s = readState(root);
+  const reason = version && s.appVersion && s.appVersion !== version ? 'app updated' : 'start';
+  try { if (version && s.appVersion !== version) await writeState(root, { ...readState(root), appVersion: version }); } catch {}
+  if (!enabled(root)) return { skipped: 'library updates are off', reason, refreshed: await refreshCopies(root, log, rest.now, rest) };
+  let timer;
+  const waited = await Promise.race([
+    check({ root, log, reason, ...rest }).then((r) => ({ r })),
+    new Promise((res) => { timer = setTimeout(() => res(null), waitMs); timer.unref?.(); }),
+  ]);
+  clearTimeout(timer);
+  if (waited) return { reason, ...waited.r, refreshed: waited.r.refreshed || await refreshCopies(root, log, rest.now, rest) };
+  // still fetching: what is already here goes in now; the check refreshes again when it ends
+  return { reason, pending: true, refreshed: await refreshCopies(root, log, rest.now, rest) };
+}
+
+// For the app-update code (helpers/self-update.js / the removed auto-update): call right after a new version is in place. A
+// check now (no 10-minute wait) and the my-devices copies refreshed. startup() also notices the new version by itself
+// at the next start, so this is a speed-up, never needed for correctness.
+export function afterAppUpdate({ root = ROOT, log = () => {}, ...rest } = {}) {
+  if (!enabled(root)) return Promise.resolve({ ...status(root), skipped: 'library updates are off' });
+  return check({ root, log, reason: 'app updated', ...rest });
 }
 
 let timers = null;
-export function schedule({ root = ROOT, log = () => {}, firstAfterMs = 3 * 60 * 1000, everyMs = 60 * 60 * 1000, ...rest } = {}) {
+export function schedule({ root = ROOT, log = () => {}, everyMs = 60 * 60 * 1000, ...rest } = {}) {
   if (timers) return false;
   const run = () => { checkIfDue({ root, log, ...rest }).catch(() => {}); };
-  timers = [setTimeout(run, firstAfterMs), setInterval(run, everyMs)];
+  timers = [setInterval(run, everyMs)];
   for (const t of timers) t.unref?.();
   return true;
 }
-export function unschedule() { if (timers) { clearTimeout(timers[0]); clearInterval(timers[1]); timers = null; } }
+export function unschedule() { if (timers) { for (const t of timers) clearInterval(t); timers = null; } }
 
 export function status(root = ROOT) {
   const s = readState(root);
@@ -252,7 +337,8 @@ export function status(root = ROOT) {
     cache: path.relative(root, cacheRoot(root)),
     lastCheckAt: s.lastCheckAt || null,
     lastSuccessAt: s.lastSuccessAt || null,
-    nextCheckAt: Number.isNaN(last) ? null : new Date(last + DAY).toISOString(),
+    nextCheckAt: Number.isNaN(last) ? null : new Date(last + EVERY_MS).toISOString(),
+    lastReason: s.lastReason || null,
     bundleBuiltAt: s.bundleBuiltAt || null,
     entries: cachedEntries(root),
     lastChange: s.lastChange || null,
@@ -261,12 +347,14 @@ export function status(root = ROOT) {
   };
 }
 
-// GET /api/library/updates: the state; POST /api/library/update: check now. Returns true when it answered.
+// GET /api/library/updates: the state; POST /api/library/update: check now (?soon=1: unless checked in the last 10
+// minutes). Returns true when it answered.
 export async function handle(url, req, res, send, { root = ROOT, ...opts } = {}) {
   if (url.pathname === '/api/library/updates' && req.method === 'GET') { send(res, 200, status(root)); return true; }
   if (url.pathname === '/api/library/update' && req.method === 'POST') {
     if (!enabled(root)) { send(res, 409, { ...status(root), error: 'library updates are off (settings.json "libraryUpdates": false or DEVICEHUB_LIBRARY_UPDATES=0)' }); return true; }
-    const r = await check({ root, ...opts });
+    // ?soon=1: a device page showing a driver problem (not again within 10 minutes); else the person's button, now
+    const r = url.searchParams.get('soon') === '1' ? await checkSoon({ root, ...opts }) : await check({ root, reason: 'button', ...opts });
     send(res, r.ok ? 200 : 502, r);
     return true;
   }

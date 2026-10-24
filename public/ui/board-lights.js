@@ -27,7 +27,7 @@ async function follow(redraw) {
   let errors = 0;
   for (;;) {
     await new Promise((r) => setTimeout(r, 1500));
-    if (Date.now() > until) return { done: true, ok: false, text: 'DeviceHub stopped waiting after 15 minutes. Press Find lights to see whether it finished.' };
+    if (Date.now() > until) return { done: true, ok: false, text: 'Stopped waiting after 15 minutes. Press Find lights to see if it finished.' };
     let p;
     try { p = await env.api('/api/board-lights/progress'); errors = 0; } catch (e) { if (++errors >= 5) return { done: true, ok: false, text: `DeviceHub did not answer (${e.message}).` }; continue; }
     if (p.done) return p;
@@ -74,7 +74,7 @@ export function boardLights({ redraw = () => {}, onDone } = {}) {
   const st = cachedBoard();
   // read once; an answer that failed (an older DeviceHub still running) is tried again only after 30 s
   if (!st && !s.loading && Date.now() - s.failed > 30000) boardLightsStatus().then(() => redraw());
-  const v = !st && s.failed && !s.job ? { line: 'Board lights could not be read here. Restart DeviceHub (tray icon > Quit, then open it) and look again.', action: null }
+  const v = !st && s.failed && !s.job ? { line: 'Board lights could not be read. Restart DeviceHub (tray icon > Quit) and look again.', action: null }
     : boardView(st, s.job, { confirmRemove: s.confirm });
   const btn = (action, label) => {
     if (action === 'setup') return button(label, () => run('setup', redraw, onDone), { kind: 'primary small', ic: 'plus' });
@@ -83,7 +83,8 @@ export function boardLights({ redraw = () => {}, onDone } = {}) {
     return null;
   };
   return h('div', { class: 'board-lights' },
-    h('small', { class: 'faint' }, v.line),
+    // Windows' permission box open: the line says where to find it, in plain sight (helpers/uac.mjs UAC_LINE)
+    v.uac ? h('div', { class: 'uac-wait', role: 'status' }, v.line) : h('small', { class: 'faint' }, v.line),
     v.result ? h('div', { class: `gh-note ${v.result.ok ? 'good' : 'bad'}` }, v.result.text) : null,
     v.busy ? null : h('div', { class: 'actions' }, btn(v.action, v.label), v.also ? btn(v.also, 'Remove board lights') : null,
       v.action === 'remove' ? button('Cancel', () => { s.confirm = false; redraw(); }, { kind: 'ghost small' }) : null));

@@ -24,7 +24,7 @@ export function awayBanner(d, { off } = {}) {
   return h('div', { class: 'banner' }, icon('sleep'), h('div', { class: 'grow' },
     h('b', {}, away ? what : `Waiting for the ${kind}`),
     h('small', {}, w.length ? `Waiting: ${w.map((c) => `${c.label} → ${c.display}`).join(', ')}. Applied the moment it is back.`
-      : 'You can still change its settings here; they are applied the moment it is back.')));
+      : 'Changes you make here apply the moment it is back.')));
 }
 
 // Undo (21 Oct 2026): puts back the last change made on this device's page; pressed again, the one before
@@ -153,8 +153,8 @@ export function connectState(d, hint) {
   if (d.status === 'connecting') return h('div', { class: 'panel empty' }, art, h('h2', {}, 'Connecting…'), h('p', {}, 'Reading every setting and checking it.'));
   // With the background agent there is nothing to pick: plugging the device in is enough.
   const needsPick = a.id !== 'headset' && !isRemote();
-  const agentHint = a.id === 'headset' ? 'Plug in the HS80 receiver or its USB cable and switch the headset on; DeviceHub finds it within a few seconds.'
-    : `Plug in the ${a.id === 'mouse' ? 'Pulsar 8K dongle' : 'P75 with its USB cable'}; DeviceHub finds it within a few seconds.${a.id === 'mouse' ? ' Close the Pulsar app first: both use the same channel.' : ''}`;
+  const agentHint = a.id === 'headset' ? 'Plug in the HS80 receiver or cable and switch the headset on; DeviceHub finds it in seconds.'
+    : `Plug in the ${a.id === 'mouse' ? 'Pulsar 8K dongle' : 'P75 with its USB cable'}; DeviceHub finds it in seconds.${a.id === 'mouse' ? ' Close the Pulsar app first (same channel).' : ''}`;
   return h('div', { class: 'panel empty' }, art,
     h('h2', {}, d.status === 'error' ? `Couldn't reach your ${a.kind.toLowerCase()}` : isRemote() ? `Waiting for your ${a.kind.toLowerCase()}` : `Connect your ${a.kind.toLowerCase()}`),
     h('p', {}, d.error || (isRemote() ? agentHint : hint)),

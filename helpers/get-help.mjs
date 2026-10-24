@@ -14,6 +14,12 @@
 // e-mail addresses, this PC's user and computer names), plus IP addresses. Each of those is first replaced
 // (C:\Users\<name> -> %USERPROFILE%, a serial -> <removed>, ...); if the check still finds one, nothing can be opened.
 // The link stays within GitHub's limit (MAX_URL, as Share): log lines are dropped first, oldest first.
+// Since 24 Oct 2026 (docs/handoff/smoother-for-friends.md) every report, every area, also carries the PC's whole device
+// picture (helpers/pc-picture.mjs: every USB and Bluetooth device, which driver claimed each or why none, the makers'
+// apps, the library driver versions in use against shipped and cached, Windows' permission boxes not answered, the last
+// 20 log lines about devices). Two versions are made: the GitHub link (MAX_URL) and Send to Shawn's (RELAY_BODY, under
+// relay/worker.js's 12,000-character body), each trimmed to fit with the least useful parts going first (the picture's
+// LEVELS, then the area's log lines, then shorter findings, then a cut that says so).
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -25,6 +31,8 @@ import { diagnose, deviceProfile } from './diagnose.mjs';
 import { personalText, personalNames, UPSTREAM } from './share-device.mjs';
 import { MAX_URL } from './share-route.mjs';
 import { devicehubVersion, driverFileOf } from './device-library.mjs';
+import { gather as gatherPicture, lines as pictureLines, LEVELS as PIC_LEVELS } from './pc-picture.mjs';
+export const RELAY_BODY = 11500, RELAY_JSON = 15500;   // Send to Shawn: under relay/worker.js LIMITS (body 12,000, total 16,384)
 
 const require = createRequire(import.meta.url);
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -80,7 +88,7 @@ const fence = (text) => '`'.repeat(Math.max(3, ...[...String(text).matchAll(/`+/
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 // facts -> the issue's title and body, with `logs` log lines and findings cut to `whyMax` characters
-function compose(f, { logs, whyMax = 400, findingsMax = 8 }) {
+function compose(f, { logs, whyMax = 400, findingsMax = 8, pcLevel = 0 }) {
   const d = f.device;
   const L = [];
   L.push('**What I was doing, and what went wrong:** (write it here)', '');
@@ -117,6 +125,8 @@ function compose(f, { logs, whyMax = 400, findingsMax = 8 }) {
     });
     L.push('');
   }
+  // the PC's whole device picture (helpers/pc-picture.mjs), trimmed by pcLevel
+  if (f.pc) L.push("### This PC's devices", ...pictureLines(f.pc, pcLevel), '');
   const shown = logs > 0 ? f.log.slice(-logs) : [];
   if (shown.length) {
     const text = shown.join('\n'), fn = fence(text);
@@ -127,7 +137,9 @@ function compose(f, { logs, whyMax = 400, findingsMax = 8 }) {
 }
 
 // the issue within MAX_URL: log lines dropped first (oldest first), then shorter findings, then the body cut
-export function makeIssue(f, { names = [], max = MAX_URL } = {}) {
+// maxBody: fit Send to Shawn's relay instead of the GitHub link (the body's length and its JSON, RELAY_*)
+const deepStrip = (x, fn) => (typeof x === 'string' ? fn(x) : Array.isArray(x) ? x.map((y) => deepStrip(y, fn)) : x && typeof x === 'object' ? Object.fromEntries(Object.entries(x).map(([k, v]) => [k, deepStrip(v, fn)])) : x);
+export function makeIssue(f, { names = [], max = MAX_URL, maxBody = null } = {}) {
   const s = (x) => strip(x, names);
   const tally = {};
   const add = (r) => { for (const [k, v] of Object.entries(r.removed)) tally[k] = (tally[k] || 0) + v; return r.text; };
@@ -146,21 +158,26 @@ export function makeIssue(f, { names = [], max = MAX_URL } = {}) {
   if (g.section) g.section = { title: add(s(g.section.title)), lines: g.section.lines.map((l) => add(s(l))) };
   if (g.context) g.context = g.context.map(([k, v]) => [k, add(s(v))]);
   g.version = add(s(g.version)); g.windows = add(s(g.windows));
+  if (g.pc) g.pc = deepStrip(g.pc, (x) => add(s(x)));
 
-  let logs = g.log.length, body = compose(g, { logs }), url = issueUrl(title, body), cut = false;
-  while (url.length > max && logs > 0) { logs--; body = compose(g, { logs }); url = issueUrl(title, body); }
-  if (url.length > max) { body = compose(g, { logs: 0, whyMax: 160, findingsMax: 3 }); url = issueUrl(title, body); }
-  if (url.length > max) {
+  const fits = (b) => (maxBody ? b.length <= maxBody && JSON.stringify({ title, body: b }).length <= RELAY_JSON : issueUrl(title, b).length <= max);
+  let pcLevel = 0, logs = g.log.length, body = compose(g, { logs, pcLevel }), cut = false;
+  // the least useful first: the picture's own levels, then the area's log lines, then shorter findings, then a cut
+  while (!fits(body) && g.pc && pcLevel < PIC_LEVELS) { pcLevel++; body = compose(g, { logs, pcLevel }); }
+  while (!fits(body) && logs > 0) { logs--; body = compose(g, { logs, pcLevel }); }
+  if (!fits(body)) body = compose(g, { logs: 0, whyMax: 160, findingsMax: 3, pcLevel });
+  if (!fits(body)) {
     // cut the body to the longest start that fits (binary search on characters; the encoded length grows with it)
-    const tail = "\n\n(Cut to fit GitHub's link limit.)";
+    const tail = maxBody ? '\n\n(Cut to fit the relay.)' : "\n\n(Cut to fit GitHub's link limit.)";
     let lo = 0, hi = body.length;
-    while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (issueUrl(title, body.slice(0, mid) + tail).length <= max) lo = mid; else hi = mid - 1; }
-    body = body.slice(0, lo) + tail; url = issueUrl(title, body); cut = true;
+    while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (fits(body.slice(0, mid) + tail)) lo = mid; else hi = mid - 1; }
+    body = body.slice(0, lo) + tail; cut = true;
   }
+  const url = issueUrl(title, body);
   const refused = [...findPersonal(title, names).map((x) => ({ ...x, line: 0 })), ...findPersonal(body, names)];
   const removed = Object.entries(tally).map(([why, count]) => ({ why, count }));
   if (refused.length) return { ok: false, title, body, removed, refused };
-  return { ok: true, title, body, url, length: url.length, removed, logShown: logs, logLeftOut: g.log.length - logs, cut };
+  return { ok: true, title, body, url, length: url.length, removed, logShown: logs, logLeftOut: g.log.length - logs, cut, pcLevel };
 }
 
 // ---------- the facts (read-only) ----------
@@ -272,13 +289,22 @@ export const shownInReport = (x) => !!x && !x.absent && (x.seen === true || ['co
 // gather(id, deps, { area, context }): a device's facts (area '' or 'device'), the Lighting page's ('lights'), or an
 // area's (AREAS), plus what the page itself showed (context, pageContext below)
 export async function gather(id, deps = {}, { area = '', context = null } = {}) {
+  // the PC's whole device picture, read beside the area's own facts (deps.picture false: left out)
+  const pic = deps.picture === false ? Promise.resolve(null) : picture(deps);
   const f = AREAS[area]?.facts ? await gatherArea(area, id ? String(id) : '', deps) : await gatherFacts(area === LIGHTS ? LIGHTS : id, deps);
+  f.pc = await pic;
   const ctx = pageContext(context);
   if (ctx.length) {
     const bt = await bluetoothNames(deps);
     f.context = ctx.map(([k, v]) => [k, dropBluetooth([v], bt)[0]]).filter(([, v]) => v);
   }
   return f;
+}
+async function picture(deps) {
+  const root = deps.root || options.root, port = deps.port || PORT;
+  const bt = await bluetoothNames(deps);
+  const lines = dropBluetooth(deps.log ? await deps.log() : logTail(root), bt);
+  return within(gatherPicture({ ...deps, root, logLines: lines, state: deps.state || (deps.get ? () => deps.get('/api/agent/state') : () => getJson(port, '/api/agent/state')) }).catch(() => null), 70000);
 }
 async function gatherFacts(id, deps = {}) {
   const root = deps.root || options.root;
@@ -592,11 +618,14 @@ export async function report(id, deps = {}, how = {}) {
   const area = AREAS[how.area] ? how.area : '';
   id = id ? String(id).slice(0, 80) : '';
   const f = await gather(id, deps, { area, context: how.context });
-  const r = makeIssue(f, { names: personalNames([...(options.names || []), ...(deps.names || [])]) });
+  const names = personalNames([...(options.names || []), ...(deps.names || [])]);
+  const r = makeIssue(f, { names });
   if (!r.ok) return r;
+  // Send to Shawn carries more than the link can: its own version, fitted to the relay
+  const relay = makeIssue(f, { names, maxBody: RELAY_BODY });
   const where = area && area !== 'device' ? { area, device: area === LIGHTS ? null : id || null }
     : id === LIGHTS ? { area: LIGHTS, device: null } : id ? { area: 'device', device: id } : { area: 'devicehub', device: null };
-  return { ...r, canSend: deps.canSend ? await deps.canSend() : await canSend(), token: remember(r.url, null, { title: r.title, body: r.body, ...where }) };
+  return { ...r, relayLength: relay.ok ? relay.body.length : null, canSend: deps.canSend ? await deps.canSend() : await canSend(), token: remember(r.url, null, { title: r.title, body: relay.ok ? relay.body : r.body, ...where }) };
 }
 
 // only a link this module made, to GitHub's new-issue page, within the limit, plain URL characters, checked again

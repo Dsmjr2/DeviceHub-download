@@ -51,19 +51,19 @@ export function worksReport(d, { invite = false } = {}) {
   function draw() {
     if (s.stage === 'closed' && invite) {
       return box.replaceChildren(h('div', { class: 'works-invite' },
-        h('p', {}, h('b', {}, 'It works. '), 'Tell the device library, so the next person with this model gets it ready to use, with no setup. Nothing about you or this PC goes in it.'),
+        h('p', {}, h('b', {}, 'It works. '), 'Tell the device library, so others with this model need no setup. Nothing personal goes in it.'),
         row(button('Tell others it works', start, { kind: 'primary small', ic: 'external' }))));
     }
     if (s.stage === 'closed') {
       return box.replaceChildren(row(button('Works on my device', start, { kind: 'ghost small', ic: 'external' }),
-        h('span', { class: 'faint', style: { fontSize: '12.5px' } }, 'Tell the library this driver works here, so others get it ready to use.')));
+        h('span', { class: 'faint', style: { fontSize: '12.5px' } }, 'Tell the library this driver works here.')));
     }
     if (s.stage === 'loading') return box.replaceChildren(small('Making the record…'));
     if (s.stage === 'error') return box.replaceChildren(small(s.msg), row(button('Try again', start, { kind: 'ghost small' }), button('Close', close, { kind: 'ghost small' })));
     const r = s.r;
     const parts = [
       h('b', {}, 'This is what goes on GitHub'),
-      small('Only what passed and on which version: nothing about you or this PC. Nothing is sent until you press Submit on GitHub. You need a free GitHub account.'),
+      small('Only what passed and on which version, nothing personal. Nothing is sent until you press Submit on GitHub (free account).'),
       h('pre', { class: 'json', style: { whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: '220px', marginTop: '8px' } }, JSON.stringify(r.record, null, 2)),
     ];
     if (s.stage === 'opened') parts.push(small('GitHub opened in your browser. Press Submit there.'), small(h('a', { href: r.url, target: '_blank', rel: 'noopener' }, 'If it did not open, use this link')));

@@ -164,10 +164,10 @@ watchSetup(paintSetupNav);
 // library driver was installed (Open its page), or DeviceHub can learn it (Learn it for me, one click from here)
 env.onNewDevice = (x) => {
   if (x.installed) {
-    toast(`${x.name} is ready`, 'good', { detail: 'Its driver was installed from the shared library. It reads the device now; Turn on settings on its page when you are ready.', ms: 15000,
+    toast(`${x.name} is ready`, 'good', { detail: 'Installed from the shared library. Press Turn on settings on its page when ready.', ms: 15000,
       action: x.installed.id ? { label: 'Open its page', run: () => { location.hash = `#/${x.installed.id}`; } } : null });
   } else if (x.learn) {
-    toast(`New: ${x.name}`, 'info', { detail: 'DeviceHub can learn it: it opens the maker\'s app, changes each setting there and listens.', ms: 20000,
+    toast(`New: ${x.name}`, 'info', { detail: 'DeviceHub can learn it by changing each setting in the maker\'s app.', ms: 20000,
       action: { label: 'Learn it for me', run: () => { learnThis(x.vid, x.pid, { start: true }); location.hash = '#/learn'; } } });
   }
 };
@@ -315,6 +315,22 @@ setInterval(async () => {
     version = version || v;
   } catch {}
 }, 20000);
+// A new version is ready (24 Oct 2026, Shawn: "I do want you to provide a pop up that says there is an update"): DeviceHub
+// checks once, 2 minutes after it starts (server.js, helpers/update-notice.mjs); the window asks once per version per
+// start, Update or Later. Update runs the same path as Settings' Update button.
+if (!DEMO) {
+  let asked = null;
+  const ask = async () => {
+    let n = null;
+    try { n = (await (await fetch('/api/update-notice')).json()).notice; } catch {}
+    if (!n || asked === n.version || isBusy()) return;
+    asked = n.version;
+    const { modal } = await import('./ui/overlay.js');
+    const go = await modal('Update ready', n.text, [{ label: 'Later', value: false, kind: 'ghost' }, { label: 'Update', value: true, kind: 'primary' }]);
+    if (go) { location.hash = '#/settings'; (await import('./pages/settings.js')).runSelfUpdate(); }
+  };
+  setTimeout(ask, 130000); setTimeout(ask, 300000);
+}
 if ('serviceWorker' in navigator && !DEMO) navigator.serviceWorker.register('/sw.js').catch(() => {});
 if (LOCAL) {
   navigator.hid?.addEventListener('connect', () => { for (const d of Object.values(devices)) if (d.status !== 'connected') connect(d.id, false); });

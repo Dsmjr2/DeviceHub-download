@@ -34,4 +34,4 @@ export function genericDongle(u) {
   if (name ? !RECEIVER_NAME.test(name) : !c.noName) return null;
   return { chip: c.chip, line: dongleLine(c.chip) };
 }
-export const dongleLine = (chip) => `A generic 2.4G receiver (${chip} chip). These usually have no settings to learn; it works as a normal mouse or keyboard.`;
+export const dongleLine = (chip) => `A generic 2.4G receiver (${chip} chip). Nothing to learn; it works as a normal mouse or keyboard.`;

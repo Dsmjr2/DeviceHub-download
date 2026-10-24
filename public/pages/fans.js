@@ -15,6 +15,9 @@ import { env } from '../core/env.js';
 import { isDemo } from '../core/devices.js';
 import { topbar } from './common.js';
 import { meter } from '../ui/gauges.js';
+// Temperatures and fans, and the PC check (24 Oct 2026, docs/handoff/display-health.md): this page became "PC" so the
+// readings, the fans and the check of the whole PC are one place in the sidebar (Settings > Health stays about DeviceHub)
+import { tempsCard, pcCheckCard } from '../ui/pc-health.js';
 
 const DEMO = { available: true, gpus: [{ name: 'NVIDIA GeForce RTX 4070', tempC: 62, fanPct: 38, loadPct: 71, powerW: 142, powerLimitW: 200, memUsedMB: 6100, memTotalMB: 12282, clockMHz: 2610, headroomC: 22 }] };
 let gpu = null, error = null, timer = null, rerender = () => {};
@@ -106,8 +109,8 @@ function whyNone(o) {
   if (!o?.running && (!d || d.openrgb?.reason === 'not running')) return [h('p', { class: 'faint fan-why' }, 'Press Find lights: DeviceHub starts its OpenRGB and looks for fan lights.')];
   const kind = d?.verdict?.kind || (o?.bundled ? 'smbus' : null);
   const head = kind === 'usb' ? `${b}: its lights are reachable over USB, so they should show after Find lights.`
-      : kind === 'smbus' ? `${b} drives its fan headers from the board's own chip (SMBus). The OpenRGB inside DeviceHub reaches USB lights only, by design.`
-        : kind === 'none' ? 'No lighting controller was found: the fans may be on a hub run by its own button or remote, or be 12 V fans no PC can address.'
+      : kind === 'smbus' ? `${b} drives its fan headers from the board's own chip: press Add board lights to reach them.`
+        : kind === 'none' ? 'No lighting controller found: the fans may be on a hub with its own button, or not RGB.'
           : `OpenRGB sees no fan lights on ${b}.`;
   // the fix as one button (22 Oct 2026, Shawn: "I want the app to be able to set it up"): PawnIO if missing, and the
   // OpenRGB inside DeviceHub as administrator, behind Windows' own prompt (helpers/board-lights.mjs, ui/board-lights.js)
@@ -116,7 +119,7 @@ function whyNone(o) {
   return [h('p', { class: 'faint fan-why' }, head),
     ...(d?.problems || []).map((x) => h('p', { class: 'faint fan-why' }, h('b', {}, `${x.problem}. `), `${x.why} Fix: ${x.fix}`)),
     fix,
-    h('p', { class: 'faint fan-why' }, "Fans on a hub with its own button or remote have no link to the PC: plug the hub's ARGB lead into the board's D_LED header instead. 3-pin ARGB fans go on D_LED (5 V), never on the 4-pin 12 V RGB header.")];
+    h('p', { class: 'faint fan-why' }, "A hub with its own button can't be reached: plug its 3-pin ARGB lead into the board's ARGB header (never the 4-pin 12 V one).")];
 }
 function fanLightsCard() {
   if (!lightsAsked) queueMicrotask(() => loadLights());
@@ -136,12 +139,12 @@ function fanLightsCard() {
       : whyNone(o)),
     // only the board itself (no fan hub or cooler on USB): where case fans must be plugged for the colour to reach them
     // (23 Oct 2026, a friend's Corsair case: "cannot see his case fans")
-    list.length && list.every((c) => c.type === 'motherboard') ? h('p', { class: 'faint fan-why' }, "Case fans show here only through the board's fan headers (ARGB / D_LED) or a USB fan hub. If changing the board's colour does not change your fans, they are on the case's own hub (the one with a button): plug that hub's 3-pin ARGB lead into the board's ARGB header, then their colours change here with the board.") : null,
+    list.length && list.every((c) => c.type === 'motherboard') ? h('p', { class: 'faint fan-why' }, "Fans show here through the board's ARGB headers or a USB hub. If they don't change color, they're on the case's own hub.") : null,
     row('Fan speed', "CPU and case fans follow the board's BIOS curve (guide: docs\\FANS.md).", pill('BIOS')));
 }
 
 export default {
-  id: 'fans', title: 'Fans', icon: 'fan', accent: 'var(--signal)',
+  id: 'fans', title: 'PC', icon: 'fan', accent: 'var(--signal)',
   watches: [],  // its own 2 s reading redraws it; a device's readings do not (21 Oct 2026)
   render() {
     rerender = () => { const el = document.querySelector('#main .page'); if (el && location.hash === '#/fans') el.replaceWith(Object.assign(this.render(), { className: 'page no-anim' })); };
@@ -150,11 +153,13 @@ export default {
     const gpus = gpu?.available ? gpu.gpus : [];
     return h('div', {},
       // Get help (area fans: the graphics card, the lights check, the page's red lines), top right
-      topbar('Cooling', 'Fans', null, null, helpHere('fans')),
+      topbar('Temperatures, fans and checks', 'PC', null, null, helpHere('fans')),
       h('div', { class: 'grid two top' },
         error ? card([h('h2', {}, 'Graphics card')], h('p', { class: 'faint' }, `Could not read it: ${error}`))
           : !gpu ? loadingCard('Graphics card', 4)
             : gpus.length ? gpuCard(gpus[0]) : card([h('h2', {}, 'Graphics card')], h('p', { class: 'faint' }, gpu.reason || 'Not read on this PC.')),
-        fanLightsCard()));
+        fanLightsCard(),
+        tempsCard(rerender, 'fans'),
+        pcCheckCard(rerender)));
   },
 };

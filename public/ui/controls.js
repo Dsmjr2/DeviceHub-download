@@ -34,14 +34,21 @@ export function segmented({ value, options, onCommit, disabled, compact }) {
   el.style.setProperty('--i', idx);
   if (!options.some((o) => o.value === value)) el.classList.add('none');
   el.append(h('span', { class: 'seg-thumb' }));
+  // the choice now, not the one it was drawn with (24 Oct 2026, Shawn: a monitor's color preset could not be changed back
+  // without reloading: the first choice still counted as selected, so pressing it did nothing)
+  let cur = value;
+  const buttons = [];
   options.forEach((o, i) => {
     const b = h('button', { role: 'radio', 'aria-checked': String(o.value === value), class: o.value === value ? 'sel' : '', disabled: disabled || o.disabled, title: o.title }, o.label);
     b.addEventListener('click', () => {
-      if (o.value === value) return;
+      if (o.value === cur) return;
+      cur = o.value;
       el.style.setProperty('--i', i);
       el.classList.remove('none');
+      buttons.forEach((x, j) => { x.classList.toggle('sel', j === i); x.setAttribute('aria-checked', String(j === i)); });
       run(el, () => onCommit(o.value));
     });
+    buttons.push(b);
     el.append(b);
   });
   return el;
@@ -180,7 +187,7 @@ export function batteryCell({ id, percent, charging, big, reported, compact }) {
   // time left once DeviceHub has watched the battery drain for a while (30 min and 2%); nothing until then
   const note = charging ? (p >= 100 ? 'Charged' : 'Charging') : est?.hoursLeft ? timeLeft(est.hoursLeft) : null;
   // the hover note is the mouse's and the headset's only (an added device shows no tooltip)
-  const tip = id !== 'mouse' && id !== 'headset' ? null : reported != null && reported !== p ? `The mouse itself reads ${reported}%: its reading comes from the battery voltage, which the charger lifts. ${p}% is DeviceHub's level.`
+  const tip = id !== 'mouse' && id !== 'headset' ? null : reported != null && reported !== p ? `The mouse itself reads ${reported}% (the charger lifts its voltage); DeviceHub's level is ${p}%.`
     : est?.ratePerHour && !charging ? `Draining about ${est.ratePerHour}% an hour lately` : null;
   // --pct: the level as a plain number for a look that draws the battery its own way (Old School's hitpoints orb, 23 Oct
   // 2026); the other looks ignore it

@@ -76,8 +76,8 @@ export default {
     }
     // the three statuses, said once here instead of on every row
     const legend = h('p', { class: 'faint', style: { margin: '0 0 14px' } },
-      h('b', {}, 'Works'), ': out of the box. ', h('b', {}, 'Reads now'), ': reads by itself; settings after Turn on settings on its page. ',
-      h('b', {}, 'Not tried yet'), ': not tried on a real device yet; install it from the Set up card on Overview.');
+      h('b', {}, 'Works'), ': out of the box. ', h('b', {}, 'Reads now'), ': settings after Turn on settings on its page. ',
+      h('b', {}, 'Not tried yet'), ': no real-device test; install it from the Set up card on Overview.');
     return h('div', {},
       topbar('App', 'Supported devices', null, button('Back to Settings', () => { location.hash = '#/settings'; }, { kind: 'ghost small' })),
       legend,

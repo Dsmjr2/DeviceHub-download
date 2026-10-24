@@ -2,7 +2,7 @@
 // from a LOCAL http server (never GitHub), signed with a throwaway key pair, is accepted and written to library-cache\;
 // unsigned, altered, wrong-key, app-release-signed and older bundles are refused and the cache stays; an entry whose
 // text does not match its SHA-256 is refused alone; offline and a hung server keep the cache; nothing fetched is run;
-// once a day; the routes answer. Everything happens in a TEMP folder.
+// every 3 hours, a device page's ask at most every 10 minutes, at start; a 304 when nothing changed; the routes answer. Everything happens in a TEMP folder.
 // Run: node tests/library-updates.mjs (no hardware, no network beyond 127.0.0.1)
 import fs from 'node:fs';
 import os from 'node:os';
@@ -145,21 +145,75 @@ r = await lu.check({ root, url: `http://127.0.0.1:${hung.address().port}/device-
 check(!r.ok && /timed out/.test(r.error) && Date.now() - t0 < 3000 && cacheText() === nowCache, `a hung server times out and keeps the cache (${r.error}, ${Date.now() - t0} ms)`);
 hung.closeAllConnections?.(); hung.close();
 
-// once a day
+// every 3 hours (was once a day until 24 Oct 2026), and a device page's "soon" ask at most every 10 minutes
 const srv2 = http.createServer((req, res) => { hits++; res.writeHead(404); res.end(); });
 await new Promise((res) => srv2.listen(0, '127.0.0.1', res));
 const url2 = `http://127.0.0.1:${srv2.address().port}/device-library.json`;
 hits = 0;
 const last = Date.parse(lu.readState(root).lastCheckAt);
 r = await lu.checkIfDue({ root, url: url2, now: () => new Date(last + 60 * 60 * 1000) });
-check(r.skipped && hits === 0, 'a second check within a day is skipped');
-r = await lu.checkIfDue({ root, url: url2, now: () => new Date(last + 25 * 60 * 60 * 1000) });
-check(!r.skipped && hits === 1, 'a check after a day goes out');
+check(r.skipped && hits === 0, 'a periodic check within 3 hours is skipped');
+r = await lu.checkIfDue({ root, url: url2, now: () => new Date(last + 4 * 60 * 60 * 1000) });
+check(!r.skipped && hits === 1, 'a periodic check after 3 hours goes out');
+const last2 = Date.parse(lu.readState(root).lastCheckAt);
+hits = 0;
+r = await lu.checkSoon({ root, url: url2, now: () => new Date(last2 + 5 * 60 * 1000) });
+check(r.skipped && r.ok && hits === 0, 'a device page asking again within 10 minutes does not fetch');
+r = await lu.checkSoon({ root, url: url2, now: () => new Date(last2 + 11 * 60 * 1000) });
+check(!r.skipped && hits === 1 && lu.readState(root).lastReason === 'device page', `a device page asking after 10 minutes fetches (${lu.readState(root).lastReason})`);
 process.env.DEVICEHUB_LIBRARY_UPDATES = '0';
 hits = 0;
 r = await lu.checkIfDue({ root, url: url2, now: () => new Date(last + 50 * 60 * 60 * 1000) });
 check(r.skipped && hits === 0, 'off means no check');
+r = await lu.checkSoon({ root, url: url2, now: () => new Date(last + 50 * 60 * 60 * 1000) });
+check(r.skipped && hits === 0, 'off means no check from a device page either');
 delete process.env.DEVICEHUB_LIBRARY_UPDATES;
+
+// cheap when nothing changed: the bundle's ETag / Last-Modified go back as If-None-Match / If-Modified-Since and a 304
+// keeps the cache (a fresh copy in its own folder, a server that answers like GitHub's file host)
+{
+  const root3 = path.join(tmp, 'copy3');
+  fs.mkdirSync(path.join(root3, 'helpers'), { recursive: true });
+  fs.copyFileSync(path.join(root, 'helpers', 'release-public-key.pem'), path.join(root3, 'helpers', 'release-public-key.pem'));
+  const body = JSON.stringify(build('2026-10-26T10:00:00.000Z').bundle);
+  const seenHeaders = [];
+  let bodies = 0;
+  const etagSrv = http.createServer((req, res) => {
+    seenHeaders.push({ inm: req.headers['if-none-match'] || null, ims: req.headers['if-modified-since'] || null });
+    if (req.headers['if-none-match'] === '"v1"') { res.writeHead(304, { etag: '"v1"' }); return res.end(); }
+    bodies++;
+    res.writeHead(200, { 'content-type': 'application/json', etag: '"v1"', 'last-modified': 'Mon, 26 Oct 2026 10:00:00 GMT' }); res.end(body);
+  });
+  await new Promise((res) => etagSrv.listen(0, '127.0.0.1', res));
+  const url3 = `http://127.0.0.1:${etagSrv.address().port}/device-library.json`;
+  let x = await lu.check({ root: root3, url: url3, timeoutMs: 1500 });
+  check(x.ok && !x.unchanged && bodies === 1 && !seenHeaders[0].inm, `the first fetch asks for the whole bundle (${x.error})`);
+  check(lu.readState(root3).etag === '"v1"', 'the bundle\'s ETag is kept');
+  x = await lu.check({ root: root3, url: url3, timeoutMs: 1500 });
+  check(x.ok && x.unchanged && bodies === 1 && seenHeaders[1].inm === '"v1"' && seenHeaders[1].ims, `the next fetch sends If-None-Match and If-Modified-Since and a 304 is "unchanged" (${JSON.stringify(seenHeaders[1])}, ${x.error})`);
+  check(x.entries.length === JSON.parse(body).entries.length && x.entries.length > 0 && x.lastSuccessAt, 'a 304 keeps the cache and counts as a good check');
+  // the cache emptied by hand: the next fetch asks for the whole bundle again, never a 304 over nothing
+  for (const n of fs.readdirSync(lu.cacheRoot(root3))) if (!n.endsWith('.json')) fs.rmSync(path.join(lu.cacheRoot(root3), n), { recursive: true });
+  x = await lu.check({ root: root3, url: url3, timeoutMs: 1500 });
+  check(x.ok && !x.unchanged && bodies === 2 && !seenHeaders[2].inm && x.entries.length === JSON.parse(body).entries.length, 'an emptied cache fetches the whole bundle again');
+  // at start: a check now (no 3-hour or 10-minute wait), the reason kept; a new DeviceHub version is "app updated"
+  fs.writeFileSync(path.join(root3, 'package.json'), JSON.stringify({ version: '1.0.0' }));
+  x = await lu.startup({ root: root3, url: url3, timeoutMs: 1500, waitMs: 3000 });
+  check(x.ok && x.reason === 'start' && seenHeaders.length === 4, `startup checks at once (${x.reason}, ${seenHeaders.length})`);
+  fs.writeFileSync(path.join(root3, 'package.json'), JSON.stringify({ version: '1.0.1' }));
+  x = await lu.startup({ root: root3, url: url3, timeoutMs: 1500, waitMs: 3000 });
+  check(x.ok && x.reason === 'app updated' && lu.readState(root3).lastReason === 'app updated', `startup after a version change says "app updated" (${x.reason})`);
+  x = await lu.afterAppUpdate({ root: root3, url: url3, timeoutMs: 1500 });
+  check(x.ok && seenHeaders.length === 6, 'afterAppUpdate checks at once');
+  // a server that hangs at start: startup gives up waiting on time and lets the check go on
+  const hang2 = http.createServer(() => {}); await new Promise((res) => hang2.listen(0, '127.0.0.1', res));
+  const t1 = Date.now();
+  x = await lu.startup({ root: root3, url: `http://127.0.0.1:${hang2.address().port}/device-library.json`, timeoutMs: 1500, waitMs: 300 });
+  check(x.pending && Date.now() - t1 < 1200, `startup waits at most waitMs (${Date.now() - t1} ms)`);
+  await lu.check({ root: root3 });   // joins the running one
+  hang2.closeAllConnections?.(); hang2.close();
+  etagSrv.close();
+}
 
 // the routes
 const call = async (method, p) => { let out = null; const handled = await lu.handle(new URL(`http://x${p}`), { method }, {}, (res, code, body) => { out = { code, body }; }, { root, url: url2, timeoutMs: 1000 }); return { handled, ...out }; };
@@ -167,6 +221,8 @@ let a = await call('GET', '/api/library/updates');
 check(a.handled && a.code === 200 && Array.isArray(a.body.entries) && 'lastCheckAt' in a.body && Array.isArray(a.body.errors), 'GET /api/library/updates answers with the state');
 a = await call('POST', '/api/library/update');
 check(a.handled && a.code === 502 && /404/.test(a.body.error) && a.body.entries.length === 1, 'POST /api/library/update checks now and reports the error');
+a = await call('POST', '/api/library/update?soon=1');
+check(a.handled && a.code === 200 && a.body.skipped, `POST /api/library/update?soon=1 right after a check does not fetch (${a.body?.skipped})`);
 a = await call('GET', '/api/library');
 check(a.handled === false, 'other paths are left to server.js');
 srv2.close();

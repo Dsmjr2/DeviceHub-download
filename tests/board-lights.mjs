@@ -9,6 +9,8 @@ import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import * as bl from '../helpers/board-lights.mjs';
 import * as inst from '../helpers/installers.mjs';
+import * as uac from '../helpers/uac.mjs';
+uac.options.root = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-uac-bl-'));   // the prompt log goes to TEMP
 import { boardView, ADD_LABEL, REMOVE_LABEL, DEMO_BOARD } from '../public/core/board-lights.js';
 import { lightRows, boardRow, planSetup } from '../public/core/setup-list.js';
 const require = createRequire(import.meta.url);
@@ -139,7 +141,7 @@ check(!r.ok && /not installed/.test(r.text) && calls.elevate.length === 0, `Pawn
 // 6. the admin prompt: declined, failed inside (backed out), or Windows kept nothing
 reset({ pawn: { app: true, service: true }, elevate: { ok: false, declined: true } });
 r = await setupOnce();
-check(!r.ok && /declined/.test(r.text) && /Nothing of it was left/.test(r.text) && !/PawnIO was installed/.test(r.text), `admin prompt declined (${r.text})`);
+check(!r.ok && /declined/.test(r.text) && /Nothing was changed/.test(r.text) && !/PawnIO was installed/.test(r.text) && r.retry && r.uac === 'declined', `admin prompt declined: said, with Try again (${r.text})`);
 reset({ elevate: { ok: false, code: 3 }, makes: false, result: 'failed|SmbusPIIX4.bin does not match its pinned SHA-256' });
 r = await setupOnce();
 check(!r.ok && /SmbusPIIX4\.bin does not match/.test(r.text) && /Nothing of it was left/.test(r.text) && /PawnIO was installed and stays/.test(r.text) && /Installed apps/.test(r.text), `a failed copy is backed out and said plainly; a PawnIO installed this time is named (${r.text})`);

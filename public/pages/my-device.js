@@ -55,9 +55,9 @@ const list = (items) => h('ul', { style: { margin: '0 0 10px', paddingLeft: '20p
 async function shareRefused(a, r) {
   const found = r.refused || [];
   const body = h('div', {},
-    para(found.length ? `DeviceHub found something in my-devices\\${a.plugin} that is about you or this PC, so nothing was shared:` : `It could not be shared: ${r.error || 'unknown problem'}.`),
+    para(found.length ? `Something in my-devices\\${a.plugin} is about you or this PC, so nothing was shared:` : `It could not be shared: ${r.error || 'unknown problem'}.`),
     found.length ? list(found.map((x) => h('span', {}, h('b', {}, x.text), h('br'), h('span', { class: 'faint' }, x.fix)))) : null,
-    para(found.length ? 'Fix those, then press Share this driver again. Nothing has left this PC.' : 'Nothing has left this PC.', { class: 'faint' }));
+    para(found.length ? 'Fix those, then try again. Nothing left this PC.' : 'Nothing has left this PC.', { class: 'faint' }));
   await modal('Not shared', body, [{ label: 'Close', value: true, kind: 'primary' }]);
 }
 
@@ -74,7 +74,7 @@ async function shareDriver(d) {
     h('b', {}, 'Nothing personal'), para(c.checked),
     h('b', {}, `Shared as "${c.status}"`), para(c.statusWhy),
     h('b', {}, 'What happens next'), para(c.next),
-    by, para('This name is shown to everyone with the driver. Leave it empty to stay unnamed.', { class: 'faint', style: { margin: '6px 0 0' } }));
+    by, para('Shown to everyone with the driver; leave it empty to stay unnamed.', { class: 'faint', style: { margin: '6px 0 0' } }));
   if (!(await modal('Share this driver?', body, [{ label: 'Cancel', value: false, kind: 'ghost' }, { label: 'Open GitHub', value: true, kind: 'primary' }]))) return;
   const p = await sharePost('/api/share/prepare', { name: a.plugin, by: by.value });
   if (!p.ok) return shareRefused(a, p);
@@ -92,7 +92,7 @@ function shareButton(d, shown) {
   if (!d.adapter?.plugin || d.status !== 'connected' || !shown.length) return null;
   return h('div', { class: 'actions', style: { marginTop: '12px' } },
     button('Share this driver', () => shareDriver(d).catch((e) => toast('Not shared', 'bad', { detail: e.message })), { kind: 'ghost small', ic: 'external' }),
-    h('span', { class: 'faint', style: { fontSize: '12.5px' } }, 'Needs a free GitHub account: it opens a GitHub page that offers this driver to the shared library, so others with this device need no setup.'));
+    h('span', { class: 'faint', style: { fontSize: '12.5px' } }, 'Offers it to the shared library on GitHub (free account needed), so others need no setup.'));
 }
 
 // a driver from the device library with settings still read-only (failed, waiting or not checked yet): Check again
@@ -115,12 +115,30 @@ function checkAgain(d, redraw = () => {}) {
     redraw();   // the answer (and, once settings are on, the Tell others it works invitation) shows at once
   };
   const line = kind === 'turn-on'
-    ? `Its settings are read-only until you turn them on. ${lib.turnOnLine || "DeviceHub writes each setting's current value back once to make sure it works."}`
-    : `${ro.map((s) => s.label).join(', ')} ${ro.length === 1 ? 'is' : 'are'} read-only until ${ro.length === 1 ? 'it passes' : 'each passes'} DeviceHub's check (write the same value, read it back).`;
+    ? `Its settings are read-only until you turn them on. ${lib.turnOnLine || "DeviceHub writes each setting's current value back once to check it."}`
+    : `${ro.map((s) => s.label).join(', ')} ${ro.length === 1 ? 'is' : 'are'} read-only until ${ro.length === 1 ? 'it passes' : 'each passes'} DeviceHub's write-and-read-back check.`;
   return h('div', { class: 'actions', style: { marginTop: '12px', alignItems: 'center' } },
     button(kind === 'turn-on' ? 'Turn on settings' : 'Check again', run, { kind: kind === 'turn-on' ? 'primary small' : 'ghost small', ic: kind === 'turn-on' ? 'plug' : 'search' }),
     h('span', { class: 'faint', style: { fontSize: '12.5px' } }, checkNote[d.id] || line));
 }
+
+// A driver problem on this page (24 Oct 2026, docs/handoff/smoother-for-friends.md): DeviceHub looks for a newer
+// driver in the published library at once (POST /api/library/update?soon=1; not again within 10 minutes), so a fix
+// published today reaches this PC while the person is looking at the problem. A newer driver put in while DeviceHub
+// runs loads on the next start; the page says so in plain words (helpers/my-devices.mjs NEWER_DRIVER_LINE).
+const libraryAsked = {};
+function driverProblem(d) {
+  const a = d.adapter || {};
+  if (!a.library) return false;
+  if (d.status === 'error' || a.notMine || a.library.notRun) return true;
+  return (a.settings || []).some((s) => s.type !== 'display' && s.readOnly) && !a.library.turnOn;
+}
+function askLibrary(d, redraw) {
+  if (isDemo() || !driverProblem(d) || Date.now() - (libraryAsked[d.id] || 0) < 10 * 60 * 1000) return;
+  libraryAsked[d.id] = Date.now();
+  fetch('/api/library/update?soon=1', { method: 'POST' }).then((r) => r.json()).then((j) => { if ((j?.refreshed?.replaced || []).length) redraw(); }).catch(() => {});
+}
+const newerLine = (d) => (d.adapter?.library?.newerDriver ? h('p', { style: { marginTop: '12px', fontSize: '13px' } }, icon('refresh'), ` ${d.adapter.library.newerDriver}`) : null);
 
 const ICON = { mouse: 'mouse', headset: 'headset', keyboard: 'keyboard' };
 
@@ -174,11 +192,13 @@ export function devicePage(id) {
       const d = devices[id];
       const a = d.adapter;
       if (a.battery) loadBatteryEstimates(() => ctx.redraw?.());
+      askLibrary(d, () => ctx.redraw?.());
       const head = topbar(`${a.kind} · added on this PC`, a.title, null, h('div', { class: 'chips' }, undoButton(d), statusPill(d)), deviceHelp(d));
       if (d.status !== 'connected' && !isAway(d)) {
         return h('div', {}, head, h('div', { class: 'panel empty' }, artOf(d),
           h('h2', {}, d.status === 'error' ? `Couldn't reach the ${a.kind.toLowerCase()}` : `Waiting for the ${a.kind.toLowerCase()}`),
-          h('p', {}, d.error || `Plug in the ${a.title}; DeviceHub finds it within a few seconds.`),
+          h('p', {}, d.error || `Plug in the ${a.title}; DeviceHub finds it in seconds.`),
+          newerLine(d),
           h('div', { class: 'actions' }, button('Look again', () => connect(id, false), { kind: 'primary', ic: 'plug' }))));
       }
       const shown = (a.settings || []).filter((s) => d.values?.[s.key] !== undefined);
@@ -188,6 +208,7 @@ export function devicePage(id) {
             shown.length ? shown.map((s) => settingRow(d, s)) : h('p', { class: 'faint', style: { margin: 0 } }, 'It has not reported any settings yet.'),
             a.unsupported?.length ? h('p', { class: 'faint', style: { marginTop: '12px' } }, icon('external'), ` Still in its maker's app: ${a.unsupported.join(', ')}.`) : null,
             careLine(d),
+            newerLine(d),
             checkAgain(d, () => ctx.redraw?.()),
             offersWorks(d) ? worksReport(d, { invite: /^Settings turned on/.test(checkNote[d.id] || '') }) : null),
           card([h('h2', {}, 'Device'), h('span', { class: 'spacer' }), deviceActions(d)], kv(d.info || {}), shareButton(d, shown))),

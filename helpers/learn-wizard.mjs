@@ -30,6 +30,15 @@
 // there are added to the same driver (addPid), as another id when the bytes match, with that id's own bytes (byPid)
 // when they do not.
 //
+// Smoother for friends (24 Oct 2026, docs/handoff/smoother-for-friends.md; support #10, #11, #13, #14):
+//   - a device that already has a ready driver is never learned: it is listed with its driver's name and page (ready),
+//     and "A setting is missing?" records only the settings that driver lacks (capture: true), for Shawn;
+//   - recording cannot start until preflight() passes: the capture driver works (the last Test my learning setup
+//     passed), the maker's app is installed (its official link when not) and open, and the device picked has the
+//     interfaces the settings need (a mouse setting on a mouse interface, a settings channel at all);
+//   - while recording, the state carries how many messages the device sent or got (recording.heard); nothing at all
+//     within NOTHING_MS stops the recording and says what to try (nothingCheck);
+//   - the recordings of a session go to Shawn through the relay (act 'send', helpers/learn-send.mjs).
 // The analysis (analyze, analyzeReading, buildDriver, verifySeen, addPid, hidMessages) is pure and tested with made-up recordings:
 // tests/learn-wizard.mjs. The route: handle(url, req, res, send, readBody) for /api/learn/*.
 import fs from 'node:fs';
@@ -41,7 +50,8 @@ import { readPcapBuffer } from './pcap-read.mjs';
 import { validate, fromJson, forPid } from './declarative-driver.mjs';
 import { ROOT, devicehubVersion, match as libraryMatch, list as libraryList, installFromLibrary, loadDriver, driverFileOf } from './device-library.mjs';
 import { writable, libraryMark, LIBRARY_FILE } from './my-devices.mjs';
-import { plan as makePlan, runAppUi, parseInfo, valueOf, uiText, valuesIn, FORBIDDEN, deviceKind, usageKinds, KIND_QUESTION } from './learn-apps.mjs';
+import { plan as makePlan, runAppUi, parseInfo, valueOf, uiText, valuesIn, FORBIDDEN, deviceKind, usageKinds, KIND_QUESTION, findMaker } from './learn-apps.mjs';
+import { UAC_LINE, UAC_WAIT_MS, record as recordUac } from './uac.mjs';
 import { plainName, seemsFrom } from '../public/core/device-name.js';
 
 const require = createRequire(import.meta.url);
@@ -1154,6 +1164,11 @@ export const USBPCAP_EXE = path.join(process.env.ProgramFiles || 'C:\\Program Fi
 
 export const deps = {
   usbpcapInstalled: () => fs.existsSync(USBPCAP_EXE),
+  // the last Test my learning setup: { ok, at } (learn\last-check.json), kept for the pre-flight
+  lastCheck: (root) => readJson(path.join(root, 'learn', 'last-check.json')),
+  saveCheck: (root, r) => { try { fs.mkdirSync(path.join(root, 'learn'), { recursive: true }); fs.writeFileSync(path.join(root, 'learn', 'last-check.json'), JSON.stringify(r)); } catch {} },
+  // the maker's app for a vendor id: { known, name, page, web, installed, running } (helpers/learn-apps.mjs, read-only)
+  maker: (vid) => findMaker(vid),
   async listHid() {
     const r = await PS(['-File', path.join(HERE, 'learn-hid-list.ps1')]);
     const at = r.out.indexOf('{');
@@ -1181,15 +1196,20 @@ export const deps = {
     }
     return { runs: runs.map((k) => k.split(':').map(up4).join(':')), mine, copies };
   },
-  // the listener, through Windows' admin prompt (UAC): { started } or { started: false, declined, error }
-  startCapture(dir) {
+  // the listener, through Windows' admin prompt (UAC): { started } or { started: false, declined, unanswered, error }.
+  // Start-Process -Verb RunAs returns once the box is answered; not answered within UAC_WAIT_MS, the wait is stopped
+  // (the listener, if Yes comes later, ends by itself after its time limit or when the session folder goes)
+  startCapture(dir, { waitMs = UAC_WAIT_MS } = {}) {
     const ps = "try { Start-Process -FilePath powershell.exe -Verb RunAs -WindowStyle Hidden -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('\"' + $env:DH_SCRIPT + '\"'),'-Dir',('\"' + $env:DH_DIR + '\"')) -ErrorAction Stop; 'ok' } catch { 'error|' + $_.Exception.Message }";
     return new Promise((resolve) => {
       const p = spawn('powershell.exe', ['-NoProfile', '-Command', ps], { windowsHide: true, env: { ...process.env, DH_SCRIPT: path.join(HERE, 'learn-capture.ps1'), DH_DIR: dir } });
       let out = '';
       p.stdout.on('data', (c) => { out += c; });
-      p.on('error', (e) => resolve({ started: false, error: e.message }));
-      p.on('exit', () => { const t = out.trim(); resolve(t === 'ok' ? { started: true } : { started: false, declined: /cancel/i.test(t), error: t.replace(/^error\|/, '') || 'it did not start' }); });
+      let gaveUp = false;
+      const timer = setTimeout(() => { gaveUp = true; try { execFile('taskkill.exe', ['/PID', String(p.pid), '/T', '/F'], { windowsHide: true }, () => {}); } catch {} resolve({ started: false, unanswered: true, error: "Windows' permission box was not answered within 2 minutes" }); }, waitMs);
+      timer.unref?.();
+      p.on('error', (e) => { clearTimeout(timer); if (!gaveUp) resolve({ started: false, error: e.message }); });
+      p.on('exit', () => { clearTimeout(timer); if (gaveUp) return; const t = out.trim(); resolve(t === 'ok' ? { started: true } : { started: false, declined: /cancel/i.test(t), error: t.replace(/^error\|/, '') || 'it did not start' }); });
     });
   },
   writeCommand(dir, text) { const f = path.join(dir, 'command.txt'); fs.writeFileSync(`${f}.tmp`, text); fs.renameSync(`${f}.tmp`, f); },
@@ -1227,6 +1247,105 @@ export function peek() {
   const dev = session.device;
   return takeMessages(options.deps.readTake(session.dir, session.recording.take), { vid: dev.vid, pid: dev.pid, idsOut: usesIds(dev, 'outIds'), idsIn: usesIds(dev, 'inIds') });
 }
+// a device that already has a ready driver (its my-devices copy, or a library entry, or DeviceHub's own driver for
+// its brand): { name, id, where, page } so Learn names it and sends the person to its page (Turn on settings) instead
+async function readyOf(d, own, root) {
+  const k = `${d.vid}:${d.pid}`;
+  const copy = (own.copies || []).find((c) => c.ids.includes(k)) || (vendorRefusal(d.vid) && /ready-made/.test(vendorRefusal(d.vid)) ? (own.copies || []).find((c) => c.ids.some((x) => x.startsWith(`${d.vid}:`))) : null);
+  if (copy) {
+    const dir = path.join(root, 'my-devices', copy.name);
+    const mark = libraryMark(dir) || {};
+    const id = mark.id || readJson(path.join(dir, 'device.json'))?.id || readJson(path.join(dir, 'driver.json'))?.id || copy.name;
+    return { name: copy.name, id, where: 'my-devices', page: `#/${id}`, learned: !!mark.learned };
+  }
+  // a library entry not installed yet: ready only when it writes something (Setup installs it)
+  if (d.driver && d.driver.writes) return { name: d.driver.name, id: null, where: d.driver.where, page: '#/setup' };
+  return null;
+}
+
+// ---------------------------------------------------------------- the pre-flight (24 Oct 2026)
+// Before any recording: plain pass/fail lines, one fix each. { ok, lines: [{ id, ok, says, fix?, action?, link? }] }
+//   capture  USBPcap installed and the last Test my learning setup passed (action 'check')
+//   app      the maker's app installed (link: its official download) — a web configurator counts
+//   open     the maker's app open (action 'open-app')
+//   device   the device picked has what the settings need: a settings channel, and a mouse interface for mouse
+//            settings, a keyboard one for keyboard settings, a headset's for headset settings
+// appOpen: the person said an app DeviceHub does not know is open (the page's "I have its app open")
+const MOUSE_SET = /\bdpi\b|polling|report rate|lift|angle snap|motion sync|ripple|sensor/i;
+const KEY_SET = /backlight|key ?(?:map|remap|light)|layout|actuation|rapid trigger|keyboard/i;
+const HEAD_SET = /sidetone|\bmic\b|microphone|chat ?mix|noise|\beq\b|equali[sz]er|voice prompt|auto[- ]?off/i;
+export const CHECK_FRESH_MS = 30 * 24 * 60 * 60 * 1000;
+export async function preflight({ vid, pid, labels = [], appOpen = false, kind = null } = {}) {
+  const { root, deps: d } = options;
+  const lines = [];
+  const line = (id, ok, says, extra = {}) => { lines.push({ id, ok: !!ok, says, ...(ok ? {} : extra) }); };
+  const dev = listed.find((x) => x.vid === up4(vid) && x.pid === up4(pid)) || (session?.device?.vid === up4(vid) && session.device.pid === up4(pid) ? session.device : null);
+  // 1. the capture driver
+  const has = d.usbpcapInstalled();
+  const last = has && d.lastCheck ? d.lastCheck(root) : null;
+  const fresh = last?.ok && Date.now() - Date.parse(last.at || 0) < CHECK_FRESH_MS;
+  line('capture', has && fresh, !has ? 'USBPcap is not installed.' : fresh ? 'Capture works.' : last && !last.ok ? 'Capture did not pass its last test.' : 'Capture is not tested yet.',
+    !has ? { fix: 'Install it, then restart the PC.', action: 'install-usbpcap' }
+      : { fix: 'Press Test my learning setup.', action: 'check' });
+  // 2 and 3. the maker's app
+  let m = null;
+  try { m = d.maker ? await d.maker(vid) : null; } catch {}
+  if (!m?.known) {
+    line('app', appOpen, appOpen ? 'Its app is open (you said).' : "DeviceHub does not know this device's app.",
+      { fix: 'Open its app, or use Request support if it has none.', action: 'app-open' });
+  } else if (m.web) {
+    line('app', true, `Its app is a web page (${m.name}).`);
+    line('open', true, 'It opens in Chrome or Edge when asked.');
+  } else {
+    line('app', m.installed || m.running, m.installed || m.running ? `${m.name} is installed.` : `${m.name} is not installed.`, { fix: 'Install it from the link.', link: m.page });
+    if (m.installed || m.running) line('open', m.running, m.running ? `${m.name} is open.` : `${m.name} is not open.`, { fix: 'Open it.', action: 'open-app' });
+  }
+  // 4. the right device
+  if (!dev) line('device', false, `USB ${up4(vid)}:${up4(pid)} is not plugged in.`, { fix: 'Plug it into the PC, then look again.', action: 'look' });
+  else {
+    const u = usageKinds(dev);
+    const k = kind || deviceKind(dev);
+    const names = (labels || []).map(String);
+    const wantMouse = names.filter((x) => MOUSE_SET.test(x)), wantKey = names.filter((x) => KEY_SET.test(x)), wantHead = names.filter((x) => HEAD_SET.test(x));
+    const why = !dev.vendor && !dev.writable ? 'it has no settings channel'
+      : wantMouse.length && !(u.mouse || k === 'mouse') ? `${wantMouse.join(', ')} ${wantMouse.length === 1 ? 'is a mouse setting' : 'are mouse settings'}, and it shows no mouse interface`
+        : wantKey.length && !(u.keyboard || k === 'keyboard') ? `${wantKey.join(', ')} ${wantKey.length === 1 ? 'is a keyboard setting' : 'are keyboard settings'}, and it shows no keyboard interface`
+          : wantHead.length && !(u.telephony || k === 'headset') ? `${wantHead.join(', ')} ${wantHead.length === 1 ? 'is a headset setting' : 'are headset settings'}, and it does not look like a headset`
+            : null;
+    line('device', !why, why ? `Wrong device? ${why[0].toUpperCase()}${why.slice(1)}.` : 'The right device is picked.',
+      { fix: 'Pick the one the setting belongs to (often its receiver).', action: 'pick' });
+  }
+  return { ok: lines.every((x) => x.ok), lines };
+}
+// the settings learned by a device's ready driver (labels), for "A setting is missing?"
+async function readyLabels(dev) {
+  const dir = dev.ready?.where === 'my-devices' ? path.join(options.root, 'my-devices', dev.ready.name) : dev.driver?.dir;
+  if (!dir) return [];
+  try { const { a } = await loadDriver(dir, 'missing'); return (Array.isArray(a?.settings) ? a.settings : []).map((x) => String(x.label || x.key || '')); } catch { return []; }
+}
+const sameSetting = (a, b) => { const n = (x) => String(x).toLowerCase().replace(/[^a-z0-9]/g, ''); return n(a) === n(b) || n(a).includes(n(b)) || n(b).includes(n(a)); };
+
+// ---------------------------------------------------------------- nothing heard (24 Oct 2026)
+// A recording that hears nothing at all to or from the device for NOTHING_MS is stopped, and the state says what to try
+// (support #10, #11: a DPI recording on a receiver the app never talks to). The page and Learn it for me ask for it.
+export const NOTHING_MS = 10000;
+export async function nothingCheck(now = Date.now()) {
+  const rec = session?.recording;
+  if (!rec || now - (rec.at || now) < NOTHING_MS) return null;
+  const p = peek();
+  if (!p || (p.messages || []).length) return null;
+  await command(session.dir, 'stop', null, 'stopped').catch(() => {});
+  session.recording = null;
+  const app = session.plan?.maker?.known ? session.plan.maker.name : "the maker's app";
+  const set = session.setting?.label || 'the setting';
+  session.nothing = { at: new Date(now).toISOString(), label: set,
+    says: `Nothing heard from the device in ${NOTHING_MS / 1000} seconds, so recording stopped.`,
+    tries: [`Change ${set} in ${app} while it records.`,
+      `Pick the device ${app} talks to (often its receiver).`,
+      `Reopen ${app}, then record again.`] };
+  return session.nothing;
+}
+
 async function listDevices() {
   const { root, deps: d } = options;
   const own = d.owned(root);
@@ -1242,6 +1361,7 @@ async function listDevices() {
       d.driver = await driverFor(`${d.vid}:${d.pid}`, own, root);
       d.refused = d.refused || coverageRefusal(d.driver);
     }
+    d.ready = await readyOf(d, own, root);
     d.note = coverageNote(d);
     // 23 Oct 2026: a device no brand owns is shown by its own ids (title: "Unknown 2.4G receiver (25A7:FA70)"; name stays
     // its own product string, which a saved driver keeps), what its HID usages say it is (seems), and "Is this a mouse or
@@ -1271,6 +1391,7 @@ async function command(dir, verb, arg, want, ms = 15000, holder = session) {
 // the setting the second-id session records next (the saved driver's own, in its order)
 const nextOf = (sec) => sec.orig[session.learned.length] || null;
 
+const liveHeard = () => { try { return (peek()?.messages || []).length; } catch { return 0; } };
 function summary() {
   if (!session) return { active: false };
   const st = session.listening ? options.deps.readState(session.dir) : null;
@@ -1283,7 +1404,11 @@ function summary() {
     listenerError: st?.error || null,
     setting: session.setting,
     takes: session.takes.map((t) => ({ value: t.value, heard: t.messages.length })),
-    recording: session.recording || null,
+    recording: session.recording ? { ...session.recording, heard: liveHeard(), ms: Date.now() - (session.recording.at || Date.now()) } : null,
+    nothing: session.nothing || null,
+    capture: !!session.capture,
+    sent: session.sent || null,
+    captured: (session.captures || []).length,
     learned: session.learned.map((s) => ({ key: s.key, label: s.label, kind: s.kind, role: s.role || null, min: s.min, max: s.max, step: s.step, unit: s.unit, values: s.values })),
     second: sec ? { of: sec.name, pid: sec.def.pids[0], link: sec.link, total: sec.orig.length, done: session.learned.length,
       next: nextOf(sec) ? { label: nextOf(sec).label, kind: nextOf(sec).kind, role: nextOf(sec).role || null, values: nextOf(sec).values, fixed: fixedValues(nextOf(sec)) } : null } : null,
@@ -1326,7 +1451,12 @@ export async function act(name, b = {}) {
       const vr = vendorRefusal(dev.vid);
       if (vr) return { ok: false, error: vr };
       second = { ...lastSaved, link: b.link === 'receiver' ? 'receiver' : 'cable' };
+    } else if (b.capture) {
+      // "A setting is missing?" on a device with a ready driver: only recordings, for Shawn (nothing saved here)
+      if (!dev.ready && !dev.driver) return { ok: false, error: 'It has no driver yet: use Learn it for me.' };
+      if (SHARED_CHIPS[dev.vid]) return { ok: false, error: vendorRefusal(dev.vid) };
     } else {
+      if (dev.ready && !dev.ready.learned) return { ok: false, error: `It already has a driver (${dev.ready.name}). Open its page; a missing setting goes through A setting is missing?.`, ready: dev.ready };
       if (dev.refused) return { ok: false, error: dev.refused };
       // a device with a driver.json driver already: the learned settings go into its my-devices copy
       if (dev.driver) {
@@ -1340,7 +1470,7 @@ export async function act(name, b = {}) {
     const dir = path.join(root, 'learn', 'wizard', id);
     fs.mkdirSync(dir, { recursive: true });
     const kindPick = ['mouse', 'keyboard'].includes(b.kind) ? b.kind : null;
-    session = { id, dir, device: dev, base, second, setting: null, takes: [], learned: [], listening: false, seq: 0, kindPick };
+    session = { id, dir, device: dev, base: b.capture ? null : base, second, setting: null, takes: [], learned: [], listening: false, seq: 0, kindPick, captures: [], capture: !!b.capture, at: Date.now() };
     return { ok: true, ...summary() };
   }
   if (!session) return { ok: false, error: 'Pick a device first.' };
@@ -1350,8 +1480,17 @@ export async function act(name, b = {}) {
     if (st && ['ready', 'recording', 'stopped'].includes(st.status)) return { ok: true, ...summary() };
     for (const f of ['state.json', 'command.txt']) { try { fs.rmSync(path.join(session.dir, f), { force: true }); } catch {} }
     session.seq = 0;
+    // recording never starts until every pre-flight line passes (options.preflight false: tests of the steps after it)
+    if (options.preflight !== false) {
+      const pf = await preflight({ vid: session.device.vid, pid: session.device.pid, labels: b.labels || (session.setting ? [session.setting.label] : []), appOpen: !!b.appOpen, kind: session.kindPick });
+      if (!pf.ok) return { ok: false, error: `Not ready to record yet: ${pf.lines.filter((x) => !x.ok).map((x) => x.says).join(' ')}`, preflight: pf };
+    }
+    session.uac = 'waiting';
     const r = await d.startCapture(session.dir);
-    if (!r.started) return { ok: false, error: r.declined ? 'The Windows prompt was declined, so DeviceHub is not listening.' : `DeviceHub could not start listening: ${r.error}` };
+    session.uac = null;
+    if (r.started) recordUac({ area: 'learn', action: 'start listening', outcome: 'yes' });
+    else if (r.declined || r.unanswered) recordUac({ area: 'learn', action: 'start listening', outcome: r.unanswered ? 'unanswered' : 'declined' });
+    if (!r.started) return { ok: false, uac: r.unanswered ? 'unanswered' : r.declined ? 'declined' : null, error: r.declined ? "Windows' permission box was declined, so DeviceHub is not listening. Press Try again and choose Yes." : r.unanswered ? "Windows' permission box was not answered within 2 minutes. If it is still open, close it (No), then press Try again." : `DeviceHub could not start listening: ${r.error}` };
     session.listening = true;
     return { ok: true, ...summary() };
   }
@@ -1377,6 +1516,7 @@ export async function act(name, b = {}) {
     if (new Set(values.map((v) => JSON.stringify(v))).size !== values.length) return { ok: false, error: 'The two values must be different.' };
     session.setting = { label, kind, unit: cur ? cur.unit || '' : clean(b.unit, 10), values, ...(role ? { role, numbers } : {}) };
     session.takes = [];
+    session.nothing = null;
     return { ok: true, ...summary() };
   }
   if (name === 'record') {
@@ -1397,9 +1537,15 @@ export async function act(name, b = {}) {
     // a mixed device: the answer to "Is this a mouse or a keyboard?" (b.kind), asked once; then the plan for that kind
     if (['mouse', 'keyboard'].includes(b.kind) && b.kind !== session.kindPick) { session.kindPick = b.kind; session.plan = null; }
     if (!session.plan || b.again) session.plan = await d.plan(session.device, root, session.kindPick);
+    if (session.capture) {
+      const have = await readyLabels(session.device);
+      const items = (session.plan.items || []).filter((it) => !have.some((x) => sameSetting(x, it.label))).map((it) => ({ ...it, ticked: false }));
+      return { ok: true, ...session.plan, items, missingOnly: true, has: have, ...summary() };
+    }
     return { ok: true, ...session.plan, ...summary() };
   }
   if (name === 'drive') return drive();
+  if (name === 'send') return sendSession(b.why || null);
   if (name === 'analyze') {
     const reading = session.setting?.kind === 'reading';
     const r = reading ? analyzeReading(session.takes, session.setting) : analyze(session.takes, session.setting);
@@ -1495,6 +1641,20 @@ export async function act(name, b = {}) {
   return { ok: false, error: 'no such step' };
 }
 
+// the session's recordings to Shawn (helpers/learn-send.mjs): once they are done, by itself (the page and Learn it for me
+// call it at the end). { sent, queued, fallback, line } and session.sent keeps it.
+export async function sendSession(why = null, deps = {}) {
+  if (!session) return { ok: false, error: 'Nothing is being learned.' };
+  if (session.sent?.sent) return { ok: true, ...session.sent };
+  const dev = session.device;
+  const ifaces = (dev.collections || []).map((c) => `page ${c.page} usage ${c.usage}${c.outLen > 1 ? `, out ${c.outLen}` : ''}${c.featLen > 1 ? `, feature ${c.featLen}` : ''}${c.inLen > 1 ? `, in ${c.inLen}` : ''}`);
+  const data = { at: session.at, device: { vid: dev.vid, pid: dev.pid, name: dev.title || dev.name, kind: session.kindPick || session.plan?.kind || null, seems: dev.seems || null, interfaces: [...new Set(ifaces)] },
+    maker: session.plan?.maker || null, captures: session.captures || [], ready: session.capture ? dev.ready || (dev.driver ? { name: dev.driver.name } : null) : null, why };
+  const r = await (await import('./learn-send.mjs')).sendCaptures(data, deps);
+  session.sent = r;
+  return { ok: !!(r.sent || r.queued), ...r, ...summary() };
+}
+
 // "Nothing went to or from" a device whose maker's app DeviceHub does not know (23 Oct 2026, Dsmjr2/DeviceHub-support#11:
 // an unknown 2.4G receiver, 25A7:FA70): the device may have no settings software, or its app talks to it another way;
 // for a keyboard, its cable. '' when the maker's app is known.
@@ -1511,7 +1671,8 @@ async function startTake(value) {
   const take = `take-${session.takes.length + 1}-${Date.now().toString(36)}`;
   const s = await command(session.dir, 'start', take, 'recording');
   if (s.status !== 'recording') return { ok: false, error: s.error || (s.status === 'timeout' ? 'The listener did not answer. Press Start listening again.' : 'The listener stopped. Press Start listening again.') };
-  session.recording = { take, value };
+  session.recording = { take, value, at: Date.now() };
+  session.nothing = null;
   return { ok: true };
 }
 async function stopTake() {
@@ -1526,6 +1687,7 @@ async function stopTake() {
   if (!found) return { ok: false, error: `DeviceHub did not find the ${dev.name} in the recording. Unplug it, plug it back in, and record that value again.` };
   if (!messages.length) return { ok: false, error: `Nothing went to or from the ${dev.title || dev.name} while recording. Was ${session.setting.label} changed in the maker's app? Record that value again.${quietHint(session)}` };
   session.takes.push({ value: rec.value, messages });
+  (session.captures || (session.captures = [])).push({ label: session.setting.label, kind: session.setting.kind, value: rec.value, messages });
   return { ok: true, heard: messages.length };
 }
 
@@ -1660,7 +1822,12 @@ function secondCheck() {
 // recording reads, and it names the USB devices plugged in (and the picked one, given vid/pid). The folder is removed
 // after. { ok, steps: [{ id, ok, says, fix? }] }: the first step that fails says what to do, and the test stops there.
 export const CHECK_MS = 3000;
-export async function checkSetup({ vid = null, pid = null } = {}) {
+export async function checkSetup(q = {}) {
+  const r = await checkSetupOnce(q);
+  if (!r.steps?.some((x) => x.id === 'busy')) options.deps.saveCheck?.(options.root, { ok: !!r.ok, at: new Date().toISOString() });
+  return r;
+}
+async function checkSetupOnce({ vid = null, pid = null } = {}) {
   const { root, deps: d } = options;
   const steps = [];
   const step = (id, ok, says, fix) => { steps.push({ id, ok: !!ok, says, ...(ok || !fix ? {} : { fix }) }); return !!ok; };
@@ -1678,8 +1845,9 @@ export async function checkSetup({ vid = null, pid = null } = {}) {
   try {
     const r = await d.startCapture(dir);
     started = !!r.started;
-    if (!step('prompt', r.started, r.started ? 'Windows\' prompt was answered Yes.' : r.declined ? 'Windows\' prompt was answered No.' : `The listener did not start: ${r.error}.`,
-      r.declined ? 'Test again and press Yes: listening to USB needs administrator rights. It only listens.' : 'Restart DeviceHub and test again; Get help (top right) tells Shawn if it stays.')) return done();
+    if (r.started || r.declined || r.unanswered) recordUac({ area: 'learn', action: 'test my learning setup', outcome: r.started ? 'yes' : r.unanswered ? 'unanswered' : 'declined' });
+    if (!step('prompt', r.started, r.started ? 'Windows\' prompt was answered Yes.' : r.declined ? 'Windows\' prompt was answered No.' : r.unanswered ? "Windows' permission box was not answered within 2 minutes." : `The listener did not start: ${r.error}.`,
+      r.declined || r.unanswered ? `Test again and press Yes: listening to USB needs administrator rights. It only listens. ${UAC_LINE}` : 'Restart DeviceHub and test again; Get help (top right) tells Shawn if it stays.')) return done();
     let s = null;
     for (let t = 0; t < 15000; t += 200) { s = d.readState(dir); if (s && ['ready', 'error', 'ended'].includes(s.status)) break; await d.sleep(200); }
     const hubs = Number(s?.hubs) || 0;
@@ -1733,7 +1901,13 @@ export async function handle(url, req, res, send, readBody) {
       return true;
     }
     if (req.method === 'GET' && step === 'plan') { send(res, 200, await act('plan', { again: url.searchParams.has('again') })); return true; }
-    if (req.method === 'GET' && step === 'state') { send(res, 200, { usbpcap: options.deps.usbpcapInstalled(), ...summary() }); return true; }
+    if (req.method === 'GET' && step === 'state') { await nothingCheck().catch(() => null); send(res, 200, { usbpcap: options.deps.usbpcapInstalled(), uac: session?.uac || null, ...summary() }); return true; }
+    if (req.method === 'GET' && step === 'preflight') {
+      const q = url.searchParams;
+      send(res, 200, await preflight({ vid: q.get('vid'), pid: q.get('pid'), labels: (q.get('labels') || '').split('|').filter(Boolean).slice(0, 12), appOpen: q.get('appOpen') === '1', kind: ['mouse', 'keyboard'].includes(q.get('kind')) ? q.get('kind') : null }));
+      return true;
+    }
+    if (req.method === 'POST' && step === 'open-app') { const b = (await readBody(req)) || {}; send(res, 200, await (await import('./learn-apps.mjs')).openMaker(up4(b.vid)).catch((e) => ({ opened: false, why: e.message }))); return true; }
     if (req.method !== 'POST') { send(res, 405, { error: 'POST only' }); return true; }
     const b = (await readBody(req)) || {};
     if (step === 'check') { send(res, 200, await checkSetup(b)); return true; }

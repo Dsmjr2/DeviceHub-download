@@ -4,22 +4,26 @@
 //     status: GET /api/board-lights; job: GET /api/board-lights/progress (null before any click)
 //     line: the one plain line (before the click: what happens, the prompt, what OpenRGB may change)
 //     result: { text, ok } the plain result line after a click, or null
-//     action: 'setup' | 'ask-remove' | 'remove' | null, label: its button
+//     action: 'setup' | 'ask-remove' | 'remove' | null, label: its button (Try again after Windows' box was declined or
+//     not answered: job.retry)
 export const ADD_LABEL = 'Add board, fan and RAM lights';
 export const REMOVE_LABEL = 'Remove board lights';
 export const DEMO_BOARD = {
   demo: true, pawnio: { installed: true, version: '2.2.0.0' }, setUp: false, task: false, copy: false, canSetUp: true, why: null, partial: null, busy: false,
-  before: "Sets the OpenRGB inside DeviceHub to start as administrator when you sign in (PawnIO is already installed). Windows asks once. OpenRGB will then be allowed to change your board's lighting chip.",
-  remove: 'Stops it and deletes its task and copy: back to USB lights only. Windows asks once. PawnIO stays installed; to remove it, open Windows Settings > Apps > Installed apps, find PawnIO and choose Uninstall.',
+  before: "Runs DeviceHub's OpenRGB as administrator at sign-in (PawnIO is already installed). Windows asks once, then OpenRGB is allowed to change your board's lighting chip.",
+  remove: 'Stops it and deletes its task: back to USB lights only. Windows asks once. PawnIO stays installed (remove it in Windows Settings > Apps > Installed apps).',
 };
 
 export function boardView(st, job = null, { confirmRemove = false } = {}) {
-  if (job && !job.done) return { line: job.pct != null ? `${job.text} (${job.pct}%)` : `${job.text}…`, result: null, action: null, busy: true };
+  // while Windows' permission box is open (job.uac 'waiting', helpers/uac.mjs): the line says where to find it, as is
+  if (job && !job.done) return { line: job.uac === 'waiting' ? job.text : job.pct != null ? `${job.text} (${job.pct}%)` : `${job.text}…`, result: null, action: null, busy: true, uac: job.uac === 'waiting' };
   const result = job?.done ? { text: job.text, ok: !!job.ok } : null;
   if (!st) return { line: 'Checking board lights…', result, action: null };
+  // the box was declined or not answered (job.retry): the same action again, as Try again
+  if (job?.done && !job.ok && job.retry) return { line: job.kind === 'remove' ? st.remove : st.before, result, action: job.kind === 'remove' ? 'remove' : 'setup', label: 'Try again' };
   if (st.setUp) {
     if (confirmRemove) return { line: st.remove, result: null, action: 'remove', label: 'Yes, remove' };
-    return { line: 'Board, fan and RAM lights are on: OpenRGB runs as administrator when you sign in.', result, action: 'ask-remove', label: REMOVE_LABEL };
+    return { line: 'Board, fan and RAM lights are on (OpenRGB runs as administrator).', result, action: 'ask-remove', label: REMOVE_LABEL };
   }
   // a part left from a try that failed (the task or the copy alone): Remove stays offered beside Add
   const left = !!(st.task || st.copy);

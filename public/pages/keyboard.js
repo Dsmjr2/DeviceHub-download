@@ -79,7 +79,7 @@ function keyboardView(s) {
 function picker(s) {
   const t = ui.target;
   if (!t) {
-    return h('div', { class: 'picker' }, h('div', { class: 'picker-cur' }, h('div', { class: 'bigcap' }, '?'), h('div', { class: 'meta' }, h('b', {}, 'Pick a key'), 'Click any key on the board (or a knob action) to change what it does on this layer.')),
+    return h('div', { class: 'picker' }, h('div', { class: 'picker-cur' }, h('div', { class: 'bigcap' }, '?'), h('div', { class: 'meta' }, h('b', {}, 'Pick a key'), 'Click a key (or a knob action) to change it on this layer.')),
       ui.undo.length ? button(`Undo: ${ui.undo.at(-1).where}`, undoLast, { kind: 'ghost', ic: 'undo' }) : null);
   }
   const code = currentCode(s);
@@ -110,7 +110,7 @@ function* positions() { const g = LAYOUT_NOW(); for (let r = 0; r < g.length; r+
 async function runLayerPlan(title, intro, items) {
   if (!items.length) { toast('Nothing to change', 'good', { detail: 'That layer already looks like that.' }); return; }
   const ok = await modal(title, h('div', {}, h('p', { style: { marginTop: 0 } }, intro),
-    h('p', {}, `${items.length} key${items.length === 1 ? '' : 's'} will change. The whole keymap is backed up first, then each key is written and read back.`)),
+    h('p', {}, `${items.length} key${items.length === 1 ? '' : 's'} will change. The keymap is backed up first; each key is read back.`)),
   [{ label: 'Cancel', value: false, kind: 'ghost' }, { label: 'Change keys', value: true, kind: 'primary' }]);
   if (!ok) return;
   const t = toast(`${title}…`, 'busy', { ms: 0 });
@@ -122,7 +122,7 @@ async function copyLayer(s, from) {
   const choices = LAYER_NAMES.slice(0, s.info.layers).map((n, i) => [i, n]).filter(([i]) => i !== from && i !== 0);
   const sel = h('select', { class: 'text', 'aria-label': 'copy to layer' }, ...choices.map(([i, n]) => h('option', { value: i }, `${i} · ${n}`)));
   const ok = await modal(`Copy ${LAYER_NAMES[from]} layer`, h('div', {}, h('p', { style: { marginTop: 0 } }, 'Copy every key of this layer onto:'), sel,
-    h('p', { class: 'faint', style: { fontSize: '12.5px' } }, 'Never overwrites the base layer. Reset and bootloader keys are never copied.')),
+    h('p', { class: 'faint', style: { fontSize: '12.5px' } }, 'Never overwrites the base layer or copies reset and bootloader keys.')),
   [{ label: 'Cancel', value: false, kind: 'ghost' }, { label: 'Next', value: true, kind: 'primary' }]);
   if (!ok) return;
   const to = Number(sel.value);
@@ -183,8 +183,8 @@ function macroPanel(s) {
     h('ol', {},
       h('li', {}, 'Type what it should type in a box below, then press Save.'),
       h('li', {}, 'In Key mapping above, click a key and pick the macro from the Macros group.')),
-    h('p', { class: 'faint' }, 'For special keys, use curly braces: ', h('code', {}, '{Enter}'), ', ', h('code', {}, '{Tab}'), ', ', h('code', {}, '{Ctrl+C}'), '. ',
-      h('code', {}, '{wait 200}'), ' pauses for 200 ms. Example: ', h('code', {}, 'gg{Enter}'), ' types gg, then presses Enter. To type a curly brace itself, write it twice: ', h('code', {}, '{{'), '.'));
+    h('p', { class: 'faint' }, 'Special keys go in braces: ', h('code', {}, '{Enter}'), ', ', h('code', {}, '{Tab}'), ', ', h('code', {}, '{Ctrl+C}'), '; ',
+      h('code', {}, '{wait 200}'), ' pauses 200 ms; ', h('code', {}, '{{'), ' types a brace.'));
   // the slots in use, plus the first empty one to add a macro (or all of them)
   const firstEmpty = m.list.slice(0, m.mi.count).findIndex((t) => !t);
   const show = m.list.slice(0, m.mi.count).map((text, i) => [text, i]).filter(([text, i]) => ui.allMacros || text || i === firstEmpty);
@@ -277,21 +277,21 @@ export function viaFileNote(vid, pid, maker) {
   // "Get the layout" (helpers/via-fetch.mjs): only for a keyboard whose official VIA file DeviceHub knows; the click
   // is the person's yes for that one file, which is checked before it is saved
   if (!isDemo()) fetch(`/api/via-fetch?vid=${encodeURIComponent(vid)}&pid=${encodeURIComponent(pid)}`).then((r) => r.json()).then((p) => {
-    if (p.have) { line.textContent = `via-definitions\\${p.file} is there. If the keys still do not show, restart DeviceHub.`; return; }
+    if (p.have) { line.textContent = `via-definitions\\${p.file} is there. Keys missing? Restart DeviceHub.`; return; }
     if (!p.source) return;
     const size = p.source.size ? `, about ${(p.source.size / 1024).toFixed(1)} KB` : '';
-    line.textContent = `Get the layout saves ${p.file} (${p.source.name || 'its VIA file'}${size}) from ${p.source.host}, ${p.source.from}. It is checked before it is saved.`;
+    line.textContent = `Get the layout saves ${p.file} (${p.source.name || 'its VIA file'}${size}) from ${p.source.host}, checked first.`;
     const b = button('Get the layout', async () => {
       line.textContent = `Getting ${p.file} from ${p.source.host}...`;
       const r = await fetch('/api/via-fetch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vid, pid }) })
         .then((x) => x.json()).catch(() => ({ error: 'DeviceHub did not answer.' }));
-      if (r.ok) { b.remove(); line.textContent = `Saved ${r.file} (${r.sizeText}, from ${r.host}) in via-definitions. Restart DeviceHub to show its keys (tray icon > Quit, then open it again).`; }
+      if (r.ok) { b.remove(); line.textContent = `Saved ${r.file} in via-definitions. Restart DeviceHub (tray icon > Quit) to show its keys.`; }
       else line.textContent = `${r.file || p.file} was not saved. ${r.error || ''}`.trim();
     }, { kind: 'small' });
     actions.prepend(b);
   }).catch(() => {});
   return h('div', { class: 'via-file' },
-    h('p', { class: 'faint', style: { margin: '6px 0' } }, `A VIA keyboard needs no learning. If its keys do not show on the Keyboard page, VIA's own list does not have this model: download its VIA file (a .json file) from ${site}, rename it ${file}, put it in the via-definitions folder inside DeviceHub's folder, then restart DeviceHub (tray icon > Quit, then open it again).`),
+    h('p', { class: 'faint', style: { margin: '6px 0' } }, `Keys not showing? VIA's list lacks this model: get its VIA .json file from ${site}, rename it ${file}, put it in DeviceHub's via-definitions folder, then restart DeviceHub.`),
     line, actions);
 }
 // on the Keyboard page while no keyboard runs: the VIA keyboards This PC found (pc-lights.js reads the PC once)

@@ -109,7 +109,7 @@ function thisPc() {
       line('Memory', ramParts.join(', '), ramLit ? 'yes' : ramNone ? 'no' : 'unknown', ramLit ? 'Through OpenRGB only.' : null, null),
       line('Case and fans', 'lit fans and strips', null, 'Follow the board when plugged into its RGB headers.', null),
       // Windows Dynamic Lighting: the lights work in Windows itself, no driver; one click opens that page (22 Oct 2026)
-      pc.lampArrays ? h('div', {}, line('Dynamic Lighting', `${pc.lampArrays} device${pc.lampArrays === 1 ? '' : 's'}`, 'yes', 'Works in Windows, no driver needed: colors and effects in Windows Settings.', null),
+      pc.lampArrays ? h('div', {}, line('Dynamic Lighting', `${pc.lampArrays} device${pc.lampArrays === 1 ? '' : 's'}`, 'yes', 'Colors and effects in Windows Settings, no driver needed.', null),
         h('div', { class: 'actions', style: { margin: '6px 0 0' } }, button('Open Dynamic Lighting', openDynamicLighting, { kind: 'ghost small', ic: 'external' }))) : null),
     others.length ? h('div', { class: 'pc-others' }, h('h3', {}, 'Other devices plugged in'),
       ...others.map((u) => { const gd = genericDongle(u); return h('div', { class: 'pc-other' }, line(u.brand.shared ? 'USB device' : u.brand.name, u.name || (gd ? 'USB receiver' : `${u.brand.name} device`), null, gd ? gd.line : null, gd ? null : u.brand),
@@ -155,7 +155,7 @@ function boardSection() {
   return h('div', { class: 'pc-guide' },
     h('h3', {}, 'Board, fan and RAM lights'),
     boardLights({ redraw, onDone: (r) => { if (r?.ok) loadPc(true); } }),
-    h('p', { class: 'faint', style: { fontSize: '12px', margin: '8px 0 0' } }, 'Graphics cards and USB lights work without it. DeviceHub never writes to the board or RAM itself: everything goes through OpenRGB.'));
+    h('p', { class: 'faint', style: { fontSize: '12px', margin: '8px 0 0' } }, 'Not needed for graphics cards or USB lights. DeviceHub never writes to the board or RAM itself; OpenRGB does.'));
 }
 
 // What was found and why fan lights may be missing (helpers/lights-diagnose.js), in place: no pop-ups or tooltips.
@@ -186,8 +186,8 @@ function pcLights() {
   const b = o.bundle;
   if (!o.running) {
     return card(head,
-      b?.canStart ? h('p', { class: 'faint' }, `DeviceHub carries OpenRGB ${b.version} for USB lights (no drivers, so not the board, RAM or graphics card). Find lights starts it hidden; it stops when DeviceHub quits.`)
-        : h('p', { class: 'faint' }, 'Board, fan and RAM lights work through OpenRGB 1.1 or newer, a free app (openrgb.org). Open it and turn on its SDK server; the lights then show here and in Apply to all.'),
+      b?.canStart ? h('p', { class: 'faint' }, `DeviceHub's built-in OpenRGB ${b.version} reaches USB lights. Find lights starts it; it stops when DeviceHub quits.`)
+        : h('p', { class: 'faint' }, 'Needs the free OpenRGB 1.1 or newer (openrgb.org) with its SDK server on.'),
       o.reason && o.reason !== 'not running' && !st.diag?.problems?.length ? h('p', { class: 'faint', style: { fontSize: '12.5px' } }, o.reason) : null,
       h('div', { class: 'actions' }, button(b?.canStart ? 'Find lights' : 'Look again', () => loadPc(true), { kind: 'small', ic: 'refresh' })),
       fanHelp(),
@@ -195,7 +195,7 @@ function pcLights() {
   }
   return card([...head, h('span', { class: 'spacer' }), pill(`${o.controllers.length} found`, 'good')],
     !o.bundled && o.board?.setUp ? h('p', { class: 'faint', style: { fontSize: '12.5px' } }, 'Through the OpenRGB inside DeviceHub, as administrator: board, fan and RAM lights too.') : null,
-    o.bundled ? h('p', { class: 'faint', style: { fontSize: '12.5px' } }, `Through the OpenRGB inside DeviceHub: USB lights only${o.readOnly ? '; read only for now (this OpenRGB version numbers lights wrongly for DeviceHub)' : ''}.`) : null,
+    o.bundled ? h('p', { class: 'faint', style: { fontSize: '12.5px' } }, `Through the OpenRGB inside DeviceHub: USB lights only${o.readOnly ? '; read-only (this OpenRGB version numbers lights wrongly)' : ''}.`) : null,
     o.controllers.length ? h('div', { class: 'pc-parts' }, ...groups(o.controllers).map((g) => {
       const c = g[0], many = g.length > 1;
       const same = g.every((x) => x.same && x.color === c.color);
@@ -208,7 +208,7 @@ function pcLights() {
         // and each stick on its own (23 Oct 2026, Shawn: "Let him be able to change the colors for each ram stick")
         many ? h('div', { class: 'pc-zones' }, ...g.map((x, i) => colorRow(`Stick ${i + 1}`, x.same ? x.color : null, (hex) => setPcColor(x.index, hex, null)))) : null,
         !many && c.zones.length > 1 && shownZones(c).length ? h('div', { class: 'pc-zones' }, ...shownZones(c).map(([z, i]) => colorRow(/^\?+$/.test(z.name || '') ? `Unnamed ${i + 1}` : z.name, z.color, (hex) => setPcColor(c.index, hex, i)))) : null,
-        !many && c.zones.length > 1 && hiddenZoneCount(c) ? h('small', { class: 'faint' }, `${hiddenZoneCount(c)} more part${hiddenZoneCount(c) === 1 ? '' : 's'}: All colors them; Find my lights shows which is which and names them.`) : null);
+        !many && c.zones.length > 1 && hiddenZoneCount(c) ? h('small', { class: 'faint' }, `${hiddenZoneCount(c)} more part${hiddenZoneCount(c) === 1 ? '' : 's'}: All colors them; Find my lights names them.`) : null);
     }))
       : h('p', { class: 'faint' }, 'OpenRGB runs but found no lights.'),
     // Find my lights: one color per zone, the person names what lit (ui/find-lights.js)

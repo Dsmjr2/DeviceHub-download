@@ -3,7 +3,7 @@
 #  2. Node.js: the hand-off zip carries it (runtime\node.exe); otherwise checks for it and offers winget
 #  3. Corsair's cue-sdk: carried by the zip too; otherwise npm install (only needed for the headset)
 #  4. makes Desktop and Start menu shortcuts, then starts DeviceHub
-param([string]$Source = (Split-Path $PSScriptRoot -Parent), [switch]$NoLaunch, [switch]$NoShortcuts, [string]$Target = (Join-Path $env:USERPROFILE 'DeviceHub'), [string]$AppsKey = 'DeviceHub', [switch]$Overwrite)
+param([string]$Source = (Split-Path $PSScriptRoot -Parent), [switch]$NoLaunch, [switch]$NoShortcuts, [string]$Target = (Join-Path $env:USERPROFILE 'DeviceHub'), [string]$AppsKey = 'DeviceHub', [switch]$Overwrite, [switch]$Background)
 $ErrorActionPreference = 'Stop'
 $hadWindow = $false   # a DeviceHub window was open when this install quit DeviceHub (see "quitting it first")
 function Step($t) { Write-Host ""; Write-Host "== $t" -ForegroundColor Cyan }
@@ -102,7 +102,7 @@ if ($same) { Write-Host '   already in place' } else {
   }
   # this PC's own data in an existing install is never overwritten
   $keep = 'backups', 'profiles.json', 'settings.json', 'activity.jsonl', 'battery-history.jsonl', 'mouse-battery-study.jsonl',
-    'mouse-level.json', 'headset-lights.json', 'seen-devices.json', 'waiting-changes.json', 'last-device-values.json', 'waiting-monitors.json', 'last-monitor-values.json', 'daily-check.json', 'battery-care.json', 'lights-names.json', 'window-profile', '.git'
+    'mouse-level.json', 'headset-lights.json', 'seen-devices.json', 'waiting-changes.json', 'last-device-values.json', 'waiting-monitors.json', 'last-monitor-values.json', 'daily-check.json', 'battery-care.json', 'lights-names.json', 'auto-update-state.json', 'window-profile', '.git'
   if (-not (Test-Path (Join-Path $Source 'node_modules\cue-sdk'))) { $keep += 'node_modules' }
   # Folders are merged with robocopy (21 Oct 2026): Copy-Item onto a folder that already exists puts the new one INSIDE
   # it (public\public), so a reinstall or an update left every folder's old files running. Files are always replaced
@@ -237,4 +237,6 @@ if ($rel.appCommit -and (Get-Command git -ErrorAction SilentlyContinue)) {
 
 Step 'Done'
 Write-Host '   Open DeviceHub from the Desktop or Start. Plug in your devices; they are found by themselves.'
-if (-not $NoLaunch) { Start-Process "$env:WINDIR\System32\wscript.exe" -ArgumentList (@('"' + (Join-Path $Target 'DeviceHub.vbs') + '"') + $(if ($hadWindow) { @('/afterupdate') } else { @() })) }
+# -Background (an update by itself, the removed auto-update (24 Oct 2026), 24 Oct 2026): no window was open, so none opens; DeviceHub
+# comes back in the tray only. A window that was open still reloads itself (/afterupdate waits for it).
+if (-not $NoLaunch) { Start-Process "$env:WINDIR\System32\wscript.exe" -ArgumentList (@('"' + (Join-Path $Target 'DeviceHub.vbs') + '"') + $(if ($hadWindow) { @('/afterupdate') } elseif ($Background) { @('/background') } else { @() })) }

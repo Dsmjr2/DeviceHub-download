@@ -306,6 +306,9 @@ export function state() {
 }
 
 export const reloadSettings = () => loadSettings();
+// a device write, read, backup or self-check holding a device's lock, or the daily self-check running now (an update
+// by itself waits for a quiet moment: the removed auto-update (24 Oct 2026))
+export const busyNow = () => core.isBusy() || daily.running();
 
 // Operations the app window and the tray icon ask for.
 export async function op(name, b) {

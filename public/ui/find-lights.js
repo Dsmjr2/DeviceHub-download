@@ -108,7 +108,7 @@ function testStep(o) {
   const empty = s.zones.filter((z) => !z.leds).length, past = s.zones.filter((z) => z.notInTest).length;
   return h('div', {},
     h('p', { style: { margin: '4px 0 2px', fontWeight: 600 } }, 'What lit up in this color?'),
-    h('p', { class: 'faint', style: { fontSize: '12.5px', margin: '0 0 4px' } }, `Each part of ${s.name} now shows its own color. Tap each color you can see and say what it is. Leave a color empty if nothing lit in it.`),
+    h('p', { class: 'faint', style: { fontSize: '12.5px', margin: '0 0 4px' } }, `Each part of ${s.name} now has its own color. Name each one you see; leave it empty if nothing lit.`),
     ...tested.map((z, n) => colorAnswer(z, n)),
     empty ? line(`${empty} zone${empty === 1 ? ' has' : 's have'} no lights set up in OpenRGB, so ${empty === 1 ? 'it is' : 'they are'} not in this test.`) : null,
     past ? line(`${past} more zone${past === 1 ? ' is' : 's are'} not in this test (it has ${DEMO_COLORS.length} colors).`) : null,
@@ -121,7 +121,7 @@ function testStep(o) {
 function introStep(o) {
   const list = lights(o);
   return h('div', {},
-    h('p', { class: 'faint', style: { fontSize: '12.5px', margin: '4px 0' } }, 'Each part of a light gets its own color for a moment, so you can see which is which. Your colors come back after.'),
+    h('p', { class: 'faint', style: { fontSize: '12.5px', margin: '4px 0' } }, 'Each part briefly gets its own color so you can tell them apart; your colors come back after.'),
     s.error ? line(s.error, 'bad') : null,
     h('div', { class: 'actions', style: { margin: '6px 0 0', flexWrap: 'wrap' } },
       ...(list.length === 1 ? [button('Start', () => start(o, list[0]), { kind: 'primary small' })]

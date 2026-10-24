@@ -374,14 +374,22 @@ const since = (n) => lines.slice(n);
   check(/const PROPS = \{ brightness: 0x02, lightMode: 0x03, autoOff: 0x0e, battery: 0x0f, firmware: 0x13, voltage: 0x53, micMuted: 0xa6 \};/.test(direct) && !/0x0d|0x46|0x47|SET (0?d|46|47)\b/i.test(direct) && !/SET /.test(rx) && !/bragi/.test(direct + rx), "the HS80's own code never sets 0d, 46 or 47 and never uses the bragi tag");
   // the C# harness: the HS80's requests, replies and SET list against the old code, word for word (tests/native/hs80-frame.cs)
   const csc = path.join(process.env.WINDIR || 'C:\\Windows', 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe');
-  if (process.platform === 'win32' && fs.existsSync(csc)) {
-    const exe = path.join(os.tmpdir(), `devicehub-hs80-frame-${process.pid}.exe`);
-    const { fileURLToPath } = await import('node:url');
-    const root = fileURLToPath(new URL('..', import.meta.url));
+  // run only when the C# it checks changed since its last pass (24 Oct 2026, Shawn: every test run started a new
+  // unsigned devicehub-hs80-frame-<pid>.exe and his AppControl app showed a notification for each); FRAME_HARNESS=1 forces it
+  const { fileURLToPath } = await import('node:url');
+  const root = fileURLToPath(new URL('..', import.meta.url));
+  const srcs = [path.join(root, 'helpers', 'native', 'hs80io.cs'), path.join(root, 'tests', 'native', 'hs80-frame.cs')];
+  const hash = (await import('node:crypto')).createHash('sha256').update(srcs.map((x) => fs.readFileSync(x)).reduce((a, x) => Buffer.concat([a, x]), Buffer.alloc(0))).digest('hex');
+  const passed = path.join(os.tmpdir(), 'devicehub-hs80-frame.passed');
+  const same = process.env.FRAME_HARNESS !== '1' && (() => { try { return fs.readFileSync(passed, 'utf8').trim() === hash; } catch { return false; } })();
+  if (same) console.log('hid-core: the C# frame harness passed on this code before, not run again (FRAME_HARNESS=1 runs it)');
+  else if (process.platform === 'win32' && fs.existsSync(csc)) {
+    const exe = path.join(os.tmpdir(), 'devicehub-hs80-frame.exe');
     try {
       execFileSync(csc, ['/nologo', `/out:${exe}`, path.join(root, 'helpers', 'native', 'hs80io.cs'), path.join(root, 'tests', 'native', 'hs80-frame.cs')], { timeout: 60000, windowsHide: true, stdio: 'pipe' });
       const out = execFileSync(exe, [], { timeout: 120000, windowsHide: true, encoding: 'utf8' });
       check(/all good/.test(out), `the C# frame harness: ${out.trim()}`);
+      if (/all good/.test(out)) try { fs.writeFileSync(passed, hash); } catch {}
     } catch (e) {
       check(false, `the C# frame harness failed: ${String(e.stdout || '') + String(e.stderr || '') || e.message}`);
     } finally { try { fs.unlinkSync(exe); } catch {} }

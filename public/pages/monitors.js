@@ -8,6 +8,8 @@ import { topbar } from './common.js';
 import { toast } from '../ui/overlay.js';
 import { cameraCards } from './camera-card.js';
 import { helpHere } from '../ui/get-help.js';
+// resolution, refresh rate, HDR, main screen and Night light per screen (24 Oct 2026, ui/display-settings.js)
+import { displayBlock, displayOnlyScreens, displayBlockFor, displayError } from '../ui/display-settings.js';
 
 let list = null, error = null, loading = false;
 let rerender = () => {};
@@ -45,8 +47,10 @@ function monitorCard(m) {
   // a laptop's own screen: brightness through Windows (helpers/monitor-wmi.js; 22 Oct 2026, Shawn: "on my laptop it says
   // turn on ddc/ci in this monitors menu")
   if (m.builtin) return card([icon('monitor'), h('h2', {}, m.name)],
-    row('Brightness', 'Through Windows: a built-in screen has no DDC/CI.', slider({ value: m.brightness.value, min: 0, max: 100, unit: '%', onCommit: (v) => set(m, 'brightness', v, `brightness ${v}`) })));
-  if (!m.ddc) return card([h('h2', {}, m.name)], h('p', { class: 'faint' }, 'This screen does not take settings from the PC. If it is a separate monitor, turn on DDC/CI in its own menu (often under Setup or Other), then come back.'));
+    row('Brightness', 'Through Windows: a built-in screen has no DDC/CI.', slider({ value: m.brightness.value, min: 0, max: 100, unit: '%', onCommit: (v) => set(m, 'brightness', v, `brightness ${v}`) })),
+    displayBlock(m, rerender));
+  if (!m.ddc) return card([h('h2', {}, m.name)], h('p', { class: 'faint' }, 'This screen does not take settings from the PC. If it is a separate monitor, turn on DDC/CI in its own menu (often under Setup or Other), then come back.'),
+    displayBlock(m, rerender));
   return card([icon('monitor'), h('h2', {}, m.name), h('span', { class: 'sub' }, m.model && m.model !== m.name ? m.model : null)],
     // off or not answering (21 Oct 2026): its last settings stay here and changes wait for it
     m.away || m.waiting?.length ? h('p', { class: 'faint', style: { margin: '0 0 8px' } }, m.away ? 'Off or not answering: changes are applied when it is on.' : 'Waiting for it to answer.', m.waiting?.length ? ` Waiting: ${m.waiting.join(', ')}.` : '') : null,
@@ -57,6 +61,7 @@ function monitorCard(m) {
     m.colorPreset?.options?.length ? row('Color preset', 'Warm, neutral or cool whites.', segmented({ value: m.colorPreset.value, compact: true, options: m.colorPreset.options,
       onCommit: (v) => set(m, 'colorPreset', v, `color preset ${m.colorPreset.options.find((o) => o.value === v)?.label || v}`) })) : null,
     colorBalance(m),
+    displayBlock(m, rerender),
     supportsList(m));
 }
 
@@ -73,7 +78,7 @@ function supportsList(m) {
   return h('details', { class: 'mon-supports' },
     h('summary', {}, `What this monitor supports (${all.length})`),
     group('Controlled here', all.filter((x) => x.state === 'controlled')),
-    group('Could be added', all.filter(named), 'The monitor opens these settings to the PC. Tell Claude Code which ones you want.'),
+    group('Could be added', all.filter(named), 'This monitor offers these too; DeviceHub can add them.'),
     group('Information only', all.filter((x) => x.state === 'info')),
     group('Left out on purpose', all.filter((x) => x.state === 'left out'), 'Resets, power and input switching: DeviceHub never sends these.'),
     group("The maker's own", all.filter((x) => x.state === 'maker' || (x.state === 'not yet' && !x.name)), "Only the monitor's menu or its maker's app knows what these do."));
@@ -103,8 +108,9 @@ export default {
         ...(error ? [card([h('h2', {}, 'Monitors')], h('p', { class: 'faint' }, `Couldn't read the monitors: ${error}`))]
           // while they are read: two monitor cards with shimmering rows (21 Oct 2026)
           : !list ? [loadingCard('Monitor', 4, 'monitor'), loadingCard('Monitor', 4, 'monitor')]
-            : list.length ? list.map(monitorCard)
+            : list.length ? [...list.map(monitorCard), ...displayOnlyScreens(list).map((s) => card([icon('monitor'), h('h2', {}, s.name)], displayBlockFor(s)))]
               : [card([h('h2', {}, 'Monitors')], h('p', { class: 'faint' }, 'No monitors found.'))]),
+        displayError() ? card([h('h2', {}, 'Display settings')], displayError()) : null,
         ...cameraCards(rerender)));
   },
 };
