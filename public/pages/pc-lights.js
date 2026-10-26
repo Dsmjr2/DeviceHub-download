@@ -7,31 +7,36 @@
 //   never writes to the motherboard's SMBus itself.
 import { h } from '../ui/dom.js';
 import { card, button, pill, skeleton, offSwatch, isOff, OFF } from '../ui/controls.js';
+import { groupLights, applyLocal, liveWriter } from '../core/light-groups.js';
 import { env } from '../core/env.js';
 import { isDemo } from '../core/devices.js';
 import { toast } from '../ui/overlay.js';
 import { brandForUsb, ROUTE } from '../core/brands.js';
 import { getHelp } from '../ui/get-help.js';
 import { boardLights } from '../ui/board-lights.js';
-import { findLights, shownZones, hiddenZoneCount } from '../ui/find-lights.js';
+import { findLights, showingAll } from '../ui/find-lights.js';
 
+// demo: the friend's PC from support request 15 (26 Oct 2026): a Gigabyte B450 whose case fans sit on its ARGB header,
+// four Corsair Vengeance RGB Pro sticks and an MSI RTX 3060 Gaming X
 const DEMO_PC = {
-  cpu: 'AMD Ryzen 7 5800X3D', gpus: [{ name: 'NVIDIA GeForce RTX 4070', maker: 'MSI' }], board: { maker: 'Gigabyte Technology Co., Ltd.', model: 'B450 AORUS PRO WIFI-CF' },
-  ram: [{ part: 'F4-3200C16-8GVKB', gb: 8, maker: 'G.Skill', lights: 'no' }, { part: 'F4-3200C16-8GVKB', gb: 8, maker: 'G.Skill', lights: 'no' }],
+  cpu: 'AMD Ryzen 7 5800X3D', gpus: [{ name: 'NVIDIA GeForce RTX 3060', maker: 'MSI' }], board: { maker: 'Gigabyte Technology Co., Ltd.', model: 'B450 AORUS PRO WIFI-CF' },
+  ram: [1, 2, 3, 4].map(() => ({ part: 'CMW16GX4M2C3200C16', gb: 8, maker: 'Corsair', lights: 'yes' })),
   usb: [{ id: '1b1c:0a6b', vid: '1b1c', name: 'CORSAIR HS80 RGB Wireless Gaming Headset', runs: 'Headset page' }, { id: '046d:c547', vid: '046d', name: 'USB Receiver', runs: null }],
   lampArrays: 0, smbus: ['AMD SMBus'],
 };
-// demo: OpenRGB running with a pretend board and lit RAM (colors change on the page only; nothing is sent)
+// demo: OpenRGB running with that PC's lights, as the server names them (colors change on the page only; nothing is sent)
+const DEMO_ZONES = ['Top logo', '???', 'Bottom logo', 'Case Rear', 'Case', '???', '???', 'Fan header (ARGB) 1', 'Fan header (ARGB) 2', '???'];
 const DEMO_ORGB = () => ({ running: true, protocol: 3, bundled: false, board: { setUp: true }, controllers: [
-  { index: 0, name: 'B450 AORUS PRO WIFI-CF', vendor: 'Gigabyte', type: 'motherboard', zones: [{ name: 'Motherboard', leds: 5 }, { name: 'D_LED1 header', leds: 30 }], leds: 35, mode: 'Static', color: '#ff6a1a', same: true },
-  { index: 1, name: 'Trident Z RGB', vendor: 'G.Skill', type: 'ram', zones: [{ name: 'DRAM', leds: 8 }], leds: 8, mode: 'Rainbow', color: '#ff0000', same: false },
-  { index: 2, name: 'Trident Z RGB', vendor: 'G.Skill', type: 'ram', zones: [{ name: 'DRAM', leds: 8 }], leds: 8, mode: 'Static', color: '#3a7bff', same: true }] });
+  ...[0, 1, 2, 3].map((i) => ({ index: i, name: 'Corsair Vengeance RGB Pro DDR4', vendor: 'Corsair', type: 'ram', zones: [{ name: 'DRAM', leds: 10, color: '#ff6a1a' }], leds: 10, mode: 'Direct', color: '#ff6a1a', same: true })),
+  { index: 4, name: 'B450 AORUS PRO WIFI-CF', vendor: 'Gigabyte', type: 'motherboard', zones: DEMO_ZONES.map((name) => ({ name, leds: 1, color: '#3a7bff' })), leds: DEMO_ZONES.length, mode: 'Direct', color: '#3a7bff', same: true },
+  { index: 5, name: 'MSI GeForce RTX 3060 Gaming X LHR', vendor: 'MSI', type: 'gpu', zones: [{ name: 'GPU', leds: 1, color: '#ffffff' }], leds: 1, mode: 'Direct', color: '#ffffff', same: true }] });
 const DEMO_BT = [{ name: 'Xbox Wireless Controller', le: true, connected: true, battery: 80 }, { name: 'AirPods Pro', le: false, connected: false, battery: null }];
 // demo: why fans may be missing (helpers/lights-diagnose.js answers the real one)
 const DEMO_DIAG = { board: 'Gigabyte B450 AORUS PRO WIFI-CF', openrgb: { state: 'running', usbOnly: false }, found: [], verdict: { kind: 'usb', line: 'on USB: shows after Find lights' },
   seen: [{ id: '048d:8297', name: 'Gigabyte RGB Fusion 2 USB', kind: 'board', found: true }], problems: [] };
 const st = { bt: null, pc: null, orgb: null, diag: null, loading: false, error: null, include: true };
 let redraw = () => {};
+const refreshPc = () => redraw();
 
 export async function loadPc(fresh = false, after) {
   if (isDemo()) { const first = !st.pc; st.pc = DEMO_PC; if (!st.orgb) st.orgb = DEMO_ORGB(); st.diag = DEMO_DIAG; st.bt = DEMO_BT; if (first) redraw(); return; }
@@ -41,39 +46,126 @@ export async function loadPc(fresh = false, after) {
     st.pc = pc; st.orgb = orgb; st.error = null;
     // why fans may be missing: the board, the lighting controllers on USB and what Find lights said (read-only)
     env.api('/api/lights/diagnose').then((d) => { st.diag = d; redraw(); }).catch(() => {});
-    env.api(`/api/bluetooth${fresh ? '?fresh=1' : ''}`).then((bt) => { st.bt = bt; redraw(); }).catch(() => {});
+    env.api(`/api/bluetooth${fresh ? '?fresh=1' : ''}`).then((bt) => { st.bt = bt; }).catch(() => {});
   } catch (e) { st.error = e.message; }
   finally { st.loading = false; redraw(); if (after) after(); }
 }
 
-// a row of color swatches and a color box; the current color has a ring
-const SWATCHES = ['#ffffff', '#ff2d55', '#ff6a1a', '#ffd23f', '#3ddc97', '#3fe0ff', '#5b6cff', '#b48cff', '#ff5d8f'];
-function colorRow(label, current, set) {
-  const cur = (current || '').toLowerCase();
-  const isCustom = /^#[0-9a-f]{6}$/i.test(cur) && !isOff(cur) && !SWATCHES.includes(cur);
-  return h('div', { class: 'pc-color-row' },
-    h('span', { class: 'pc-zone-label' }, label),
-    h('div', { class: 'pc-swatch-group' },
-      ...SWATCHES.map((hx) => h('button', { class: `swatch pc-swatch${hx === cur ? ' on' : ''}`, 'aria-label': hx, style: { '--s': hx }, onclick: () => set(hx) })),
-      h('input', { type: 'color', class: `swatch-custom pc-custom${isCustom ? ' on' : ''}`, title: 'Custom color', value: /^#[0-9a-f]{6}$/i.test(cur) && !isOff(cur) ? cur : '#ff6a1a', 'aria-label': `${label} color`, style: isCustom ? { background: cur } : {}, onchange: (e) => set(e.target.value) }),
-      offSwatch({ on: isOff(cur), label, onclick: () => set(OFF) })));
-}
-async function setPcColor(index, hex, zone) {
-  if (isDemo()) { const c = st.orgb.controllers.find((x) => x.index === index); if (c) { if (zone === null) { c.color = hex; c.same = true; c.zones.forEach((z) => { z.color = hex; }); } else { c.zones[zone].color = hex; c.same = false; } } redraw(); return; }
-  // shown at once; the answer then carries the lights' new state (no rescan of the PC)
-  const c = st.orgb?.controllers?.find((x) => x.index === index), was = c ? JSON.parse(JSON.stringify(c)) : null;
-  if (c) { if (zone === null) { c.color = hex; c.same = true; c.zones.forEach((z) => { z.color = hex; }); } else if (c.zones[zone]) { c.zones[zone].color = hex; c.same = c.zones.every((z) => z.color === hex); } redraw(); }
+// PC lights by what they are (26 Oct 2026, Shawn: "the pc lights are coming up as motherboard lights on my friends pc,
+// also when I change one it scrolls back to the top"): Fans, RAM, Graphics card, Board (public/core/light-groups.js).
+// Each row has the color it shows now, a swatch that gives it the picker's color, and Off; each writes only its own
+// zone or stick. A row given a color stays "Live": moving the picker then changes it as it moves (at most 10 writes a
+// second, the last on release). A color change updates the rows in place: nothing is redrawn and the card keeps its
+// scroll and focus. Only a change in what is listed (Find my lights, Look again) rebuilds this card, and only it.
+const live = { key: null, writes: null, writer: null, failed: false };
+let gen = 0;                            // a newer local change wins over an older write's answer
+let pickNow = () => '#ff6a1a';
+let wrap = null;                        // the card's holder (div.light-pc); null until the Lighting page draws it
+let rowEls = new Map();                 // row key -> { el, dot, set } for in-place updates
+let shownKeys = '';                     // the listed rows when drawn; another list rebuilds the card
+
+const sections = () => groupLights(st.orgb?.controllers || [], { showAll: showingAll() });
+const label = (hex) => (isOff(hex) ? 'Off' : hex ? hex.toUpperCase() : 'Several colors');
+
+async function sendWrites(writes, hex, { quiet = false } = {}) {
+  const list = st.orgb?.controllers;
+  if (!list || !writes.length) return;
+  const before = JSON.stringify(list), mine = ++gen;
+  applyLocal(list, writes, hex);
+  paintRows();
+  if (isDemo()) return;
   try {
-    const r = await env.api('/api/openrgb/color', { target: index, hex, zone });
-    if (Array.isArray(r?.controllers) && st.orgb) { st.orgb.controllers = r.controllers; redraw(); }
-  } catch (e) { if (c && was) Object.assign(c, was); redraw(); toast('Not changed', 'bad', { detail: e.message }); }
+    let r = null;
+    for (const w of writes) r = await env.api('/api/openrgb/color', { target: w.index, hex, zone: w.zone });
+    if (mine === gen && Array.isArray(r?.controllers) && st.orgb) { st.orgb.controllers = r.controllers; paintRows(); }
+  } catch (e) {
+    if (mine === gen && st.orgb) { st.orgb.controllers = JSON.parse(before); paintRows(); }
+    if (!quiet || !live.failed) toast('Not changed', 'bad', { detail: e.message });
+    if (quiet) live.failed = true;
+    throw e;
+  }
 }
+
+function setLive(key, writes) {
+  live.key = key; live.writes = writes; live.failed = false;
+  live.writer = key ? liveWriter((hex) => sendWrites(live.writes, hex, { quiet: true }).catch(() => {}), { every: 100 }) : null;
+  paintRows();
+}
+const useRow = async (key, writes) => { setLive(key, writes); try { await sendWrites(writes, pickNow()); } catch {} };
+const offRow = async (key, writes) => { if (live.key === key) setLive(null); try { await sendWrites(writes, OFF); } catch {} };
+
+// the picker moved / was let go (pages/lighting.js): the paint swatches show it, a Live row follows it
+export function pcPick(hex, done = false) {
+  if (wrap) wrap.style.setProperty('--pick', hex);
+  paintRows();
+  if (!live.key || !live.writer) return;
+  if (!done) { applyLocal(st.orgb?.controllers || [], live.writes, hex); paintRows(); live.writer.push(hex); }
+  else live.writer.flush(hex);
+}
+export const pcStopLive = () => { if (live.key) setLive(null); };
+
+function lightRow(key, title, detail, row, writes) {
+  const dot = h('span', { class: 'pcl-dot', 'aria-hidden': 'true' });
+  const tag = h('button', { class: 'pcl-live', 'aria-label': `${title}: stop following the picker`, onclick: () => setLive(null) }, 'Live ×');
+  const empty = !(row.leds > 0) && writes.length === 0;
+  const el = h('div', { class: `pcl-row${empty ? ' empty' : ''}`, dataset: { key } },
+    dot,
+    h('div', { class: 'pcl-name' }, h('b', {}, title), detail ? h('small', {}, detail) : null),
+    tag,
+    empty ? null : h('button', { class: 'swatch pcl-paint', 'aria-label': `${title}: use the picked color`, onclick: () => useRow(key, writes) }),
+    empty ? null : offSwatch({ label: title, onclick: () => offRow(key, writes) }));
+  const set = (color) => {
+    dot.style.background = color ? color : 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)';
+    dot.classList.toggle('off', isOff(color));
+    dot.setAttribute('data-color', label(color));
+    const pick = pickNow().toLowerCase();
+    el.classList.toggle('match', !!color && !isOff(color) && color.toLowerCase() === pick);
+    el.classList.toggle('is-live', live.key === key);
+    el.querySelector('.swatch-off')?.classList.toggle('on', isOff(color));
+  };
+  rowEls.set(key, { el, set });
+  return el;
+}
+
+// every row's color, ring and Live mark, in place; a different list of rows rebuilds the card instead
+function paintRows() {
+  if (!wrap?.isConnected) return;
+  const secs = sections();
+  const keys = secs.map((s) => [s.id, ...(s.rows.length > 1 ? s.rows.map((r) => r.key) : [])].join(',')).join('|');
+  if (keys !== shownKeys) { refreshPc(); return; }
+  for (const s of secs) {
+    rowEls.get(`all:${s.id}`)?.set(s.rows.length === 1 ? s.rows[0].color : s.color);
+    if (s.rows.length > 1) for (const r of s.rows) rowEls.get(r.key)?.set(r.color);
+  }
+}
+
+function lightSections() {
+  rowEls = new Map();
+  const secs = sections();
+  shownKeys = secs.map((s) => [s.id, ...(s.rows.length > 1 ? s.rows.map((r) => r.key) : [])].join(',')).join('|');
+  const out = secs.map((s) => {
+    const one = s.rows.length === 1 ? s.rows[0] : null;
+    const names = [...new Set(s.rows.map((r) => r.detail).filter(Boolean))];
+    const common = s.id === 'ram' && names.length === 1 ? names[0] : null;
+    const head = lightRow(`all:${s.id}`, s.title, one ? [one.label !== s.title ? one.label : null, one.detail].filter(Boolean).join(' · ') || null : common ? `All · ${common}` : 'All', one || { leds: s.all.length }, s.all);
+    head.classList.add('pcl-head');
+    return h('div', { class: 'pcl-sec', dataset: { sec: s.id } },
+      head,
+      s.rows.length > 1 ? h('div', { class: 'pcl-rows' }, ...s.rows.map((r) => lightRow(r.key, r.label, common ? null : r.detail, r, r.leds > 0 ? r.writes : []))) : null,
+      s.hidden ? h('small', { class: 'faint pcl-note' }, `${s.hidden} more part${s.hidden === 1 ? "" : "s"}: All colors ${s.hidden === 1 ? "it" : "them"} too.`) : null);
+  });
+  queueMicrotask(paintRows);
+  return out;
+}
+
 // one color on every OpenRGB light (used by "Apply to all" when PC lights are included)
 export async function applyPc(hex) {
   if (!st.include || !st.orgb?.running || !st.orgb.controllers.length) return null;
-  if (isDemo()) { st.orgb.controllers.forEach((c) => { c.color = hex; c.same = true; c.mode = 'Direct'; }); redraw(); return `PC lights (${st.orgb.controllers.length})`; }
+  pcStopLive();
+  if (isDemo()) { applyLocal(st.orgb.controllers, st.orgb.controllers.map((c) => ({ index: c.index, zone: null })), hex); paintRows(); return `PC lights (${st.orgb.controllers.length})`; }
   const r = await env.api('/api/openrgb/color', { target: 'all', hex });
-  loadPc(true);
+  gen++;
+  if (Array.isArray(r?.controllers)) { st.orgb.controllers = r.controllers; paintRows(); } else loadPc(true);
   return `PC lights (${r.changed.length})`;
 }
 export const pcAvailable = () => !!st.orgb?.running && st.orgb.controllers.length > 0;
@@ -149,52 +241,35 @@ function pcLights() {
       boardSection());
   }
   return card([...head, h('span', { class: 'spacer' }), pill(`${o.controllers.length} found`, 'good')],
-    !o.bundled && o.board?.setUp ? h('p', { class: 'faint', style: { fontSize: '12.5px' } }, 'Board, fan and RAM lights included.') : null,
-    o.bundled ? h('p', { class: 'faint', style: { fontSize: '12.5px' } }, `USB lights only${o.readOnly ? '; read-only' : ''}.`) : null,
-    o.controllers.length ? h('div', { class: 'pc-parts' }, ...groups(o.controllers).map((g) => {
-      const c = g[0], many = g.length > 1;
-      const same = g.every((x) => x.same && x.color === c.color);
-      return h('div', { class: 'pc-part' },
-        h('div', { class: 'pc-part-head' }, h('span', { class: 'muted' }, typeLabel(c.type)), h('b', {}, many ? `${c.name} × ${g.length}` : c.name),
-          c.color ? (same && isOff(c.color) ? h('small', { class: 'faint' }, 'Off') : h('span', { class: 'dot', style: { background: same ? c.color : 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)' }, title: same ? c.color : 'several colors' })) : null),
-        h('small', { class: 'faint' }, [c.mode ? `Mode: ${c.mode}` : null, `${g.reduce((n, x) => n + (x.leds || 0), 0)} lights`, many ? `${g.length} sticks` : null].filter(Boolean).join(' · ')),
-        // the colors, for the whole part and per zone (an ARGB header is where fans plug in) (22 Oct 2026)
-        colorRow('All', same ? c.color : null, async (hex) => { for (const x of g) await setPcColor(x.index, hex, null); }),
-        // and each stick on its own (23 Oct 2026, Shawn: "Let him be able to change the colors for each ram stick")
-        many ? h('div', { class: 'pc-zones' }, ...g.map((x, i) => colorRow(`Stick ${i + 1}`, x.same ? x.color : null, (hex) => setPcColor(x.index, hex, null)))) : null,
-        !many && c.zones.length > 1 && shownZones(c).length ? h('div', { class: 'pc-zones' }, ...shownZones(c).map(([z, i]) => colorRow(/^\?+$/.test(z.name || '') ? `Unnamed ${i + 1}` : z.name, z.color, (hex) => setPcColor(c.index, hex, i)))) : null,
-        !many && c.zones.length > 1 && hiddenZoneCount(c) ? h('small', { class: 'faint' }, `${hiddenZoneCount(c)} more part${hiddenZoneCount(c) === 1 ? '' : 's'}: All colors them.`) : null);
-    }))
-      : h('p', { class: 'faint' }, 'No lights found.'),
+    !o.bundled && o.board?.setUp ? h('p', { class: 'faint pcl-intro' }, 'Board, fan and RAM lights included.') : null,
+    o.bundled ? h('p', { class: 'faint pcl-intro' }, `USB lights only${o.readOnly ? '; read-only' : ''}.`) : null,
+    o.controllers.length ? h('div', { class: 'pcl' }, ...lightSections()) : h('p', { class: 'faint' }, 'No lights found.'),
     // Find my lights: one color per zone, the person names what lit (ui/find-lights.js)
     findLights(o, redraw),
     h('div', { class: 'actions' },
-      button('Undo', async () => { if (isDemo()) { st.orgb = DEMO_ORGB(); redraw(); toast('PC lights undone', 'good'); return; } try { await env.api('/api/openrgb/restore', {}); toast('PC lights undone', 'good'); } catch (e) { toast('Nothing to undo', 'bad', { detail: e.message }); } loadPc(true); }, { kind: 'small', ic: 'undo' }),
+      button('Undo', async () => { pcStopLive(); if (isDemo()) { st.orgb = DEMO_ORGB(); redraw(); toast('PC lights undone', 'good'); return; } try { await env.api('/api/openrgb/restore', {}); toast('PC lights undone', 'good'); } catch (e) { toast('Nothing to undo', 'bad', { detail: e.message }); } loadPc(true); }, { kind: 'small', ic: 'undo' }),
       button('Look again', () => loadPc(true), { kind: 'ghost small', ic: 'refresh' })),
     // the built-in OpenRGB reaches USB lights only: the way to the board and RAM stays one click away
     fanHelp(),
     o.bundled || o.board?.setUp ? boardSection() : null);
 }
 
-// PC lights on its own, as the Lighting page's third column (23 Oct 2026, Shawn: "remove this [the More fold], I want
-// the lighting area non scrollable"); This PC's parts list is no longer on Lighting (Setup lists the devices that need
-// something, with the same Learn it and Request support)
-// parts with the same name and kind (four RAM sticks) are one part with one color (23 Oct 2026, Shawn: "Put the 4 sticks of
-// ram in one area instead of split out"); a board or anything else with zones stays on its own
-const groups = (all) => {
-  const out = [];
-  for (const c of all) {
-    const g = c.type === 'ram' && out.find((x) => x[0].type === 'ram' && x[0].name === c.name);
-    if (g) g.push(c); else out.push([c]);
-  }
-  return out;
-};
-
-export function pcLightsCard(onRedraw) {
-  redraw = onRedraw;
+// PC lights on its own, as the Lighting page's third column. It redraws only itself (Find my lights, Look again, a
+// light found or lost), keeping its scroll and the focused control; onState tells the page when OpenRGB came or went.
+export function pcLightsCard({ pick, onState } = {}) {
+  if (pick) pickNow = pick;
+  wrap = h('div', { class: 'light-pc', style: { '--pick': pickNow() } });
+  let had = pcAvailable();
+  redraw = () => {
+    if (!wrap?.isConnected) return;
+    const old = wrap.firstElementChild, scroll = old?.scrollTop || 0;
+    const focus = wrap.contains(document.activeElement) ? document.activeElement.getAttribute('aria-label') || document.activeElement.textContent.trim() : null;
+    wrap.replaceChildren(pcLights());
+    if (wrap.firstElementChild) wrap.firstElementChild.scrollTop = scroll;
+    if (focus) [...wrap.querySelectorAll('button, input')].find((x) => (x.getAttribute('aria-label') || x.textContent.trim()) === focus)?.focus({ preventScroll: true });
+    if (pcAvailable() !== had) { had = pcAvailable(); onState?.(); }
+  };
+  wrap.append(pcLights());
   if (!st.pc && !st.loading) queueMicrotask(() => loadPc());
-  return pcLights();
+  return wrap;
 }
-
-// OpenRGB's device type with a capital first letter ("motherboard" reads Motherboard; RAM and LED strip kept as words)
-function typeLabel(t) { const s = String(t || ''); return s === 'ram' ? 'RAM' : s === 'ledstrip' ? 'LED strip' : s.charAt(0).toUpperCase() + s.slice(1); }

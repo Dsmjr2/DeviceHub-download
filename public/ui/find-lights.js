@@ -4,7 +4,7 @@
 // hides the ones that lit nothing; Show all zones brings them back. In place, step by step: no pop-ups, notifications
 // or tooltips. The lights go back as they were on Save names or Cancel. Demo mode runs it on the pretend lights.
 //   findLights(o, redraw) -> the card's part (o: the /api/openrgb answer; its controllers are replaced by the answers)
-//   shownZones(c) -> [[zone, index]] the zones to list for a light (hidden ones only after Show all zones)
+//   showingAll() -> true after Show all zones (the hidden and unnamed zones get rows too)
 import { h } from './dom.js';
 import { button } from './controls.js';
 import { env } from '../core/env.js';
@@ -21,13 +21,9 @@ const s = { step: 'idle', index: null, name: '', zones: [], seen: {}, names: {},
 let draw = () => {};
 const go = (patch) => { Object.assign(s, patch); draw(); };
 
-// the zones worth a row (23 Oct 2026, Shawn on a friend's B450: "His motherboard doesnt need this many options", and its
-// "Top logo" did not even move the logo): the ones the person named with Find my lights, and the ones fans plug into
-// (ARGB / D_LED headers). OpenRGB's own guesses ("Top logo", "Unnamed 6") stay out until Find my lights names them;
-// All still covers every zone.
-const FAN_ZONE = /argb|d[_ -]?led|header|fan/i;
-export const shownZones = (c) => c.zones.map((z, i) => [z, i]).filter(([z]) => s.showAll || (!z.hidden && (z.named || FAN_ZONE.test(z.name || ''))));
-export const hiddenZoneCount = (c) => c.zones.length - shownZones(c).length;
+// Show all zones lists the zones Find my lights hid, and the unnamed ones (public/core/light-groups.js decides which
+// zones get a row: the named ones and the fan headers; All still covers every zone)
+export const showingAll = () => s.showAll;
 
 const lights = (o) => (o.controllers || []).filter((c) => c.zones?.length && c.leds > 0);
 const say = (e) => String(e?.message || e || '').replace(/^Error: /, '');

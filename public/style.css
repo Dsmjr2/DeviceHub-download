@@ -637,21 +637,23 @@ html[data-art] .mic-muted .art.mark .led.mic { fill: #ff4d4d; filter: drop-shado
 .macro .mname small { font-size: 11.5px; }
 .macro .macro-input { font-family: var(--ui); font-size: 13.5px; padding: 7px 12px; }
 
-/* ---------- lighting: a smooth conic hue ring, a round knob on it, the chosen color as a glowing lens in the middle ---------- */
-.ring-wrap { position: relative; width: 248px; height: 248px; margin: 10px auto 6px; filter: drop-shadow(0 12px 28px color-mix(in srgb, var(--pick, #6aa8ff) 24%, rgba(0, 0, 0, .55))); }
-.ring-wrap canvas { width: 100%; height: 100%; border-radius: 50%; cursor: grab; touch-action: none; }
-.ring-wrap canvas:active { cursor: grabbing; }
-.ring-disc { position: absolute; inset: 27%; border-radius: 50%; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--pick) 72%, #fff), var(--pick) 68%, color-mix(in srgb, var(--pick) 75%, #000)); display: grid; place-items: center; cursor: pointer;
-  box-shadow: inset 0 2px 4px rgba(255, 255, 255, .55), inset 0 -4px 10px rgba(0, 0, 0, .35), 0 0 32px -4px color-mix(in srgb, var(--pick) 65%, transparent); border: 1.5px solid rgba(255, 255, 255, .38); transition: transform .15s ease, box-shadow .15s ease; }
-.ring-disc:hover { transform: scale(1.03); }
-.ring-disc span { font: 600 12.5px var(--mono); letter-spacing: .04em; color: rgba(255, 255, 255, .95); background: rgba(10, 12, 16, .62); backdrop-filter: blur(6px); padding: 4px 11px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .18); box-shadow: 0 2px 8px rgba(0, 0, 0, .35); }
-.ring-native { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
-.ring-knob { position: absolute; width: 26px; height: 26px; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; border: 3px solid #fff; box-shadow: 0 3px 10px rgba(0, 0, 0, .55), 0 0 0 1px rgba(0, 0, 0, .2); transition: transform .1s ease, box-shadow .1s ease; }
-.ring-knob.dragging { transform: translate(-50%, -50%) scale(1.18); box-shadow: 0 5px 16px rgba(0, 0, 0, .65), 0 0 14px var(--pick, #fff); }
-.picker-row { display: grid; grid-template-columns: 84px 1fr; gap: 14px; align-items: center; margin-top: 14px; }
-.picker-row .muted { font-size: 13px; }
-.sat-track input[type=range] { background: linear-gradient(90deg, #fff, var(--hue, #888)); }
-.sat-track input[type=range]::-webkit-slider-thumb { background: #fff; }
+/* ---------- lighting: the color picker (26 Oct 2026, ui/color-picker.js): a saturation/brightness area, a hue strip,
+   a large swatch with its code, presets. Thumbs move by percent, painted once per frame. ---------- */
+.cp { display: grid; gap: 12px; margin-top: 2px; }
+.cp-sv { position: relative; height: 168px; border-radius: 12px; cursor: crosshair; touch-action: none; outline: 1px solid var(--line2); outline-offset: -1px;
+  background: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, var(--cp-hue, #f00)); }
+.cp-hue { position: relative; height: 16px; border-radius: 999px; cursor: pointer; touch-action: none; margin: 0 8px; outline: 1px solid var(--line2); outline-offset: -1px;
+  background: linear-gradient(90deg, #f00 0%, #ff0 16.67%, #0f0 33.33%, #0ff 50%, #00f 66.67%, #f0f 83.33%, #f00 100%); }
+.cp-thumb { position: absolute; width: 20px; height: 20px; border-radius: 50%; border: 3px solid #fff; background: var(--pick); pointer-events: none; transform: translate(-50%, -50%);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, .6), inset 0 0 0 1px rgba(0, 0, 0, .25); transition: transform .08s ease; }
+.cp-hue .cp-thumb { top: 50%; background: var(--cp-hue); width: 22px; height: 22px; }
+.cp-sv.dragging .cp-thumb, .cp-hue.dragging .cp-thumb { transform: translate(-50%, -50%) scale(1.15); }
+.cp-sv:focus-visible, .cp-hue:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.cp-now { display: flex; align-items: center; gap: 14px; }
+.cp-big { width: 58px; height: 58px; flex: none; border-radius: 14px; background: var(--pick); box-shadow: 0 0 0 1px var(--line2), 0 6px 22px -8px var(--pick); }
+.cp.is-off .cp-big { background: linear-gradient(135deg, transparent calc(50% - 1.5px), var(--muted) calc(50% - 1.5px), var(--muted) calc(50% + 1.5px), transparent calc(50% + 1.5px)), var(--panel-2); box-shadow: 0 0 0 1px var(--line2); }
+.panel .cp-swatches { margin-top: 0; gap: 8px; justify-content: flex-start; flex: 1; min-width: 0; }
+.cp-swatches .swatch { width: 26px; height: 26px; }
 .swatches { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 16px; }
 .swatch { width: 32px; height: 32px; border-radius: 999px; border: 0; outline: 1.5px solid rgba(255, 255, 255, .16); outline-offset: -1px; background: radial-gradient(circle at 32% 28%, color-mix(in srgb, var(--s) 70%, #fff), var(--s) 70%); box-shadow: 0 3px 8px -2px color-mix(in srgb, var(--s) 50%, rgba(0, 0, 0, .5)); transition: transform .12s ease, box-shadow .12s ease, outline-color .12s ease; cursor: pointer; }
 .swatch:hover { transform: translateY(-1px) scale(1.1); box-shadow: 0 5px 14px -2px color-mix(in srgb, var(--s) 75%, rgba(0, 0, 0, .6)); }
@@ -682,22 +684,35 @@ html[data-art] .mic-muted .art.mark .led.mic { fill: #ff4d4d; filter: drop-shado
 .pc-part-head b { font-weight: 600; }
 .pc-part small { font-size: 12.5px; line-height: 1.45; }
 .pc-part .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; border: 1px solid var(--line); align-self: center; }
-.pc-color-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border-radius: 10px; background: rgba(255, 255, 255, .02); border: 1px solid var(--line); margin-bottom: 6px; }
-.pc-zone-label { font-size: 13px; font-weight: 500; color: var(--text); min-width: 88px; }
-.pc-swatch-group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.pc-swatch { width: 22px; height: 22px; }
+/* PC lights by what they are (26 Oct 2026): a section per kind (Fans, RAM, Graphics card, Board), its All row first.
+   Each row: the color it has now (ringed when it is the picked color), the picked color to give it, Off. */
+.pcl { display: grid; gap: 8px; }
+.pcl-intro { font-size: 12.5px; margin: 0 0 8px; }
+.pcl-sec { border: 1px solid var(--line); border-radius: 12px; background: var(--sunk); padding: 2px 10px; }
+.pcl-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; min-height: 38px; }
+.pcl-rows .pcl-row { border-top: 1px solid var(--line); padding-left: 8px; }
+.pcl-name { flex: 1; min-width: 0; display: grid; }
+.pcl-name b { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pcl-head .pcl-name b { font-size: 14px; }
+.pcl-name small { color: var(--faint); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pcl-dot { width: 16px; height: 16px; flex: none; border-radius: 50%; box-shadow: 0 0 0 1px var(--line2); }
+.pcl-dot.off { background: linear-gradient(135deg, transparent calc(50% - 1px), var(--muted) calc(50% - 1px), var(--muted) calc(50% + 1px), transparent calc(50% + 1px)), var(--panel-2) !important; }
+.pcl-row.match .pcl-dot { box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px var(--text); }
+.pcl-row .swatch { width: 26px; height: 26px; flex: none; }
+.pcl-paint { --s: var(--pick, #ff6a1a); }
+.pcl-row.is-live .pcl-paint { outline: 2px solid var(--text); outline-offset: 2px; }
+.pcl-live { display: none; border: 1px solid var(--line2); background: transparent; color: var(--muted); font: 500 11.5px var(--ui); border-radius: 999px; padding: 2px 8px; cursor: pointer; }
+.pcl-row.is-live .pcl-live { display: inline-flex; }
+.pcl-row.empty .pcl-name { opacity: .6; }
+.pcl-note { display: block; padding: 0 0 8px; font-size: 11.5px; }
 /* Lighting on one screen: the color, where it goes, and the PC's own lights side by side; a long PC lights list scrolls
    inside its own card, never the page (23 Oct 2026) */
-.grid.light-cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.15fr); align-items: start; }
+.grid.light-cols { grid-template-columns: minmax(0, .95fr) minmax(0, 1fr) minmax(0, 1.2fr); align-items: start; }
 .light-pc > .panel { max-height: calc(100vh - 182px); overflow: auto; }
-/* in the narrower column: each light's name above its color dots, the dots on one line */
-.light-pc .pc-color-row { gap: 6px; padding: 8px 10px; }
-.light-pc .pc-color-row > .pc-zone-label { flex-basis: 100%; min-width: 0; font-size: 12.5px; color: var(--muted); }
-.light-pc .pc-color-row .pc-swatch, .light-pc .pc-color-row .swatch-custom { width: 21px; height: 21px; }
-/* the Color card's sliders stay inside it in a narrow column */
-.light-cols .picker-row { grid-template-columns: 76px minmax(0, 1fr); }
+.light-cols .picker-row { grid-template-columns: 76px minmax(0, 1fr); margin-top: 18px; }
 .light-cols .picker-row > * { min-width: 0; }
 @media (max-width: 1180px) { .grid.light-cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .light-pc { grid-column: 1 / -1; } .light-pc > .panel { max-height: none; } }
+@media (max-width: 700px) { .grid.light-cols { grid-template-columns: minmax(0, 1fr); } .cp-sv { height: 150px; } }
 
 /* ---------- profiles ---------- */
 .profiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); gap: 14px; align-items: start; }

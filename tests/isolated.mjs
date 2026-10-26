@@ -119,6 +119,29 @@ try {
         else check(filled, `page ${pg}: empty`);
         check(demo, `page ${pg}: not in demo mode`);
       }
+      // Lighting (26 Oct 2026, Shawn: "when I change one it scrolls back to the top"): at 1650x950 the page does not
+      // scroll; giving a PC light a color, and dragging the picker by keys, keeps the same page and the card's scroll
+      await cdp('Emulation.setDeviceMetricsOverride', { width: 1650, height: 950, deviceScaleFactor: 1, mobile: false });
+      errors.length = 0;
+      await cdp('Page.navigate', { url: `${BASE}/#/lighting` }); await sleep(2500);
+      const lit = (await cdp('Runtime.evaluate', { returnByValue: true, awaitPromise: true, expression: `(async () => {
+        const main = document.querySelector('#main'), page = main.firstElementChild, panel = document.querySelector('.light-pc > .panel');
+        const fits = document.documentElement.scrollHeight <= innerHeight && main.scrollHeight <= main.clientHeight + 1;
+        page.dataset.kept = '1'; panel.scrollTop = 120; const scroll = panel.scrollTop;
+        const row = document.querySelector('.pcl-sec[data-sec="fans"] .pcl-rows .pcl-row');
+        row.querySelector('.pcl-paint').click();
+        const hue = document.querySelector('.cp-hue'); hue.focus();
+        for (let i = 0; i < 12; i++) hue.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', shiftKey: true, bubbles: true }));
+        hue.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight', bubbles: true }));
+        await new Promise((r) => setTimeout(r, 300));
+        const big = getComputedStyle(document.querySelector('.cp-big')).backgroundColor, dot = row.querySelector('.pcl-dot').style.background;
+        return { fits, kept: main.firstElementChild.dataset.kept === '1' && panel.isConnected, scroll: panel.scrollTop === scroll, live: row.classList.contains('is-live') && row.classList.contains('match'), follows: big === dot && big !== 'rgb(255, 106, 26)', focus: document.activeElement === hue };
+      })()` })).result?.result?.value;
+      const litR = lit || null;
+      check(!errors.length, `lighting: ${[...new Set(errors)].join(' | ')}`);
+      check(litR && litR.fits, `lighting: the page scrolls at 1650x950 (${JSON.stringify(litR)})`);
+      check(litR && litR.kept && litR.scroll, `lighting: a color change redrew the page or lost the card's scroll (${JSON.stringify(litR)})`);
+      check(litR && litR.live && litR.follows && litR.focus, `lighting: the row did not follow the picker, or the picker lost focus (${JSON.stringify(litR)})`);
       ws.close();
       console.log(`opened ${pages.length} pages in ${path.basename(exe)} (demo mode)`);
     } finally { c.kill(); await sleep(500); try { fs.rmSync(profile, { recursive: true, force: true }); } catch {} }
