@@ -135,13 +135,22 @@ try {
         hue.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight', bubbles: true }));
         await new Promise((r) => setTimeout(r, 300));
         const big = getComputedStyle(document.querySelector('.cp-big')).backgroundColor, dot = row.querySelector('.pcl-dot').style.background;
-        return { fits, kept: main.firstElementChild.dataset.kept === '1' && panel.isConnected, scroll: panel.scrollTop === scroll, live: row.classList.contains('is-live') && row.classList.contains('match'), follows: big === dot && big !== 'rgb(255, 106, 26)', focus: document.activeElement === hue };
+        // each row's own preset dots and its text Off (26 Oct 2026): the second fan header only
+        const rows = [...document.querySelectorAll('.pcl-sec[data-sec="fans"] .pcl-rows .pcl-row')], other = rows[1];
+        const presets = rows.every((r) => r.querySelectorAll('.pcl-preset').length === 10 && r.querySelector('.pcl-paint') && r.querySelector('.pcl-off')?.textContent === 'Off');
+        const before = row.querySelector('.pcl-dot').style.background;
+        other.querySelector('.pcl-preset[data-hex="#3ddc97"]').click();
+        const preset = other.querySelector('.pcl-dot').style.background === 'rgb(61, 220, 151)' && other.querySelector('.pcl-preset[data-hex="#3ddc97"]').classList.contains('on') && row.querySelector('.pcl-dot').style.background === before && !other.classList.contains('is-live');
+        other.querySelector('.pcl-off').click();
+        const offText = other.querySelector('.pcl-now-off').offsetParent !== null && other.querySelector('.pcl-dot').offsetParent === null && other.querySelector('.pcl-off').classList.contains('on') && !other.querySelector('.swatch-off');
+        return { fits, kept: main.firstElementChild.dataset.kept === '1' && panel.isConnected, scroll: panel.scrollTop === scroll, live: row.classList.contains('is-live') && row.classList.contains('match'), follows: big === dot && big !== 'rgb(255, 106, 26)', focus: document.activeElement === hue, presets, preset, offText };
       })()` })).result?.result?.value;
       const litR = lit || null;
       check(!errors.length, `lighting: ${[...new Set(errors)].join(' | ')}`);
       check(litR && litR.fits, `lighting: the page scrolls at 1650x950 (${JSON.stringify(litR)})`);
       check(litR && litR.kept && litR.scroll, `lighting: a color change redrew the page or lost the card's scroll (${JSON.stringify(litR)})`);
       check(litR && litR.live && litR.follows && litR.focus, `lighting: the row did not follow the picker, or the picker lost focus (${JSON.stringify(litR)})`);
+      check(litR && litR.presets && litR.preset && litR.offText, `lighting: a row's presets, its preset write or its Off text are wrong (${JSON.stringify(litR)})`);
       ws.close();
       console.log(`opened ${pages.length} pages in ${path.basename(exe)} (demo mode)`);
     } finally { c.kill(); await sleep(500); try { fs.rmSync(profile, { recursive: true, force: true }); } catch {} }

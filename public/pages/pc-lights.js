@@ -6,7 +6,8 @@
 // - PC lights: the lights OpenRGB controls (helpers/openrgb.js), when OpenRGB runs with its SDK server. DeviceHub
 //   never writes to the motherboard's SMBus itself.
 import { h } from '../ui/dom.js';
-import { card, button, pill, skeleton, offSwatch, isOff, OFF } from '../ui/controls.js';
+import { card, button, pill, skeleton, isOff, OFF } from '../ui/controls.js';
+import { SWATCHES } from './headset.js';
 import { groupLights, applyLocal, liveWriter } from '../core/light-groups.js';
 import { env } from '../core/env.js';
 import { isDemo } from '../core/devices.js';
@@ -53,10 +54,11 @@ export async function loadPc(fresh = false, after) {
 
 // PC lights by what they are (26 Oct 2026, Shawn: "the pc lights are coming up as motherboard lights on my friends pc,
 // also when I change one it scrolls back to the top"): Fans, RAM, Graphics card, Board (public/core/light-groups.js).
-// Each row has the color it shows now, a swatch that gives it the picker's color, and Off; each writes only its own
-// zone or stick. A row given a color stays "Live": moving the picker then changes it as it moves (at most 10 writes a
-// second, the last on release). A color change updates the rows in place: nothing is redrawn and the card keeps its
-// scroll and focus. Only a change in what is listed (Find my lights, Look again) rebuilds this card, and only it.
+// Each row has the color it shows now, the preset colors, a dot that gives it the picker's color, and Off; each writes
+// only its own zone or stick. A row given the picked color stays "Live": moving the picker then changes it as it moves
+// (at most 10 writes a second, the last on release). A color change updates the rows in place: nothing is redrawn and
+// the card keeps its scroll and focus. Only a change in what is listed (Find my lights, Look again) rebuilds this card,
+// and only it.
 const live = { key: null, writes: null, writer: null, failed: false };
 let gen = 0;                            // a newer local change wins over an older write's answer
 let pickNow = () => '#ff6a1a';
@@ -92,6 +94,7 @@ function setLive(key, writes) {
   paintRows();
 }
 const useRow = async (key, writes) => { setLive(key, writes); try { await sendWrites(writes, pickNow()); } catch {} };
+const presetRow = async (key, writes, hex) => { if (live.key === key) setLive(null); try { await sendWrites(writes, hex); } catch {} };
 const offRow = async (key, writes) => { if (live.key === key) setLive(null); try { await sendWrites(writes, OFF); } catch {} };
 
 // the picker moved / was let go (pages/lighting.js): the paint swatches show it, a Live row follows it
@@ -104,24 +107,34 @@ export function pcPick(hex, done = false) {
 }
 export const pcStopLive = () => { if (live.key) setLive(null); };
 
+// One light (26 Oct 2026, Shawn: with every light off each row showed two near-identical slashed circles and a white
+// dot): its name with the color it has now (a small dot, or "Off" in faint text), then the preset dots (the Color card's
+// own), one picked-color dot (ringed; gives the row the Color card's color and makes it Live) and a text Off button.
+// The preset that equals the row's color is ringed. Every button writes this row's zones or stick only.
 function lightRow(key, title, detail, row, writes) {
   const dot = h('span', { class: 'pcl-dot', 'aria-hidden': 'true' });
+  const offText = h('span', { class: 'pcl-now-off faint' }, 'Off');
   const tag = h('button', { class: 'pcl-live', 'aria-label': `${title}: stop following the picker`, onclick: () => setLive(null) }, 'Live ×');
   const empty = !(row.leds > 0) && writes.length === 0;
+  const presets = empty ? [] : SWATCHES.map((c) => h('button', { class: 'swatch pcl-preset', style: { '--s': c }, dataset: { hex: c.toLowerCase() },
+    'aria-label': `${title}: ${c.toUpperCase()}`, 'aria-pressed': 'false', onclick: () => presetRow(key, writes, c) }));
+  const offBtn = empty ? null : h('button', { class: 'btn ghost small pcl-off', 'aria-label': `${title}: off`, 'aria-pressed': 'false', onclick: () => offRow(key, writes) }, 'Off');
   const el = h('div', { class: `pcl-row${empty ? ' empty' : ''}`, dataset: { key } },
-    dot,
-    h('div', { class: 'pcl-name' }, h('b', {}, title), detail ? h('small', {}, detail) : null),
-    tag,
-    empty ? null : h('button', { class: 'swatch pcl-paint', 'aria-label': `${title}: use the picked color`, onclick: () => useRow(key, writes) }),
-    empty ? null : offSwatch({ label: title, onclick: () => offRow(key, writes) }));
+    h('div', { class: 'pcl-name' }, h('b', {}, h('span', { class: 'pcl-title' }, title), dot, offText), detail ? h('small', {}, detail) : null),
+    empty ? null : h('div', { class: 'pcl-colors' },
+      tag, h('div', { class: 'pcl-presets' }, ...presets),
+      h('button', { class: 'swatch pcl-paint', 'aria-label': `${title}: use the picked color`, onclick: () => useRow(key, writes) }),
+      offBtn));
   const set = (color) => {
+    const off = isOff(color), cur = (color || '').toLowerCase();
     dot.style.background = color ? color : 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)';
-    dot.classList.toggle('off', isOff(color));
+    dot.hidden = off; offText.hidden = !off;
     dot.setAttribute('data-color', label(color));
-    const pick = pickNow().toLowerCase();
-    el.classList.toggle('match', !!color && !isOff(color) && color.toLowerCase() === pick);
+    el.classList.toggle('is-off', off);
+    el.classList.toggle('match', !!color && !off && cur === pickNow().toLowerCase());
     el.classList.toggle('is-live', live.key === key);
-    el.querySelector('.swatch-off')?.classList.toggle('on', isOff(color));
+    for (const p of presets) { const on = !off && p.dataset.hex === cur; p.classList.toggle('on', on); p.setAttribute('aria-pressed', String(on)); }
+    if (offBtn) { offBtn.classList.toggle('on', off); offBtn.setAttribute('aria-pressed', String(off)); }
   };
   rowEls.set(key, { el, set });
   return el;

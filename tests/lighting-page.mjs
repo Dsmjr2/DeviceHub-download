@@ -108,7 +108,7 @@ check(C.hsvToHex(0, 1, 1) === '#ff0000' && C.hsvToHex(120, 1, 1) === '#00ff00' &
 const src = (f) => fs.readFileSync(path.join(ROOT, 'public', f), 'utf8');
 const body = (text, start, end) => { const a = text.indexOf(start); return a < 0 ? '' : text.slice(a, end ? text.indexOf(end, a + start.length) : undefined); };
 const pc = src('pages/pc-lights.js'), lighting = src('pages/lighting.js'), picker = src('ui/color-picker.js');
-for (const [name, fn] of [['sendWrites', body(pc, 'async function sendWrites', '\n}\n')], ['pcPick', body(pc, 'export function pcPick', '\n}\n')], ['useRow', body(pc, 'const useRow', '\n')], ['offRow', body(pc, 'const offRow', '\n')], ['setLive', body(pc, 'function setLive', '\n}\n')], ['applyPc', body(pc, 'export async function applyPc', '\n}\n')]]) {
+for (const [name, fn] of [['sendWrites', body(pc, 'async function sendWrites', '\n}\n')], ['pcPick', body(pc, 'export function pcPick', '\n}\n')], ['useRow', body(pc, 'const useRow', '\n')], ['presetRow', body(pc, 'const presetRow', '\n')], ['offRow', body(pc, 'const offRow', '\n')], ['setLive', body(pc, 'function setLive', '\n}\n')], ['applyPc', body(pc, 'export async function applyPc', '\n}\n')]]) {
   check(fn.length > 20 && !/\bredraw\(|refreshPc\(|loadPc\(true\)|render\(/.test(fn.replace(/else loadPc\(true\)/, '')), `${name} changes colors in place (no redraw): ${fn.slice(0, 80)}`);
 }
 check(/function paintRows\(\)[\s\S]{0,400}keys !== shownKeys\) \{ refreshPc\(\); return; \}/.test(pc), 'paintRows rebuilds the card only when the listed rows changed');
@@ -121,7 +121,16 @@ check(!/type: 'color'|cp-hex|parseHex/.test(picker), 'no typed color box in the 
 check(/setPointerCapture/.test(picker) && /ArrowUp/.test(picker) && /ArrowLeft/.test(picker), 'the picker captures the pointer and takes arrow keys');
 check(/liveWriter\([\s\S]{0,120}\{ every: 100 \}\)/.test(pc), 'live writes at most every 100 ms');
 check(/Apply to'\), h\('span', \{ class: 'spacer' \}\), applyBtn/.test(lighting), 'Apply to all sits beside the Apply to title');
-check(/findLights\(o, redraw\)/.test(pc) && /button\('Undo'/.test(pc) && /offSwatch\(/.test(pc), 'Find my lights, Undo and Off are kept');
+check(/findLights\(o, redraw\)/.test(pc) && /button\('Undo'/.test(pc), 'Find my lights and Undo are kept');
+// each row (26 Oct 2026, Shawn: with every light off, each row was two slashed circles and a white dot): its own preset
+// dots, the picked-color dot and a text Off; a light that is off reads "Off"
+const rowSrc = body(pc, 'function lightRow(', '\n}\n');
+check(/import \{ SWATCHES \} from '\.\/headset\.js'/.test(pc) && /SWATCHES\.map\(\(c\) => h\('button', \{ class: 'swatch pcl-preset'[\s\S]{0,240}onclick: \(\) => presetRow\(key, writes, c\)/.test(rowSrc), 'each row has the Color card presets, each writing that row only');
+check(/const presetRow = async \(key, writes, hex\) => \{[^\n]*sendWrites\(writes, hex\)/.test(pc), "a preset sends its color to the row's own writes");
+check(/class: 'swatch pcl-paint'[^\n]*onclick: \(\) => useRow\(key, writes\)/.test(rowSrc) && /const useRow = async \(key, writes\) => \{ setLive\(key, writes\); try \{ await sendWrites\(writes, pickNow\(\)\)/.test(pc), "the picked dot sends the Color card's color to the row and makes it Live");
+check(/class: 'btn ghost small pcl-off'[^\n]*onclick: \(\) => offRow\(key, writes\) \}, 'Off'\)/.test(rowSrc) && !/offSwatch/.test(pc), 'Off is a small text button, no slashed circle');
+check(/h\('span', \{ class: 'pcl-now-off faint' \}, 'Off'\)/.test(rowSrc) && /dot\.hidden = off; offText\.hidden = !off;/.test(rowSrc), 'a light that is off shows the word Off in faint text instead of its dot');
+check(/p\.dataset\.hex === cur; p\.classList\.toggle\('on', on\)/.test(rowSrc), "the preset that equals the row's color is ringed");
 
 if (fails.length) { console.log(`lighting-page: ${fails.length} failed\n - ${fails.join('\n - ')}`); process.exit(1); }
 console.log('lighting-page: all checks passed');

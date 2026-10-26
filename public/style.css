@@ -684,26 +684,38 @@ html[data-art] .mic-muted .art.mark .led.mic { fill: #ff4d4d; filter: drop-shado
 .pc-part-head b { font-weight: 600; }
 .pc-part small { font-size: 12.5px; line-height: 1.45; }
 .pc-part .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; border: 1px solid var(--line); align-self: center; }
-/* PC lights by what they are (26 Oct 2026): a section per kind (Fans, RAM, Graphics card, Board), its All row first.
-   Each row: the color it has now (ringed when it is the picked color), the picked color to give it, Off. */
+/* PC lights by what they are (26 Oct 2026): a section per kind (Fans, RAM, Graphics card, Board), its All row first
+   as the section's header. Each row: the name (never cut; at least 110px) with the color it has now (a dot, or "Off" in
+   faint text); then the preset dots (18px, no glow), the picked-color dot (ringed) and a small ghost Off, all on one line.
+   The dots sit beside the name when the card is wide enough and wrap under it when not. */
 .pcl { display: grid; gap: 8px; }
 .pcl-intro { font-size: 12.5px; margin: 0 0 8px; }
 .pcl-sec { border: 1px solid var(--line); border-radius: 12px; background: var(--sunk); padding: 2px 10px; }
-.pcl-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; min-height: 38px; }
-.pcl-rows .pcl-row { border-top: 1px solid var(--line); padding-left: 8px; }
-.pcl-name { flex: 1; min-width: 0; display: grid; }
-.pcl-name b { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pcl-head .pcl-name b { font-size: 14px; }
-.pcl-name small { color: var(--faint); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pcl-dot { width: 16px; height: 16px; flex: none; border-radius: 50%; box-shadow: 0 0 0 1px var(--line2); }
-.pcl-dot.off { background: linear-gradient(135deg, transparent calc(50% - 1px), var(--muted) calc(50% - 1px), var(--muted) calc(50% + 1px), transparent calc(50% + 1px)), var(--panel-2) !important; }
-.pcl-row.match .pcl-dot { box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px var(--text); }
-.pcl-row .swatch { width: 26px; height: 26px; flex: none; }
-.pcl-paint { --s: var(--pick, #ff6a1a); }
-.pcl-row.is-live .pcl-paint { outline: 2px solid var(--text); outline-offset: 2px; }
-.pcl-live { display: none; border: 1px solid var(--line2); background: transparent; color: var(--muted); font: 500 11.5px var(--ui); border-radius: 999px; padding: 2px 8px; cursor: pointer; }
-.pcl-row.is-live .pcl-live { display: inline-flex; }
+.pcl-row { display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; row-gap: 4px; padding: 7px 0; min-height: 34px; }
+.pcl-rows .pcl-row { border-top: 1px solid var(--line); padding-left: 10px; }
+.pcl-name { flex: 1 0 110px; min-width: 110px; display: grid; }
+.pcl-name b { display: flex; align-items: center; gap: 7px; font-weight: 600; font-size: 13px; line-height: 1.3; }
+.pcl-title { overflow-wrap: anywhere; }
+.pcl-name small { color: var(--faint); font-size: 11.5px; line-height: 1.35; overflow-wrap: anywhere; }
+.pcl-head { padding: 9px 0 8px; }
+.pcl-head .pcl-name b { font-size: 14px; font-weight: 700; letter-spacing: .01em; }
+.pcl-dot { width: 10px; height: 10px; flex: none; border-radius: 50%; box-shadow: 0 0 0 1px var(--line2); }
+.pcl-now-off { flex: none; font-weight: 500; font-size: 11.5px; }
+.pcl-dot[hidden], .pcl-now-off[hidden] { display: none; }
+.pcl-colors { flex: 0 0 auto; max-width: 100%; margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
+.pcl-presets { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.pcl-row .swatch.pcl-preset, .pcl-row .swatch.pcl-paint { width: 18px; height: 18px; flex: none; box-shadow: none; background: var(--s); outline: 1px solid rgba(255, 255, 255, .16); outline-offset: -1px; transform: none; }
+.pcl-row .swatch.pcl-preset:hover, .pcl-row .swatch.pcl-paint:hover { transform: scale(1.12); box-shadow: none; }
+.pcl-row .swatch.pcl-preset.on { outline: 2px solid var(--text); outline-offset: 1.5px; }
+.pcl-row .swatch.pcl-paint { --s: var(--pick, #ff6a1a); margin-left: 4px; outline: 1.5px solid var(--muted); outline-offset: 2px; }
+.pcl-row.match .swatch.pcl-paint, .pcl-row.is-live .swatch.pcl-paint { outline: 2px solid var(--text); outline-offset: 2px; }
+.pcl-row .btn.pcl-off { margin-left: 2px; padding: 0 9px; min-height: 22px; height: 22px; font-size: 12px; color: var(--muted); }
+.pcl-row .btn.pcl-off:hover { color: var(--text); }
+.pcl-row .btn.pcl-off.on { color: var(--text); border-color: var(--line2); }
+.pcl-live { display: none; border: 1px solid var(--line2); background: transparent; color: var(--muted); font: 500 11px var(--ui); border-radius: 999px; padding: 0 7px; height: 20px; cursor: pointer; }
+.pcl-row.is-live .pcl-live { display: inline-flex; align-items: center; }
 .pcl-row.empty .pcl-name { opacity: .6; }
+@media (max-width: 700px) { .pcl-name { flex-basis: 100%; } .pcl-colors { margin-left: 0; justify-content: flex-start; } .pcl-presets { display: grid; grid-template-columns: repeat(5, 22px); gap: 8px; } .pcl-row .swatch.pcl-preset, .pcl-row .swatch.pcl-paint { width: 22px; height: 22px; } .pcl-row .btn.pcl-off { height: 26px; min-height: 26px; } }
 .pcl-note { display: block; padding: 0 0 8px; font-size: 11.5px; }
 /* Lighting on one screen: the color, where it goes, and the PC's own lights side by side; a long PC lights list scrolls
    inside its own card, never the page (23 Oct 2026) */
