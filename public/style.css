@@ -710,6 +710,8 @@ html[data-art] .mic-muted .art.mark .led.mic { fill: #ff4d4d; filter: drop-shado
 .pcl-row .swatch.pcl-current { margin-left: 4px; cursor: default; outline: 1.5px solid var(--muted); outline-offset: 2px; }
 .pcl-row .swatch.pcl-current.off { background: repeating-linear-gradient(135deg, transparent 0 3px, var(--line2) 3px 4px); }
 .pcl-row .pcl-dot { display: none; }
+.pcl-row .swatch.pcl-paint { width: 18px; height: 18px; flex: none; box-shadow: none; transform: none; background: var(--pick, #ff6a1a); outline: 1.5px dashed var(--muted); outline-offset: 2px; color: #fff; font: 700 13px/18px var(--ui); text-shadow: 0 0 2px rgba(0,0,0,.8); padding: 0; display: inline-grid; place-items: center; }
+.pcl-row .swatch.pcl-paint:hover { transform: scale(1.12); }
 .pcl-row .btn.pcl-off { margin-left: 2px; padding: 0 9px; min-height: 22px; height: 22px; font-size: 12px; color: var(--muted); }
 .pcl-row .btn.pcl-off:hover { color: var(--text); }
 .pcl-row .btn.pcl-off.on { color: var(--text); border-color: var(--line2); }

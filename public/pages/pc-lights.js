@@ -123,6 +123,9 @@ function lightRow(key, title, detail, row, writes) {
     h('div', { class: 'pcl-name' }, h('b', {}, h('span', { class: 'pcl-title' }, title), dot, offText), detail ? h('small', {}, detail) : null),
     empty ? null : h('div', { class: 'pcl-colors' },
       h('div', { class: 'pcl-presets' }, ...presets),
+      // the custom color: the Color card's picked color on this light only (27 Oct 2026, Shawn: "I want the custom color
+      // picker"); one write, nothing follows the picker afterwards
+      h('button', { class: 'swatch pcl-paint', 'aria-label': `${title}: use the custom color`, title: null, onclick: () => presetRow(key, writes, pickNow()) }, '+'),
       offBtn, now));
   const set = (color) => {
     const off = isOff(color), cur = (color || '').toLowerCase();
