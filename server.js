@@ -1034,6 +1034,8 @@ http.createServer(async (req, res) => {
   if (!TEST) receiverLight.start(require('./helpers/hs80-direct').icueRunning, serverLog);
   // old backups into backups\older-backups.zip, recent ones and the first of each kind kept (helpers/backup-tidy.js)
   if (!TEST) require('./helpers/backup-tidy').start(BACKUPS, serverLog);
+  // the PC check read once in the background, so the PC page opens with it (helpers/pc-check.js)
+  if (!TEST) setTimeout(() => { require('./helpers/pc-check').check(true).catch(() => {}); }, 30000).unref();
   // Wi-Fi pause: a pause left from before this start (a crash, a restart) is ended; only when it was set up (helpers/wifi-pause.mjs)
   if (!TEST) setTimeout(() => import('./helpers/wifi-pause.mjs').then((w) => { w.deps.log = (text) => serverLog({ kind: 'info', text }); return w.onStart(); }).catch(() => {}), 20000).unref?.();
   require('./helpers/hs80-direct').setLog(serverLog);

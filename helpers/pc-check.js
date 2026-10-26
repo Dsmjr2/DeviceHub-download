@@ -406,15 +406,28 @@ function openApp(id, { start = (p) => spawn(p, [], { cwd: path.dirname(p), detac
   return { ok: true };
 }
 // screens(): the display controller's read (helpers/pc-routes.js), for the refresh rate check; optional
-async function check(fresh = false, { screens = null } = {}) {
-  if (!fresh && cache.value && Date.now() - cache.at < 60000) return cache.value;
+// Fast (27 Oct 2026, Shawn: "how can we make the ... pc check all load faster?"): the last answer is shown at once and
+// read again in the background when it is over a minute old; it is kept on disk, so it is there right after a restart;
+// server.js reads it once 30 s after DeviceHub starts; the NVIDIA latest-driver lookup never holds the check up.
+const DISK = path.join(__dirname, '..', 'pc-check-cache.json');
+try { const d = JSON.parse(fs.readFileSync(DISK, 'utf8')); if (d?.value && Date.now() - d.at < 24 * 3600 * 1000) cache = { at: d.at, facts: null, value: d.value }; if (d?.nvidia?.version) latestNvidiaCache = d.nvidia; } catch {}
+async function check(fresh = false, opts = {}) {
+  if (!fresh && cache.value) {
+    if (Date.now() - cache.at >= 60000 && !pending) readNow(opts).catch(() => {});
+    return cache.value;
+  }
+  return readNow(opts);
+}
+async function readNow({ screens = null } = {}) {
   if (pending) return pending;
   pending = (async () => {
     const [facts, sc] = await Promise.all([gather(), screens ? screens().catch(() => null) : null]);
     if (sc?.screens) facts.screens = sc.screens;
     const hasNv = (facts.video || []).some((v) => /nvidia/i.test(`${v.maker} ${v.name}`));
     if (hasNv && !facts.driverUpdates?.nvidia) {
-      const nvLatest = await fetchLatestNvidiaDriver().catch(() => null);
+      // the answer cached from an earlier lookup now; a new lookup runs in the background for next time
+      const nvLatest = latestNvidiaCache.version || null;
+      if (Date.now() - latestNvidiaCache.at >= 6 * 3600 * 1000) fetchLatestNvidiaDriver().catch(() => {});
       if (nvLatest) facts.driverUpdates = { ...(facts.driverUpdates || {}), nvidia: nvLatest };
     }
     const results = runChecks(facts);
@@ -433,6 +446,7 @@ async function check(fresh = false, { screens = null } = {}) {
     }
     const wifiInfo = facts.tune?.wifi ? { name: facts.tune.wifi.name, band, channel: facts.tune.wifi.channel, signal: facts.tune.wifi.signal, rxMbps: facts.tune.wifi.rxMbps, autoConfig: facts.tune.wifi.autoConfig } : null;
     cache = { at: Date.now(), facts, value: { at: new Date().toISOString(), results, summary: summary(results), latency, wifi: wifiInfo } };
+    try { fs.writeFileSync(DISK, JSON.stringify({ at: cache.at, value: cache.value, nvidia: latestNvidiaCache })); } catch {}
     return cache.value;
   })();
   try { return await pending; } finally { pending = null; }

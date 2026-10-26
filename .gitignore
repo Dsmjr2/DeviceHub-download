@@ -58,3 +58,6 @@ lights-names.json
 
 # the tools the installer ships (Equalizer APO, OpenRGB), copied in from bundled-cache/ on a development copy
 tools/
+
+# the last PC check, shown at once when the PC page opens (helpers/pc-check.js)
+pc-check-cache.json
