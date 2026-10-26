@@ -2633,6 +2633,9 @@ html[data-skin="coral-reef"]:not([data-art="live"]) .art.mark { filter: sepia(.2
 .fan-fix { display: grid; gap: 6px; justify-items: start; margin: 2px 0 12px; }
 .board-lights { display: grid; gap: 6px; justify-items: start; margin: 10px 0 0; }
 .board-lights > small { line-height: 1.45; }
+.wifi-pause { display: grid; gap: 6px; justify-items: start; margin: 10px 0 0; }
+.wifi-pause > small { line-height: 1.45; }
+.wifi-pause-gaming { display: flex; align-items: center; gap: 8px; }
 .su-ctl:has(.board-lights) { flex: 1 1 100%; justify-content: flex-start; }
 /* Temperatures and fans: one short row per reading */
 .tf-list { display: grid; }

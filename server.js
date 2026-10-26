@@ -207,6 +207,7 @@ function isolatedApi(req, res, url) {
     '/api/updates': { isolated: true, apps: [] }, '/api/openrgb': { running: false, isolated: true, controllers: [] }, '/api/openrgb/find': { running: false, isolated: true },
     '/api/board-lights': { isolated: true, pawnio: { installed: false, version: null }, setUp: false, task: false, copy: false, canSetUp: false, why: 'DeviceHub is in isolated test mode', partial: null, before: '', remove: '', busy: false },
     '/api/cpu-sensors': { isolated: true, pawnio: { installed: false, version: null }, setUp: false, task: false, copy: false, canSetUp: false, why: 'DeviceHub is in isolated test mode', partial: null, before: [], remove: [], busy: false },
+    '/api/wifi-pause': { isolated: true, setUp: false, task: false, copy: false, canSetUp: false, why: 'DeviceHub is in isolated test mode', partial: null, show: false, inUse: false, scans: 'normal', paused: null, gaming: false, busy: false, before: '', remove: '' },
     '/api/lights/diagnose': { isolated: true, board: null, openrgb: { state: 'unknown' }, found: [], seen: [], verdict: null, problems: [], lines: [] },
   };
   if (req.method === 'GET' && p in demo) { send(res, 200, demo[p]); return true; }
@@ -395,7 +396,7 @@ async function api(req, res, url) {
       // setupSeen: the window opened once on this PC, so it no longer opens Setup by itself (public/core/first-run.js).
       const cur = readJsonFile(SETTINGS, {});
       const b = await readBody(req);
-      for (const [k, type] of Object.entries({ autoSwitch: 'boolean', defaultProfile: 'string', artStyle: 'string', themeAccent: 'string', themeBg: 'string', ankerGuard: 'boolean', batterySaver: 'boolean', settingsSync: 'boolean', lightWindow: 'boolean', batteryCare: 'boolean', oneDriveCopy: 'boolean', autoReport: 'boolean', shareDrivers: 'boolean', setupSeen: 'boolean' }))if (typeof b[k] === type) cur[k] = type === 'string' ? b[k].slice(0, 100) : b[k];
+      for (const [k, type] of Object.entries({ autoSwitch: 'boolean', defaultProfile: 'string', artStyle: 'string', themeAccent: 'string', themeBg: 'string', ankerGuard: 'boolean', batterySaver: 'boolean', settingsSync: 'boolean', lightWindow: 'boolean', batteryCare: 'boolean', oneDriveCopy: 'boolean', autoReport: 'boolean', shareDrivers: 'boolean', setupSeen: 'boolean', wifiPauseGaming: 'boolean' }))if (typeof b[k] === type) cur[k] = type === 'string' ? b[k].slice(0, 100) : b[k];
       // the theme (Settings > Appearance): an accent color as #rrggbb and one of the backdrops
       if (cur.themeAccent && !/^#[0-9a-f]{6}$/i.test(cur.themeAccent)) delete cur.themeAccent;
       if (cur.themeBg && !['graphite', 'black', 'ocean', 'midnight', 'espresso', 'old-school', 'verde', 'milk', 'coral-reef', 'cyberpunk', 'sakura', 'terminal', 'taco-night', 'slate', 'plum', 'forest', 'cream', 'paper'].includes(cur.themeBg)) delete cur.themeBg;
@@ -682,6 +683,8 @@ async function api(req, res, url) {
   // board, fan and RAM lights: PawnIO and the OpenRGB inside DeviceHub as administrator, set up or removed only on a click (helpers/board-lights.mjs)
   // CPU temperature and fan speeds: LibreHardwareMonitor's library behind an on-demand elevated reader, set up or removed only on a click (helpers/cpu-sensors.mjs)
   if (url.pathname.startsWith('/api/cpu-sensors')) { try { if (await (await import('./helpers/cpu-sensors.mjs')).handle(url, req, res, send)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
+  // Pause Wi-Fi scans while gaming: two tasks set up on a click, a pause only in the Gaming profile with the person's switch on (helpers/wifi-pause.mjs)
+  if (url.pathname.startsWith('/api/wifi-pause')) { try { if (await (await import('./helpers/wifi-pause.mjs')).handle(url, req, res, send)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   if (url.pathname.startsWith('/api/board-lights')) { try { if (await (await import('./helpers/board-lights.mjs')).handle(url, req, res, send)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   // the plain-words list of what DeviceHub supports (reads the library, opens no device)
   if (url.pathname === '/api/supported-devices') { try { if (await (await import('./helpers/supported-devices.mjs')).handle(url, req, res, send)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
@@ -1017,6 +1020,8 @@ http.createServer(async (req, res) => {
   if (!TEST) receiverLight.start(require('./helpers/hs80-direct').icueRunning, serverLog);
   // old backups into backups\older-backups.zip, recent ones and the first of each kind kept (helpers/backup-tidy.js)
   if (!TEST) require('./helpers/backup-tidy').start(BACKUPS, serverLog);
+  // Wi-Fi pause: a pause left from before this start (a crash, a restart) is ended; only when it was set up (helpers/wifi-pause.mjs)
+  if (!TEST) setTimeout(() => import('./helpers/wifi-pause.mjs').then((w) => { w.deps.log = (text) => serverLog({ kind: 'info', text }); return w.onStart(); }).catch(() => {}), 20000).unref?.();
   require('./helpers/hs80-direct').setLog(serverLog);
   if (agent) batteryHistory.start(ROOT, () => agent.state());
   // Tray icon, inside the native helper (helpers/native/tray.cs); it quits DeviceHub through /api/quit.
@@ -1060,6 +1065,8 @@ async function shutdown() {
   try { batteryHistory.stop(); } catch {}
   try { receiverLight.stop(); } catch {}
   try { openrgb.stop(); } catch {}  // the bundled OpenRGB, if DeviceHub started it
+  // Wi-Fi scans back on if DeviceHub paused them (best effort, 1.5 s at most; the task's own watcher and sign-in resume too)
+  try { await (await import('./helpers/wifi-pause.mjs')).onQuit(); } catch {}
   try { require('./helpers/native').stop(); } catch {}
   quitting = true;
   process.exit(0);

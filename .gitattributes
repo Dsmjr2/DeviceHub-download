@@ -3,3 +3,5 @@
 *.bat text eol=crlf
 *.cmd text eol=crlf
 *.vbs text eol=crlf
+# the Wi-Fi pause script is pinned by its SHA-256 (helpers/wifi-pause.mjs): its bytes must never change on checkout
+helpers/wifi-pause.ps1 -text

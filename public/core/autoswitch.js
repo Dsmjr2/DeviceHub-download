@@ -1,6 +1,6 @@
 // Auto-switch: every 5 s, if a profile's game is running, apply that profile; when it closes, go back to the default profile.
 // Applying uses the normal path (backup, one write at a time, re-read). Nothing happens unless the setting is on.
-import { loadProfiles, apply } from './profiles.js';
+import { loadProfiles, apply, wifiProfile } from './profiles.js';
 import { isDemo, log } from './devices.js';
 import { env } from './env.js';
 
@@ -54,7 +54,7 @@ async function tick() {
   const match = profiles.find((p) => (p.games || []).some((g) => gameRunning(g, running, all)));
   const target = match || profiles.find((p) => p.name === auto.settings.defaultProfile) || null;
   // Game closed and there is no default to go back to: forget it, so starting the game again re-applies its profile.
-  if (!match && !target && auto.active) { auto.active = null; emit(); return; }
+  if (!match && !target && auto.active) { auto.active = null; wifiProfile(null); emit(); return; }
   // a profile applied while a device was asleep: its leftover changes are tried again quietly every check (10 s) until
   // they land (the mouse wakes when it is touched) or another profile takes over
   if (target && auto.retry === target.name) {

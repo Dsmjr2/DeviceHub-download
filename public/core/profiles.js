@@ -216,6 +216,12 @@ export function diff(profile) {
 // retry: a quiet try again of what is left (auto-switch waiting for an asleep device): failures are not logged, and
 // the summary only when something changed. 'asleep' counts the changes waiting on an asleep device: failed because it
 // was asleep, or skipped because it is marked asleep.
+// tells DeviceHub which profile is on now (null: a game closed with no profile to go back to); helpers/wifi-pause.mjs
+// decides, and does nothing unless Wi-Fi pause was set up
+export function wifiProfile(name) {
+  if (isDemo()) return;
+  env.api('/api/wifi-pause/profile', { name }).catch(() => {});
+}
 export async function apply(profile, { retry } = {}) {
   if (profile.monitors && Object.keys(profile.monitors).length) await loadMonitors(true);
   const rows = diff(profile);
@@ -242,6 +248,8 @@ export async function apply(profile, { retry } = {}) {
       } catch { failed++; }
     }
   }
+  // Wi-Fi scans: Gaming pauses them only when the person set it up and turned it on; any other profile resumes them
+  if (!retry) wifiProfile(profile.name);
   if (!retry || done) log(`Profile "${profile.name}": ${done} changed${failed ? `, ${failed} failed` : ''}${skipped ? `, ${skipped} skipped (device not connected)` : ''}`, failed > asleep ? 'bad' : 'good');
   return { done, failed, skipped, asleep };
 }

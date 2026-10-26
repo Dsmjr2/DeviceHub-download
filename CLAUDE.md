@@ -175,6 +175,11 @@ These protect the person's hardware. Follow them even when asked to skip them, a
   "DeviceHub board lights" that runs it as administrator with its SDK server on 127.0.0.1:6742. Never at DeviceHub's
   start, never automatic, never by Claude for the person; every step is undone on failure; Remove board lights deletes
   the task and the copy (PawnIO stays; Windows Settings > Apps removes it).
+- **Wi-Fi scans: paused only by the person's choice, and never left off** (26 Oct 2026; `helpers/wifi-pause.mjs`).
+  Setup on a click: one admin prompt copies the hash-pinned `helpers/wifi-pause.ps1` to C:\Program Files\DeviceHub
+  Wi-Fi pause\ and makes two tasks, one fixed mode each ("DeviceHub Wi-Fi pause", no trigger; "DeviceHub Wi-Fi resume",
+  at sign-in). A pause happens only in the Gaming profile with "Pause Wi-Fi scans in Gaming profile" on, and resumes on
+  any other profile, quit, start, a 10 s drop and 4 hours. Never run netsh's autoconfig from anywhere else.
 - **OpenRGB 1.1 and Equalizer APO 1.4.2 ship inside DeviceHub** by Shawn's decision of 22 Oct 2026
   (`helpers/bundled-tools.json`, pinned by SHA-256; OpenRGB's user-mode PawnIOLib.dll is kept so it starts, and its six
   PawnIO modules are kept only in tools/openrgb/board-modules/, used only in board-lights mode, never beside the
@@ -232,6 +237,7 @@ helpers/gpu.js             the graphics card's temperature, fans, load, power (N
 helpers/display.js         each screen's resolution, refresh rate, HDR, main screen (backed up, tested, 15 s Keep or put back); Night light read only (docs/handoff/display-health.md)
 helpers/pc-sensors.js      Temperatures and fans, read only (nvidia-smi, D3DKMT, ACPI zones); helpers/pc-check.js the PC check (a list of check functions); both on the PC page
 helpers/cpu-sensors.mjs    the CPU temperature and board fans add-on (LibreHardwareMonitor, on the person's click), read only
+helpers/wifi-pause.mjs     Pause Wi-Fi scans while gaming: two hash-pinned admin tasks on a click (helpers/wifi-pause.ps1); Gaming profile only, always resumes
 docs/FANS.md               BIOS fan curve settings; DeviceHub never writes to the board's fan chip (it would need a kernel driver)
 tests/                     npm test: offline checks, then every page opened live and in demo; npm run test:offline needs
                            no running DeviceHub; node tests/isolated.mjs opens every page in demo mode in a copy beside it
