@@ -233,6 +233,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'devicehub-board-'));
 fs.writeFileSync(path.join(tmp, 'openrgb.js'), fs.readFileSync(path.join(ROOT, 'helpers', 'openrgb.js'), 'utf8').replace('PORT = 6742', 'PORT = 46744'));
 fs.copyFileSync(path.join(ROOT, 'helpers', 'safe-write.js'), path.join(tmp, 'safe-write.js'));
 fs.copyFileSync(path.join(ROOT, 'helpers', 'find-lights.js'), path.join(tmp, 'find-lights.js'));
+fs.copyFileSync(path.join(ROOT, 'helpers', 'last-answer.js'), path.join(tmp, 'last-answer.js'));
 fs.writeFileSync(path.join(tmp, 'bundled-tools.json'), fs.readFileSync(path.join(ROOT, 'helpers', 'bundled-tools.json')));
 const orgb = require(path.join(tmp, 'openrgb.js'));
 const od = orgb._test.deps;

@@ -174,9 +174,15 @@ export const deps = {
 };
 
 // ---- status ----
-let cache = { at: 0, value: null };
+// ~1 s (PawnIO's and the task's checks, measured 26 Oct 2026): the last answer is kept (helpers/last-answer.js), read
+// again in the background once it is a minute old, and kept on disk (only yes/no, versions and DeviceHub's own lines).
+// Every set up or remove reads it fresh and makes the next ask wait for a new read.
+const makeAnswer = () => require('./last-answer.js').lastAnswer({ name: 'board-lights', staleMs: 60000, read: () => readStatus() });
+let cache = makeAnswer();
 export async function status({ fresh = false } = {}) {
-  if (!fresh && cache.value && Date.now() - cache.at < 20000) return { ...cache.value, busy: !!(job && !job.done) };
+  return { ...(await cache.get(fresh)), busy: !!(job && !job.done) };
+}
+async function readStatus() {
   const [pawn, task] = await Promise.all([deps.pawnio().catch(() => ({ app: false, service: false, version: null })), deps.task().catch(() => false)]);
   const files = wanted(), lack = files.filter((f) => !deps.exists(f.from)).map((f) => f.rel);
   const copy = deps.exists(BOARD.exe), setUp = task && copy;
@@ -192,8 +198,7 @@ export async function status({ fresh = false } = {}) {
       : `Installs PawnIO ${PAWNIO.version} (signed, checked first) and runs OpenRGB as administrator at sign-in. Windows asks twice.`,
     remove: `Back to USB lights only. Windows asks once. ${PAWNIO_REMOVE}`,
   };
-  cache = { at: Date.now(), value };
-  return { ...value, busy: !!(job && !job.done) };
+  return value;
 }
 
 // ---- PawnIO's installer: download, both checks, run ----
@@ -242,7 +247,7 @@ export async function installPawnIO({ say = step, area = 'board lights', what = 
 let job = null;
 export const getProgress = () => job;
 const step = (text, pct = null, extra = {}) => { const { uac, ...rest } = job || {}; job = { ...rest, text, pct, done: false, at: Date.now(), ...extra }; };
-const finish = (ok, text, extra = {}) => { job = { ...job, text, pct: null, done: true, ok, at: Date.now(), ...extra }; cache.at = 0; deps.forget(); return job; };
+const finish = (ok, text, extra = {}) => { job = { ...job, text, pct: null, done: true, ok, at: Date.now(), ...extra }; cache.invalidate(); deps.forget(); return job; };
 // a job started more than 15 minutes ago and never finished (a prompt nobody answered) no longer holds the next one back
 const running = () => !!job && !job.done && Date.now() - (job.startedAt || job.at) < 15 * 60 * 1000;
 const begin = (kind) => { if (running()) throw new Error('board lights are being set up or removed; wait for it to finish'); job = { kind, startedAt: Date.now(), text: 'Starting', pct: null, done: false, at: Date.now() }; };
@@ -360,4 +365,4 @@ export async function handle(url, req, res, send) {
   } catch (e) { return send(res, 400, { error: e.message }), true; }
   return false;
 }
-export const _test = { reset: () => { job = null; cache = { at: 0, value: null }; } };
+export const _test = { reset: () => { job = null; cache = makeAnswer(); } };

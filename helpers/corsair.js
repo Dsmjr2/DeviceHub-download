@@ -75,7 +75,7 @@ async function handle(action, body) {
     const r = await ask({ op: action, id: body.id }); if (!r.ok) throw new Error(r.error); return r;
   }
   // mic test recording, in the helper's memory only (helpers/mic-rec.cs)
-  if (action === 'mic-guard' || action === 'mics' || action === 'power') { const r = await ask({ op: action }); if (!r.ok) throw new Error(r.error); return r; }
+  if (action === 'mic-guard' || action === 'mics' || action === 'power' || action === 'procs') { const r = await ask({ op: action }); if (!r.ok) throw new Error(r.error); return r; }
   if (['mic-rec-start', 'mic-rec-status', 'mic-rec-stop', 'mic-rec-read', 'mic-rec-clear'].includes(action)) {
     const q = { op: action };
     if (action === 'mic-rec-start' && typeof body.id === 'string') q.id = body.id;

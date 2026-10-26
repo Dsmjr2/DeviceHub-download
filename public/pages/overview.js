@@ -288,7 +288,8 @@ function feed() {
     h('span', {}, a.text, a.n > 1 ? h('span', { class: 'faint' }, ` ×${a.n}`) : null))));
 }
 
-// the graphics card's temperature in a small chip (20 Oct 2026): read every 5 s only while the overview is open (it
+// the graphics card's temperature in a small chip (20 Oct 2026): read every 15 s (5 s until 26 Oct 2026: each read starts
+// nvidia-smi) only while the overview is open and shown (it
 // changes its own text, never redraws the page) and stops as soon as the overview is left; click = the PC page
 let gpuTimer = null, gpuText = null;
 function gpuChip(go) {
@@ -302,7 +303,7 @@ function gpuChip(go) {
     if (span) span.textContent = gpuText || 'GPU';
     document.querySelector('.gpu-chip')?.toggleAttribute('hidden', !gpuText);
   };
-  if (!gpuTimer) { gpuTimer = setInterval(tick, 5000); setTimeout(tick, 200); }
+  if (!gpuTimer) { gpuTimer = setInterval(tick, 15000); setTimeout(tick, 200); }
   if (!gpuText) el.hidden = true;
   return el;
 }

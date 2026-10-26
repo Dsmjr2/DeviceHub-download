@@ -120,22 +120,25 @@ $out = @(foreach ($d in $top) {
 })
 ConvertTo-Json -InputObject $out -Depth 3 -Compress
 `;
-let btCache = { at: 0, value: null }, btPending = null;
-function bluetooth(fresh = false) {
-  if (!fresh && btCache.value && Date.now() - btCache.at < 30000) return Promise.resolve(btCache.value);
-  if (!btPending) {
-    btPending = new Promise((resolve, reject) => execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', '[Console]::OutputEncoding = [Text.Encoding]::UTF8; ' + BT], { windowsHide: true, timeout: 60000 }, (err, out) => {
+// ~4 s of PowerShell (measured 26 Oct 2026): the last answer is kept (helpers/last-answer.js), read again in the
+// background once it is a minute old, and kept on disk without the owner's name ("Shawn's AirPods" -> "AirPods");
+// Look again asks with fresh and waits for a new read
+function readBluetooth() {
+  return new Promise((resolve, reject) => execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', '[Console]::OutputEncoding = [Text.Encoding]::UTF8; ' + BT], { windowsHide: true, timeout: 60000 }, (err, out) => {
       if (err) return reject(err);
       try {
         const list = JSON.parse(out || '[]');
         // "Shawn's AirPods Pro #2 - Find My": the name without the Find My suffix
         const value = (Array.isArray(list) ? list : [list]).map((d) => ({ ...d, name: String(d.name || '').replace(/\s+-\s+Find My$/i, '') }))
           .sort((a, b) => Number(b.connected) - Number(a.connected) || a.name.localeCompare(b.name));
-        btCache = { at: Date.now(), value }; resolve(value);
+        resolve(value);
       } catch (e) { reject(e); }
-    })).finally(() => { btPending = null; });
-  }
-  return btPending;
+    }));
 }
+// a device name without its owner's name in front ("Shawn's AirPods Pro" -> "AirPods Pro"), for the disk copy
+const withoutOwner = (name) => String(name || '').replace(/^\S+['’]s\s+(?=\S)/, '');
+const btAnswer = require('./last-answer').lastAnswer({ name: 'bluetooth', staleMs: 60000, read: readBluetooth,
+  toDisk: (list) => list.map((d) => ({ name: withoutOwner(d.name), le: !!d.le, connected: !!d.connected, battery: d.battery ?? null })) });
+function bluetooth(fresh = false) { return btAnswer.get(fresh); }
 
-module.exports = { get, bluetooth, RUNS, VIRTUAL, _test: { shape } };
+module.exports = { get, bluetooth, RUNS, VIRTUAL, _test: { shape, withoutOwner, btAnswer } };

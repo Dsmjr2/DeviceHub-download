@@ -178,6 +178,7 @@ fs.mkdirSync(lib);
 fs.writeFileSync(path.join(lib, 'openrgb.js'), fs.readFileSync(new URL('../helpers/openrgb.js', import.meta.url), 'utf8').replace('PORT = 6742', 'PORT = 46743'));
 fs.copyFileSync(new URL('../helpers/safe-write.js', import.meta.url), path.join(lib, 'safe-write.js'));
 fs.copyFileSync(new URL('../helpers/find-lights.js', import.meta.url), path.join(lib, 'find-lights.js'));
+fs.copyFileSync(new URL('../helpers/last-answer.js', import.meta.url), path.join(lib, 'last-answer.js'));
 const orgb = require(path.join(lib, 'openrgb.js'));
 const { bundle, deps: od, bundleCheck } = orgb._test;
 const toolDir = path.join(tmp, 'tools', 'openrgb');

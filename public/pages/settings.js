@@ -144,10 +144,11 @@ function syncRows() {
     row('Save device battery', 'At 20%: lights off, mouse 1000 Hz.', toggle({ value: opts?.batteryCare !== false, label: 'Save device battery', onCommit: (on) => setOpt('batteryCare', on) })),
     // only a PC with a battery has anything to save (a desktop always runs at full speed)
     powerSt && !pw.hasBattery ? null : row('Battery saver', powerText, toggle({ value: opts?.batterySaver !== false, label: 'Battery saver', onCommit: (on) => setOpt('batterySaver', on) })),
-    // light window: DeviceHub inside the Chrome already running (much less memory); on by default on a PC with a battery
+    // light window: DeviceHub inside the Chrome (or Edge) already running (much less memory); on by default (26 Oct 2026,
+    // Shawn), a saved Off stays off
     // read by DeviceHub.vbs when it opens the window, so it changes nothing until then (23 Oct 2026, Shawn: "when I turn on
     // the low memory window does anything actually happen"): said in the row and when it is switched
-    row('Low-memory window', 'Opens in your Chrome, not its own. Saves about 350 MB.', toggle({ value: opts?.lightWindow ?? !!pw.hasBattery, label: 'Low-memory window', onCommit: async (on) => {
+    row('Low-memory window', 'Opens in your Chrome, not its own. Saves about 350 MB.', toggle({ value: opts?.lightWindow !== false, label: 'Low-memory window', onCommit: async (on) => {
       await setOpt('lightWindow', on);
       toast(on ? 'Low-memory window on' : 'Low-memory window off', 'good', { detail: 'Applies next time DeviceHub opens.' });
     } })),
@@ -262,7 +263,8 @@ async function toolsDialog() {
   toolsList = null;
 }
 function toolsRows() {
-  if (!tools || Date.now() - toolsAt > 30000) loadTools(!!tools);
+  // the server keeps the Apps list's last answer and reads it again by itself (helpers/last-answer.js); an install asks fresh
+  if (!tools || Date.now() - toolsAt > 30000) loadTools(false);
   if (tools && !tools.length) return null;  // not answered (an older server.js)
   const r = row('Optional tools', toolsSummary(), button('Show', toolsDialog, { kind: 'ghost small', disabled: !tools }));
   r.style.padding = '6px 0';

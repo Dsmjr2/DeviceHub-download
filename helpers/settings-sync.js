@@ -109,9 +109,10 @@ async function sync() {
 }
 
 module.exports = {
-  start(eq, logFn) {
+  // every 2 minutes while a DeviceHub window is open, every 5 with none (26 Oct 2026, idle CPU: a git fetch each time)
+  start(eq, logFn, { windowOpen = () => true } = {}) {
     eqapo = eq; log = logFn;
-    const loop = () => { timer = setTimeout(() => sync().finally(loop), power.every(120000)); };
+    const loop = () => { timer = setTimeout(() => sync().finally(loop), power.every(windowOpen() ? 120000 : 300000)); };
     setTimeout(() => sync().finally(loop), 20000);
   },
   sync,

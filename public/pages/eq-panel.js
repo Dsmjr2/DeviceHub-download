@@ -134,7 +134,8 @@ addEventListener('pointerdown', (e) => { if (e.target?.matches?.('.eq-band input
 addEventListener('pointerup', () => { held = false; }, true);
 function refreshSoon() {
   // an error (DeviceHub restarting, "Failed to fetch") is retried too, so the card never stays stuck on it
-  if ((!document.querySelector('.eq-bands') && !ui.error) || ui.loading || ui.saving || dirty() || document.activeElement?.classList.contains('eq-val') || held) return;
+  // nothing while the window is hidden (26 Oct 2026, idle CPU): it reads again the moment it is shown
+  if (document.hidden || (!document.querySelector('.eq-bands') && !ui.error) || ui.loading || ui.saving || dirty() || document.activeElement?.classList.contains('eq-val') || held) return;
   load();
 }
 function watch() {

@@ -153,6 +153,8 @@ If WindowsOpen() > 0 Then
 End If
 chrome =sh.ExpandEnvironmentStrings("%ProgramFiles%") & "\Google\Chrome\Application\chrome.exe"
 If Not fs.FileExists(chrome) Then chrome = sh.ExpandEnvironmentStrings("%LocalAppData%") & "\Google\Chrome\Application\chrome.exe"
+' a test (tests/update-window.mjs, with DEVICEHUB_LAUNCH_LOG) can pretend Chrome is not installed, to check the Edge fallback
+If launchLog <> "" And penv("DEVICEHUB_TEST_NO_CHROME") = "1" Then chrome = ""
 If Not fs.FileExists(chrome) Then chrome = sh.ExpandEnvironmentStrings("%ProgramFiles(x86)%") & "\Microsoft\Edge\Application\msedge.exe"
 ' Opens maximized (Shawn, 19 Oct 2026: "opens full screen").
 ' Its own small Chrome profile (window-profile\): an app window in the main profile takes the title bar colour from
@@ -163,22 +165,13 @@ If Not fs.FileExists(chrome) Then chrome = sh.ExpandEnvironmentStrings("%Program
 ' Light window (20 Oct 2026, for the laptop): DeviceHub opens as an app window in the Chrome already running, which
 ' shares Chrome's own processes (measured: +182 MB instead of ~550 MB for a Chrome of its own; same engine, same
 ' speed). Its title bar then follows the Chrome theme. settings.json "lightWindow" true / false (Settings > Startup,
-' per PC, never synced); when it is not set, a PC with a battery (a laptop) uses it.
-light = False
-lightSet = False
+' per PC, never synced). On by default (26 Oct 2026, Shawn): when it is not set, every PC uses it (before, only a PC
+' with a battery did); a saved false keeps DeviceHub's own window. Measured 26 Oct 2026: its own window ~620 MB.
+' Without Chrome, chrome above is Edge's msedge.exe and the same happens there: an app window in the person's own Edge.
+light = True
 If fs.FileExists(dir & "\settings.json") Then
   txt = fs.OpenTextFile(dir & "\settings.json", 1).ReadAll
-  If InStr(txt, """lightWindow"": true") > 0 Or InStr(txt, """lightWindow"":true") > 0 Then light = True: lightSet = True
-  If InStr(txt, """lightWindow"": false") > 0 Or InStr(txt, """lightWindow"":false") > 0 Then light = False: lightSet = True
-End If
-If Not lightSet Then
-  On Error Resume Next
-  Set bats = GetObject("winmgmts:\\.\root\cimv2").ExecQuery("SELECT * FROM Win32_Battery")
-  n = 0
-  n = bats.Count
-  If n > 0 Then light = True
-  Err.Clear
-  On Error GoTo 0
+  If InStr(txt, """lightWindow"": false") > 0 Or InStr(txt, """lightWindow"":false") > 0 Then light = False
 End If
 If light Then
   Launch """" & chrome & """" & " --app=http://localhost:" & port & "/ --start-maximized", 1

@@ -51,13 +51,20 @@ const post = async (url, body = {}) => {
 };
 const get = (url) => env.api(url);
 
+// one summary read at a time (26 Oct 2026, idle CPU: while the first read was slow, every redraw notice started load()
+// again, all seven reads each time, measured 55 loads in 75 s on the Overview)
+let summaryPending = false;
 function loadSummary() {
   if (isDemo()) { st.summary = DEMO_SUMMARY; return; }
-  get('/api/setup').then((j) => { st.summary = j; redraw(); }, () => { st.summary = null; redraw(); });
+  if (summaryPending) return;
+  summaryPending = true;
+  get('/api/setup').then((j) => { st.summary = j; }, () => { st.summary = null; }).finally(() => { summaryPending = false; redraw(); });
 }
-function loadTools() {
+// the server keeps the last answers of the slow reads (helpers/last-answer.js): opening the page and the 5-minute
+// background look take them at once; an install that ended (onDone) asks fresh
+function loadTools(fresh = false) {
   if (isDemo()) { st.tools = DEMO_TOOLS; st.eq = DEMO_EQ; return; }
-  installerStatus(true).then((t) => {
+  installerStatus(fresh).then((t) => {
     st.tools = t || [];
     // the headset Equalizer APO is on for: only asked when it is installed (without it /api/eq reads iCUE's presets)
     if (st.tools.find((x) => x.id === 'eqapo')?.installed) get('/api/eq').then((e) => { st.eq = e; redraw(); }, () => {});
@@ -71,7 +78,7 @@ function load() {
   if (isDemo()) { st.orgb = st.orgb || DEMO_ORGB; st.bt = DEMO_BT; boardLightsStatus().then((b) => { st.board = b; }); return; }
   get('/api/openrgb').then((o) => { st.orgb = o; redraw(); }, () => {});
   get('/api/lights/diagnose').then((d) => { st.lightsDiag = d; redraw(); }, () => {});  // why no lights were found
-  boardLightsStatus(true).then((b) => { st.board = b; redraw(); });  // board, fan and RAM lights set up or not (helpers/board-lights.mjs)
+  boardLightsStatus().then((b) => { st.board = b; redraw(); });  // board, fan and RAM lights set up or not (helpers/board-lights.mjs)
   get('/api/bluetooth').then((b) => { st.bt = Array.isArray(b) ? b : []; redraw(); }, () => { st.bt = []; redraw(); });
 }
 
@@ -285,7 +292,7 @@ function control(r) {
     case 'settings': return button(a.label || 'Open', () => runOne(r), { kind: 'ghost small', ic: 'external' });
     case 'eq-on': return button('Turn it on', () => runOne(r), { kind: 'primary small' });
     case 'find-lights': return button('Find lights', () => runOne(r), { kind: 'small', ic: 'refresh', disabled: busy });
-    case 'tool': return installerInline(a.id, { redraw, onDone: () => loadTools() });
+    case 'tool': return installerInline(a.id, { redraw, onDone: () => loadTools(true) });
     case 'board-lights': return boardLights({ redraw, onDone: () => { boardLightsStatus(true).then((b) => { st.board = b; redraw(); }); if (!isDemo()) get('/api/openrgb').then((o) => { st.orgb = o; redraw(); }, () => {}); } });
     case 'close-app': {
       // asked once more, in place (the same action as the device page's)
@@ -350,9 +357,14 @@ export function setupNeeds({ refresh = false } = {}) {
   // reads ran at once when the window opened, and every page waited behind them); the Setup page loads at once itself
   if (Date.now() - pageOpenedAt < 45000) { if (!graceTimer) graceTimer = setTimeout(() => { for (const w of watchers) try { w(); } catch {} }, 46000); return null; }
   const sig = liveSig();
-  if (st.summary === undefined || (refresh && Date.now() - st.loadedAt > 30000) || Date.now() - st.loadedAt > 5 * 60000 || (sig !== lastLive && Date.now() - bgAt > 30000)) {
+  if ((st.summary === undefined && !summaryPending) || (refresh && Date.now() - st.loadedAt > 30000) || Date.now() - st.loadedAt > 5 * 60000) {
     bgAt = Date.now(); lastLive = sig;
     load();
+  } else if (sig !== lastLive && Date.now() - bgAt > 30000) {
+    // a device connected, dropped or fell asleep: only the device summary is read again (26 Oct 2026, idle CPU: a mouse
+    // going to sleep and waking re-read all seven, Bluetooth, OpenRGB and lights included, every 15 s on the Overview)
+    bgAt = Date.now(); lastLive = sig;
+    loadSummary();
   }
   // no number while the devices are still connecting after DeviceHub starts (24 Oct 2026, Shawn: "why is set up randomly
   // appearing when everything is already set up on my pc?": for a few seconds a device not yet answering counted)
@@ -378,7 +390,7 @@ export default {
   },
   render({ fresh, redraw: r }) {
     redrawPage = r;
-    if (st.summary === undefined || (fresh && Date.now() - st.loadedAt > 5000)) load();
+    if ((st.summary === undefined && !summaryPending) || (fresh && Date.now() - st.loadedAt > 5000)) load();
     lastSig = liveSig();
     const now = planNow();
     const live = now?.live || liveDevices();

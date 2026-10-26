@@ -33,6 +33,7 @@ import { devicePage } from './pages/my-device.js';
 import { commands } from './core/commands.js';
 import { startAutoSwitch, loadSettings, auto } from './core/autoswitch.js';
 import { firstStart } from './core/first-run.js';
+import { everyVisible, isHidden } from './core/visible-timer.js';
 
 // Demo mode: ?demo on the local server, or always in the shareable build (index sets window.DEVICEHUB_DEMO).
 const DEMO = new URLSearchParams(location.search).has('demo') || window.DEVICEHUB_DEMO === true;
@@ -140,7 +141,7 @@ function paintShield() {
   el.classList.toggle('fresh', !!fresh);
   el.ariaLabel = lastBackupAt ? `Last backup ${dateTime(lastBackupAt)}` : 'No backups yet';
 }
-setInterval(readLastBackup, 30000);
+everyVisible(readLastBackup, 30000);   // only while the window is shown (core/visible-timer.js)
 setTimeout(readLastBackup, 500);
 
 // Setup in the sidebar only while something needs the person, with how many (23 Oct 2026, Shawn: "put the set up area
@@ -179,7 +180,8 @@ env.onNewDevice = (x) => {
       action: { label: 'Learn it for me', run: () => { learnThis(x.vid, x.pid, { start: true }); location.hash = '#/learn'; } } });
   }
 };
-setInterval(paintSetupNav, 5 * 60000);
+// the Setup check's background look (setupNeeds: ~7 reads) every 5 minutes, only while the window is shown
+everyVisible(paintSetupNav, 5 * 60000);
 function paintRail() {
   paintSetupNav();
   const setupHidden = document.querySelector('.nav[data-page="setup"]')?.hidden;
@@ -256,8 +258,13 @@ addEventListener('dropdown-closed', letGo);
 document.addEventListener('pointerup', letGo, true);
 document.addEventListener('pointercancel', letGo, true);
 
-// Re-render the visible page when a device it shows changes (coalesced to one per frame).
-onChange((id) => {
+// Re-render the visible page when a device it shows changes (coalesced to one per frame). While the window is hidden
+// (minimized, behind a game) nothing is redrawn: a redraw can read (the Overview's Bluetooth batteries, the Setup
+// check), so the window waits and redraws once when it is shown again (26 Oct 2026, idle CPU).
+let changedWhileHidden = false;
+document.addEventListener('visibilitychange', () => { if (!isHidden() && changedWhileHidden) { changedWhileHidden = false; pageChanged('*'); } });
+onChange((id) => { if (isHidden()) { changedWhileHidden = true; return; } pageChanged(id); });
+function pageChanged(id) {
   if (ensureDevicePages()) buildRail();
   paintLive();
   // another VIA keyboard: its drawing from its own layout (ui/art.js)
@@ -268,7 +275,7 @@ onChange((id) => {
   if (pending) return;
   pending = true;
   setTimeout(() => { pending = false; if (holding) heldRender = true; else render(false); }, 16); // not rAF: it never fires while the window is hidden
-});
+}
 
 window.addEventListener('hashchange', () => render(true));
 // the Live battery's readings go on every drawing the moment it appears anywhere in the page (21 Oct 2026: the Overview
@@ -313,7 +320,7 @@ async function checkSaving() {
   if (DEMO || document.hidden) return;
   try { const p = await (await fetch('/api/power')).json(); document.documentElement.toggleAttribute('data-saving', !!p.saving); } catch {}
 }
-checkSaving(); setInterval(checkSaving, 30000);
+checkSaving(); everyVisible(checkSaving, 30000);
 
 // Pause infinite CSS animations and background polls while minimized or behind a game
 const syncVisibility = () => {
@@ -326,8 +333,7 @@ syncVisibility();
 
 // Reload by itself when DeviceHub's files are updated (only while nothing is being changed on a device).
 let version = null;
-setInterval(async () => {
-  if (document.hidden) return;
+everyVisible(async () => {
   try {
     const v = (await (await fetch('/api/version')).json()).version;
     // new files: reload, but only once DeviceHub answers steadily (19 Oct 2026: a reload during its restart left the

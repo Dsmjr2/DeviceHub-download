@@ -389,6 +389,14 @@ public static class Helper {
       // the Anker mic guard (helpers/mic-guard.cs): Chrome window titles and mic use; every recording device
       case "mic-guard": o["look"] = MicGuard.Look(); break;
       case "mics": o["mics"] = MicGuard.Mics(); break;
+      // the running programs' names, for auto-switch (26 Oct 2026, idle CPU: tasklist every 10 s cost ~170 ms of CPU
+      // each); read-only, names only, the way tasklist lists them (name.exe)
+      case "procs": {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in System.Diagnostics.Process.GetProcesses()) { try { names.Add(p.ProcessName + ".exe"); } catch { } finally { p.Dispose(); } }
+        o["names"] = names.ToList();
+        break;
+      }
       // power: on battery or on the charger (DeviceHub's battery saver, helpers/power.js)
       case "power": {
         var ps = System.Windows.Forms.SystemInformation.PowerStatus;

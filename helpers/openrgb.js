@@ -35,7 +35,7 @@ const { writeAtomic } = require('./safe-write');
 const PORT = 6742, HOST = '127.0.0.1', WANT = 3;
 let port = PORT;   // where session() connects: OpenRGB's own default, or the bundled server's port
 const ID = { count: 0, data: 1, version: 40, name: 50, updateLeds: 1050, customMode: 1100, updateMode: 1101 };
-let backupDir = null, cache = { at: 0, value: null }, busy = Promise.resolve(), lastFind = null;
+let backupDir = null, busy = Promise.resolve(), lastFind = null;
 const serial = (f) => { const p = busy.then(f, f); busy = p.catch(() => {}); return p; };
 
 function header(dev, id, size) {
@@ -341,8 +341,23 @@ const bundleReadOnly = () => {
 };
 const bundleInfo = () => { const c = bundleCheck(); return { shipped: !!bundle.table, version: bundle.table?.version || null, canStart: c.ok, why: c.ok ? null : c.why, running: bundleAlive(), writes: c.ok ? c.writes : null }; };
 
+// The status: ~3 s when OpenRGB is not answering (measured 26 Oct 2026), so the last answer is kept
+// (helpers/last-answer.js): at once, read again in the background once it is 15 s old (never starting OpenRGB), and
+// kept on disk (names, types, zones and colors; a light's place cut to its bus and USB id). Find lights / Look again
+// ask with fresh and wait; every write and put back, and board lights set up or removed, make the next ask wait too.
+const answer = require('./last-answer').lastAnswer({ name: 'openrgb', staleMs: 15000, read: (fresh) => readStatus(fresh),
+  toDisk: (v) => ({ ...v, findTest: null, controllers: (v.controllers || []).map((c) => ({ ...c, location: placeOnly(c.location) })) }) });
+// "HID: \\?\hid#vid_1b1c&pid_0a6b&mi_03#8&2a..." -> "HID: VID_1B1C&PID_0A6B" (no instance path)
+function placeOnly(loc) {
+  const s = String(loc || ''), bus = (s.match(/^[A-Za-z0-9]+:/) || [''])[0];
+  const id = s.match(/vid_[0-9a-f]{4}&pid_[0-9a-f]{4}/i);
+  return id ? `${bus} ${id[0].toUpperCase()}`.trim() : s.replace(/\\\\\?\\.*$/, '').trim();
+}
 async function status(fresh = false) {
-  if (!fresh && cache.value && Date.now() - cache.at < 10000) return { ...cache.value, findTest: find.state() };
+  const v = await answer.get(fresh);
+  return { ...v, lastFind: lastFind || v.lastFind || null, findTest: find.state() };
+}
+async function readStatus(fresh) {
   let value;
   try {
     value = await serial(() => withOpenRGB(fresh, async (s) => ({ running: true, protocol: s.proto, bundled: s.bundled, readOnly: s.bundled ? bundleReadOnly() : null, controllers: (await readAll(s)).filter((c) => usable(s, c)).map(shapeOut) })));
@@ -356,7 +371,6 @@ async function status(fresh = false) {
   value.bundle = bundleInfo();
   value.board = { setUp: deps.boardSetUp() };
   value.findTest = find.state();   // a Find my lights test still showing its colors (helpers/find-lights.js)
-  cache = { at: Date.now(), value };
   return value;
 }
 // through the bundled OpenRGB 1.0 DeviceHub only reads (its device numbers are wrong for protocol 3; bundled-tools.json)
@@ -400,7 +414,7 @@ async function sendColors(s, chosen, wanted) {
   };
   let r = await check(80);
   if (r.failed.length) r = await check(250);
-  cache.at = 0;
+  answer.invalidate();
   return r;
 }
 
@@ -451,16 +465,16 @@ async function putBack(s, entries) {
     }
     await new Promise((r) => setTimeout(r, 250));
     const after = new Map((await readAll(s)).map((c) => [keyOf(c), c]));
-    cache.at = 0;
+    answer.invalidate();
     const off = done.filter((b) => { const a = after.get(b.key); return !a || a.activeMode !== b.activeMode || (b.perLed && a.colors.join() !== b.colors.join()); }).map((b) => b.name);
     if (off.length || missing.length) throw new Error([off.length ? `not put back: ${off.join(', ')}` : null, missing.length ? `not found now: ${missing.join(', ')}` : null].filter(Boolean).join('; '));
     return { done, list: [...after.values()] };
 }
 
 // forget the last reading (board lights were just set up or removed)
-const forget = () => { cache.at = 0; };
+const forget = () => { answer.invalidate(); };
 // Find my lights (helpers/find-lights.js): one color per zone, then the person's names saved and the lights put back
 const find = require('./find-lights').create({ serial, withOpenRGB, writable, readAll, usable, isOwn, keyOf, entryOf, backupNew, sendColors, putBack, shapeOut,
-  forget: () => { cache.at = 0; }, names: { read: readNames, file: () => namesFile, reload: () => { namesCache = null; } } });
+  forget: () => { answer.invalidate(); }, names: { read: readNames, file: () => namesFile, reload: () => { namesCache = null; } } });
 module.exports = { start: (dir, opts = {}) => { backupDir = dir; ownDevice = opts.ownDevice || null; namesFile = opts.namesFile || null; namesCache = null; }, status, setColor, restore,
-  findStart: find.start, findSave: find.save, findCancel: find.cancel, findState: find.state, stop: stopBundled, forget, BOARD, _test: { parseController, PORT, bundle, deps, bundleCheck, buildOf, FIXED_BUILD } };
+  findStart: find.start, findSave: find.save, findCancel: find.cancel, findState: find.state, stop: stopBundled, forget, BOARD, _test: { parseController, PORT, bundle, deps, bundleCheck, buildOf, FIXED_BUILD, placeOnly, answer: () => answer } };

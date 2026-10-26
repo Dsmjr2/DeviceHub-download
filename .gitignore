@@ -61,3 +61,6 @@ tools/
 
 # the last PC check, shown at once when the PC page opens (helpers/pc-check.js)
 pc-check-cache.json
+
+# the slow reads' last answers (helpers/last-answer.js: Bluetooth, optional tools, OpenRGB, board lights), this PC's own
+read-cache/

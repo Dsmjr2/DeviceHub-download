@@ -90,6 +90,9 @@ const camera = require('./helpers/camera');
 if (!ISOLATED) camera.start(require('./helpers/native'), BACKUPS);
 let openWindows = 0;
 let pointerBackupAt = 0;   // when the Windows pointer settings were last backed up (/api/pointer)
+// the slow reads' last answers (Bluetooth, the optional tools, OpenRGB, board lights) kept on disk across restarts
+// (helpers/last-answer.js; read-cache\ is gitignored); not in a test or the isolated copy
+if (!ISOLATED && process.env.DEVICEHUB_TEST !== '1') require('./helpers/last-answer').useDisk(path.join(ROOT, 'read-cache'));
 const pcMap = require('./helpers/pc-map');
 const openrgb = require('./helpers/openrgb');
 // DeviceHub's own devices are never written through OpenRGB as well (its location names their vendor:product)
@@ -154,6 +157,15 @@ function runningPrograms(withWindows) {
         resolve((out || '').split(/\r?\n/).filter(Boolean).map((l) => { const [exe, title] = l.split('\t'); return { exe, title }; }));
       });
     } else {
+      // from the helper that already runs (26 Oct 2026, idle CPU: auto-switch looks every 10 s, and each tasklist cost
+      // ~170 ms of CPU); tasklist only when the helper cannot answer (it is restarting, or an older helper)
+      if (corsair) {
+        corsair.handle('procs', {}).then((r) => { if (Array.isArray(r.names)) resolve(r.names); else throw new Error('no names'); }).catch(() => tasklist());
+        return;
+      }
+      tasklist();
+    }
+    function tasklist() {
       execFile('tasklist', ['/fo', 'csv', '/nh'], { windowsHide: true, timeout: 8000 }, (err, out) => {
         resolve([...new Set((out || '').split(/\r?\n/).map((l) => l.split('","')[0]?.replace(/^"/, '')).filter(Boolean))]);
       });
@@ -1030,7 +1042,7 @@ http.createServer(async (req, res) => {
   if (corsair && !TEST) require('./helpers/power').start(corsair.handle, SETTINGS);
   if (corsair && !TEST) ankerGuard.start(corsair.handle, serverLog, SETTINGS);
   // settings sync between PCs through the private settings repository (helpers/settings-sync.js)
-  if (!TEST) settingsSync.start(eqapo, serverLog);
+  if (!TEST) settingsSync.start(eqapo, serverLog, { windowOpen: () => openWindows > 0 });
   if (!TEST) receiverLight.start(require('./helpers/hs80-direct').icueRunning, serverLog);
   // old backups into backups\older-backups.zip, recent ones and the first of each kind kept (helpers/backup-tidy.js)
   if (!TEST) require('./helpers/backup-tidy').start(BACKUPS, serverLog);
@@ -1063,7 +1075,8 @@ http.createServer(async (req, res) => {
       ico = copy;
     } catch (e) { console.error('[icon] copy', e.message); }
     const relaunch = `wscript.exe "${path.join(ROOT, 'DeviceHub.vbs')}"`;
-    const brand = () => { if (!quitting) native.request('win', `BRAND ${ico}|${relaunch}`, 5000).catch(() => {}); setTimeout(brand, require('./helpers/power').every(5000)); };
+    // only while a DeviceHub window is open (26 Oct 2026, idle CPU: with none open it was a helper call every 5 s for nothing)
+    const brand = () => { if (!quitting && openWindows > 0) native.request('win', `BRAND ${ico}|${relaunch}`, 5000).catch(() => {}); setTimeout(brand, require('./helpers/power').every(5000)); };
     setTimeout(brand, 5000);
   }
 });

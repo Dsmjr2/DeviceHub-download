@@ -34,7 +34,9 @@ if (process.platform === 'win32' && fs.existsSync(path.join(process.env.WINDIR |
   fs.writeFileSync(path.join(dir, 'settings.json'), '{ "lightWindow": false }');
 
   // a fake DeviceHub: down for upMs, then answering; its window count turns 1 at windowMs (null = never)
-  async function scenario(name, { args = [], upMs = 0, windowMs = null, wait = 4 }) {
+  async function scenario(name, { args = [], upMs = 0, windowMs = null, wait = 4, settings = '{ "lightWindow": false }', extraEnv = {} }) {
+    const sf = path.join(dir, 'settings.json');
+    if (settings == null) fs.rmSync(sf, { force: true }); else fs.writeFileSync(sf, settings);
     const t0 = Date.now();
     const server = http.createServer((req, res) => {
       const now = Date.now() - t0;
@@ -47,14 +49,16 @@ if (process.platform === 'win32' && fs.existsSync(path.join(process.env.WINDIR |
     await new Promise((r) => server.listen(0, '127.0.0.1', r));
     const port = server.address().port;
     const log = path.join(dir, `${name}.log`);
-    const env = { ...process.env, DEVICEHUB_PORT: String(port), DEVICEHUB_LAUNCH_LOG: log, DEVICEHUB_WINDOW_WAIT: String(wait) };
+    const env = { ...process.env, DEVICEHUB_PORT: String(port), DEVICEHUB_LAUNCH_LOG: log, DEVICEHUB_WINDOW_WAIT: String(wait), ...extraEnv };
     const p = spawn('cscript.exe', ['//nologo', '//T:60', path.join(dir, 'DeviceHub.vbs'), ...args], { env, windowsHide: true, stdio: 'pipe' });
     let err = ''; p.stderr.on('data', (d) => { err += d; }); p.stdout.on('data', (d) => { err += d; });
     const code = await new Promise((r) => p.on('close', r));
     server.close();
     const lines = fs.existsSync(log) ? fs.readFileSync(log, 'utf8').split(/\r?\n/).filter(Boolean) : [];
     check(code === 0, `${name}: the launcher ended with code ${code} (${err.trim().slice(0, 300)})`);
-    return { keep: lines.filter((l) => /keep-running\.bat/.test(l)).length, windows: lines.filter((l) => /--app/.test(l)).length, activated: lines.includes('activate DeviceHub'), lines };
+    const opened = lines.filter((l) => /--app/.test(l));
+    return { keep: lines.filter((l) => /keep-running\.bat/.test(l)).length, windows: opened.length,
+      own: opened.filter((l) => /--user-data-dir=/.test(l)).length, edge: opened.filter((l) => /msedge\.exe/i.test(l)).length, activated: lines.includes('activate DeviceHub'), lines };
   }
 
   // 1. the update path: DeviceHub is starting again, the old window comes back a few seconds after it answers
@@ -70,6 +74,21 @@ if (process.platform === 'win32' && fs.existsSync(path.join(process.env.WINDIR |
   // 4. a plain start while DeviceHub runs with its window open: brought to the front, none opened
   const d = await scenario('already-open', { upMs: 0, windowMs: 0 });
   check(d.windows === 0 && d.activated, `a start while the window is open brings it to the front (${d.lines})`);
+
+  // 5. Low-memory window on by default (26 Oct 2026, Shawn): no setting = an app window in the person's own browser
+  const e = await scenario('light-default', { settings: null });
+  check(e.windows === 1 && e.own === 0, `no settings.json: the low-memory window opens in the person's own Chrome (${e.lines})`);
+  const e2 = await scenario('light-unset', { settings: '{ "autoSwitch": true }' });
+  check(e2.windows === 1 && e2.own === 0, `settings without lightWindow: the low-memory window (${e2.lines})`);
+  // 6. a saved false stays false (scenario 3 above): DeviceHub's own window, its own profile
+  check(c.own === 1, `lightWindow false: DeviceHub's own window (${c.lines})`);
+  const f = await scenario('light-on', { settings: '{\n  "lightWindow": true\n}' });
+  check(f.windows === 1 && f.own === 0, `lightWindow true: the low-memory window (${f.lines})`);
+  // 7. no Chrome: Edge, and the low-memory window opens there too (the person's own Edge)
+  const g = await scenario('edge-light', { settings: null, extraEnv: { DEVICEHUB_TEST_NO_CHROME: '1' } });
+  check(g.windows === 1 && g.edge === 1 && g.own === 0, `no Chrome: the low-memory window opens in Edge (${g.lines})`);
+  const g2 = await scenario('edge-own', { extraEnv: { DEVICEHUB_TEST_NO_CHROME: '1' } });
+  check(g2.windows === 1 && g2.edge === 1 && g2.own === 1, `no Chrome, lightWindow false: Edge with DeviceHub's own profile (${g2.lines})`);
 
   fs.rmSync(dir, { recursive: true, force: true });
 } else console.log('update-window: not on Windows; the launcher run was skipped');

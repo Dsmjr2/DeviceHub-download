@@ -178,12 +178,13 @@ export const deps = {
 };
 
 // ---- status ----
-let appsCache = { at: 0, value: null };
-async function apps(fresh) {
-  if (!fresh && appsCache.value && Date.now() - appsCache.at < 30000) return appsCache.value;
-  appsCache = { at: Date.now(), value: await deps.installedApps().catch(() => []) };
-  return appsCache.value;
-}
+// Windows' Apps list is ~5 s of PowerShell (measured 26 Oct 2026): the last answer is kept (helpers/last-answer.js),
+// read again in the background once it is 5 minutes old, and kept on disk with only the entries for these tools (never
+// the rest of the PC's programs). Settings' and Setup's Check ask with fresh and wait; an install's own check is fresh,
+// and every install that ends makes the next ask wait for a new read.
+const appsAnswer = require('./last-answer.js').lastAnswer({ name: 'installers', staleMs: 5 * 60e3, read: () => deps.installedApps().catch(() => []),
+  toDisk: (list) => list.filter((a) => TOOLS.some((t) => t.uninstallName.test(a.name || ''))).map((a) => ({ name: a.name, version: a.version || null })) });
+const apps = (fresh) => appsAnswer.get(fresh);
 // installed: the file DeviceHub uses is there (what counts), else Windows' Apps list names it
 export async function status({ fresh = false } = {}) {
   const list = await apps(fresh);
@@ -248,7 +249,7 @@ const cn = (subject) => (/CN=("?)([^,"]+)\1/.exec(subject || '')?.[2] || subject
 let progress = null;
 export const getProgress = () => progress;
 const step = (t, text, pct = null, extra = {}) => { progress = { tool: t.id, name: t.name, text, pct, done: false, at: Date.now(), ...extra }; };
-const finish = (t, ok, text, extra = {}) => { progress = { tool: t.id, name: t.name, text, pct: null, done: true, ok, at: Date.now(), ...extra }; return progress; };
+const finish = (t, ok, text, extra = {}) => { appsAnswer.invalidate(); progress ={ tool: t.id, name: t.name, text, pct: null, done: true, ok, at: Date.now(), ...extra }; return progress; };
 
 // the maker's installer behind Windows' prompt: UAC_LINE while Windows asks, the next step once it was answered Yes;
 // declined or not answered: recorded (helpers/uac.mjs, Get help reports it) and the result says so with Try again

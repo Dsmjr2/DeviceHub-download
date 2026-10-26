@@ -75,7 +75,7 @@ await new Promise((r) => server.listen(PORT, '127.0.0.1', r));
 const tmp = path.join(os.tmpdir(), `devicehub-find-lights-${process.pid}`);
 fs.mkdirSync(tmp, { recursive: true });
 fs.writeFileSync(path.join(tmp, 'openrgb.js'), fs.readFileSync(new URL('../helpers/openrgb.js', import.meta.url), 'utf8').replace('PORT = 6742', `PORT = ${PORT}`));
-for (const f of ['safe-write.js', 'find-lights.js']) fs.copyFileSync(new URL(`../helpers/${f}`, import.meta.url), path.join(tmp, f));
+for (const f of ['safe-write.js', 'find-lights.js', 'last-answer.js']) fs.copyFileSync(new URL(`../helpers/${f}`, import.meta.url), path.join(tmp, f));
 const namesFile = path.join(tmp, 'lights-names.json');
 const orgb = require(path.join(tmp, 'openrgb.js'));
 orgb.start(tmp, { ownDevice: /vid_1b1c&pid_0a6b/i, namesFile });
