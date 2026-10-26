@@ -346,6 +346,9 @@ function planNow() {
 // when the answer may have changed; it returns a function that stops it.
 let bgAt = 0, lastLive = null;
 export function setupNeeds({ refresh = false } = {}) {
+  // nothing read in the first 45 s (27 Oct 2026, Shawn: Monitors and Wallpapers opened slowly: this check's ~7 slow
+  // reads ran at once when the window opened, and every page waited behind them); the Setup page loads at once itself
+  if (Date.now() - pageOpenedAt < 45000) { if (!graceTimer) graceTimer = setTimeout(() => { for (const w of watchers) try { w(); } catch {} }, 46000); return null; }
   const sig = liveSig();
   if (st.summary === undefined || (refresh && Date.now() - st.loadedAt > 30000) || Date.now() - st.loadedAt > 5 * 60000 || (sig !== lastLive && Date.now() - bgAt > 30000)) {
     bgAt = Date.now(); lastLive = sig;
@@ -353,7 +356,6 @@ export function setupNeeds({ refresh = false } = {}) {
   }
   // no number while the devices are still connecting after DeviceHub starts (24 Oct 2026, Shawn: "why is set up randomly
   // appearing when everything is already set up on my pc?": for a few seconds a device not yet answering counted)
-  if (Date.now() - pageOpenedAt < 45000) { if (!graceTimer) graceTimer = setTimeout(() => { for (const w of watchers) try { w(); } catch {} }, 46000); return null; }
   const p = planNow();
   return p ? p.plan.needs.length : null;
 }

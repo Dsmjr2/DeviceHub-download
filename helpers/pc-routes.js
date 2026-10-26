@@ -14,15 +14,21 @@ const { spawn } = require('child_process');
 
 const SETTINGS = { display: 'ms-settings:display', nightlight: 'ms-settings:nightlight', hdr: 'ms-settings:display-advancedcolor' };
 let display = null;
+let lastRead = { at: 0, value: null, pending: null };
 const ctl = (backups, log) => (display ||= require('./display').create({ backupDir: backups, log }));
 
 async function handle(req, res, url, { send, readBody, backups, log = () => {} }) {
   const p = url.pathname;
   try {
     if (p === '/api/display' && req.method === 'GET') {
+      // the last reading at once, read again in the background when over 15 s old (27 Oct 2026: it took ~1 s each time)
       const d = ctl(backups, log);
-      return send(res, 200, { ...(await d.read()), ...d.state() });
+      const fresh = () => (lastRead.pending ||= d.read().then((v) => { lastRead = { at: Date.now(), value: v, pending: null }; return v; }, (e) => { lastRead.pending = null; throw e; }));
+      if (!lastRead.value) await fresh();
+      else if (Date.now() - lastRead.at > 15000) fresh().catch(() => {});
+      return send(res, 200, { ...lastRead.value, ...d.state() });
     }
+    if (p.startsWith('/api/display/') && req.method === 'POST') lastRead = { at: 0, value: null, pending: null };
     if (p === '/api/display/state' && req.method === 'GET') return send(res, 200, ctl(backups, log).state());
     if (p === '/api/display/set' && req.method === 'POST') {
       const { screen, kind, value } = await readBody(req);

@@ -111,6 +111,8 @@ export const pcStopLive = () => { if (live.key) setLive(null); };
 // dot): its name with the color it has now (a small dot, or "Off" in faint text), then the preset dots (the Color card's
 // own), a text Off button, and its current color as a plain dot (27 Oct 2026, Shawn: not clickable, no "Live").
 // The preset that equals the row's color is ringed. Every button writes this row's zones or stick only.
+// the name of each section's all-lights row
+const ALL_NAMES = { fans: 'All fans', ram: 'All RAM sticks', board: 'All board lights', gpu: 'All graphics card lights', other: 'All other lights' };
 function lightRow(key, title, detail, row, writes) {
   const dot = h('span', { class: 'pcl-dot', 'aria-hidden': 'true' });
   const now = h('span', { class: 'swatch pcl-current', role: 'img' });
@@ -164,12 +166,14 @@ function lightSections() {
     const one = s.rows.length === 1 ? s.rows[0] : null;
     const names = [...new Set(s.rows.map((r) => r.detail).filter(Boolean))];
     const common = s.id === 'ram' && names.length === 1 ? names[0] : null;
-    const head = lightRow(`all:${s.id}`, s.title, one ? [one.label !== s.title ? one.label : null, one.detail].filter(Boolean).join(' · ') || null : common ? `All · ${common}` : 'All', one || { leds: s.all.length }, s.all);
+    // a section's first row sets all its lights, and says so in its name (27 Oct 2026, Shawn: make "All" more obvious)
+    const allName = ALL_NAMES[s.id] || `All ${s.title.toLowerCase()}`;
+    const head = lightRow(`all:${s.id}`, one ? s.title : allName, one ? [one.label !== s.title ? one.label : null, one.detail].filter(Boolean).join(' · ') || null : common, one || { leds: s.all.length }, s.all);
     head.classList.add('pcl-head');
     return h('div', { class: 'pcl-sec', dataset: { sec: s.id } },
       head,
       s.rows.length > 1 ? h('div', { class: 'pcl-rows' }, ...s.rows.map((r) => lightRow(r.key, r.label, common ? null : r.detail, r, r.leds > 0 ? r.writes : []))) : null,
-      s.hidden ? h('small', { class: 'faint pcl-note' }, `${s.hidden} more part${s.hidden === 1 ? "" : "s"}: All colors ${s.hidden === 1 ? "it" : "them"} too.`) : null);
+      s.hidden ? h('small', { class: 'faint pcl-note' }, `${s.hidden} more part${s.hidden === 1 ? "" : "s"}: ${ALL_NAMES[s.id] || 'All'} colors ${s.hidden === 1 ? "it" : "them"} too.`) : null);
   });
   queueMicrotask(paintRows);
   return out;
