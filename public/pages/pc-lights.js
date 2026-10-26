@@ -109,12 +109,12 @@ export const pcStopLive = () => { if (live.key) setLive(null); };
 
 // One light (26 Oct 2026, Shawn: with every light off each row showed two near-identical slashed circles and a white
 // dot): its name with the color it has now (a small dot, or "Off" in faint text), then the preset dots (the Color card's
-// own), one picked-color dot (ringed; gives the row the Color card's color and makes it Live) and a text Off button.
+// own), a text Off button, and its current color as a plain dot (27 Oct 2026, Shawn: not clickable, no "Live").
 // The preset that equals the row's color is ringed. Every button writes this row's zones or stick only.
 function lightRow(key, title, detail, row, writes) {
   const dot = h('span', { class: 'pcl-dot', 'aria-hidden': 'true' });
+  const now = h('span', { class: 'swatch pcl-current', role: 'img' });
   const offText = h('span', { class: 'pcl-now-off faint' }, 'Off');
-  const tag = h('button', { class: 'pcl-live', 'aria-label': `${title}: stop following the picker`, onclick: () => setLive(null) }, 'Live ×');
   const empty = !(row.leds > 0) && writes.length === 0;
   const presets = empty ? [] : SWATCHES.map((c) => h('button', { class: 'swatch pcl-preset', style: { '--s': c }, dataset: { hex: c.toLowerCase() },
     'aria-label': `${title}: ${c.toUpperCase()}`, 'aria-pressed': 'false', onclick: () => presetRow(key, writes, c) }));
@@ -122,9 +122,8 @@ function lightRow(key, title, detail, row, writes) {
   const el = h('div', { class: `pcl-row${empty ? ' empty' : ''}`, dataset: { key } },
     h('div', { class: 'pcl-name' }, h('b', {}, h('span', { class: 'pcl-title' }, title), dot, offText), detail ? h('small', {}, detail) : null),
     empty ? null : h('div', { class: 'pcl-colors' },
-      tag, h('div', { class: 'pcl-presets' }, ...presets),
-      h('button', { class: 'swatch pcl-paint', 'aria-label': `${title}: use the picked color`, onclick: () => useRow(key, writes) }),
-      offBtn));
+      h('div', { class: 'pcl-presets' }, ...presets),
+      offBtn, now));
   const set = (color) => {
     const off = isOff(color), cur = (color || '').toLowerCase();
     dot.style.background = color ? color : 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)';
@@ -132,7 +131,9 @@ function lightRow(key, title, detail, row, writes) {
     dot.setAttribute('data-color', label(color));
     el.classList.toggle('is-off', off);
     el.classList.toggle('match', !!color && !off && cur === pickNow().toLowerCase());
-    el.classList.toggle('is-live', live.key === key);
+    now.style.setProperty('--s', off || !color ? 'transparent' : color);
+    now.classList.toggle('off', off);
+    now.setAttribute('aria-label', `${title} now: ${off ? 'off' : label(color)}`);
     for (const p of presets) { const on = !off && p.dataset.hex === cur; p.classList.toggle('on', on); p.setAttribute('aria-pressed', String(on)); }
     if (offBtn) { offBtn.classList.toggle('on', off); offBtn.setAttribute('aria-pressed', String(off)); }
   };

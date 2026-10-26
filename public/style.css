@@ -704,18 +704,17 @@ html[data-art] .mic-muted .art.mark .led.mic { fill: #ff4d4d; filter: drop-shado
 .pcl-dot[hidden], .pcl-now-off[hidden] { display: none; }
 .pcl-colors { flex: 0 0 auto; max-width: 100%; margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
 .pcl-presets { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
-.pcl-row .swatch.pcl-preset, .pcl-row .swatch.pcl-paint { width: 18px; height: 18px; flex: none; box-shadow: none; background: var(--s); outline: 1px solid rgba(255, 255, 255, .16); outline-offset: -1px; transform: none; }
-.pcl-row .swatch.pcl-preset:hover, .pcl-row .swatch.pcl-paint:hover { transform: scale(1.12); box-shadow: none; }
+.pcl-row .swatch.pcl-preset, .pcl-row .swatch.pcl-current { width: 18px; height: 18px; flex: none; box-shadow: none; background: var(--s); outline: 1px solid rgba(255, 255, 255, .16); outline-offset: -1px; transform: none; }
+.pcl-row .swatch.pcl-preset:hover { transform: scale(1.12); box-shadow: none; }
 .pcl-row .swatch.pcl-preset.on { outline: 2px solid var(--text); outline-offset: 1.5px; }
-.pcl-row .swatch.pcl-paint { --s: var(--pick, #ff6a1a); margin-left: 4px; outline: 1.5px solid var(--muted); outline-offset: 2px; }
-.pcl-row.match .swatch.pcl-paint, .pcl-row.is-live .swatch.pcl-paint { outline: 2px solid var(--text); outline-offset: 2px; }
+.pcl-row .swatch.pcl-current { margin-left: 4px; cursor: default; outline: 1.5px solid var(--muted); outline-offset: 2px; }
+.pcl-row .swatch.pcl-current.off { background: repeating-linear-gradient(135deg, transparent 0 3px, var(--line2) 3px 4px); }
+.pcl-row .pcl-dot { display: none; }
 .pcl-row .btn.pcl-off { margin-left: 2px; padding: 0 9px; min-height: 22px; height: 22px; font-size: 12px; color: var(--muted); }
 .pcl-row .btn.pcl-off:hover { color: var(--text); }
 .pcl-row .btn.pcl-off.on { color: var(--text); border-color: var(--line2); }
-.pcl-live { display: none; border: 1px solid var(--line2); background: transparent; color: var(--muted); font: 500 11px var(--ui); border-radius: 999px; padding: 0 7px; height: 20px; cursor: pointer; }
-.pcl-row.is-live .pcl-live { display: inline-flex; align-items: center; }
 .pcl-row.empty .pcl-name { opacity: .6; }
-@media (max-width: 700px) { .pcl-name { flex-basis: 100%; } .pcl-colors { margin-left: 0; justify-content: flex-start; } .pcl-presets { display: grid; grid-template-columns: repeat(5, 22px); gap: 8px; } .pcl-row .swatch.pcl-preset, .pcl-row .swatch.pcl-paint { width: 22px; height: 22px; } .pcl-row .btn.pcl-off { height: 26px; min-height: 26px; } }
+@media (max-width: 700px) { .pcl-name { flex-basis: 100%; } .pcl-colors { margin-left: 0; justify-content: flex-start; } .pcl-presets { display: grid; grid-template-columns: repeat(5, 22px); gap: 8px; } .pcl-row .swatch.pcl-preset, .pcl-row .swatch.pcl-current { width: 22px; height: 22px; } .pcl-row .btn.pcl-off { height: 26px; min-height: 26px; } }
 .pcl-note { display: block; padding: 0 0 8px; font-size: 11.5px; }
 /* Lighting on one screen: the color, where it goes, and the PC's own lights side by side; a long PC lights list scrolls
    inside its own card, never the page (23 Oct 2026) */

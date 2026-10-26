@@ -127,7 +127,7 @@ check(/findLights\(o, redraw\)/.test(pc) && /button\('Undo'/.test(pc), 'Find my 
 const rowSrc = body(pc, 'function lightRow(', '\n}\n');
 check(/import \{ SWATCHES \} from '\.\/headset\.js'/.test(pc) && /SWATCHES\.map\(\(c\) => h\('button', \{ class: 'swatch pcl-preset'[\s\S]{0,240}onclick: \(\) => presetRow\(key, writes, c\)/.test(rowSrc), 'each row has the Color card presets, each writing that row only');
 check(/const presetRow = async \(key, writes, hex\) => \{[^\n]*sendWrites\(writes, hex\)/.test(pc), "a preset sends its color to the row's own writes");
-check(/class: 'swatch pcl-paint'[^\n]*onclick: \(\) => useRow\(key, writes\)/.test(rowSrc) && /const useRow = async \(key, writes\) => \{ setLive\(key, writes\); try \{ await sendWrites\(writes, pickNow\(\)\)/.test(pc), "the picked dot sends the Color card's color to the row and makes it Live");
+check(/const now = h\('span', \{ class: 'swatch pcl-current'/.test(rowSrc) && !/pcl-paint|pcl-live|useRow\(/.test(rowSrc), 'the row ends with its current color as a plain dot: nothing to click, no Live (27 Oct 2026)');
 check(/class: 'btn ghost small pcl-off'[^\n]*onclick: \(\) => offRow\(key, writes\) \}, 'Off'\)/.test(rowSrc) && !/offSwatch/.test(pc), 'Off is a small text button, no slashed circle');
 check(/h\('span', \{ class: 'pcl-now-off faint' \}, 'Off'\)/.test(rowSrc) && /dot\.hidden = off; offText\.hidden = !off;/.test(rowSrc), 'a light that is off shows the word Off in faint text instead of its dot');
 check(/p\.dataset\.hex === cur; p\.classList\.toggle\('on', on\)/.test(rowSrc), "the preset that equals the row's color is ringed");
