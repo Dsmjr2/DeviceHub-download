@@ -265,5 +265,24 @@ check(/row\('Lift-off distance', '[^']+'/.test(mouseSrc) && /h\('h2', \{\}, 'Tra
   for (const k of keys) check(allowed.includes(`'${k}'`), `the server keeps the ${k} backdrop when saved`);
 }
 
+// 18. Every drawing look in the Appearance list is kept when saved or imported, and Crimson ('duo') is gone and saved
+//     as Aero (26 Oct 2026, Shawn: "remove the crimson theme and replace it with a cool frutiger aero theme instead")
+{
+  const themeSrc = fs.readFileSync(path.join(ROOT, 'public/core/theme.js'), 'utf8');
+  const list = themeSrc.match(/export const ART_STYLES = \[(.+)\];/)?.[1] || '';
+  const keys = [...list.matchAll(/\['([a-z]+)',\s*'[^']+'\]/g)].map((m) => m[1]);
+  const serverSrc = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  const lists = [...serverSrc.matchAll(/cur\.artStyle && !\[([^\]]+)\]/g)].map((m) => m[1]);
+  check(keys.length >= 8, `looks found in theme.js (${keys.length})`);
+  check(lists.length === 2, `the server checks the look in both places it is written (settings, import): ${lists.length}`);
+  check(keys.includes('aero') && !keys.includes('duo') && !/Crimson/.test(list), 'Aero is in the list and Crimson is not');
+  for (const allowed of lists) for (const k of keys) check(allowed.includes(`'${k}'`), `the server keeps the ${k} look when saved`);
+  check(/duo: 'aero'/.test(themeSrc) && /pop: 'aero'/.test(themeSrc), 'a saved Crimson (duo) or Pop shows as Aero');
+  check((serverSrc.match(/cur\.artStyle === 'duo' \|\| cur\.artStyle === 'pop'\) cur\.artStyle = 'aero'/g) || []).length === 2, 'the server saves a Crimson as Aero');
+  const css = fs.readFileSync(path.join(ROOT, 'public/style.css'), 'utf8');
+  check(!/data-art(-preview)?="duo"|data-look="duo"/.test(css), 'no Crimson rules left in style.css');
+  check(/data-art-preview="aero"/.test(css) && /data-look="aero"/.test(css), 'Aero has its drawing and tile rules');
+}
+
 console.log(fails.length ? `regressions: FAILED: ${fails.join('; ')}` : 'regressions (20 Oct fixes): all good');
 process.exit(fails.length ? 1 : 0);

@@ -28,10 +28,18 @@ export function artDefs() {
     + `<radialGradient id="dhg-${dev}-${look}" cx=".32" cy=".22" r=".85" fx=".26" fy=".12">${stop(0, '--gg1')}${stop('.45', '--gg2')}${stop(1, '--gg3')}</radialGradient>`
     + `<linearGradient id="dha-${dev}-${look}" x1="0" y1="0" x2="0" y2="1">${stop(0, '--ga1')}${stop(1, '--ga2')}</linearGradient>`;
   const brush = (id, rot) => `<pattern id="${id}" patternUnits="userSpaceOnUse" width="40" height="3.7"${rot ? ' patternTransform="rotate(90)"' : ''}><rect width="40" height=".35" fill="#fff" fill-opacity=".1"/><rect y=".9" width="40" height=".25" fill="#000" fill-opacity=".09"/><rect y="1.6" width="40" height=".5" fill="#fff" fill-opacity=".05"/><rect y="2.5" width="40" height=".3" fill="#000" fill-opacity=".07"/><rect y="3.1" width="40" height=".25" fill="#fff" fill-opacity=".08"/></pattern>`;
-  const carbon = `<pattern id="dh-carbon" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(35)"><rect width="5" height="5" fill="#090a0d"/><rect width="2.5" height="2.5" fill="#171a21"/><rect x="2.5" y="2.5" width="2.5" height="2.5" fill="#171a21"/><rect width="2.5" height=".9" fill="#2a2f3b" fill-opacity=".65"/><rect x="2.5" y="2.5" width="2.5" height=".9" fill="#2a2f3b" fill-opacity=".65"/></pattern>`;
+  // Aero (26 Oct 2026, Frutiger Aero, in place of Crimson's carbon weave; Shawn: glossier): dh-aero-gloss, the curved
+  // glass-bubble shine of a Vista-era button laid over the main bodies (.glaze): bright white at the top, ending in a
+  // crisp curved edge a little above the middle; dh-aero-band (.grain), the softer second reflection across the lower
+  // body and an aqua light refracted up through the bottom edge; dh-aero-cap, each gel key cap's own shine (.hi).
+  // All static.
+  const W = (o, a, c = '#fff') => `<stop offset="${o}" stop-color="${c}" stop-opacity="${a}"/>`;
+  const aero = `<radialGradient id="dh-aero-gloss" cx=".5" cy="-.32" r=".78">${W(0, '.85')}${W('.6', '.6')}${W('.94', '.45')}${W('.952', 0)}${W(1, 0)}</radialGradient>`
+    + `<linearGradient id="dh-aero-band" x1="0" y1="0" x2=".35" y2="1">${W('.58', 0)}${W('.66', '.2')}${W('.73', 0)}${W('.84', 0, '#8ff6ff')}${W(1, '.55', '#8ff6ff')}</linearGradient>`
+    + `<linearGradient id="dh-aero-cap" x1="0" y1="0" x2="0" y2="1">${W(0, '.95')}${W('.42', '.4')}${W('.5', 0)}${W(1, 0)}</linearGradient>`;
   // each look's set sits in a group that takes that look's colors (style.css), so a preview box shows its own look
   const set = (look) => `<g class="art-preview" data-art-preview="${look}">${['mouse', 'headset', 'keyboard'].map((d) => `<g class="art art-${d}">${g(d, look)}</g>`).join('')}</g>`;
-  return svgEl(`<svg class="art-defs" width="0" height="0" aria-hidden="true" style="position: absolute"><defs>${ART_LOOKS.map(set).join('')}${brush('dh-brush-h')}${brush('dh-brush-v', true)}${carbon}</defs></svg>`);
+  return svgEl(`<svg class="art-defs" width="0" height="0" aria-hidden="true" style="position: absolute"><defs>${ART_LOOKS.map(set).join('')}${brush('dh-brush-h')}${brush('dh-brush-v', true)}${aero}</defs></svg>`);
 }
 
 
@@ -88,7 +96,7 @@ export function mouseArt() {
     <path class="cut-line" d="M50.2 51.5V85"/>
     <path class="cut-line" d="M7.5 83.5Q50 86.5 92.5 83.5"/>
     <rect class="cut" x="41.4" y="3.5" width="17.4" height="48.5" rx="8.2"/>
-    <rect class="soft" x="44.2" y="8" width="11.6" height="40.5" rx="5.8"/>
+    <rect class="soft wheel" x="44.2" y="8" width="11.6" height="40.5" rx="5.8"/>
     ${ridges}
     <path class="scan" d="${MOUSE_SHAPE}" pathLength="100"/>
     <text class="logo-text" x="26.5" y="96.5" text-anchor="middle">pulsar</text>
@@ -155,7 +163,7 @@ export function headsetArt() {
     <!-- the mic boom, out of the cup's lower front edge, forward to a squared-off tip with no light on it (Shawn, 22 Oct
          2026: "none of the mics have the red dot at the end of the headset, should be just squared off") -->
     <path class="solid" d="M93 190.5C70 196 34 204 8 208.5L9 213.5C35 209.5 71 202 95.5 196Z"/>
-    <rect class="soft" x="1.5" y="207" width="9" height="7.5" rx=".6" transform="rotate(-9 6 211)"/>
+    <rect class="soft mic-tip" x="1.5" y="207" width="9" height="7.5" rx=".6" transform="rotate(-9 6 211)"/>
     <text class="lq-text" x="122" y="158" text-anchor="middle"><tspan class="lq-n"></tspan><tspan class="lq-u" dx="1">%</tspan></text>
     <g class="bp">${callout(4, 211)}${callout(133, 128)}${callout(82.8, 23)}${callout(75.5, 99)}</g>
   </g>
@@ -256,7 +264,7 @@ export function genericMouseArt(dev) {
     <path class="shade" d="M84 42C86 64 86 98 84 122C82 148 68 162 54 162C68 152 76 134 77 112C78 88 77 60 74 38C77 38 81 39 84 42Z"/>
     <path class="hi" d="M22 30C19 46 18 62 19 76C24 60 30 42 40 16C31 18 25 22 22 30Z"/>
     <path class="cut-line" d="M50 6V66"/><path class="cut-line" d="M16.5 66Q50 74 83.5 66"/>
-    <rect class="cut" x="44" y="18" width="12" height="28" rx="6"/><rect class="soft" x="46" y="20.5" width="8" height="23" rx="4"/>
+    <rect class="cut" x="44" y="18" width="12" height="28" rx="6"/><rect class="soft wheel" x="46" y="20.5" width="8" height="23" rx="4"/>
     <path class="scan" d="${body}" pathLength="100"/>
     <g class="bp">${dimV(6, 6, 162)}${dimH(165, 16, 84)}${callout(50, 32)}${callout(50, 96)}</g>
     ${lqText(dev, 50, 120)}

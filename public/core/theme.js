@@ -20,8 +20,10 @@ export function setGlow(hex) {
 // nine looks (22 Oct 2026, Shawn: "truly make the themes beautiful ... add 2 more"): Neon became Noir and Duotone became
 // Tonal (same keys, so a saved choice carries over); the two new ones reuse two old keys the server already accepts
 // ('matte' is Titanium, 'glow' is Aurora), so they save with no server change
-export const ART_STYLES = [['photo', 'Realistic'], ['blueprint', 'Blueprint'], ['glow', 'Vector'], ['live', 'Live battery'], ['neon', 'Noir'], ['frosted', 'Phantom'], ['matte', 'Outrun'], ['arctic', 'Solaris'], ['duo', 'Crimson']];
-const RENAMED = { studio: 'frosted', night: 'neon', pop: 'duo' };
+export const ART_STYLES = [['photo', 'Realistic'], ['blueprint', 'Blueprint'], ['glow', 'Vector'], ['live', 'Live battery'], ['neon', 'Noir'], ['frosted', 'Phantom'], ['matte', 'Outrun'], ['arctic', 'Solaris'], ['aero', 'Aero']];
+// Crimson ('duo') went (26 Oct 2026, Shawn: "remove the crimson theme and replace it with a cool frutiger aero theme
+// instead"): a saved Crimson (or the older Pop) shows as Aero, glossy sky-blue glass with green accents
+const RENAMED = { studio: 'frosted', night: 'neon', pop: 'aero', duo: 'aero' };
 const ART_KEY = 'devicehub.artStyle';
 const BG_KEY = 'devicehub.themeBg';
 const ACCENT_KEY = 'devicehub.themeAccent';
@@ -40,16 +42,16 @@ export async function loadArtStyle() {
   if (localBg || localAccent) applyTheme({ themeBg: localBg, themeAccent: localAccent });
   try {
     const s = await (await fetch('/api/settings')).json();
-    const art = localArt || s.artStyle || 'blueprint';
+    // an old look's key is saved back as its new one (a saved 'duo' becomes 'aero'), here and on the server below
+    const art = applyArtStyle(localArt || s.artStyle || 'blueprint');
     const themeBg = localBg || s.themeBg || 'graphite';
     const themeAccent = localAccent || s.themeAccent || SILVER;
-    applyArtStyle(art);
     applyTheme({ themeBg, themeAccent });
-    if (!localArt && s.artStyle) setLocal(ART_KEY, s.artStyle);
+    if ((localArt || s.artStyle) && localArt !== art) setLocal(ART_KEY, art);
     if (!localBg && s.themeBg) setLocal(BG_KEY, s.themeBg);
     if (!localAccent && s.themeAccent) setLocal(ACCENT_KEY, s.themeAccent);
     // If localStorage had a newer choice the server didn't have yet, sync it back quietly
-    if ((localBg && s.themeBg !== localBg) || (localAccent && s.themeAccent !== localAccent) || (localArt && s.artStyle !== localArt)) {
+    if ((localBg && s.themeBg !== localBg) || (localAccent && s.themeAccent !== localAccent) || ((localArt || s.artStyle) && s.artStyle !== art)) {
       fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ artStyle: art, themeBg, themeAccent }) }).catch(() => {});
     }
   } catch {

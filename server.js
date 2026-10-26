@@ -426,7 +426,9 @@ async function api(req, res, url) {
       // the theme (Settings > Appearance): an accent color as #rrggbb and one of the backdrops
       if (cur.themeAccent && !/^#[0-9a-f]{6}$/i.test(cur.themeAccent)) delete cur.themeAccent;
       if (cur.themeBg && !['graphite', 'black', 'ocean', 'midnight', 'espresso', 'old-school', 'verde', 'milk', 'coral-reef', 'cyberpunk', 'sakura', 'terminal', 'taco-night', 'slate', 'plum', 'forest', 'cream', 'paper'].includes(cur.themeBg)) delete cur.themeBg;
-      if (cur.artStyle && !['photo', 'frosted', 'blueprint', 'neon', 'duo', 'pop', 'arctic', 'live', 'studio', 'glow', 'matte', 'night'].includes(cur.artStyle)) delete cur.artStyle;  // Settings > Appearance
+      // Settings > Appearance; Crimson ('duo', and the older 'pop') became Aero (26 Oct 2026), so a saved one is kept as 'aero'
+      if (cur.artStyle === 'duo' || cur.artStyle === 'pop') cur.artStyle = 'aero';
+      if (cur.artStyle && !['photo', 'frosted', 'blueprint', 'neon', 'aero', 'arctic', 'live', 'studio', 'glow', 'matte', 'night'].includes(cur.artStyle)) delete cur.artStyle;
       // a name for a headset (the Headset page's Rename; 22 Oct 2026, Shawn: the wired Audio-Technica): { key, name },
       // key a USB id or a wired headset's JACK_ key; an empty name puts Windows' name back
       if (b.headsetName && typeof b.headsetName === 'object') {
@@ -524,6 +526,9 @@ async function api(req, res, url) {
           if (fs.existsSync(SETTINGS)) fs.copyFileSync(SETTINGS, path.join(BACKUPS, `settings-${new Date().toISOString().replace(/[:.]/g, '-')}.json`));
           const cur = readJsonFile(SETTINGS, {});
           for (const [k, type] of Object.entries({ autoSwitch: 'boolean', defaultProfile: 'string', artStyle: 'string', themeAccent: 'string', themeBg: 'string', ankerGuard: 'boolean' })) if (typeof b.settings[k] === type) cur[k] = type === 'string' ? b.settings[k].slice(0, 100) : b.settings[k];
+          // an imported look goes through the same list as a saved one (Crimson became Aero, 26 Oct 2026)
+          if (cur.artStyle === 'duo' || cur.artStyle === 'pop') cur.artStyle = 'aero';
+          if (cur.artStyle && !['photo', 'frosted', 'blueprint', 'neon', 'aero', 'arctic', 'live', 'studio', 'glow', 'matte', 'night'].includes(cur.artStyle)) delete cur.artStyle;
           writeAtomic(SETTINGS, JSON.stringify(cur, null, 2)); agent?.reloadSettings();
         }
         if (b.eq && eqapo.installed()) await eqapo.importState(b.eq);

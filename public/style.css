@@ -1275,8 +1275,8 @@ html[data-art="glow"] .page.ov .bay-art::before { content: ""; position: absolut
   -webkit-mask-image: radial-gradient(ellipse 72% 76% at 50% 50%, #000 35%, transparent 100%); mask-image: radial-gradient(ellipse 72% 76% at 50% 50%, #000 35%, transparent 100%); }
 html[data-art="glow"] .page.ov .bay-art > .art { position: relative; }
 
-/* Shared clean engine for Noir (neon), Phantom (frosted), Outrun (matte), Solaris (arctic), and Crimson (duo) */
-:is(html:is([data-art="frosted"], [data-art="matte"], [data-art="arctic"], [data-art="neon"], [data-art="duo"]) :not(.art-preview) > .art, .art-preview:is([data-art-preview="frosted"], [data-art-preview="matte"], [data-art-preview="arctic"], [data-art-preview="neon"], [data-art-preview="duo"]) .art) {
+/* Shared clean engine for Noir (neon), Phantom (frosted), Outrun (matte), Solaris (arctic), and Aero (aero) */
+:is(html:is([data-art="frosted"], [data-art="matte"], [data-art="arctic"], [data-art="neon"], [data-art="aero"]) :not(.art-preview) > .art, .art-preview:is([data-art-preview="frosted"], [data-art-preview="matte"], [data-art-preview="arctic"], [data-art-preview="neon"], [data-art-preview="aero"]) .art) {
   &.mark { filter: var(--drop); contain: none; }
   &.mark .solid { fill: var(--f-body); stroke: var(--f-rim); stroke-width: var(--rim-w); }
   &.mark .soft { fill: var(--f-soft); stroke: var(--soft-rim, none); stroke-width: var(--soft-rim-w, .55); }
@@ -1359,27 +1359,46 @@ html[data-art="frosted"] :not(.art-preview) > .art.mark .scan { display: inline;
 :is(html[data-art="neon"] :not(.art-preview) > .art, .art-preview[data-art-preview="neon"] .art).art-mouse { --f-body: url(#dhb-mouse-neon); --f-soft: url(#dhs-mouse-neon); --f-rim: url(#dhr-mouse-neon); --f-glaze: url(#dhg-mouse-neon); --f-accent: url(#dha-mouse-neon); }
 :is(html[data-art="neon"] :not(.art-preview) > .art, .art-preview[data-art-preview="neon"] .art).art-headset { --f-body: url(#dhb-headset-neon); --f-soft: url(#dhs-headset-neon); --f-rim: url(#dhr-headset-neon); --f-glaze: url(#dhg-headset-neon); --f-accent: url(#dha-headset-neon); }
 :is(html[data-art="neon"] :not(.art-preview) > .art, .art-preview[data-art-preview="neon"] .art).art-keyboard { --f-body: url(#dhb-keyboard-neon); --f-soft: url(#dhs-keyboard-neon); --f-rim: url(#dhr-keyboard-neon); --f-glaze: url(#dhg-keyboard-neon); --f-accent: url(#dha-keyboard-neon); --gs1: #1b1c22; --gs2: #0e0f13; --cut: #030304; --soft-rim: color-mix(in srgb, var(--theme-art) 30%, transparent); --soft-rim-w: .4; }
-/* duo = Crimson (Clean 3K carbon-weave stealth shell with molten crimson rim lighting & glowing red accents) */
-:is(html[data-art="duo"] :not(.art-preview) > .art, .art-preview[data-art-preview="duo"] .art) {
-  --drop: drop-shadow(0 16px 26px rgba(0, 0, 0, .7)) drop-shadow(0 0 16px rgba(255, 45, 45, .2));
-  --gb1: #1e2026; --gb2: #101115; --gb3: #070709;
-  --gs1: #1b1c22; --gs2: #0d0e12;
-  --gr1: rgba(255, 255, 255, .55); --gr2: rgba(255, 55, 48, .35); --gr3: #ff2d2d;
-  --gg1: rgba(255, 70, 55, .1); --gg2: rgba(255, 255, 255, 0); --gg3: rgba(255, 45, 45, .22);
-  --ga1: #ff4238; --ga2: #991414;
-  --rim-w: 1.15; --soft-rim: rgba(255, 65, 55, .38); --soft-rim-w: .5; --accent-rim: #ff6b63;
-  --cut: #040406; --cut-rim: rgba(255, 60, 50, .3);
-  --seam: rgba(255, 65, 55, .45); --seam-w: .85;
-  --hi-line: rgba(255, 95, 85, .6); --line: rgba(255, 70, 60, .45);
-  --led: #ff857d; --led-glow: #ff2d2d;
-  --floor: rgba(255, 38, 38, .22); --floor-blur: 10px;
-  --grain-on: inline; --f-grain: url(#dh-carbon);
+/* aero = Aero (26 Oct 2026, Shawn: "remove the crimson theme and replace it with a cool frutiger aero theme instead";
+   then "not frutiger aero enough"): the mid-2000s Vista / Wii glass look. Each device is a glossy translucent jelly of
+   sky-blue glass, deep ocean blue at the far edge, with the curved glass-bubble shine over its top half (.glaze,
+   dh-aero-gloss), a softer reflection band and an aqua light refracted up through the bottom (.grain, dh-aero-band), a
+   white inner glow along the edges, a bright refraction rim, gel key caps with their own shine (.hi, dh-aero-cap), and
+   fresh lime-green gel on the accent keys, the scroll wheel, the lights and the mic tip. On the page each device stands
+   on a faint reflection of itself. All static: no animation. */
+:is(html[data-art="aero"] :not(.art-preview) > .art, .art-preview[data-art-preview="aero"] .art) {
+  --drop: drop-shadow(0 12px 18px rgba(0, 38, 92, .42)) drop-shadow(0 0 12px rgba(110, 215, 255, .4));
+  --gb1: rgba(88, 204, 255, .93); --gb2: rgba(16, 138, 226, .88); --gb3: rgba(4, 48, 128, .95);
+  --gs1: rgba(205, 246, 255, .97); --gs2: rgba(40, 150, 228, .93);
+  --gr1: #ffffff; --gr2: rgba(175, 242, 255, .9); --gr3: #36d6ff;
+  --ga1: #e6ffa0; --ga2: #3dbb1c;
+  --rim-w: 1.35; --soft-rim: rgba(255, 255, 255, .8); --soft-rim-w: .6; --accent-rim: #f4ffd6;
+  --cut: rgba(3, 48, 108, .78); --cut-rim: rgba(190, 246, 255, .6);
+  --seam: rgba(255, 255, 255, .62); --seam-w: .8;
+  --hi-on: inline; --hi: url(#dh-aero-cap);
+  --shade-on: inline; --shade: rgba(0, 34, 104, .26);
+  --grain-on: inline; --f-grain: url(#dh-aero-band);
+  --hi-line: rgba(255, 255, 255, .9); --line: rgba(230, 251, 255, .62);
+  --led: #f0ffb8; --led-glow: #7dff3a;
+  --floor: rgba(70, 205, 255, .34); --floor-blur: 9px;
+  --f-glaze: url(#dh-aero-gloss);
+  /* the inner glow: a soft white light along the inside of every edge, drawn by the glaze layer's own wide stroke */
+  &.mark .glaze { stroke: rgba(225, 250, 255, .4); stroke-width: 2.6; paint-order: stroke; }
+  /* gel key caps: rounder, each with its own shine */
+  &.art-keyboard.mark :is(.soft, .accent) { rx: 3.6px; }
+  &.art-keyboard.mark .hi { rx: 2.8px; }
+  &.mark .accent { filter: drop-shadow(0 0 2px rgba(125, 255, 58, .55)); }
+  /* lime gel on the scroll wheel and the mic tip */
+  &.mark :is(.wheel, .mic-tip) { fill: url(#dha-mouse-aero); stroke: #f4ffd6; stroke-width: .6; filter: drop-shadow(0 0 2.5px rgba(125, 255, 58, .85)); }
+  &.mark .led.mic { fill: rgba(200, 255, 140, .5); filter: none; }
 }
-:is(html[data-art="duo"] :not(.art-preview) > .art, .art-preview[data-art-preview="duo"] .art).art-mouse { --f-body: url(#dhb-mouse-duo); --f-soft: url(#dhs-mouse-duo); --f-rim: url(#dhr-mouse-duo); --f-glaze: url(#dhg-mouse-duo); --f-accent: url(#dha-mouse-duo); }
-:is(html[data-art="duo"] :not(.art-preview) > .art, .art-preview[data-art-preview="duo"] .art).art-headset { --f-body: url(#dhb-headset-duo); --f-soft: url(#dhs-headset-duo); --f-rim: url(#dhr-headset-duo); --f-glaze: url(#dhg-headset-duo); --f-accent: url(#dha-headset-duo); }
-:is(html[data-art="duo"] :not(.art-preview) > .art, .art-preview[data-art-preview="duo"] .art).art-keyboard { --f-body: url(#dhb-keyboard-duo); --f-soft: url(#dhs-keyboard-duo); --f-rim: url(#dhr-keyboard-duo); --f-glaze: url(#dhg-keyboard-duo); --f-accent: url(#dha-keyboard-duo); }
+:is(html[data-art="aero"] :not(.art-preview) > .art, .art-preview[data-art-preview="aero"] .art).art-mouse { --f-body: url(#dhb-mouse-aero); --f-soft: url(#dhs-mouse-aero); --f-rim: url(#dhr-mouse-aero); --f-accent: url(#dha-mouse-aero); }
+:is(html[data-art="aero"] :not(.art-preview) > .art, .art-preview[data-art-preview="aero"] .art).art-headset { --f-body: url(#dhb-headset-aero); --f-soft: url(#dhs-headset-aero); --f-rim: url(#dhr-headset-aero); --f-accent: url(#dha-headset-aero); }
+:is(html[data-art="aero"] :not(.art-preview) > .art, .art-preview[data-art-preview="aero"] .art).art-keyboard { --f-body: url(#dhb-keyboard-aero); --f-soft: url(#dhs-keyboard-aero); --f-rim: url(#dhr-keyboard-aero); --f-accent: url(#dha-keyboard-aero); }
+/* the faint reflection each device stands on (pages only; the small tiles stay plain) */
+html[data-art="aero"] :not(.art-preview) > .art.mark { -webkit-box-reflect: below -4px linear-gradient(transparent 74%, rgba(255, 255, 255, .2)); }
 /* a soft pool of light behind each device on the Overview, in the look's own light (static backgrounds) */
-html:is([data-art="frosted"], [data-art="matte"], [data-art="arctic"], [data-art="neon"], [data-art="duo"], [data-art="glow"]) .page.ov .bay-art { border-radius: 14px; }
+html:is([data-art="frosted"], [data-art="matte"], [data-art="arctic"], [data-art="neon"], [data-art="aero"], [data-art="glow"]) .page.ov .bay-art { border-radius: 14px; }
 html[data-art="frosted"] .page.ov .bay-art { background: radial-gradient(ellipse 54% 58% at 50% 50%, rgba(185, 220, 255, .09), transparent 74%); }
 html[data-art="matte"] .page.ov .bay-art { position: relative; background: radial-gradient(ellipse 54% 58% at 50% 48%, rgba(0, 240, 255, .09), rgba(255, 42, 133, .06) 52%, transparent 76%); }
 html[data-art="arctic"] .page.ov .bay-art { position: relative; background: radial-gradient(ellipse 54% 58% at 50% 50%, rgba(255, 200, 95, .08), transparent 74%); }
@@ -1388,13 +1407,22 @@ html[data-art="arctic"] .page.ov .bay-art::before { content: ""; position: absol
   -webkit-mask-image: radial-gradient(ellipse 70% 74% at 50% 50%, #000 30%, transparent 100%); mask-image: radial-gradient(ellipse 70% 74% at 50% 50%, #000 30%, transparent 100%); }
 html[data-art="arctic"] .page.ov .bay-art > .art { position: relative; }
 html[data-art="neon"] .page.ov .bay-art { background: radial-gradient(ellipse 55% 55% at 50% 60%, color-mix(in srgb, var(--theme-art) 8%, transparent), transparent 75%); }
-html[data-art="duo"] .page.ov .bay-art { background: radial-gradient(ellipse 54% 58% at 50% 54%, rgba(255, 45, 45, .1), transparent 74%); }
+/* Aero: a pool of sky and fresh green light, and a few glassy bubbles drifting (still) around the device */
+html[data-art="aero"] .page.ov .bay-art { position: relative; background: radial-gradient(ellipse 58% 60% at 50% 44%, rgba(120, 215, 255, .17), rgba(110, 235, 160, .06) 58%, transparent 78%); }
+html[data-art="aero"] .page.ov .bay-art::before { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: 14px;
+  background: radial-gradient(circle at calc(11% - 2.8px) calc(24% - 2.8px), rgba(255, 255, 255, .85) 0 1.5px, transparent 2.1px), radial-gradient(circle at 11% 24%, rgba(185, 240, 255, .24) 0 6.2px, rgba(255, 255, 255, .6) 6.5px 7px, transparent 7.6px),
+    radial-gradient(circle at calc(17% - 1.6px) calc(70% - 1.6px), rgba(255, 255, 255, .85) 0 0.9px, transparent 1.2px), radial-gradient(circle at 17% 70%, rgba(185, 240, 255, .24) 0 3.2px, rgba(255, 255, 255, .6) 3.5px 4px, transparent 4.6px),
+    radial-gradient(circle at calc(86% - 2.0px) calc(18% - 2.0px), rgba(255, 255, 255, .85) 0 1.1px, transparent 1.5px), radial-gradient(circle at 86% 18%, rgba(185, 240, 255, .24) 0 4.2px, rgba(255, 255, 255, .6) 4.5px 5px, transparent 5.6px),
+    radial-gradient(circle at calc(91% - 3.2px) calc(62% - 3.2px), rgba(255, 255, 255, .85) 0 1.8px, transparent 2.4px), radial-gradient(circle at 91% 62%, rgba(185, 240, 255, .24) 0 7.2px, rgba(255, 255, 255, .6) 7.5px 8px, transparent 8.6px),
+    radial-gradient(circle at calc(80% - 1.4px) calc(84% - 1.4px), rgba(255, 255, 255, .85) 0 0.8px, transparent 1.1px), radial-gradient(circle at 80% 84%, rgba(185, 240, 255, .24) 0 2.7px, rgba(255, 255, 255, .6) 3px 3.5px, transparent 4.1px),
+    radial-gradient(circle at calc(24% - 2.2px) calc(88% - 2.2px), rgba(255, 255, 255, .85) 0 1.2px, transparent 1.6px), radial-gradient(circle at 24% 88%, rgba(185, 240, 255, .24) 0 4.7px, rgba(255, 255, 255, .6) 5px 5.5px, transparent 6.1px); }
+html[data-art="aero"] .page.ov .bay-art > .art { position: relative; }
 /* the Appearance tiles: each in its own light */
 .art-style[data-look="frosted"] { background: radial-gradient(ellipse 70% 60% at 50% 40%, rgba(190, 225, 255, .14), transparent 75%), rgba(12, 18, 28, .45); }
 .art-style[data-look="matte"] { background: radial-gradient(ellipse 70% 60% at 50% 40%, rgba(0, 240, 255, .16), rgba(255, 42, 133, .1) 55%, transparent 78%), rgba(8, 5, 20, .55); }
 .art-style[data-look="arctic"] { background: radial-gradient(ellipse 70% 60% at 50% 40%, rgba(255, 205, 105, .15), transparent 75%), rgba(14, 12, 9, .55); }
 .art-style[data-look="neon"] { background: radial-gradient(ellipse 70% 45% at 50% 75%, color-mix(in srgb, var(--theme-art) 16%, transparent), transparent 75%), rgba(0, 0, 0, .25); }
-.art-style[data-look="duo"] { background: radial-gradient(ellipse 70% 60% at 50% 45%, rgba(255, 45, 45, .18), transparent 75%), rgba(12, 8, 10, .55); }
+.art-style[data-look="aero"] { background: radial-gradient(circle at calc(9% - 1.2px) calc(18% - 1.2px), rgba(255, 255, 255, .85) 0 0.7px, transparent 0.9px), radial-gradient(circle at 9% 18%, rgba(185, 240, 255, .24) 0 2.2px, rgba(255, 255, 255, .6) 2.5px 3px, transparent 3.6px), radial-gradient(circle at calc(92% - 0.9px) calc(22% - 0.9px), rgba(255, 255, 255, .85) 0 0.5px, transparent 0.7px), radial-gradient(circle at 92% 22%, rgba(185, 240, 255, .24) 0 1.4000000000000001px, rgba(255, 255, 255, .6) 1.7000000000000002px 2.2px, transparent 2.8000000000000003px), radial-gradient(circle at calc(88% - 1.4px) calc(70% - 1.4px), rgba(255, 255, 255, .85) 0 0.7px, transparent 1.0px), radial-gradient(circle at 88% 70%, rgba(185, 240, 255, .24) 0 2.5999999999999996px, rgba(255, 255, 255, .6) 2.9px 3.4px, transparent 4px), radial-gradient(circle at calc(8% - 0.8px) calc(66% - 0.8px), rgba(255, 255, 255, .85) 0 0.4px, transparent 0.6px), radial-gradient(circle at 8% 66%, rgba(185, 240, 255, .24) 0 1.2px, rgba(255, 255, 255, .6) 1.5px 2px, transparent 2.6px), radial-gradient(ellipse 70% 55% at 50% 38%, rgba(190, 240, 255, .2), transparent 75%), linear-gradient(180deg, rgba(90, 190, 255, .3), rgba(30, 120, 210, .16) 62%, rgba(110, 215, 100, .24)); }
 .art-style[data-look="glow"] { background: radial-gradient(ellipse 70% 60% at 50% 42%, rgba(74, 246, 38, .15), transparent 75%), linear-gradient(rgba(82, 255, 56, .06) 1px, transparent 1px) 0 0 / 10px 10px, linear-gradient(90deg, rgba(82, 255, 56, .06) 1px, transparent 1px) 0 0 / 10px 10px, rgba(4, 16, 6, .55); }
 /* the loading tiles stay plain grey in every look */
 html[data-art] .bay.ghost .bay-art .art.mark { filter: grayscale(1); }
@@ -3092,3 +3120,9 @@ html[data-skin="terminal"]:not([data-art="live"]) .art.mark { filter: sepia(1) h
 .panel > p, .banner, .gh-note, .inst-inline, input, textarea, h1, h2, h3, p, span, b, small) {
   -webkit-user-select: text; user-select: text;
 }
+
+/* Aero on Milk, the light backdrop (26 Oct 2026): the glass keeps its full color (Milk mutes the other looks), and the
+   rims and seams that read white on a dark page turn a clear sky blue so the edges still show on white */
+html[data-skin="milk"][data-art="aero"] :not(.art-preview) > .art.mark, html[data-skin="milk"] .art-preview[data-art-preview="aero"] .art.mark.art { filter: drop-shadow(0 10px 14px rgba(20, 80, 150, .3)) drop-shadow(0 0 8px rgba(70, 190, 255, .35)); }
+html[data-skin="milk"][data-art="aero"] :not(.art-preview) > .art, html[data-skin="milk"] .art-preview[data-art-preview="aero"] .art { --gr1: #9fe6ff; --gr2: rgba(40, 160, 235, .85); --gr3: #0a6fc8; --soft-rim: rgba(25, 120, 205, .55); --seam: rgba(20, 105, 190, .5); --line: rgba(20, 105, 190, .5); --hi-line: rgba(25, 125, 210, .6); --cut-rim: rgba(20, 110, 195, .5); }
+html[data-skin="milk"] .art-style[data-look="aero"] { background-color: rgba(60, 140, 220, .1); }
