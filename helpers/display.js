@@ -26,6 +26,14 @@ function runPs(op, values = {}) {
     }));
 }
 
+// the read through the native helper first (helpers/pc-reads.cs op display-read: the same { screens, nightLight } the
+// script prints, with no PowerShell start and no Add-Type compile, 26 Oct 2026); the script when the helper cannot
+// answer. Every change (mode, hdr, primary) stays on helpers/display.ps1, as before.
+function runAny(op, values = {}) {
+  if (op !== 'read') return runPs(op, values);
+  return require('./helper-reads').read('display-read', { ps: () => runPs('read') });
+}
+
 // ---- pure parts (tests/display-health.mjs) ----
 
 // Night light's state blob (HKCU CloudStore bluelightreductionstate, as hex bytes): byte 18 is 0x15 when on and 0x13
@@ -76,7 +84,7 @@ function confirms(kind, value, s) {
 const describe = (kind, value) => (kind === 'mode' ? `${value.width} x ${value.height} at ${value.hz} Hz` : kind === 'hdr' ? `HDR ${value ? 'on' : 'off'}` : 'main screen');
 
 // ---- the display controller; run, timers, clock and the backup writer are passed in so the tests use fakes ----
-function create({ run = runPs, now = () => Date.now(), setTimer = setTimeout, clearTimer = clearTimeout, backupDir = null, writeFile = (f, t) => fs.writeFileSync(f, t), log = () => {} } = {}) {
+function create({ run = runAny, now = () => Date.now(), setTimer = setTimeout, clearTimer = clearTimeout, backupDir = null, writeFile = (f, t) => fs.writeFileSync(f, t), log = () => {} } = {}) {
   let pending = null, last = null, busy = false;
 
   async function read() {
@@ -192,4 +200,4 @@ function create({ run = runPs, now = () => Date.now(), setTimer = setTimeout, cl
   return { read, change, keep, revert: () => revert('undone'), state };
 }
 
-module.exports = { create, KEEP_MS, _test: { nightLight, refreshFlag, shape, confirms, maxHzAt } };
+module.exports = { create, KEEP_MS, _test: { nightLight, refreshFlag, shape, confirms, maxHzAt, runPs, runAny } };

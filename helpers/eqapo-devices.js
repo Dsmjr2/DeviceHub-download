@@ -16,15 +16,25 @@ function status(guids) {
   if (cache.value && cache.key === key && Date.now() - cache.at < 30000) return Promise.resolve(cache.value);
   const list = [...(guids.render || []).map((g) => ['Render', g]), ...(guids.capture || []).map((g) => ['Capture', g])].filter(([, g]) => /^\{[0-9a-f-]{36}\}$/i.test(g));
   if (!list.length) return Promise.resolve({ checked: 0, off: [] });
-  const ps = list.map(([b, g]) => `$k='HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\MMDevices\\Audio\\${b}\\${g}'; $s=(Get-ItemProperty $k -ErrorAction SilentlyContinue).DeviceState; $fx=Get-ItemProperty (Join-Path $k 'FxProperties') -ErrorAction SilentlyContinue; $on=[bool]($fx.PSObject.Properties | Where-Object { "$($_.Value)" -match '${APO_CLSID}' }); $n=(Get-ItemProperty (Join-Path $k 'Properties') -ErrorAction SilentlyContinue).'{a45c254e-df1c-4efd-8020-67d146a850e0},2'; '${b}|${g}|' + $s + '|' + $on + '|' + $n`).join('; ');
-  return new Promise((resolve) => execFile('powershell.exe', ['-NoProfile', '-Command', '[Console]::OutputEncoding = [Text.Encoding]::UTF8; ' + ps], { windowsHide: true, timeout: 20000 }, (err, out) => {
-    const rows = String(out || '').trim().split(/\r?\n/).filter(Boolean).map((l) => { const [flow, guid, state, on, name] = l.split('|'); return { flow, guid, active: state === '1', on: on === 'True', name }; });
-    // only devices Windows is using now count (the old ones of a replaced driver stay listed as not present)
-    const live = rows.filter((r) => r.active);
-    const value = { checked: live.length, off: live.filter((r) => !r.on).map((r) => ({ flow: r.flow === 'Render' ? 'playback' : 'recording', name: r.name })) };
+  // through the native helper first (helpers/pc-reads.cs op eqapo reads the same registry values, 26 Oct 2026), this
+  // PowerShell when it cannot answer; both give [{ flow, guid, state, on, name }]
+  return require('./helper-reads').read('eqapo', { extra: { list }, ps: () => rowsPs(list) }).then((rows) => {
+    const value = fromRows(rows);
     cache = { at: Date.now(), key, value };
-    resolve(value);
-  }));
+    return value;
+  });
+}
+function rowsPs(list) {
+  const ps = list.map(([b, g]) => `$k='HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\MMDevices\\Audio\\${b}\\${g}'; $s=(Get-ItemProperty $k -ErrorAction SilentlyContinue).DeviceState; $fx=Get-ItemProperty (Join-Path $k 'FxProperties') -ErrorAction SilentlyContinue; $on=[bool]($fx.PSObject.Properties | Where-Object { "$($_.Value)" -match '${APO_CLSID}' }); $n=(Get-ItemProperty (Join-Path $k 'Properties') -ErrorAction SilentlyContinue).'{a45c254e-df1c-4efd-8020-67d146a850e0},2'; '${b}|${g}|' + $s + '|' + $on + '|' + $n`).join('; ');
+  return new Promise((resolve) => execFile('powershell.exe', ['-NoProfile', '-Command', '[Console]::OutputEncoding = [Text.Encoding]::UTF8; ' + ps], { windowsHide: true, timeout: 20000 }, (err, out) => resolve(parseRows(out))));
+}
+// the script's lines "flow|guid|state|True/False|name" -> rows
+const parseRows = (out) => String(out || '').trim().split(/\r?\n/).filter(Boolean).map((l) => { const [flow, guid, state, on, name] = l.split('|'); return { flow, guid, state, on: on === 'True', name }; });
+function fromRows(rows) {
+  rows = (Array.isArray(rows) ? rows : []).map((r) => ({ flow: r.flow, guid: r.guid, active: String(r.state) === '1', on: r.on === true, name: r.name || '' }));
+  // only devices Windows is using now count (the old ones of a replaced driver stay listed as not present)
+  const live = rows.filter((r) => r.active);
+  return { checked: live.length, off: live.filter((r) => !r.on).map((r) => ({ flow: r.flow === 'Render' ? 'playback' : 'recording', name: r.name })) };
 }
 
 // Equalizer APO's Device Selector, elevated. Its Qt plugins sit in qt\ beside it and it does not find them when
@@ -44,4 +54,4 @@ function turnOn() {
   });
 }
 
-module.exports = { status, turnOn };
+module.exports = { status, turnOn, _test: { rowsPs, parseRows, fromRows } };

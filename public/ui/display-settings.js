@@ -15,6 +15,9 @@ const DEMO = () => ({ nightLight: false, pending: null, last: null, screens: [
   { screen: '\\\\.\\DISPLAY1', id: 'DEMO1#1', name: 'Demo monitor', primary: true, width: 2560, height: 1440, hz: 60, hdr: { supported: true, on: false },
     resolutions: [{ width: 2560, height: 1440, rates: [144, 120, 60] }, { width: 1920, height: 1080, rates: [144, 60] }], flag: { text: 'Running at 60 Hz; this screen does 144 Hz.', fix: { width: 2560, height: 1440, hz: 144 } } }] });
 
+// a display change waits for Keep this? (the window is not closed meanwhile, core/idle-close.js)
+export const displayWaiting = () => !!disp?.pending;
+
 async function load() {
   if (loading) return; loading = true;
   try { disp = isDemo() ? (disp || DEMO()) : await env.api('/api/display'); error = null; loadedAt = Date.now(); }

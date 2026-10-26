@@ -159,4 +159,7 @@ const onEvent = (chan, fn) => { if (fn) eventHandlers.set(chan, fn); else eventH
 const onExit = (fn) => exitHandlers.add(fn);
 function stop() { const p = proc; proc = null; if (p) p.stdin.end(); }
 
-module.exports = { request, onEvent, onExit, onProblem, stop, start, heartbeat, callCounts, buildHelper: build };
+// is the helper running now (helpers/helper-reads.js asks it only then: a read never starts or builds it, so a test or
+// script that reads the PC does not start a helper of its own)
+const running = () => !!(proc && proc.stdin.writable);
+module.exports = { request, onEvent, onExit, onProblem, stop, start, heartbeat, callCounts, running, buildHelper: build };

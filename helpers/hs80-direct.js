@@ -70,11 +70,13 @@ function stopStandby() { clearInterval(standbyTimer); standbyTimer = null; if (s
 let icueAt = 0, icueSeen = false, icueAsk = null;
 function icueRunning() {
   if (Date.now() - icueAt < 10000) return Promise.resolve(icueSeen);
-  if (!icueAsk) icueAsk = new Promise((resolve) => execFile('tasklist', ['/FI', 'IMAGENAME eq iCUE.exe', '/NH'], { windowsHide: true }, (e, out) => {
-    icueSeen = /iCUE\.exe/i.test(String(out)); icueAt = Date.now(); icueAsk = null; resolve(icueSeen);
-  }));
+  // the native helper answers from Windows' process list (helpers/pc-reads.cs op running, 26 Oct 2026: a tasklist every
+  // 10-30 s was the idle server's most frequent program start); tasklist when the helper cannot answer
+  if (!icueAsk) icueAsk = require('./helper-reads').read('running', { extra: { names: ['iCUE'] }, ms: 5000, ps: icueTasklist }).then((r) => (typeof r === 'boolean' ? r : r?.iCUE === true))
+    .catch(() => false).then((seen) => { icueSeen = seen; icueAt = Date.now(); icueAsk = null; return seen; });
   return icueAsk;
 }
+const icueTasklist = () => new Promise((resolve) => execFile('tasklist', ['/FI', 'IMAGENAME eq iCUE.exe', '/NH'], { windowsHide: true }, (e, out) => resolve(/iCUE\.exe/i.test(String(out)))));
 
 async function get(id) {
   const r = await one(`GET ${id.toString(16)}`);

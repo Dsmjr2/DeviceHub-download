@@ -1,5 +1,6 @@
 // Display modes and graphics-card sensors (24 Oct 2026, docs/handoff/display-health.md). Loaded by PowerShell with
-// Add-Type (helpers/display.ps1, helpers/pc-sensors.ps1), never by the device helper (it is not in helper-sources.js).
+// Add-Type (helpers/display.ps1, helpers/pc-sensors.ps1), and since 26 Oct 2026 also built into the native helper for
+// its read-only display and sensor reads (helpers/pc-reads.cs; every change still goes through helpers/display.ps1).
 // Windows' own APIs only, nothing installed:
 // - EnumDisplayDevices / EnumDisplaySettingsEx / ChangeDisplaySettingsEx (user32): each screen's modes, its current mode,
 //   which one is main; a change is tested first (CDS_TEST) and applied for this session only until it is kept.

@@ -73,6 +73,9 @@ async function startAuto(d) {
   if (r.ok === false) { st.error = r.error; redrawPage(); return; }
   auto.s = r; auto.dev = d; st.step = 'auto'; redrawPage(); pollAuto();
 }
+// a learning session is under way (the window is not closed while one runs, core/idle-close.js): any step past
+// picking the device and its checks, or Learn it for me still running
+export const learnBusy = () => (st.step === 'auto' ? !!auto.s && !AUTO_OVER.includes(auto.s.phase) : !['pick', 'preflight'].includes(st.step));
 function pollAuto() {
   clearTimeout(auto.timer);
   auto.timer = setTimeout(async () => {

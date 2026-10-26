@@ -66,3 +66,14 @@ real DeviceHub answering). `npm run test:offline` passes.
   `monitors.start` (and requires the iCUE SDK) at load before the port check stops it. It could add
   `DEVICEHUB_ISOLATED: '1'` to that env (the port it uses is never 5577); left as is.
 - `DEVICEHUB_TEST=1` is unchanged and still means what it did.
+
+## Timing the PC reads beside the real copy (26 Oct 2026)
+
+`DEVICEHUB_ISOLATED_READS=1` (only together with `DEVICEHUB_ISOLATED=1`) also lets through the read-only GETs
+`/api/pc-check`, `/api/temps`, `/api/display`, `/api/bluetooth`, `/api/installers`, `/api/pc` and `/api/gpu`, starts
+the native helper for them, and answers `/api/helper-calls` with the real request counts and
+`helpers/helper-reads.js` `stats()` (which reads the helper answered, which fell back to PowerShell). These reads
+reach the helper only on its `pc:<op>` channels (helpers/pc-reads.cs), which open no device; `/api/helper-calls`
+shows that no `hid`, `hs80`, `monitor`, `camera`, `cue` or `tray` request was made. Every POST still answers 503.
+Used for the before / after measurement in docs/handoff/helper-reads.md. Off by default; `tests/isolated.mjs` runs
+without it.

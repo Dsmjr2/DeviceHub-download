@@ -147,8 +147,11 @@ let cache = { at: 0, value: null }, pending = null, lastLhm = { at: 0, value: nu
 // next reading
 const FIRST_WAIT_MS = 450;
 let lastSession = null, asking = null;
+// the native helper first (helpers/pc-reads.cs op sensors: the same JSON line, no PowerShell and no Add-Type compile,
+// 26 Oct 2026); the PowerShell session only when the helper cannot answer
+const askReader = () => require('./helper-reads').read('sensors', { ps: askSession, ms: 20000 });
 function sessionNow() {
-  if (!asking) asking = askSession().then((v) => { if (v) lastSession = v; return v; }).finally(() => { asking = null; });
+  if (!asking) asking = askReader().then((v) => { if (v) lastSession = v; return v; }).finally(() => { asking = null; });
   return Promise.race([asking, new Promise((r) => setTimeout(() => r(lastSession), FIRST_WAIT_MS))]);
 }
 async function read({ gpu = require('./gpu'), cpuReader = require('./cpu-sensors-read') } = {}) {
@@ -170,4 +173,4 @@ async function read({ gpu = require('./gpu'), cpuReader = require('./cpu-sensors
 }
 function stop() { if (proc) { try { proc.kill(); } catch {} proc = null; } }
 
-module.exports = { read, stop, _test: { decide, zoneTemp, cpuCard, nodeCpu } };
+module.exports = { read, stop, _test: { decide, zoneTemp, cpuCard, nodeCpu, askSession } };

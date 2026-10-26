@@ -152,6 +152,9 @@ function syncRows() {
       await setOpt('lightWindow', on);
       toast(on ? 'Low-memory window on' : 'Low-memory window off', 'good', { detail: 'Applies next time DeviceHub opens.' });
     } })),
+    // the window closes itself after 5 minutes minimized, never mid-task; the tray icon opens it again on the same page
+    // (26 Oct 2026, core/idle-close.js, helpers/window-close.js); on unless switched off
+    row('Close window when minimized', 'Frees memory after 5 minutes minimized.', toggle({ value: opts?.closeWhenMinimized !== false, label: 'Close window when minimized', onCommit: (on) => setOpt('closeWhenMinimized', on) })),
   ];
 }
 

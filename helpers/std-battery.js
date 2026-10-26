@@ -133,13 +133,16 @@ function run(mode) {
   });
 }
 
+// Bluetooth through the native helper first (helpers/pc-reads.cs op std-battery-bt: the same { bt } from the same device
+// properties, 26 Oct 2026), the script when the helper cannot answer; -Mode hid opens HID collections, so it stays here
+const read1 = (kind) => (kind === 'bt' ? require('./helper-reads').read('std-battery-bt', { ps: () => run('bt'), ms: TIMEOUT }) : run(kind));
 const caches = { bt: { at: 0, value: null, pending: null }, hid: { at: 0, value: null, pending: null } };
 function cached(kind, every, parse, fresh) {
   const c = caches[kind];
   if (c.value && !fresh && Date.now() - c.at < every) return Promise.resolve(c.value);
   if (c.pending) return c.pending;
   if (c.value && fresh && Date.now() - c.at < 5000) return Promise.resolve(c.value);   // "fresh" still never more than every 5 s
-  c.pending = run(kind).then((j) => {
+  c.pending = read1(kind).then((j) => {
     c.pending = null;
     if (j.error) return c.value || { error: j.error, list: [] };   // keep the last good reading
     c.value = { at: Date.now(), list: parse(j) }; c.at = c.value.at;
@@ -161,4 +164,4 @@ async function hidBatteryCaps({ fresh = false } = {}) {
   return r.list || [];
 }
 
-module.exports = { read, hidBatteryCaps, parseBt, parseHid, decodeField, toPercent, btIds, USAGE_NAMES };
+module.exports = { read, hidBatteryCaps, parseBt, parseHid, decodeField, toPercent, btIds, USAGE_NAMES, _test: { run } };

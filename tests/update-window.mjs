@@ -90,6 +90,13 @@ if (process.platform === 'win32' && fs.existsSync(path.join(process.env.WINDIR |
   const g2 = await scenario('edge-own', { extraEnv: { DEVICEHUB_TEST_NO_CHROME: '1' } });
   check(g2.windows === 1 && g2.edge === 1 && g2.own === 1, `no Chrome, lightWindow false: Edge with DeviceHub's own profile (${g2.lines})`);
 
+  // 8. the window closed itself after 5 minutes minimized (26 Oct 2026, core/idle-close.js): DeviceHub still runs in the
+  // tray with no window; the tray's Open DeviceHub runs this launcher, which opens one at once (no 1.2 s start wait)
+  const t8 = Date.now();
+  const h = await scenario('reopen-from-tray', { upMs: 0, windowMs: null });
+  check(h.windows === 1 && h.own === 1 && !h.activated, `reopened from the tray: one own window (${h.lines})`);
+  check(Date.now() - t8 < 2500, `reopened from the tray within 2.5 s (${Date.now() - t8} ms)`);
+
   fs.rmSync(dir, { recursive: true, force: true });
 } else console.log('update-window: not on Windows; the launcher run was skipped');
 

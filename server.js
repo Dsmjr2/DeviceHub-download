@@ -203,8 +203,15 @@ const HOSTS = new Set([`localhost:${PORT}`, `127.0.0.1:${PORT}`]);
 // iCUE, OpenRGB, Equalizer APO, Windows (sound, pointer, startup, processes, PnP/WMI reads), GitHub or another program,
 // and returns true. The routes left to api() read or write only files in this copy's own folder.
 const ISOLATED_PASS = new Set(['/api/version', '/api/windows', '/api/backup', '/api/backups', '/api/activity', '/api/settings', '/api/profiles', '/api/vendor-apps', '/api/quit', '/api/supported-devices']);
+// DEVICEHUB_ISOLATED_READS=1 as well (26 Oct 2026, docs/handoff/helper-reads.md): also these read-only GETs, to time
+// them and count the programs they start beside the real copy; they reach the native helper only on its pc:<op>
+// channels, which open no device (/api/helper-calls then shows the real request counts)
+const ISOLATED_READS = ISOLATED && process.env.DEVICEHUB_ISOLATED_READS === '1' ? new Set(['/api/pc-check', '/api/temps', '/api/display', '/api/bluetooth', '/api/installers', '/api/pc', '/api/gpu']) : null;
+if (ISOLATED_READS) require('./helpers/native').start();   // the helper the reads ask (the real copy starts it for its devices)
 function isolatedApi(req, res, url) {
   const p = url.pathname;
+  if (ISOLATED_READS && req.method === 'GET' && ISOLATED_READS.has(p)) return false;
+  if (ISOLATED_READS && req.method === 'GET' && p === '/api/helper-calls') { send(res, 200, { uptimeS: Math.round(process.uptime()), calls: require('./helpers/native').callCounts(), reads: require('./helpers/helper-reads').stats() }); return true; }
   if (ISOLATED_PASS.has(p) || (p.startsWith('/api/backups/') && req.method === 'GET')
     || ((p === '/api/wallpapers/starters' || p === '/api/wallpapers/starter') && req.method === 'GET')) return false;  // the shipped starter wallpapers, read-only (demo shows them)
   res.setHeader('X-DeviceHub-Isolated', '1');   // every answer from here (tests/isolated.mjs checks it)
@@ -269,6 +276,28 @@ async function api(req, res, url) {
   // how many DeviceHub windows are open (each keeps one live-update stream): the launcher brings an open one to the
   // front instead of opening another (20 Oct 2026)
   if (url.pathname === '/api/windows') return send(res, 200, { open: openWindows });
+  // Close the window when it is not in use (26 Oct 2026, Shawn approved; public/core/idle-close.js asks after 5 minutes
+  // hidden, helpers/window-close.js closes only DeviceHub's own window-profile browser). Never without the tray icon to
+  // come back from, never while DeviceHub is doing something the person started; the next window opens on that page.
+  if (url.pathname === '/api/window/resume' && req.method === 'GET') return send(res, 200, { page: require('./helpers/window-close').takeResume() });
+  if (url.pathname === '/api/window/idle-close' && req.method === 'POST') {
+    const b = await readBody(req).catch(() => ({}));
+    if (readJsonFile(SETTINGS, {}).closeWhenMinimized === false) return send(res, 200, { closing: false, retry: false, why: 'switched off' });
+    if (!tray || quitting) return send(res, 200, { closing: false, retry: false, why: 'no tray icon to open it again' });
+    const held = [];
+    if (publishRun?.state === 'running') held.push('publishing');
+    const up = require('./helpers/self-update').getProgress();
+    if (up && Date.now() - up.at < 10 * 60000) held.push('updating');
+    try { if (openrgb.findState().running) held.push('Find my lights'); } catch {}
+    try { const ph = (await import('./helpers/learn-auto.mjs')).state().phase; if (!['idle', 'done', 'stopped', 'failed'].includes(ph)) held.push('learning'); } catch {}
+    try { const ip = (await import('./helpers/installers.mjs')).getProgress(); if (ip && !ip.done && Date.now() - ip.at < 10 * 60000) held.push('installing'); } catch {}
+    if (held.length) return send(res, 200, { closing: false, why: held.join(', ') });
+    try {
+      const r = await require('./helpers/window-close').closeAsking({ clientPort: req.socket.remotePort, serverPort: PORT, root: ROOT, page: b?.page, appWindow: b?.appWindow === true });
+      if (r.closing) serverLog({ kind: 'info', text: 'Window closed after 5 minutes minimized (DeviceHub is still in the tray)' });
+      return send(res, 200, r);
+    } catch (e) { return send(res, 200, { closing: false, why: e.message }); }
+  }
   if (url.pathname === '/api/version') return send(res, 200, { version: appVersion() });
   // a new version is ready (helpers/update-notice.mjs): the window asks once, Update or Later
   if (url.pathname === '/api/update-notice') return send(res, 200, { notice: updateNotice });
@@ -422,7 +451,7 @@ async function api(req, res, url) {
       // setupSeen: the window opened once on this PC, so it no longer opens Setup by itself (public/core/first-run.js).
       const cur = readJsonFile(SETTINGS, {});
       const b = await readBody(req);
-      for (const [k, type] of Object.entries({ autoSwitch: 'boolean', defaultProfile: 'string', artStyle: 'string', themeAccent: 'string', themeBg: 'string', ankerGuard: 'boolean', batterySaver: 'boolean', settingsSync: 'boolean', lightWindow: 'boolean', batteryCare: 'boolean', oneDriveCopy: 'boolean', autoReport: 'boolean', shareDrivers: 'boolean', setupSeen: 'boolean', wifiPauseGaming: 'boolean' }))if (typeof b[k] === type) cur[k] = type === 'string' ? b[k].slice(0, 100) : b[k];
+      for (const [k, type] of Object.entries({ autoSwitch: 'boolean', defaultProfile: 'string', artStyle: 'string', themeAccent: 'string', themeBg: 'string', ankerGuard: 'boolean', batterySaver: 'boolean', settingsSync: 'boolean', lightWindow: 'boolean', batteryCare: 'boolean', oneDriveCopy: 'boolean', autoReport: 'boolean', shareDrivers: 'boolean', setupSeen: 'boolean', wifiPauseGaming: 'boolean', closeWhenMinimized: 'boolean' }))if (typeof b[k] === type) cur[k] = type === 'string' ? b[k].slice(0, 100) : b[k];
       // the theme (Settings > Appearance): an accent color as #rrggbb and one of the backdrops
       if (cur.themeAccent && !/^#[0-9a-f]{6}$/i.test(cur.themeAccent)) delete cur.themeAccent;
       if (cur.themeBg && !['graphite', 'black', 'ocean', 'midnight', 'espresso', 'old-school', 'verde', 'milk', 'coral-reef', 'cyberpunk', 'sakura', 'terminal', 'taco-night', 'slate', 'plum', 'forest', 'cream', 'paper'].includes(cur.themeBg)) delete cur.themeBg;

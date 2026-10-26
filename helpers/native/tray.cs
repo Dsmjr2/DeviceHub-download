@@ -107,7 +107,12 @@ public static class Tray {
     }
   }
 
+  // one open per click or double-click (26 Oct 2026): a double-click also fires the single click, so a second open
+  // within 2 s is the same press; the window closes itself when not in use, and the tray brings it back
+  static DateTime lastOpen = DateTime.MinValue;
   static void OpenApp() {
+    if ((DateTime.UtcNow - lastOpen).TotalMilliseconds < 2000) return;
+    lastOpen = DateTime.UtcNow;
     try { System.Diagnostics.Process.Start(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "wscript.exe"), "\"" + Path.Combine(root, "DeviceHub.vbs") + "\""); } catch { }
   }
 
@@ -221,6 +226,7 @@ public static class Tray {
     baseIcon = File.Exists(ico) ? new Icon(ico, SystemInformation.SmallIconSize) : SystemIcons.Application;
     icon = new NotifyIcon { Icon = baseIcon, Text = "DeviceHub", Visible = true, ContextMenuStrip = menu };
     icon.DoubleClick += (a, b) => OpenApp();
+    icon.MouseClick += (a, b) => { if (b.Button == MouseButtons.Left) OpenApp(); };   // a single left click opens it too
     watch = new DeviceWatch();
     var timer = new System.Windows.Forms.Timer { Interval = 10000 };
     timer.Tick += (a, b) => Refresh();

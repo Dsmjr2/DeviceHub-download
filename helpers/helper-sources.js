@@ -15,7 +15,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 // the files helpers/native/build.ps1 compiles, relative to helpers/ (tests/prebuilt-helper.mjs checks the two lists agree)
-const SOURCE_FILES = ['native/helper.cs', 'native/hs80io.cs', 'native/tray.cs', 'native/winbrand.cs', 'hidio.cs', 'audio.cs', 'audio-topology.cs', 'audio-default.cs', 'audio-apps.cs', 'mic-rec.cs', 'mic-guard.cs', 'monitors.cs', 'camera.cs', 'pointer.cs'];
+const SOURCE_FILES = ['native/helper.cs', 'native/hs80io.cs', 'native/tray.cs', 'native/winbrand.cs', 'hidio.cs', 'audio.cs', 'audio-topology.cs', 'audio-default.cs', 'audio-apps.cs', 'mic-rec.cs', 'mic-guard.cs', 'monitors.cs', 'camera.cs', 'pointer.cs', 'pc-native.cs', 'pc-reads.cs'];
 const EXE_NAME = 'DeviceHubHelper.exe';
 const HASH_NAME = 'helper-sources.sha256';
 

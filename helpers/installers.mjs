@@ -113,6 +113,8 @@ async function open(t, method) {
   }
   throw new Error('too many redirects');
 }
+// the script's "name|version" lines -> [{ name, version }] (helpers/pc-reads.cs op installed answers in that shape)
+export const parseInstalled = (out) => String(out || '').split(/\r?\n/).filter(Boolean).map((l) => { const [name, version] = l.split('|'); return { name, version: version || null }; });
 export const deps = {
   async head(t) { const { res, size, finalUrl } = await open(t, 'HEAD'); res.resume(); return { size, finalUrl }; },
   async download(t, dest, onBytes) {
@@ -167,12 +169,12 @@ export const deps = {
       });
     });
   },
-  // installed programs from Windows' Apps list (the Uninstall keys): [{ name, version }]
-  installedApps() {
+  // installed programs from Windows' Apps list (the Uninstall keys): [{ name, version }]; through the native helper
+  // first (helpers/pc-reads.cs op installed reads the same keys, 26 Oct 2026), this PowerShell when it cannot answer
+  installedApps() { return require('./helper-reads.js').read('installed', { ps: () => deps.installedAppsPs() }); },
+  installedAppsPs() {
     const ps = "[Console]::OutputEncoding = [Text.Encoding]::UTF8; Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName } | ForEach-Object { \"$($_.DisplayName)|$($_.DisplayVersion)\" }";
-    return new Promise((resolve) => execFile('powershell.exe', ['-NoProfile', '-Command', ps], { windowsHide: true, timeout: 20000 }, (err, out) => {
-      resolve(String(out || '').split(/\r?\n/).filter(Boolean).map((l) => { const [name, version] = l.split('|'); return { name, version: version || null }; }));
-    }));
+    return new Promise((resolve) => execFile('powershell.exe', ['-NoProfile', '-Command', ps], { windowsHide: true, timeout: 20000 }, (err, out) => resolve(parseInstalled(out))));
   },
   exists: (f) => fs.existsSync(f),
 };

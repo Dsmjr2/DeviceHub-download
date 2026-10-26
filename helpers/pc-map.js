@@ -42,7 +42,9 @@ const VIRTUAL = new Set(['046d:c231', '046d:c232']);
 const RUNS = { '3710:5406': 'Mouse page', '3710:3506': 'Mouse page (its USB cable)', '1b1c:0a6b': 'Headset page', '1b1c:0a69': 'Headset page (its USB cable)', '1b1c:0a6a': 'Headset page (its USB cable, charging)', '1b1c:0a71': 'Headset page (behind its receiver)', '342d:e479': 'Keyboard page', '291a:3369': 'camera mic (Sound)' };
 
 let cache = { at: 0, value: null }, pending = null;
-function read() {
+// through the native helper first (helpers/pc-reads.cs op pc-map, the same JSON), PowerShell when it cannot answer
+const read = () => require('./helper-reads').read('pc-map', { ps: readPs, ms: 30000 });
+function readPs() {
   return new Promise((resolve, reject) => {
     execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', '[Console]::OutputEncoding = [Text.Encoding]::UTF8; ' + PS], { windowsHide: true, timeout: 60000, maxBuffer: 4 << 20 }, (err, out) => {
       if (err) return reject(err);
@@ -120,25 +122,27 @@ $out = @(foreach ($d in $top) {
 })
 ConvertTo-Json -InputObject $out -Depth 3 -Compress
 `;
-// ~4 s of PowerShell (measured 26 Oct 2026): the last answer is kept (helpers/last-answer.js), read again in the
+// ~4 s of PowerShell (measured 26 Oct 2026; the helper reads it in ~0.3 s since 27 Oct): the last answer is kept (helpers/last-answer.js), read again in the
 // background once it is a minute old, and kept on disk without the owner's name ("Shawn's AirPods" -> "AirPods");
 // Look again asks with fresh and waits for a new read
-function readBluetooth() {
+// the list as the BT script prints it (or helpers/pc-reads.cs op bluetooth, the same JSON), parsed the same way for both:
+// "Shawn's AirPods Pro #2 - Find My" without the Find My suffix, connected ones first, then by name
+function shapeBluetooth(list) {
+  return (Array.isArray(list) ? list : list ? [list] : []).map((d) => ({ ...d, name: String(d.name || '').replace(/\s+-\s+Find My$/i, '') }))
+    .sort((a, b) => Number(b.connected) - Number(a.connected) || a.name.localeCompare(b.name));
+}
+function readBluetoothPs() {
   return new Promise((resolve, reject) => execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', '[Console]::OutputEncoding = [Text.Encoding]::UTF8; ' + BT], { windowsHide: true, timeout: 60000 }, (err, out) => {
       if (err) return reject(err);
-      try {
-        const list = JSON.parse(out || '[]');
-        // "Shawn's AirPods Pro #2 - Find My": the name without the Find My suffix
-        const value = (Array.isArray(list) ? list : [list]).map((d) => ({ ...d, name: String(d.name || '').replace(/\s+-\s+Find My$/i, '') }))
-          .sort((a, b) => Number(b.connected) - Number(a.connected) || a.name.localeCompare(b.name));
-        resolve(value);
-      } catch (e) { reject(e); }
+      try { resolve(JSON.parse(out || '[]')); } catch (e) { reject(e); }
     }));
 }
+// through the native helper first (~0.3 s, no new process), PowerShell when it cannot answer
+const readBluetooth = async () => shapeBluetooth(await require('./helper-reads').read('bluetooth', { ps: readBluetoothPs }));
 // a device name without its owner's name in front ("Shawn's AirPods Pro" -> "AirPods Pro"), for the disk copy
 const withoutOwner = (name) => String(name || '').replace(/^\S+['’]s\s+(?=\S)/, '');
 const btAnswer = require('./last-answer').lastAnswer({ name: 'bluetooth', staleMs: 60000, read: readBluetooth,
   toDisk: (list) => list.map((d) => ({ name: withoutOwner(d.name), le: !!d.le, connected: !!d.connected, battery: d.battery ?? null })) });
 function bluetooth(fresh = false) { return btAnswer.get(fresh); }
 
-module.exports = { get, bluetooth, RUNS, VIRTUAL, _test: { shape, withoutOwner, btAnswer } };
+module.exports = { get, bluetooth, RUNS, VIRTUAL, _test: { shape, shapeBluetooth, withoutOwner, btAnswer, readPs, readBluetoothPs } };

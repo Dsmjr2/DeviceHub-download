@@ -378,6 +378,9 @@ async function openProbe(hid) {
   try { const list = [].concat(JSON.parse(out.trim().slice(out.indexOf('[')))); return list.length ? { err: list.includes(0) ? 0 : list.find((e) => e === 32 || e === 5) ?? list[0] } : null; } catch { return null; }
 }
 
+// the running programs' image names: from the native helper (helpers/pc-reads.cs op procs, the names tasklist lists,
+// 26 Oct 2026), tasklist's text when the helper cannot answer (parsed by parseTasklist above)
+const runningImages = () => require('./helper-reads.js').read('procs', { ms: 8000, ps: () => run('tasklist', ['/fo', 'csv', '/nh'], 8000) });
 // deps (tests and the real run): port, state, tasklist, usb, bluetooth, lampArrays, log, specs, probe
 export async function diagnose(deviceId, deps = {}) {
   const t0 = Date.now();
@@ -398,13 +401,13 @@ export async function diagnose(deviceId, deps = {}) {
 
   // read in parallel, each with its own limit; a check that does not answer is left out (and not listed as checked)
   const [tasks, pc, logT] = await Promise.all([
-    within(deps.tasklist ? deps.tasklist() : run('tasklist', ['/fo', 'csv', '/nh'], 8000), 9000),
+    within(deps.tasklist ? deps.tasklist() : runningImages(), 9000),
     within(deps.usb ? deps.usb() : pcMap.get(notConnected).then((x) => x).catch(() => null), 45000),
     deps.log ? deps.log() : logText(),
   ]);
   const usbList = pc ? (Array.isArray(pc) ? pc : pc.usb || []).map((u) => u.id || `${u.vid}:${u.pid}`) : null;
   const present = usbList && profile.usb.some((u) => usbList.includes(u.id));
-  const facts = { id, snap, profile, serverMs: st.ms, log: parseLog(logT, deps.now ? deps.now() : Date.now()), usb: usbList, makers: tasks == null ? null : runningMakers(parseTasklist(tasks)) };
+  const facts = { id, snap, profile, serverMs: st.ms, log: parseLog(logT, deps.now ? deps.now() : Date.now()), usb: usbList, makers: tasks == null ? null : runningMakers(Array.isArray(tasks) ? tasks : parseTasklist(tasks)) };
   // Bluetooth: for a device DeviceHub has no USB ids for, or that is not on USB
   if (notConnected && (!profile.usb.length || present === false)) {
     facts.bluetooth = await within(deps.bluetooth ? deps.bluetooth() : (pcMap || require('./pc-map.js')).bluetooth().catch(() => null), 30000);

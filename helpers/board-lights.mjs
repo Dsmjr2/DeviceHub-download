@@ -135,17 +135,20 @@ export const elevateCommand = "try { $p = Start-Process powershell.exe -Verb Run
 
 // ---- the parts that touch Windows or the network, swappable for tests (tests/board-lights.mjs) ----
 const ps = (cmd, ms = 20000) => new Promise((resolve) => execFile('powershell.exe', ['-NoProfile', '-Command', cmd], { windowsHide: true, timeout: ms }, (err, out) => resolve(String(out || '').trim())));
+// the script's "True|2.2.0.0|True" -> { app, version, service } (helpers/pc-reads.cs op pawnio answers in that shape)
+export const parsePawnio = (out) => { const [app, version, svc] = String(out || '').split('|'); return { app: app === 'True', version: version || null, service: svc === 'True' }; };
 export const deps = {
   download: (t, dest, onBytes) => inst.deps.download(t, dest, onBytes),
   signature: (file) => inst.deps.signature(file),
   sha256: (file) => inst.deps.sha256(file),
   run: (file) => inst.deps.run(file),
   exists: (f) => fs.existsSync(f),
-  // PawnIO: its Windows Apps entry and its driver service
-  async pawnio() {
+  // PawnIO: its Windows Apps entry and its driver service; through the native helper first (helpers/pc-reads.cs op
+  // pawnio reads the same Uninstall key and the service's registration, 26 Oct 2026), this PowerShell when it cannot answer
+  pawnio() { return require('./helper-reads.js').read('pawnio', { ps: () => deps.pawnioPs() }); },
+  async pawnioPs() {
     const out = await ps("$a = Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq 'PawnIO' } | Select-Object -First 1; $s = Get-Service -Name PawnIO -ErrorAction SilentlyContinue; \"$([bool]$a)|$($a.DisplayVersion)|$([bool]$s)\"");
-    const [app, version, svc] = out.split('|');
-    return { app: app === 'True', version: version || null, service: svc === 'True' };
+    return parsePawnio(out);
   },
   // the logon task is there (read with the person's own rights)
   task: () => new Promise((resolve) => execFile('schtasks.exe', ['/Query', '/TN', BOARD.task], { windowsHide: true, timeout: 15000 }, (err) => resolve(!err))),

@@ -1,0 +1,99 @@
+// Close the window when it is not in use (26 Oct 2026, Shawn approved: DeviceHub's own window holds ~600 MB). After the
+// window has been hidden (minimized, or covered) and without focus for 5 minutes in a row, it asks DeviceHub to close
+// it (POST /api/window/idle-close, helpers/window-close.js). DeviceHub keeps running in the tray; the tray icon or the
+// DeviceHub shortcut opens it again on the page it was on (GET /api/window/resume).
+//   - never while something is running or half done: blockers() names what holds it open, and the server adds its own
+//     (an update, a publish, a learning session, Find my lights, an install)
+//   - Settings > Startup "Close window when minimized" (settings.json closeWhenMinimized, on unless false)
+//   - in the low-memory window (an app window inside the person's own Chrome) the server never closes a process: the
+//     page closes only its own app window (window.close()), and never a normal browser tab
+// doc / win / now / setI / clearI / api / checks are for tests (tests/idle-close.mjs).
+export const IDLE_MS = 5 * 60 * 1000;
+export const CHECK_MS = 30 * 1000;
+
+// What keeps the window open now: [] when nothing does. state: { busy, dropdown, learn, displayKeep, unsaved } from the
+// app, doc for what is on the page (a dialog, a loading bar, the display's Keep this? line)
+export function blockers(state = {}, doc = globalThis.document) {
+  const why = [];
+  if (state.busy) why.push('a device change is being written');
+  if (state.dropdown) why.push('a dropdown list is open');
+  if (state.learn) why.push('a learning session is running');
+  if (state.displayKeep) why.push('a display change waits for Keep this?');
+  if (state.unsaved) why.push('a form has unsaved text');
+  const q = (sel) => { try { return !!doc?.querySelector?.(sel); } catch { return false; } };
+  if (q('.modal-back, dialog[open]')) why.push('a question is open');
+  if (q('.palette-back')) why.push('the search is open');
+  if (q('.loadbar')) why.push('something is in progress');
+  if (q('.disp-keep')) why.push('a display change waits for Keep this?');
+  if (q('.toast.busy')) why.push('something is in progress');
+  return [...new Set(why)];
+}
+
+// The one decision: close now?
+//   hiddenSince  when the window last went hidden (null = shown now); now the clock; focused document.hasFocus()
+//   enabled      the Settings switch; reasons blockers()
+export function decide({ hiddenSince, now, focused, enabled = true, reasons = [] }) {
+  if (!enabled) return { close: false, why: 'switched off' };
+  if (hiddenSince == null) return { close: false, why: 'shown' };
+  if (focused) return { close: false, why: 'focused' };
+  if (now - hiddenSince < IDLE_MS) return { close: false, why: 'not long enough' };
+  if (reasons.length) return { close: false, why: reasons.join(', ') };
+  return { close: true, why: 'idle' };
+}
+
+// Text typed into a form and not saved yet: a text box or text area the person typed into that is still on the page
+// and no longer holds what it held before they typed (a page redraw after Save replaces the box, so it no longer counts)
+export function unsavedWatcher(doc = globalThis.document) {
+  const typed = new Map();
+  const texty = (el) => el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && ['text', 'search', 'email', 'url', ''].includes(String(el.getAttribute?.('type') || '').toLowerCase())) || el.isContentEditable);
+  const valueOf = (el) => (el.isContentEditable ? el.textContent : el.value) ?? '';
+  doc?.addEventListener?.('focusin', (e) => { const el = e.target; if (texty(el) && !typed.has(el)) typed.set(el, { was: valueOf(el), typed: false }); }, true);
+  doc?.addEventListener?.('input', (e) => { const el = e.target; if (!texty(el)) return; const t = typed.get(el) || { was: '', typed: false }; t.typed = true; typed.set(el, t); }, true);
+  return () => {
+    for (const [el, t] of typed) {
+      if (!el.isConnected) { typed.delete(el); continue; }
+      if (t.typed && valueOf(el).trim() !== '' && valueOf(el) !== t.was) return true;
+    }
+    return false;
+  };
+}
+
+// Is this page its own app window (DeviceHub's window, or the low-memory app window), not a tab in a browser window?
+export const isAppWindow = (win = globalThis.window) => {
+  try { return !!win?.matchMedia?.('(display-mode: standalone)').matches || !!win?.matchMedia?.('(display-mode: minimal-ui)').matches; } catch { return false; }
+};
+
+// The timer: started once by the app. state() returns the app's part of blockers(); page() the page to come back to.
+export function startIdleClose({ state = () => ({}), page = () => location.hash, enabled = () => true,
+  doc = globalThis.document, win = globalThis.window, now = () => Date.now(), setI = setInterval, clearI = clearInterval,
+  api = (body) => fetch('/api/window/idle-close', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json()),
+  log = () => {} } = {}) {
+  const hiddenNow = () => (doc?.visibilityState ? doc.visibilityState !== 'visible' : !!doc?.hidden);
+  let hiddenSince = hiddenNow() ? now() : null;
+  let asking = false, done = false;
+  const onVis = () => { if (!hiddenNow()) { hiddenSince = null; done = false; } else if (hiddenSince == null) hiddenSince = now(); };
+  const onFocus = () => { hiddenSince = hiddenNow() ? now() : null; };
+  doc?.addEventListener?.('visibilitychange', onVis);
+  win?.addEventListener?.('focus', onFocus);
+  const tick = async () => {
+    if (asking || done) return null;
+    // focus: a hidden page normally has none; one that has it is in use
+    const focused = (() => { try { return !!doc?.hasFocus?.(); } catch { return false; } })();
+    const d = decide({ hiddenSince, now: now(), focused, enabled: enabled() !== false, reasons: blockers(state(), doc) });
+    if (!d.close) return d;
+    asking = true;
+    try {
+      const r = await api({ page: page(), hiddenFor: now() - hiddenSince, appWindow: isAppWindow(win) });
+      log(r);
+      // the server closed DeviceHub's own window (this page ends with it), or says this is the low-memory window:
+      // then only this app window closes itself, never a browser tab
+      if (r?.closing) done = true;
+      else if (r?.self && isAppWindow(win)) { done = true; try { win.close(); } catch {} }
+      else if (r?.retry === false || r?.isolated) done = true;   // switched off, no tray: not again until the window is shown again
+      return { ...d, server: r };
+    } catch (e) { return { ...d, error: e.message }; }
+    finally { asking = false; }
+  };
+  const timer = setI(tick, CHECK_MS);
+  return { tick, stop: () => { clearI(timer); doc?.removeEventListener?.('visibilitychange', onVis); win?.removeEventListener?.('focus', onFocus); }, get hiddenSince() { return hiddenSince; } };
+}

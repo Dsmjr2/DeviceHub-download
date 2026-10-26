@@ -380,7 +380,10 @@ function runChecks(facts, now = Date.now(), checks = CHECKS) {
 }
 const summary = (results) => ({ warn: results.filter((r) => r.level === 'warn').length, info: results.filter((r) => r.level === 'info').length, ok: results.filter((r) => r.level === 'ok').length });
 
-function gather() {
+// the facts through the native helper first (helpers/pc-reads.cs op pc-check: the same object, its parts side by side,
+// ~0.5 s instead of ~4 s of PowerShell, 26 Oct 2026), helpers/pc-check.ps1 when the helper cannot answer
+const gather = () => require('./helper-reads').read('pc-check', { ps: gatherPs, ms: 60000 });
+function gatherPs() {
   return new Promise((resolve, reject) => execFile('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', PS1],
     { windowsHide: true, timeout: 60000, maxBuffer: 8 << 20 }, (e, out) => {
       try { return resolve(JSON.parse(String(out || '').trim())); } catch {}
@@ -452,5 +455,5 @@ async function readNow({ screens = null } = {}) {
   try { return await pending; } finally { pending = null; }
 }
 
-module.exports = { check, openApp, openSettings, fix, CHECKS, PC_SETTINGS, _test: { appPath, DRIVER_APPS, runChecks, summary, diskSpace, driveHealth, graphicsDriver, ramSpeed, deviceErrors, crashes, restartPending, nvidiaNumber, partSpeed, bugcheckCode,
+module.exports = { check, openApp, openSettings, fix, CHECKS, PC_SETTINGS, _test: { gatherPs, appPath, DRIVER_APPS, runChecks, summary, diskSpace, driveHealth, graphicsDriver, ramSpeed, deviceErrors, crashes, restartPending, nvidiaNumber, partSpeed, bugcheckCode,
   powerPlan, gameMode, backgroundRecording, gpuScheduling, windowedGames, resizableBar, ramChannels, channelOf, wifi, ethernet, networkLatency, mouseAcceleration, refreshRate, fastPlan, PLAN } };

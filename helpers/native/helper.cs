@@ -15,6 +15,8 @@
 //   audio                                                   Windows audio, JSON requests
 //   cue                                                     iCUE SDK properties, JSON requests
 //   tray                                                    START <port> <folder>: the tray icon (tray.cs)
+//   pc:<op>                                                 read-only PC facts, JSON requests (pc-reads.cs): bluetooth, pc-map,
+//                                                           display-read, sensors, installed, eqapo
 //
 // Each channel has its own worker thread, so a slow reply on one never holds up another.
 using System;
@@ -98,6 +100,8 @@ public static class Helper {
     if (c.Name.StartsWith("hs80:")) return HandleHs80(c, rest);
     if (c.Name == "audio") return Audio(rest);
     if (c.Name == "cue") return CueOp(rest);
+    // read-only PC facts (helpers/pc-reads.cs): one channel per read, pc:<op>, so a slow WMI read never holds up another
+    if (c.Name == "pc" || c.Name.StartsWith("pc:")) return PcOp(rest);
     // the watchdog's heartbeat (helpers/native.js); HANG-TEST freezes this channel on purpose, to test the watchdog
     // every HID collection on a usage page and usage, e.g. "FF60 61" for VIA keyboards (helpers/native/hs80io.cs)
     if (c.Name == "hidlist") { var w = rest.Split(' '); return HidFind.List(Convert.ToInt32(w[0], 16), Convert.ToInt32(w[1], 16)); }
@@ -420,6 +424,13 @@ public static class Helper {
       default: return Json(new Dictionary<string, object> { { "ok", false }, { "error", "unknown op " + op } });
     }
     return Json(o);
+  }
+
+  // ---- read-only PC facts (helpers/pc-reads.cs, helpers/helper-reads.js): { op, ... } -> { ok, result } ----
+  static readonly JavaScriptSerializer pcJs = new JavaScriptSerializer { MaxJsonLength = 16 * 1024 * 1024 };
+  static string PcOp(string rest) {
+    try { return pcJs.Serialize(PcReads.Op(pcJs.Deserialize<Dictionary<string, object>>(rest))); }
+    catch (Exception e) { return pcJs.Serialize(new Dictionary<string, object> { { "ok", false }, { "error", e.Message } }); }
   }
 
   // ---- iCUE SDK properties ----

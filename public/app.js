@@ -26,7 +26,7 @@ import monitorsPage from './pages/monitors.js';
 import fansPage from './pages/fans.js';
 import settingsPage from './pages/settings.js';
 import learnPage from './pages/learn.js';
-import { learnThis } from './pages/learn.js';
+import { learnThis, learnBusy } from './pages/learn.js';
 import supportedPage from './pages/supported.js';
 import wallpapersPage from './pages/wallpapers.js';
 import { devicePage } from './pages/my-device.js';
@@ -34,6 +34,8 @@ import { commands } from './core/commands.js';
 import { startAutoSwitch, loadSettings, auto } from './core/autoswitch.js';
 import { firstStart } from './core/first-run.js';
 import { everyVisible, isHidden } from './core/visible-timer.js';
+import { startIdleClose, unsavedWatcher } from './core/idle-close.js';
+import { displayWaiting } from './ui/display-settings.js';
 
 // Demo mode: ?demo on the local server, or always in the shareable build (index sets window.DEVICEHUB_DEMO).
 const DEMO = new URLSearchParams(location.search).has('demo') || window.DEVICEHUB_DEMO === true;
@@ -292,8 +294,16 @@ buildRail();
 setGlow();
 // the first time the window opens on this PC: Setup instead of the Overview (core/first-run.js; never on a PC with
 // devices seen before or saved profiles). ?demo&first shows it in demo mode.
+// a window opened again after it was closed for not being in use (core/idle-close.js): back on the page it was on
+if (!DEMO && !location.hash) { try { const r = await (await fetch('/api/window/resume', { cache: 'no-store' })).json(); if (r?.page) history.replaceState(null, '', r.page); } catch {} }
 if ((await firstStart({ demo: DEMO, ready: REMOTE || LOCAL, search: location.search, hash: location.hash, devices: Object.values(devices) })).setup) history.replaceState(null, '', '#/setup');
 render(true);
+
+// Close the window after 5 minutes minimized or hidden, when nothing is running (core/idle-close.js; Settings > Startup)
+if (!DEMO) {
+  const unsaved = unsavedWatcher();
+  startIdleClose({ state: () => ({ busy: isBusy(), dropdown: dropdownOpen(), learn: learnBusy(), displayKeep: displayWaiting(), unsaved: unsaved() }) });
+}
 
 if (REMOTE) {
   loadSettings(); // for the Profiles page; the agent runs auto-switch itself
