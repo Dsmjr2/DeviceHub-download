@@ -215,6 +215,19 @@ function isolatedApi(req, res, url) {
   return true;
 }
 
+// the memory DeviceHub's own window uses (26 Oct 2026, Shawn: Health said 131 MB while the window alone used ~600 MB):
+// every Chrome/Edge process started with its window-profile folder, private memory, read at most once a minute
+let winMem = { at: 0, mb: null };
+function windowMemory() {
+  if (Date.now() - winMem.at < 60000) return Promise.resolve(winMem.mb);
+  winMem.at = Date.now();
+  const ps = "$p = Get-CimInstance Win32_Process -Filter \"Name='chrome.exe' or Name='msedge.exe'\" | Where-Object { $_.CommandLine -like '*DeviceHub*window-profile*' }; if ($p) { [math]::Round((($p | Measure-Object PrivatePageCount -Sum).Sum) / 1MB) }";
+  return new Promise((resolve) => require('child_process').execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, timeout: 8000 }, (e, out) => {
+    const n = Number(String(out || '').trim());
+    winMem.mb = !e && n > 0 ? n : null;
+    resolve(winMem.mb);
+  }));
+}
 // the Publish button's run (helpers/publish-release.ps1, hidden): running / done / failed, with its step
 let publishRun = null;
 // a signed new version found by the one check after start (helpers/update-notice.mjs); the window asks Update or Later
@@ -257,6 +270,7 @@ async function api(req, res, url) {
   // the last problem in Activity, and the backups' count and size. Read-only.
   if (url.pathname === '/api/health') {
     const m = process.memoryUsage();
+    const windowMB = await windowMemory();
     const helperLine = await require('./helpers/native').request('diag', 'MEM', 15000);
     const helperMB = Number((/private=([\d.]+)MB/.exec(helperLine) || [])[1]) || null;
     let crashes = 0, lastCrashAt = null;
@@ -284,7 +298,7 @@ async function api(req, res, url) {
     } catch {}
     let backups = { count: 0, mb: 0 };
     try { const fl = fs.readdirSync(BACKUPS).filter((f) => f.endsWith('.json')); backups = { count: fl.length, mb: +(fl.reduce((s, f) => s + fs.statSync(path.join(BACKUPS, f)).size, 0) / 1048576).toFixed(1) }; } catch {}
-    return send(res, 200, { uptimeS: Math.round(process.uptime()), serverMB: +(m.rss / 1048576).toFixed(0), heapMB: +(m.heapUsed / 1048576).toFixed(0), helperMB: helperMB && Math.round(helperMB), crashes24h: crashes, lastCrashAt: lastCrashAt ? new Date(lastCrashAt).toISOString() : null, lastProblem, backups });
+    return send(res, 200, { uptimeS: Math.round(process.uptime()), serverMB: +(m.rss / 1048576).toFixed(0), heapMB: +(m.heapUsed / 1048576).toFixed(0), helperMB: helperMB && Math.round(helperMB), windowMB, crashes24h: crashes, lastCrashAt: lastCrashAt ? new Date(lastCrashAt).toISOString() : null, lastProblem, backups });
   }
   // Settings > Save a report: one text file someone can send to whoever helps them. Health, versions, the devices'
   // state, the end of the server log and Activity, the settings and seen devices. No backups, no profiles. Read-only.

@@ -147,7 +147,7 @@ function syncRows() {
     // light window: DeviceHub inside the Chrome already running (much less memory); on by default on a PC with a battery
     // read by DeviceHub.vbs when it opens the window, so it changes nothing until then (23 Oct 2026, Shawn: "when I turn on
     // the low memory window does anything actually happen"): said in the row and when it is switched
-    row('Low-memory window', 'Uses Chrome, about 350 MB less.', toggle({ value: opts?.lightWindow ?? !!pw.hasBattery, label: 'Low-memory window', onCommit: async (on) => {
+    row('Low-memory window', 'Opens in your Chrome, not its own. Saves about 350 MB.', toggle({ value: opts?.lightWindow ?? !!pw.hasBattery, label: 'Low-memory window', onCommit: async (on) => {
       await setOpt('lightWindow', on);
       toast(on ? 'Low-memory window on' : 'Low-memory window off', 'good', { detail: 'Applies next time DeviceHub opens.' });
     } })),
@@ -362,7 +362,8 @@ function healthCard() {
   // Save a report: one text file (health, versions, devices, the end of the log) for whoever helps with a problem
   const saveReport = () => { if (isDemo()) { toast('Not in demo mode', 'info'); return; } const a = Object.assign(document.createElement('a'), { href: '/api/report', download: '' }); document.body.append(a); a.click(); a.remove(); toast('Report saved', 'good', { detail: 'In Downloads.' }); };
   const totalMB = x ? x.serverMB + (x.helperMB || 0) : 0;
-  const memBreak = x ? (x.helperMB ? `${totalMB} MB (${x.serverMB} MB server · ${x.helperMB} MB helper)` : `${totalMB} MB (${x.serverMB} MB server)`) : '';
+  // the app in the background, then its window (a Chrome window of its own, unless Low-memory window is on)
+  const memBreak = x ? `${totalMB} MB app${x.windowMB ? ` + ${x.windowMB} MB window` : ''}` : '';
   return card([h('h2', {}, 'Health'), h('span', { class: 'spacer' }), h('div', { class: 'head-actions' }, button('Copy', copyShortReport, { kind: 'ghost small', ic: 'external' }), button('Save', saveReport, { kind: 'ghost small', ic: 'backups' }), button('Check', () => loadHealth(true), { kind: 'ghost small', ic: 'refresh' }))],
     !x ? h('p', { class: 'faint', style: { margin: 0 } }, isDemo() ? 'Not shown in demo mode.' : 'Checking…')
       : x.error ? h('p', { class: 'faint', style: { margin: 0 } }, 'DeviceHub did not answer.')
