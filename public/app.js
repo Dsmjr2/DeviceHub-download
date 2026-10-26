@@ -160,7 +160,10 @@ function paintSetupNav() {
   const now = setupNeeds();
   if (now != null && now !== setupLast) { setupLast = now; try { localStorage.setItem('setup.needs', String(now)); } catch {} }
   const n = now ?? setupLast;
-  const hide = n === 0;
+  // not known yet (the first 45 s, with no last answer in this window's storage) hides it, unless it is the page open
+  // (27 Oct 2026, Shawn: "why is the setup area showing on my system": a new window showed it for 45 s); a first start
+  // opens Setup itself
+  const hide = n == null ? !location.hash.startsWith('#/setup') : n === 0;
   if (nav.hidden !== hide) {
     if (!nav.dataset.painted) nav.hidden = hide;   // the first paint: no animation
     else if (hide) { nav.classList.add('nav-out'); setTimeout(() => { if (nav.classList.contains('nav-out')) { nav.hidden = true; nav.classList.remove('nav-out'); } }, 220); }
