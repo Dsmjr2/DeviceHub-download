@@ -20,7 +20,7 @@ const ROOT = path.join(__dirname, '..');
 const DIR = path.join(ROOT, 'settings-sync');            // the local copy of the settings repository (not in git)
 const STATE = path.join(ROOT, 'settings-sync-state.json');
 const SETTINGS = path.join(ROOT, 'settings.json'), PROFILES = path.join(ROOT, 'profiles.json');
-const OPTIONS = ['autoSwitch', 'defaultProfile', 'hotkeys', 'artStyle', 'ankerGuard', 'batterySaver'];
+const OPTIONS = ['autoSwitch', 'defaultProfile', 'hotkeys', 'artStyle', 'themeBg', 'themeAccent', 'ankerGuard', 'batterySaver'];
 
 const git = (args, cwd = DIR, timeout = 45000) => new Promise((resolve, reject) => {
   // never a sign-in window or prompt: cached credentials still work, anything else fails quietly (no pop-ups)

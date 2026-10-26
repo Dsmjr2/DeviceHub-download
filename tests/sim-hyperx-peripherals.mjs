@@ -21,7 +21,7 @@ const cloud = JSON.parse(fs.readFileSync(path.join(ROOT, `device-library/${heads
 const VID = vid.toUpperCase();
 
 
-ok(!validateMeta(meta) && meta.id === shipped.id && meta.status === 'untested' && meta.tested.length === 0, 'device.json: well formed, same id, untested');
+ok(!validateMeta(meta) && meta.id === shipped.id && (meta.status === 'untested' || meta.status === 'read-only') && meta.tested.length === 0, 'device.json: well formed, same id, untested or read-only');
 ok(JSON.stringify(meta.pids) === JSON.stringify(PIDS.map((p) => p.toLowerCase())) && meta.vid === vid && specs0(shipped).every((s) => s.vid.toUpperCase() === VID), 'device.json lists exactly the driver\'s ids');
 ok(!PIDS.some((p) => cloud.pids.includes(p.toLowerCase())), 'no id overlaps the Cloud headset driver\'s');
 ok(!problem(shipped) && shipped.settings.length === 0, 'loads as a my-devices driver with no settings');

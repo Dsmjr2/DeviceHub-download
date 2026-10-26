@@ -289,7 +289,7 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
   const d = createLogitechKeyboard({ open: async () => null, vendorApp: async () => null });
   check((await d.connect()) === false, 'nothing plugged in: connect() is false');
   const meta = JSON.parse(fs.readFileSync(path.join(ROOT, 'device-library', 'logitech-hidpp-keyboard', 'device.json'), 'utf8'));
-  check(validateMeta(meta) === null && meta.status === 'untested' && meta.tested.length === 0, `device.json well formed and untested (${validateMeta(meta)})`);
+  check(validateMeta(meta) === null && (meta.status === 'untested' || meta.status === 'read-only') && meta.tested.length === 0, `device.json well formed and untested (${validateMeta(meta)})`);
   check(meta.pids.map((p) => parseInt(p, 16)).sort().join() === [...PIDS].sort().join() && meta.id === d.id, 'device.json lists exactly the driver\'s ids');
   const mouse = JSON.parse(fs.readFileSync(path.join(ROOT, 'device-library', 'logitech-hidpp-mouse', 'device.json'), 'utf8'));
   // 23 Oct 2026: only the three shared LIGHTSPEED receivers (SHARED) are in both drivers
@@ -538,7 +538,9 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
   stepAside(d, { log: (t) => said.push(t) });
   check((await d.connect(false)) === false && /mouse/.test(d.notMine?.why || '') && rx.closed === 0 && said.length === 1, `C54D with only the SUPERSTRIKE: not connected, no error, the shared handle not closed (${d.notMine?.why})`);
   check(superstrike.bad.length === 0 && rx.sent.every((b) => b[1] === 0 && [0x00, 0x10].includes(b[2] & 0xf0) || (b[2] & 0xf0) === 0x20), 'it sent only ping, getFeature and the kind read, with software id 0x0C');
-  check(isAbsent(d, 'missing', false) && isAbsent(d, 'missing', true) && !isAbsent(d, 'connected', false), 'stepped aside: absent while not connected, even if it was seen before');
+  check(isAbsent(d, 'missing', false) && isAbsent(d, 'missing', true), 'stepped aside: absent while not connected, even if it was seen before');
+  d.strayed = false;
+  check(!isAbsent(d, 'connected', false), 'once connected: shown');
   // the window's list and the server's snapshot as the agent sends them (helpers/agent.mjs snapshot absent)
   const snap = { id: d.id, status: 'missing', seen: false, absent: true, adapter: { plugin: d.plugin, title: d.title, kind: d.kind, library: { turnOn: true }, notMine: d.notMine.why } };
   const live = { [d.id]: { title: d.title, kind: d.kind, status: 'missing', seen: false, absent: true, plugin: true, library: true, turnOn: true } };

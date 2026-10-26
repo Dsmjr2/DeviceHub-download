@@ -321,7 +321,7 @@ check(hex(buildReport(0x1f, 0x00, 0x40, 0x02, [0x00, 0x10])) === lit([0x00, 0x1f
   const d = createRazerKeyboard({ open: async () => null, vendorApp: async () => null });
   check((await d.connect()) === false, 'nothing plugged in: connect() is false');
   const meta = JSON.parse(fs.readFileSync(path.join(ROOT, 'device-library', 'razer-keyboard', 'device.json'), 'utf8'));
-  check(validateMeta(meta) === null && meta.status === 'untested' && meta.tested.length === 0, `device.json well formed and untested (${validateMeta(meta)})`);
+  check(validateMeta(meta) === null && (meta.status === 'untested' || meta.status === 'read-only') && meta.tested.length === 0, `device.json well formed and untested or read-only (${validateMeta(meta)})`);
   check(meta.pids.map((p) => p.toUpperCase()).sort().join() === [...PIDS].sort().join() && meta.id === d.id, 'device.json lists exactly the driver\'s ids');
   const mouse = JSON.parse(fs.readFileSync(path.join(ROOT, 'device-library', 'razer-mouse', 'device.json'), 'utf8'));
   check(!meta.pids.some((p) => mouse.pids.includes(p)), 'no product id is shared with the mouse driver');

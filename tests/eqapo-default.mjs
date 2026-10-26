@@ -10,15 +10,21 @@ const fails = [];
 const check = (ok, what) => { if (!ok) fails.push(what); };
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-eqapo-'));
 const cfgDir = path.join(root, 'EqualizerAPO', 'config'), cfg = path.join(cfgDir, 'config.txt'), backups = path.join(root, 'backups');
+const storePath = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..', 'eq-presets.json');
+const origStore = fs.existsSync(storePath) ? fs.readFileSync(storePath, 'utf8') : null;
 fs.mkdirSync(cfgDir, { recursive: true }); fs.mkdirSync(backups);
 process.env.ProgramFiles = root;
 const require = createRequire(import.meta.url);
 const noDevices = async () => ({ headset: [], mic: [], speakers: [] });
 
 fs.writeFileSync(cfg, 'Preamp: -6 dB\r\nInclude: example.txt\r\n');
-require('../helpers/eqapo.js')(null, noDevices, backups);
+const eq = require('../helpers/eqapo.js')(null, noDevices, backups);
 check(!/Preamp: -6 dB/.test(fs.readFileSync(cfg, 'utf8')) && /Written by DeviceHub/.test(fs.readFileSync(cfg, 'utf8')), 'the installer default is taken out');
 check(fs.readdirSync(backups).some((f) => f.startsWith('eqapo-config-default-')), 'the old default is backed up first');
+const st = await eq.read();
+const activePreset = st.presets.find((p) => p.id === st.activeId);
+check(activePreset && activePreset.stages.every((v) => v === 0), 'fresh Equalizer APO starts on flat (0 dB) preset');
+check(!st.extras.correction && !st.extras.micRumble && !st.extras.micClarity && !st.extras.micDeEss && !st.extras.micLevel, 'fresh Equalizer APO starts with all headset/mic extras off');
 
 const own = '# my own\r\nPreamp: -6 dB\r\nFilter 1: ON PK Fc 100 Hz Gain 3 dB Q 1\r\n';
 fs.writeFileSync(cfg, own);
@@ -32,6 +38,7 @@ delete require.cache[require.resolve('../helpers/eqapo.js')];
 require('../helpers/eqapo.js')(null, noDevices, backups);
 check(fs.readFileSync(cfg, 'utf8') === dh, "DeviceHub's own settings are left alone");
 
+if (origStore != null) fs.writeFileSync(storePath, origStore);
 fs.rmSync(root, { recursive: true, force: true });
 console.log(fails.length ? `eqapo-default: FAILED: ${fails.join('; ')}` : "eqapo-default (Equalizer APO's quieter starting settings): all good");
 process.exit(fails.length ? 1 : 0);

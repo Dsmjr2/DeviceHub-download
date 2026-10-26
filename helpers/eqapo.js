@@ -76,19 +76,20 @@ function load() {
 }
 function store(s) { writeAtomic(STORE, JSON.stringify(s, null, 1)); }
 
-// First use: the presets iCUE had (the one in iCUE's slot 2 becomes the active one), else a flat one.
+// First use: the presets iCUE had, else a flat one; always start on the Flat / Pure Direct preset so Equalizer APO
+// never changes a person's base headset sound until they pick a preset or move a band themselves.
 async function first(icueEq) {
-  let presets = [], activeId = null;
+  let presets = [];
   try {
     const r = await icueEq.read();
     if (r.available) {
       presets = r.presets.map((p) => ({ id: p.id, name: p.name, stages: p.stages.map((v) => Math.round(v * 100) / 100), builtIn: !!p.builtIn }));
-      activeId = (r.slots || []).find((s) => s.slot === 2)?.id || null;
     }
   } catch {}
   if (!presets.length) presets = [{ id: `{${crypto.randomUUID()}}`, name: 'Flat', stages: Array(10).fill(0), builtIn: true }];
-  if (!presets.some((p) => p.id === activeId)) activeId = presets[0].id;
-  const s = { presets, activeId, headroom: true, extras: EXTRAS() };
+  let flat = presets.find((p) => p.stages.every((v) => v === 0));
+  if (!flat) { flat = { id: `{${crypto.randomUUID()}}`, name: 'Pure Direct', stages: Array(10).fill(0), builtIn: true }; presets = [flat, ...presets]; }
+  const s = { presets, activeId: flat.id, headroom: true, extras: EXTRAS() };
   store(s);
   return s;
 }
@@ -131,10 +132,15 @@ function text(s, stages, name, ctx) {
   const x = s.extras, out = ['# Written by DeviceHub (Headset page); DeviceHub replaces this file when its sound settings change.', ''];
   const model = ctx.headsetModel || 'HS80';
   const chain = headsetFilters(s, stages, model);
-  out.push(`# Headset: ${name}${x.correction && model === 'HS80' ? ' + HS80 correction' : ''}${model !== 'HS80' ? ` (${model})` : ''}`, `Device: ${ctx.headset.length ? ctx.headset.join('; ') : '*HS80*'}`,
-    `Preamp: ${fmt(s.headroom !== false ? -peak(chain) : 0)} dB`, ...chain.map((f, i) => line(f, i + 1)));
-  if (x.loudness) out.push('LoudnessCorrection: State 1 ReferenceLevel 75 ReferenceOffset 0 Attenuation 1');
-  if (x.balance) out.push(`Channel: ${x.balance > 0 ? 'L' : 'R'}`, `Preamp: ${fmt(-Math.abs(x.balance))} dB`, 'Channel: all');
+  const activeChain = chain.filter(([t, , g]) => !(t === 'PK' && Math.abs(g) < 0.005));
+  out.push(`# Headset: ${name}${x.correction && model === 'HS80' ? ' + HS80 correction' : ''}${model !== 'HS80' ? ` (${model})` : ''}`, `Device: ${ctx.headset.length ? ctx.headset.join('; ') : '*HS80*'}`);
+  if (activeChain.length || x.loudness || x.balance) {
+    out.push(`Preamp: ${fmt(s.headroom !== false && activeChain.length ? -peak(activeChain) : 0)} dB`, ...activeChain.map((f, i) => line(f, i + 1)));
+    if (x.loudness) out.push('LoudnessCorrection: State 1 ReferenceLevel 75 ReferenceOffset 0 Attenuation 1');
+    if (x.balance) out.push(`Channel: ${x.balance > 0 ? 'L' : 'R'}`, `Preamp: ${fmt(-Math.abs(x.balance))} dB`, 'Channel: all');
+  } else {
+    out.push('# Base headset sound unchanged (0 dB flat)');
+  }
   const mic = [...(x.micRumble ? MIC_RUMBLE : []), ...(x.micClarity ? MIC_CLARITY : []), ...(x.micDeEss ? MIC_DEESS : [])];
   const level = x.micLevel && fs.existsSync(REACOMP);
   // mic boost (20 Oct 2026): DeviceHub's own, a gain on the headset mic in place of iCUE's (which Corsair's audio
@@ -211,16 +217,40 @@ function extrasFrom(body, old) {
 // higher"; Shawn: "I dont want it changing anything unless he wants to in the app"). While the file is still exactly
 // that untouched default, DeviceHub replaces it with an empty one (the old one backed up first), so nothing changes
 // until the person uses DeviceHub's EQ.
-const APO_DEFAULT = new Set(['preamp: -6 db', 'include: example.txt']);
+const APO_DEFAULT = new Set(['preamp: -6 db', 'include: example.txt', 'device: all']);
+const EMPTY_HEADER = '# Written by DeviceHub: Equalizer APO\'s own starting settings (6 dB quieter, an example EQ) were taken out,';
+// When Equalizer APO is freshly installed on a PC (its config.txt was just Equalizer APO's default, or our empty
+// comment-only replacement with no active filter lines), ensure eq-presets.json also starts on the Flat / Pure Direct
+// preset with all headset & mic extras off, so installing Equalizer APO never changes the person's base headset sound.
+function ensureFlatStore() {
+  try {
+    const s = load();
+    if (!s || !Array.isArray(s.presets)) return;
+    let flat = s.presets.find((p) => Array.isArray(p.stages) && p.stages.every((v) => v === 0));
+    if (!flat) { flat = { id: `{${crypto.randomUUID()}}`, name: 'Pure Direct', stages: Array(10).fill(0), builtIn: true }; s.presets = [flat, ...s.presets]; }
+    const x = s.extras || {};
+    const hadActive = s.activeId !== flat.id || x.correction || x.loudness || x.balance || (x.filters && x.filters.length) || x.micRumble || x.micClarity || x.micDeEss || x.micLevel || x.micBoost;
+    if (hadActive) {
+      s.activeId = flat.id;
+      s.extras = { ...EXTRAS(), speakers: x.speakers || {} };
+      store(s);
+    }
+  } catch {}
+}
 function clearApoDefault(backupDir) {
   try {
     if (!installed()) return false;
     const t = fs.readFileSync(CONFIG, 'utf8');
     const lines = t.split(/\r?\n/).map((l) => l.trim().toLowerCase()).filter((l) => l && !l.startsWith('#'));
-    if (!lines.length || !lines.every((l) => APO_DEFAULT.has(l))) return false;   // DeviceHub's or the person's own
+    if (!lines.length) {
+      if (t.includes(EMPTY_HEADER)) ensureFlatStore();
+      return true;
+    }
+    if (!lines.every((l) => APO_DEFAULT.has(l))) return false;   // DeviceHub's active config or the person's own
     if (backupDir) try { fs.copyFileSync(CONFIG, path.join(backupDir, `eqapo-config-default-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`)); } catch {}
-    const empty = '# Written by DeviceHub: Equalizer APO\'s own starting settings (6 dB quieter, an example EQ) were taken out,\r\n# so nothing changes until you use the EQ in DeviceHub. The old file is in DeviceHub\'s backups.\r\n';
+    const empty = `${EMPTY_HEADER}\r\n# so nothing changes until you use the EQ in DeviceHub. The old file is in DeviceHub's backups.\r\n`;
     fs.writeFileSync(CONFIG, empty);
+    ensureFlatStore();
     return fs.readFileSync(CONFIG, 'utf8') === empty;
   } catch { return false; }
 }
@@ -235,10 +265,18 @@ module.exports = (icueEq, allDevices, backupDir) => {
   const apply = async (s) => {
     const p = s.presets.find((x) => x.id === s.activeId);
     const ctx = await devices();
-    // remember each set-up device's name and kind, so its section is written while it is away
+    // remember each set-up device's name and kind, so its section is written while it is away; if a display driver update
+    // gave a monitor a new GUID, carry over the saved curve from its previous entry with the same name
     let named = false;
     for (const d of [...ctx.speakers, ...(ctx.mics || [])]) {
-      const v = s.extras.speakers[d.guid];
+      let v = s.extras.speakers[d.guid];
+      if (!v || (!v.on && Array.isArray(v.stages) && v.stages.every((x) => x === 0))) {
+        const prev = Object.entries(s.extras.speakers).find(([g, old]) => g !== d.guid && old?.name === d.name && Array.isArray(old.stages) && old.stages.some((x) => x !== 0));
+        if (prev) {
+          v = s.extras.speakers[d.guid] = { ...prev[1], name: d.name, ...(d.kind ? { kind: d.kind } : {}) };
+          named = true;
+        }
+      }
       if (v && (v.name !== d.name || (v.kind || null) !== (d.kind || null))) { v.name = d.name; if (d.kind) v.kind = d.kind; else delete v.kind; named = true; }
     }
     if (named) store(s);
@@ -252,7 +290,18 @@ module.exports = (icueEq, allDevices, backupDir) => {
       return { available: true, engine: 'eqapo', bands: BANDS, presets: s.presets, activeId: s.activeId, headroom: s.headroom !== false, unsaved: !!draft,
         extras: s.extras, micFound: ctx.mic.length > 0, headsetModel: ctx.headsetModel || null, levelerAvailable: fs.existsSync(REACOMP), speakerStarts: SPEAKER_START,
         micStarts: MIC_START,
-        speakers: [...ctx.speakers, ...(ctx.mics || [])].map((sp) => { const v = s.extras.speakers[sp.guid] || { on: false, stages: Array(10).fill(0) }; return { ...sp, on: v.on, stages: v.stages, gate: !!v.gate, level: !!v.level, curve: curve(bandsOf(v.stages)) }; }),
+        speakers: [...ctx.speakers, ...(ctx.mics || [])].map((sp) => {
+          let v = s.extras.speakers[sp.guid];
+          if (!v || (Array.isArray(v.stages) && v.stages.every((x) => x === 0))) {
+            const prev = Object.entries(s.extras.speakers).find(([g, old]) => g !== sp.guid && old?.name === sp.name && Array.isArray(old.stages) && old.stages.some((x) => x !== 0));
+            if (prev && !v) v = prev[1];
+          }
+          if (!v) {
+            const def = sp.kind === 'mic' ? MIC_START['Webcam mic'] : /oled|agon/i.test(sp.name || '') ? SPEAKER_START['AGON OLED'] : SPEAKER_START['Small monitor speakers'];
+            v = { on: false, stages: def.slice() };
+          }
+          return { ...sp, on: v.on, stages: v.stages, gate: !!v.gate, level: !!v.level, curve: curve(bandsOf(v.stages)) };
+        }),
         curve: { hz: GRID.map((f) => Math.round(f)), db: curve(headsetFilters(s, draft ? draft.stages : p.stages, ctx.headsetModel || 'HS80')) } };
     },
     async activate({ id }) {
@@ -314,8 +363,12 @@ module.exports = (icueEq, allDevices, backupDir) => {
       let flat = s.presets.find((p) => p.stages.every((v) => v === 0));
       if (!flat) { flat = { id: `{${crypto.randomUUID()}}`, name: 'Flat', stages: Array(10).fill(0), builtIn: true }; s.presets = [flat, ...s.presets]; }
       s.activeId = flat.id;
-      const speakers = Object.fromEntries(Object.entries(s.extras.speakers || {}).map(([g, v]) => [g, { ...v, on: false, gate: false, level: false }]));
-      s.extras = { ...EXTRAS(), speakers };   // extra filters and the mic effects off too
+      const speakers = Object.fromEntries(Object.entries(s.extras.speakers || {}).map(([g, v]) => {
+        const zero = !Array.isArray(v.stages) || v.stages.every((x) => x === 0);
+        const def = v.kind === 'mic' ? MIC_START['Webcam mic'] : /oled|agon/i.test(v.name || '') ? SPEAKER_START['AGON OLED'] : SPEAKER_START['Small monitor speakers'];
+        return [g, { ...v, stages: zero ? def.slice() : v.stages }];
+      }));
+      s.extras = { ...EXTRAS(), speakers };   // headset extra filters and mic effects off; monitor speaker presets kept
       draft = null; store(s); await apply(s);
       return api.read();
     },
@@ -324,3 +377,4 @@ module.exports = (icueEq, allDevices, backupDir) => {
 };
 module.exports.HS80_CORRECTION = HS80_CORRECTION;
 module.exports.gainAt = gainAt;
+module.exports.clearApoDefault = clearApoDefault;

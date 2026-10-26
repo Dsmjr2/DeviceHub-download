@@ -54,7 +54,7 @@ if (!REMOTE) adapters.forEach(register);
 // demo mode's pretend added device (?demo&added, public/devices/demo.js): its graph readings and time left are its own
 if (DEMO) for (const a of adapters) if (a.demoHistory) { useDemoHistory(a.id, a.demoHistory); if (a.demoEstimate) useDemoEstimate(a.id, a.demoEstimate); }
 
-const PAGES = [overview, setupPage, mousePage, headsetPage, keyboardPage, lightingPage, monitorsPage, fansPage, wallpapersPage, profilesPage, backupsPage, settingsPage, learnPage, supportedPage];
+const PAGES = [overview, setupPage, mousePage, headsetPage, keyboardPage, fansPage, lightingPage, monitorsPage, wallpapersPage, profilesPage, backupsPage, settingsPage, learnPage, supportedPage];
 // devices added on this PC (my-devices/, 21 Oct 2026): a page each, after the built-in devices
 // A device whose driver arrives after the window opened (installed from the library, loaded a moment late, plugged in)
 // gets its page and sidebar entry then (23 Oct 2026, a friend's HyperX headset: its tile did nothing, as no page had
@@ -64,7 +64,7 @@ function ensureDevicePages() {
   let added = false;
   for (const d of Object.values(devices)) {
     if (!d.adapter?.plugin || PAGES.some((p) => p.id === d.id)) continue;
-    PAGES.splice(PAGES.indexOf(lightingPage), 0, devicePage(d.id));
+    PAGES.splice(PAGES.indexOf(fansPage), 0, devicePage(d.id));
     added = true;
   }
   return added;
@@ -74,21 +74,28 @@ let current = null;
 
 // ---------- hover tilt ----------
 // while the pointer is over a device tile or a device page's picture, the drawing leans gently toward it (style.css);
-// nothing moves otherwise (19 Oct 2026)
-let tilted = null;
+// coalesced to once per display frame so 1000Hz–8000Hz gaming mice never cause layout thrashing.
+let tilted = null, tiltRaf = 0, lastMoveEvent = null;
 document.addEventListener('pointermove', (e) => {
-  const host = e.target.closest?.('.bay, .hero-art');
-  const art = host?.querySelector('.art.mark');
-  if (tilted && tilted !== art) { tilted.style.removeProperty('--tx'); tilted.style.removeProperty('--ty'); }
-  tilted = art || null;
-  if (!art) return;
-  const r = host.getBoundingClientRect();
-  art.style.setProperty('--tx', ((e.clientX - r.left) / r.width - .5).toFixed(3));
-  art.style.setProperty('--ty', ((e.clientY - r.top) / r.height - .5).toFixed(3));
+  lastMoveEvent = e;
+  if (tiltRaf) return;
+  tiltRaf = requestAnimationFrame(() => {
+    tiltRaf = 0;
+    const ev = lastMoveEvent;
+    if (!ev) return;
+    const host = ev.target?.closest?.('.bay, .hero-art');
+    const art = host?.querySelector('.art.mark');
+    if (tilted && tilted !== art) { tilted.style.removeProperty('--tx'); tilted.style.removeProperty('--ty'); }
+    tilted = art || null;
+    if (!art) return;
+    const r = host.getBoundingClientRect();
+    art.style.setProperty('--tx', ((ev.clientX - r.left) / r.width - .5).toFixed(3));
+    art.style.setProperty('--ty', ((ev.clientY - r.top) / r.height - .5).toFixed(3));
+  });
 }, { passive: true });
 
 // ---------- rail ----------
-const SETUP = ['lighting', 'monitors', 'fans', 'wallpapers'];
+const SETUP = ['fans', 'lighting', 'monitors', 'wallpapers'];
 function buildRail() {
   const rail = $('#rail');
   const navBtn = (p) => h('button', { class: 'nav', dataset: { page: p.id }, onclick: () => go(p.id) },
@@ -122,7 +129,7 @@ function buildRail() {
 const FRESH_MS = 10 * 60 * 1000;
 let lastBackupAt = null;
 async function readLastBackup() {
-  if (DEMO) return;
+  if (DEMO || document.hidden) return;
   try { const list = await (await fetch('/api/backups')).json(); lastBackupAt = list.reduce((m, f) => Math.max(m, new Date(f.at).getTime()), 0) || null; } catch {}
   paintShield();
 }
@@ -150,7 +157,7 @@ function paintSetupNav() {
   const now = setupNeeds();
   if (now != null && now !== setupLast) { setupLast = now; try { localStorage.setItem('setup.needs', String(now)); } catch {} }
   const n = now ?? setupLast;
-  const hide = n === 0 && current?.id !== 'setup';
+  const hide = n === 0;
   if (nav.hidden !== hide) {
     if (!nav.dataset.painted) nav.hidden = hide;   // the first paint: no animation
     else if (hide) { nav.classList.add('nav-out'); setTimeout(() => { if (nav.classList.contains('nav-out')) { nav.hidden = true; nav.classList.remove('nav-out'); } }, 220); }
@@ -175,7 +182,8 @@ env.onNewDevice = (x) => {
 setInterval(paintSetupNav, 5 * 60000);
 function paintRail() {
   paintSetupNav();
-  document.querySelectorAll('.nav').forEach((b) => b.classList.toggle('active', b.dataset.page === current?.id));
+  const setupHidden = document.querySelector('.nav[data-page="setup"]')?.hidden;
+  document.querySelectorAll('.nav').forEach((b) => b.classList.toggle('active', b.dataset.page === current?.id || (current?.id === 'setup' && setupHidden && b.dataset.page === 'settings')));
   // a device this PC does not have gets no sidebar entry (core/devices.js shownDevices)
   const shown = new Set(shownDevices().map((d) => d.id));
   document.querySelectorAll('.nav .dot[data-dev]').forEach((dot) => { dot.closest('.nav').hidden = !shown.has(dot.dataset.dev); });
@@ -271,7 +279,7 @@ window.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); }  // Search, from anywhere
 });
 
-loadArtStyle();  // the chosen drawing style (Settings > Appearance)
+await loadArtStyle();  // the chosen drawing style and theme (Settings > Appearance)
 setCommands((q) => commands(q, { go, pages: PAGES }));
 buildRail();
 setGlow();
@@ -302,14 +310,24 @@ async function reloadWhenUp() {
 }
 // Lighter glass on battery: while the battery saver is saving, html[data-saving] drops the panes' blur (style.css)
 async function checkSaving() {
-  if (DEMO) return;
+  if (DEMO || document.hidden) return;
   try { const p = await (await fetch('/api/power')).json(); document.documentElement.toggleAttribute('data-saving', !!p.saving); } catch {}
 }
 checkSaving(); setInterval(checkSaving, 30000);
 
+// Pause infinite CSS animations and background polls while minimized or behind a game
+const syncVisibility = () => {
+  const hid = document.hidden;
+  document.documentElement.toggleAttribute('data-hidden', hid);
+  if (!hid) { checkSaving(); readLastBackup(); }
+};
+document.addEventListener('visibilitychange', syncVisibility);
+syncVisibility();
+
 // Reload by itself when DeviceHub's files are updated (only while nothing is being changed on a device).
 let version = null;
 setInterval(async () => {
+  if (document.hidden) return;
   try {
     const v = (await (await fetch('/api/version')).json()).version;
     // new files: reload, but only once DeviceHub answers steadily (19 Oct 2026: a reload during its restart left the

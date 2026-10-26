@@ -126,10 +126,12 @@ function decide({ nvidia = null, kmt = [], zones = [], pawnio: hasPawnio = false
 const os = require('os');
 let lastTimes = null;
 const totals = () => os.cpus().reduce((a, c) => { const t = c.times; a.busy += t.user + t.nice + t.sys + t.irq; a.all += t.user + t.nice + t.sys + t.irq + t.idle; return a; }, { busy: 0, all: 0 });
+try { lastTimes = { ...totals(), at: Date.now() }; } catch {}
 async function nodeCpu({ cpus = os.cpus, sample = totals, wait = (ms) => new Promise((r) => setTimeout(r, ms)), now = Date.now } = {}) {
   const list = cpus();
   if (!list?.length) return null;
-  let prev = lastTimes && now() - lastTimes.at < 15000 ? lastTimes : null;
+  const dt = lastTimes ? now() - lastTimes.at : -1;
+  let prev = sample === totals && dt >= 0 && dt < 15000 ? lastTimes : null;
   if (!prev) { prev = { ...sample(), at: now() }; await wait(250); }
   const cur = { ...sample(), at: now() };
   lastTimes = cur;
@@ -139,22 +141,25 @@ async function nodeCpu({ cpus = os.cpus, sample = totals, wait = (ms) => new Pro
 }
 
 // ---- the read ----
-let cache = { at: 0, value: null }, pending = null;
+let cache = { at: 0, value: null }, pending = null, lastLhm = { at: 0, value: null };
 // the PowerShell reader's last answer, and the question it is working on: /api/temps waits at most FIRST_WAIT_MS for it
 // (its first answer, which loads its code, takes a few seconds), then answers with what it has; the slow answer fills the
-// next reading (5 s later)
-const FIRST_WAIT_MS = 1500;
+// next reading
+const FIRST_WAIT_MS = 450;
 let lastSession = null, asking = null;
 function sessionNow() {
   if (!asking) asking = askSession().then((v) => { if (v) lastSession = v; return v; }).finally(() => { asking = null; });
   return Promise.race([asking, new Promise((r) => setTimeout(() => r(lastSession), FIRST_WAIT_MS))]);
 }
 async function read({ gpu = require('./gpu'), cpuReader = require('./cpu-sensors-read') } = {}) {
-  if (cache.value && Date.now() - cache.at < 4500) return cache.value;
+  const ttl = cache.value?.cpuSensors?.state === 'starting' || cache.value?.cpu?.tempC == null ? 900 : 3500;
+  if (cache.value && Date.now() - cache.at < ttl) return cache.value;
   if (pending) return pending;
   pending = (async () => {
     if (process.platform !== 'win32') return { readings: [], notReadable: [], errors: ['only on Windows'] };
-    const [nvidia, s, pw, lhm, nc] = await Promise.all([gpu.read().catch(() => null), sessionNow(), pawnioInstalled(), cpuReader.read().catch((e) => ({ setUp: true, state: 'error', why: e.message })), nodeCpu().catch(() => null)]);
+    const [nvidia, s, pw, rawLhm, nc] = await Promise.all([gpu.read().catch(() => null), sessionNow(), pawnioInstalled(), cpuReader.read().catch((e) => ({ setUp: true, state: 'error', why: e.message })), nodeCpu().catch(() => null)]);
+    if (rawLhm?.state === 'ok' && rawLhm.anything) lastLhm = { at: Date.now(), value: rawLhm };
+    const lhm = rawLhm?.state === 'starting' && lastLhm.value && Date.now() - lastLhm.at < 60000 ? lastLhm.value : rawLhm;
     // the CPU: Node's name and load at once; the reader's name (Windows' own wording) and live clock when it has answered
     const cpu = nc || s?.cpu ? { name: s?.cpu?.name || nc?.name || null, loadPct: nc?.loadPct ?? s?.cpu?.loadPct ?? null, clockMHz: s?.cpu?.clockMHz ?? null } : null;
     const v = { ...decide({ nvidia, kmt: s?.gpus || [], zones: s?.zones || [], pawnio: pw, lhm, cpu }), pawnio: pw, errors: s ? s.errors || [] : asking ? [] : ['the sensor reader did not answer'], at: new Date().toISOString() };

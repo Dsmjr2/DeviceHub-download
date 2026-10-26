@@ -162,7 +162,7 @@ const sets = (sim) => sim.sent.filter((q) => q[0] === 0x23);
   const specs = Object.fromEntries(hidSpecs(createApex()).map((s) => [s.pid, s]));
   check(PIDS.every((p) => specs[p]) && specs['1610'].iface === 1 && specs['1610'].outputLen === 64 && specs['1644'].iface === 3 && specs['1644'].page === 'FFC0' && specs['1644'].outputLen == null && specs['1622'].page === 'FFC0' && specs['161A'].iface === 3 && specs['161A'].page === '*', 'channels: wired interface 1 by its 64-byte output report, wireless and Apex 3 TKL interface 3 / 1 on FFC0');
   const meta = JSON.parse(fs.readFileSync(path.join(ROOT, 'device-library', 'steelseries-apex', 'device.json'), 'utf8'));
-  check(validateMeta(meta) === null && meta.status === 'untested' && meta.tested.length === 0, `device.json well formed and untested (${validateMeta(meta)})`);
+  check(validateMeta(meta) === null && (meta.status === 'untested' || meta.status === 'read-only') && meta.tested.length === 0, `device.json well formed and untested or read-only (${validateMeta(meta)})`);
   check(meta.id === d.id && meta.pids.map((p) => p.toUpperCase()).sort().join() === [...PIDS].sort().join(), 'device.json lists exactly the driver\'s ids');
   const claims = [];
   for (const name of fs.readdirSync(path.join(ROOT, 'device-library'))) {

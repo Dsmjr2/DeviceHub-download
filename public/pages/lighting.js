@@ -29,18 +29,38 @@ function rgbToHs(r, g, b) {
 // The picker (19 Oct 2026, Shawn: "more minimal and modern"): a thin hue ring with a round knob, the chosen color
 // as a solid disc in the middle, and saturation on its own slider underneath. The color's code is no longer written on
 // the disc (23 Oct 2026, Shawn: "remove the middle typable color": it looked like a box to type in).
-const RING = 0.13;  // ring thickness as a fraction of the radius
+const RING = 0.175;  // ring thickness as a fraction of the radius
 function wheel(onPick) {
   const size = 260, canvas = h('canvas', { width: size * 2, height: size * 2, 'aria-label': 'hue ring' });
   const knob = h('div', { class: 'ring-knob' });
-  const disc = h('div', { class: 'ring-disc' });
+  const colorInput = h('input', { type: 'color', class: 'ring-native', 'aria-label': 'Pick exact color' });
+  const disc = h('div', { class: 'ring-disc', title: 'Click to pick any color', onclick: () => colorInput.click() }, colorInput);
   const wrap = h('div', { class: 'ring-wrap' }, canvas, disc, knob);
   const ctx = canvas.getContext('2d');
-  const R = size, r0 = R * (1 - RING);
-  for (let deg = 0; deg < 360; deg += 0.5) {
-    const a0 = ((deg - 0.6) * Math.PI) / 180, a1 = ((deg + 0.6) * Math.PI) / 180;
-    ctx.beginPath(); ctx.arc(R, R, R - 1, a0, a1); ctx.arc(R, R, r0, a1, a0, true); ctx.closePath();
-    ctx.fillStyle = `hsl(${deg}, 88%, 58%)`; ctx.fill();
+  const R = size, rOuter = R - 4, r0 = R * (1 - RING);
+  if (typeof ctx.createConicGradient === 'function') {
+    const cg = ctx.createConicGradient(0, R, R);
+    for (let i = 0; i <= 360; i += 15) cg.addColorStop(i / 360, `hsl(${i}, 95%, 56%)`);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(R, R, rOuter, 0, Math.PI * 2);
+    ctx.arc(R, R, r0, 0, Math.PI * 2, true);
+    ctx.closePath();
+    ctx.fillStyle = cg;
+    ctx.fill();
+    // subtle inner & outer specular rim on the hue ring
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(R, R, rOuter - 1, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
+    ctx.beginPath(); ctx.arc(R, R, r0 + 1, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  } else {
+    for (let deg = 0; deg < 360; deg += 0.5) {
+      const a0 = ((deg - 0.6) * Math.PI) / 180, a1 = ((deg + 0.6) * Math.PI) / 180;
+      ctx.beginPath(); ctx.arc(R, R, rOuter, a0, a1); ctx.arc(R, R, r0, a1, a0, true); ctx.closePath();
+      ctx.fillStyle = `hsl(${deg}, 92%, 56%)`; ctx.fill();
+    }
   }
   let hue = 0, sat = 1;
   const hexOf = () => rgbToHex(...hsvToRgb(hue, sat, 1));
@@ -49,11 +69,14 @@ function wheel(onPick) {
   const satEl = h('div', { class: 'slider sat-track' }, satInput);
   const setSat = (v) => { satInput.value = v; satEl.style.setProperty('--p', `${v}%`); };
   const show = () => {
-    const a = (hue * Math.PI) / 180, rad = 50 * (1 - RING / 2);
+    const a = (hue * Math.PI) / 180, rad = ((rOuter + r0) / 2 / R) * 50;
     knob.style.left = `${50 + Math.cos(a) * rad}%`; knob.style.top = `${50 + Math.sin(a) * rad}%`;
-    knob.style.background = rgbToHex(...hsvToRgb(hue, 1, 1));
+    const pureHue = rgbToHex(...hsvToRgb(hue, 1, 1));
+    knob.style.background = pureHue;
+    knob.style.setProperty('--k-color', pureHue);
     const hex = hexOf();
-    wrap.style.setProperty('--pick', hex); satEl.style.setProperty('--hue', rgbToHex(...hsvToRgb(hue, 1, 1)));
+    colorInput.value = hex;
+    wrap.style.setProperty('--pick', hex); satEl.style.setProperty('--hue', pureHue);
   };
   const place = (hex) => { const v = rgbToHs(...hexToRgb(hex)); hue = v.h; sat = v.s; setSat(Math.round(sat * 100)); show(); };
   const pick = (e) => {
@@ -62,9 +85,12 @@ function wheel(onPick) {
     show(); onPick(hexOf());
   };
   let down = false;
-  canvas.addEventListener('pointerdown', (e) => { down = true; canvas.setPointerCapture(e.pointerId); pick(e); });
+  canvas.addEventListener('pointerdown', (e) => { down = true; wrap.classList.add('dragging'); canvas.setPointerCapture(e.pointerId); pick(e); });
   canvas.addEventListener('pointermove', (e) => { if (down) pick(e); });
-  canvas.addEventListener('pointerup', () => { down = false; });
+  const stopDrag = () => { down = false; wrap.classList.remove('dragging'); };
+  canvas.addEventListener('pointerup', stopDrag);
+  canvas.addEventListener('pointercancel', stopDrag);
+  colorInput.addEventListener('input', (e) => { place(e.target.value); onPick(e.target.value.toLowerCase()); });
   satInput.addEventListener('input', () => { sat = satInput.value / 100; setSat(satInput.value); show(); onPick(hexOf()); });
   return { el: wrap, sat: satEl, place };
 }
@@ -141,7 +167,7 @@ export default {
       // [More], I want the lighting area non scrollable")
       h('div', { class: 'grid light-cols top' },
         card([h('h2', {}, 'Color')], w.el,
-          h('div', { class: 'swatches' }, ...SWATCHES.map((c) => h('button', { class: 'swatch', style: { '--s': c }, 'aria-label': c, onclick: () => { ui.hex = c; ui.off = false; w.place(c); preview(c); redraw(); } })),
+          h('div', { class: 'swatches' }, ...SWATCHES.map((c) => h('button', { class: `swatch${!ui.off && ui.hex.toLowerCase() === c.toLowerCase() ? ' on' : ''}`, style: { '--s': c }, 'aria-label': c, onclick: () => { ui.hex = c; ui.off = false; w.place(c); preview(c); redraw(); } })),
             offSwatch({ on: ui.off, label: 'All lights', onclick: () => { ui.off = !ui.off; preview(ui.off ? OFF : ui.hex); redraw(); } })),
           h('div', { class: 'picker-row' }, h('span', { class: 'muted' }, 'Saturation'), w.sat),
           h('div', { class: 'picker-row' }, h('span', { class: 'muted' }, 'Brightness'),

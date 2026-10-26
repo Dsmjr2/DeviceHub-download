@@ -12,7 +12,7 @@ const num = (s) => { const n = Number(String(s).trim()); return Number.isFinite(
 
 function read() {
   if (!SMI) return Promise.resolve({ available: false, reason: 'no NVIDIA graphics card (or its driver) on this PC' });
-  if (cache.value && Date.now() - cache.at < 1500) return Promise.resolve(cache.value);
+  if (cache.value && Date.now() - cache.at < 2500) return Promise.resolve(cache.value);
   if (pending) return pending;
   pending = new Promise((resolve) => {
     execFile(SMI, [`--query-gpu=${FIELDS.join(',')}`, '--format=csv,noheader,nounits'], { windowsHide: true, timeout: 8000 }, (err, out) => {

@@ -59,7 +59,7 @@ export function buildShare(folder, { verified = readJson(path.join(folder, 'veri
   const blob = zlib.deflateRawSync(Buffer.from(text, 'utf8'), { level: 9 }).toString('base64').replace(/(.{100})/g, '$1\n');
   const labels = (def.settings || []).filter((s) => passed.includes(s.key)).map((s) => s.label || s.key);
   const body = [MARK,
-    `A driver learned on a friend's PC whose settings passed DeviceHub's own check on the device. Take it into the library with \`node helpers/accept-driver-shares.mjs --apply\` (Shawn's copy).`,
+    `A driver learned with Learn a device whose settings passed DeviceHub's own check on the device. Take it into the library with \`node helpers/accept-driver-shares.mjs --apply\` (Shawn's copy).`,
     '', `- Device: ${record.title || 'device'} (${record.deviceKind}), USB ${vid}:${pids.join(', ')}`, `- Settings that passed: ${labels.join(', ') || passed.join(', ')}`,
     '', '### Record', '```json', JSON.stringify(record, null, 2), '```', '', '### Driver (driver.json, deflated, base64)', '```text', blob, '```'].join('\n');
   if (body.length > MAX_BODY) return { refused: `the driver is too large to send this way (${body.length} characters)` };

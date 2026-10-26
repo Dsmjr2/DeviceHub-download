@@ -109,4 +109,12 @@ export const icons = {
   sleep: I('<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/>'),
   shield: I('<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-4"/>'),
 };
-export const icon = (name, cls = 'ic') => { const s = svgEl(icons[name] || icons.x); s.classList.add(...cls.split(/\s+/).filter(Boolean)); return s; };
+const iconCache = new Map();
+export const icon = (name, cls = 'ic') => {
+  const key = icons[name] ? name : 'x';
+  let base = iconCache.get(key);
+  if (!base) { base = svgEl(icons[key]); iconCache.set(key, base); }
+  const s = base.cloneNode(true);
+  if (cls) s.classList.add(...cls.split(/\s+/).filter(Boolean));
+  return s;
+};

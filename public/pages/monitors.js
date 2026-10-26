@@ -1,7 +1,7 @@
 // Monitors (20 Oct 2026): brightness, contrast, speaker volume, color preset and color balance of each monitor, over DDC/CI
 // (helpers/monitors.js). Each change is backed up, written one at a time and read back on the server.
 import { h, icon } from '../ui/dom.js';
-import { card, row, slider, segmented, loadingCard } from '../ui/controls.js';
+import { card, row, slider, segmented, loadingCard, button } from '../ui/controls.js';
 import { env } from '../core/env.js';
 import { isDemo } from '../core/devices.js';
 import { topbar } from './common.js';
@@ -64,7 +64,7 @@ function monitorCard(m) {
   // a laptop's own screen: brightness through Windows (helpers/monitor-wmi.js; 22 Oct 2026, Shawn: "on my laptop it says
   // turn on ddc/ci in this monitors menu")
   if (m.builtin) return card([icon('monitor'), h('h2', {}, m.name)],
-    row('Brightness', 'Through Windows.', slider({ value: m.brightness.value, min: 0, max: 100, unit: '%', onCommit: (v) => set(m, 'brightness', v, `brightness ${v}`) })),
+    row('Brightness', null, slider({ value: m.brightness.value, min: 0, max: 100, unit: '%', onCommit: (v) => set(m, 'brightness', v, `brightness ${v}`) })),
     displayBlock(m, redraw));
   if (!m.ddc) return card([h('h2', {}, m.name)], h('p', { class: 'faint' }, 'No DDC/CI. Turn it on in the monitor\'s menu.'),
     displayBlock(m, redraw));
@@ -121,17 +121,29 @@ function colorBalance(m) {
   return fold;
 }
 
+async function sleepMonitors() {
+  if (isDemo()) { toast('Demo: putting monitors to sleep', 'info'); return; }
+  toast('Putting monitors to sleep in 1s...', 'info');
+  try {
+    const r = await env.api('/api/monitors/sleep', {});
+    if (!r?.ok && r?.error) toast(`Sleep failed: ${r.error}`, 'bad');
+  } catch (e) {
+    toast(`Sleep failed: ${e.message}`, 'bad');
+  }
+}
+
 export default {
   id: 'monitors', title: 'Monitors', icon: 'monitor', accent: 'var(--signal)',
   watches: [],  // monitors and the camera are read by the page itself; device readings do not redraw it (21 Oct 2026)
   render() {
     rerender = () => { const el = document.querySelector('#main .page'); if (el && location.hash === '#/monitors') el.replaceWith(Object.assign(this.render(), { className: 'page no-anim' })); };
-    if (isDemo()) return h('div', {}, topbar('Displays and camera', 'Monitors', null, null, helpHere('monitors')), card([h('h2', {}, 'Monitors')], h('p', { class: 'faint' }, 'Not shown in demo mode.')));
+    const sleepBtn = button('Sleep', sleepMonitors, { kind: 'ghost small', ic: 'sleep', title: 'Put monitors to sleep' });
+    if (isDemo()) return h('div', {}, topbar('Displays and camera', 'Monitors', null, sleepBtn, helpHere('monitors')), card([h('h2', {}, 'Monitors')], h('p', { class: 'faint' }, 'Not shown in demo mode.')));
     if (!list && !error) load(false);
     else if (list && !loading && Date.now() - refreshed > 10000) { refreshed = Date.now(); queueMicrotask(() => load(true)); }
     return h('div', {},
       // Get help (area monitors: each monitor's DDC/CI answer and the camera's settings), top right
-      topbar('Displays and camera', 'Monitors', null, null, helpHere('monitors')),
+      topbar('Displays and camera', 'Monitors', null, sleepBtn, helpHere('monitors')),
       // the monitors and the camera side by side on one screen (23 Oct 2026, Shawn: "I want the lighting area non
       // scrollable if possible, same with monitors"); no card scrolls (24 Oct: Color balance folds, rows compact)
       h('div', { class: 'grid mon-cols top', style: { '--n': (list?.length || 2) + 1 } },

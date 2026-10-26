@@ -73,7 +73,7 @@ setDeviceProvider(async (filters) => {
 
 // ---- the entry ----
 check(!problem(drv), `the driver passes the my-devices check (${problem(drv)})`);
-check(!validateMeta(meta) && meta.status === 'untested' && meta.tested.length === 0 && meta.id === drv.id && meta.vid === '1038' && meta.source === 'docs/brands/steelseries.md', `device.json: untested, tested [], id, vid, source (${validateMeta(meta)})`);
+check(!validateMeta(meta) && (meta.status === 'untested' || meta.status === 'read-only') && meta.tested.length === 0 && meta.id === drv.id && meta.vid === '1038' && meta.source === 'docs/brands/steelseries.md', `device.json: untested or read-only, tested [], id, vid, source (${validateMeta(meta)})`);
 check(JSON.stringify([...meta.pids].sort()) === JSON.stringify(MODELS.map((m) => h4(m.pid).toLowerCase()).sort()), 'device.json pids are the table\'s');
 const IF0 = ['182E', '183C'];   // rivalcfg prime.py / rival5.py "endpoint": 0
 check(JSON.stringify(drv.hid.pids) === JSON.stringify(MODELS.map((m) => h4(m.pid))) && MODELS.every((m) => drv.hid.byPid[h4(m.pid)].iface === (IF0.includes(h4(m.pid)) ? 0 : 3) && drv.hid.byPid[h4(m.pid)].reportId === 0), 'one channel per pid, interface 3 (Prime, Rival 5: 0), report id 0');

@@ -53,7 +53,7 @@
     "Cloud Flight Wireless settings (no source has any; battery only) and its charging state between 4108 and 4115 mV (HeadsetControl and HyperHeadset disagree)",
     "Kingston-era 0951 ids: device-library/hyperx-kingston (a library entry declares one vendor id)"
   ],
-  "status": "untested",
+  "status": "read-only",
   "updated": "2026-10-23T12:00:00Z",
   "tested": [
     {

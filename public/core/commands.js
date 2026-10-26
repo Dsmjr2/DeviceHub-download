@@ -89,6 +89,14 @@ export function commands(q, { go, pages }) {
     const hex = pl[1] === 'off' ? '#000000' : pl[1].startsWith('#') ? pl[1] : COLORS[pl[1]];
     if (hex) out.push({ dynamic: true, group: 'PC lights', icon: 'lighting', label: `PC lights ${pl[1]}`, run: async () => { try { await env.api('/api/openrgb/color', { target: 'all', hex }); toast(`PC lights ${pl[1]}`, 'good'); } catch (e) { toast('PC lights not changed', 'bad', { detail: e.message }); } } });
   }
+  // sleep monitors: "sleep", "sleep monitors", "turn off screen"
+  if (/^(?:sleep|turn\s*off)\s*(?:monitors?|screens?|displays?)?$/.test(q)) {
+    out.push({ dynamic: true, group: 'Monitors', icon: 'sleep', label: 'Sleep monitors',
+      run: async () => {
+        toast('Putting monitors to sleep in 1s...', 'info');
+        try { await env.api('/api/monitors/sleep', {}); } catch (e) { toast('Sleep failed', 'bad', { detail: e.message }); }
+      } });
+  }
   // monitors: "brightness 40" (every monitor) or "brightness 40 oled" / "ips" / part of a name; contrast the same
   const mon = q.match(/^(brightness|bright|contrast)\s*(\d{1,3})%?\s*(.*)$/);
   if (mon && pct(Number(mon[2])) && monitors.length) {
@@ -113,7 +121,7 @@ export function commands(q, { go, pages }) {
   }
 
   out.push({ group: 'DeviceHub', icon: 'external', label: 'Copy help report', keywords: 'report help problem support bug issue', run: copyShortReport });
-  out.push({ group: 'DeviceHub', icon: 'external', label: 'Copy download link', keywords: 'share link download send friend installer zip', run: copyDownloadLink });
+  out.push({ group: 'DeviceHub', icon: 'external', label: 'Copy download link', keywords: 'share link download send installer zip', run: copyDownloadLink });
   for (const p of pages) out.push({ group: 'Go to', icon: p.icon, label: p.title, keywords: `page open ${p.id}`, run: () => go(p.id) });
   for (const p of profiles) out.push({ group: 'Profile', icon: 'profiles', label: `Apply "${p.name}"`, keywords: 'profile switch', run: () => applyWithPreview(p) });
   for (const [name, hex] of Object.entries(COLORS)) out.push({ group: 'Lighting', icon: 'lighting', label: `All lighting ${name}`, keywords: `color color rgb ${hex}`, run: () => applyColor(hex) });

@@ -13,7 +13,7 @@ $appCommit = $null
 if ($args -notcontains '-NoPublish') { $appCommit = (& (Join-Path $PSScriptRoot 'publish-code.ps1') | Select-Object -Last 1); if ($appCommit -notmatch '^[0-9a-f]{7,40}$') { $appCommit = $null } }
 Push-Location $root
 try {
-  $files = git ls-files | Where-Object { $_ -notmatch '^public/preview-' -and $_ -notmatch '^screenshots/' -and $_ -ne 'JOURNAL.md' }
+  $files = git ls-files | Where-Object { $_ -notmatch '^public/preview-' -and $_ -notmatch '^screenshots/' -and $_ -ne 'JOURNAL.md' -and $_ -ne 'eq-presets.json' }
   if (-not $files) { throw 'git ls-files returned nothing' }
   $dist = Join-Path $root 'dist'
   New-Item -ItemType Directory -Force $dist | Out-Null
@@ -132,7 +132,7 @@ try {
   $private = 'backups', 'profiles.json', 'settings.json', 'activity.jsonl', 'battery-history.jsonl', 'mouse-battery-study.jsonl',
     'mouse-level.json', 'headset-lights.json', 'headset-firmware.json', 'seen-devices.json', 'updates-cache.json', 'server.log',
     'server.old.log', 'captures', 'window-profile', 'screenshots', 'waiting-changes.json', 'waiting-monitors.json',
-    'last-device-values.json', 'last-monitor-values.json', 'daily-check.json', 'battery-care.json', 'setup.json', 'openrgb-config', 'bundled-cache', 'wallpaper-previous', 'lights-names.json'
+    'last-device-values.json', 'last-monitor-values.json', 'daily-check.json', 'battery-care.json', 'setup.json', 'openrgb-config', 'bundled-cache', 'wallpaper-previous', 'lights-names.json', 'eq-presets.json'
   $z = [System.IO.Compression.ZipFile]::OpenRead($zip)
   try {
     $names = $z.Entries | ForEach-Object { ($_.FullName -replace '[\\/]', '/') -replace '^DeviceHub/', '' }

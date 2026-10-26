@@ -69,7 +69,7 @@
     "not added yet (named-only like their base models in rivalcfg): Prime R6 Black Ice 182a, Prime CS:GO Neo Noir 1856, Rival 5 Destiny 183e; Rival 600 (1724, 172e)",
     "unconfirmed: the output report length (64 assumed) and the usage page of the Prime, Prime Mini, Prime (Mini) Wireless, Rival 3 and Rival 3 Gen 2 / Wireless Gen 2"
   ],
-  "status": "untested",
+  "status": "read-only",
   "tested": [],
   "source": "docs/brands/steelseries.md"
 }

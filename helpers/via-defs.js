@@ -25,15 +25,22 @@ async function definitionFor(vid, pid) {
   try { if (fs.existsSync(file)) return { def: JSON.parse(fs.readFileSync(file, 'utf8')), from: `via-definitions\\${path.basename(file)}` }; }
   catch (e) { throw new Error(`via-definitions\\${path.basename(file)} is not valid JSON (${e.message})`); }
   const vpid = parseInt(vid, 16) * 65536 + parseInt(pid, 16);
-  const r = await fetch(LIBRARY(vpid), { signal: AbortSignal.timeout(15000) });
-  const type = r.headers.get('content-type') || '';
-  // the library answers its web page (not JSON) for a keyboard it does not have
-  if (!r.ok || !type.includes('json')) throw new Error('not in VIA\'s library: put the maker\'s VIA definition file in the via-definitions folder');
-  const text = await r.text();
-  const def = JSON.parse(text);
-  fs.mkdirSync(DIR, { recursive: true });
-  writeAtomic(file, text);
-  return { def, from: 'VIA\'s library' };
+  const r = await fetch(LIBRARY(vpid), { signal: AbortSignal.timeout(15000) }).catch(() => null);
+  const type = r?.headers?.get('content-type') || '';
+  if (r?.ok && type.includes('json')) {
+    const text = await r.text();
+    const def = JSON.parse(text);
+    fs.mkdirSync(DIR, { recursive: true });
+    writeAtomic(file, text);
+    return { def, from: 'VIA\'s library' };
+  }
+  // Not in VIA's bundled library (e.g. Keychron Pro / Max / HE / 8K, Lemokey): auto-fetch from pinned official VIA sources
+  try {
+    const vf = await import('./via-fetch.mjs');
+    const got = await vf.get(vid, pid);
+    if (got?.ok && fs.existsSync(file)) return { def: JSON.parse(fs.readFileSync(file, 'utf8')), from: `via-definitions\\${path.basename(file)}` };
+  } catch {}
+  throw new Error('not in VIA\'s library: put the maker\'s VIA definition file in the via-definitions folder');
 }
 
 module.exports = { findKeyboards, definitionFor, DIR };

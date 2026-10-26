@@ -23,7 +23,7 @@
     "Vulcan lighting (effect mode, per-key colours: write-only); Turtle Beach Vulcan II (10f5:501b, 5023, 5001): a library entry has one vendor id",
     "unconfirmed: the Kone Pure / XTD / EMP collection on Windows (interface 0, chosen by feature length) and whether the Burst's block 06 is the active profile's"
   ],
-  "status": "untested",
+  "status": "read-only",
   "tested": [],
   "source": "libratbag src/driver-roccat-kone-pure.c, driver-roccat.c, driver-roccat-kone-emp.c @ 8235b5bb6032dea15901ab58a8218956f4494d08; Linux drivers/hid/hid-roccat-konepure.c, hid-roccat-koneplus.h, hid-roccat-common.c @ 7be4bc52fd9e0e55dc9a2e0232b89427d2c4b614; OpenRGB Controllers/RoccatController @ bbc77470a7cba56af60989e54ba910d5ac66a3ac; docs/brands/turtle-beach.md"
 }

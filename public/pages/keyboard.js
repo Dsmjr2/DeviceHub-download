@@ -175,31 +175,48 @@ function knobPanel(s) {
     row('Press', null, press, { type: 'key', r: 0, c: 14 }, t?.type === 'key' && t.r === 0 && t.c === 14));
 }
 
+let activeMacroInput = null;
+const MACRO_TOKENS = [
+  ['+ Enter', '{Enter}'],
+  ['+ Tab', '{Tab}'],
+  ['+ Copy', '{Ctrl+C}'],
+  ['+ Paste', '{Ctrl+V}'],
+  ['+ 200ms wait', '{wait 200}'],
+];
 function macroPanel(s) {
   const m = s.macros;
-  const used = m.raw?.length ? m.raw.reduce((n, x) => n + x.length + 1, 0) : null;
-  // in plain steps (22 Oct 2026, Shawn: "make this description make more sense and easier to understand")
-  const help = h('div', { class: 'macro-help' },
-    h('p', {}, 'One key types your text.'),
-    h('ol', {},
-      h('li', {}, 'Type the text below, press Save.'),
-      h('li', {}, 'In Key mapping, click a key, pick the macro.')),
-    h('p', { class: 'faint' }, 'Special keys go in braces: ', h('code', {}, '{Enter}'), ', ', h('code', {}, '{Tab}'), ', ', h('code', {}, '{Ctrl+C}'), '; ',
-      h('code', {}, '{wait 200}'), ' pauses 200 ms; ', h('code', {}, '{{'), ' types a brace.'));
-  // the slots in use, plus the first empty one to add a macro (or all of them)
   const firstEmpty = m.list.slice(0, m.mi.count).findIndex((t) => !t);
   const show = m.list.slice(0, m.mi.count).map((text, i) => [text, i]).filter(([text, i]) => ui.allMacros || text || i === firstEmpty);
-  return card([h('h2', {}, 'Macros'), h('span', { class: 'spacer' })], help,
-    ...show.map(([text, i]) => {
+  const inputs = [];
+  const insertToken = (tok) => {
+    const target = (activeMacroInput && document.body.contains(activeMacroInput) && !activeMacroInput.disabled) ? activeMacroInput : inputs.find((x) => !x.disabled);
+    if (!target) return;
+    const start = target.selectionStart ?? target.value.length;
+    const end = target.selectionEnd ?? target.value.length;
+    target.value = target.value.slice(0, start) + tok + target.value.slice(end);
+    target.focus();
+    target.setSelectionRange(start + tok.length, start + tok.length);
+    target.dispatchEvent(new Event('input'));
+  };
+  return card([h('h2', {}, 'Macros'), h('span', { class: 'sub' }, 'Bind to any key in Key mapping above'), h('span', { class: 'spacer' }),
+    button(ui.allMacros ? 'Show used only' : `All ${m.mi.count} slots`, async () => { ui.allMacros = !ui.allMacros; rerender(); }, { kind: 'ghost small' })],
+    h('div', { class: 'macro-bar' },
+      h('span', { class: 'faint macro-hint' }, 'Insert special key:'),
+      h('div', { class: 'macro-chips' }, ...MACRO_TOKENS.map(([label, tok]) => h('button', { class: 'pk macro-chip', type: 'button', title: `Insert ${tok}`, onclick: () => insertToken(tok) }, label)))),
+    h('div', { class: 'macro-list' }, ...show.map(([text, i]) => {
       const locked = m.editable && !m.editable[i] && !!text;
-      const input = h('input', { class: 'text mono', value: text, placeholder: text ? '' : 'e.g. gg{Enter}', 'aria-label': `macro ${i}`, disabled: locked, title: locked ? 'Made in another app; edit it there' : null });
-      const save = button('Save', () => write('keyboard', `macro:${i}`, input.value, { label: `Macro ${i}`, display: input.value ? `"${input.value}"` : 'empty' }).catch(() => {}), { kind: 'ghost small' });
+      const input = h('input', { class: 'text macro-input', value: text, placeholder: text ? '' : 'Type text or click a key above (e.g. gg{Enter})', 'aria-label': `macro ${i}`, disabled: locked, title: locked ? 'Made in another app; edit it there' : null });
+      inputs.push(input);
+      input.addEventListener('focus', () => { activeMacroInput = input; });
+      const save = button('Save', () => write('keyboard', `macro:${i}`, input.value, { label: `Macro ${i}`, display: input.value ? `"${input.value}"` : 'empty' }).catch(() => {}), { kind: 'primary small' });
       save.disabled = true;
       input.addEventListener('input', () => { save.disabled = input.value === text; });
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !save.disabled) save.click(); });
-      return h('div', { class: 'macro' }, h('span', { class: 'mname' }, `M${i}`), input, save);
-    }),
-    h('div', { style: { marginTop: '6px' } }, button(ui.allMacros ? 'Show used only' : `All ${m.mi.count} slots`, async () => { ui.allMacros = !ui.allMacros; rerender(); }, { kind: 'ghost small' })));
+      return h('div', { class: 'macro' },
+        h('span', { class: 'mname' }, h('b', {}, `Macro ${i + 1}`), h('small', { class: 'faint' }, `M${i}`)),
+        input,
+        save);
+    })));
 }
 
 function effectSelect(value, onCommit) {

@@ -176,7 +176,7 @@ function eqCard(redraw) {
   const targets = APO() ? [{ value: 'headset', label: 'Headset' }, ...(ui.eq.speakers || []).map((sp) => ({ value: sp.guid, label: sp.name }))] : [];
   if (!targets.some((t) => t.value === ui.target)) ui.target = 'headset';
   const pick = targets.length > 1 ? segmented({ value: ui.target, options: targets, compact: true, onCommit: async (v) => { ui.target = v; rerender(); } }) : null;
-  if (ui.target !== 'headset') return card([...head, h('span', { class: 'spacer' }), pick], speakerSection(ui.target, rerender));
+  if (ui.target !== 'headset') return card([...head, h('span', { class: 'spacer' }), pick], speakerSection(ui.target, rerender, ui.eq));
   return card([...head, h('span', { class: 'spacer' }), APO() || ui.eq.icueRunning ? null : pill('iCUE closed', 'warn'), pick],
     // Equalizer APO installed but not switched on for the headset's sound devices (a new driver gives new ones)
     ui.eq.notOn?.length ? h('div', { class: 'eq-off' }, icon('shield'),

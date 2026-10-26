@@ -39,8 +39,8 @@ export function undoButton(d) {
 // and lede the pages pass are no longer shown
 // help: the screen's Get help (deviceHelp below, or ui/get-help.js helpHere), one small button at the top right; it
 // opens below the title across the page (style.css .topbar > .get-help), so a closed one adds no height
-export function topbar(eyebrow, title, lede, right, help) {
-  return h('div', { class: `topbar${help ? ' has-help' : ''}` }, h('div', {}, h('h1', {}, title)), right || null, help || null);
+export function topbar(eyebrow, title, lede, right, _help) {
+  return h('div', { class: 'topbar' }, h('div', {}, h('h1', {}, title)), right || null);
 }
 // a device page's Get help (22 Oct 2026, docs/handoff/get-help-everywhere.md): the device's own report plus what the
 // page shows; the same one whether the device is connected or not
@@ -153,8 +153,8 @@ export function connectState(d, hint) {
   if (d.status === 'connecting') return h('div', { class: 'panel empty' }, art, h('h2', {}, 'Connecting…'));
   // With the background agent there is nothing to pick: plugging the device in is enough.
   const needsPick = a.id !== 'headset' && !isRemote();
-  const agentHint = a.id === 'headset' ? 'Plug in the HS80 receiver or cable and switch it on.'
-    : `Plug in the ${a.id === 'mouse' ? 'Pulsar 8K dongle' : 'P75 with its USB cable'}.${a.id === 'mouse' ? ' Close the Pulsar app first.' : ''}`;
+  const agentHint = a.id === 'headset' ? 'Plug in your headset or its receiver and switch it on.'
+    : a.id === 'mouse' ? 'Plug in your mouse or its USB receiver.' : 'Plug in your keyboard with its USB cable.';
   return h('div', { class: 'panel empty' }, art,
     h('h2', {}, d.status === 'error' ? `Couldn't reach your ${a.kind.toLowerCase()}` : isRemote() ? `Waiting for your ${a.kind.toLowerCase()}` : `Connect your ${a.kind.toLowerCase()}`),
     h('p', {}, d.error || (isRemote() ? agentHint : hint)),

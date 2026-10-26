@@ -18,20 +18,21 @@ import { topbar } from './common.js';
 import { tempsCard, pcCheckCard, cpuCard, chipCard } from '../ui/pc-health.js';
 
 const DEMO = { available: true, gpus: [{ name: 'NVIDIA GeForce RTX 4070', tempC: 62, fanPct: 38, loadPct: 71, powerW: 142, powerLimitW: 200, memUsedMB: 6100, memTotalMB: 12282, clockMHz: 2610, headroomC: 22 }] };
-let gpu = null, error = null, timer = null, rerender = () => {};
-// the temperature over the last 2 minutes, kept only while the page is open (one reading every 2 s)
+let gpu = null, error = null, timer = null, lastGpuSig = '', rerender = () => {};
+// the temperature over the last 2 minutes, kept only while the page is open (one reading every 3 s)
 let history = [];
 
 async function load() {
   if (isDemo()) { gpu = { ...DEMO, gpus: [{ ...DEMO.gpus[0], tempC: 60 + Math.round(Math.random() * 5) }] }; }
   else try { gpu = await env.api('/api/gpu'); error = null; } catch (e) { error = e.message; }
-  const t = gpu?.gpus?.[0]?.tempC; if (t != null) { history.push(Math.round(t)); if (history.length > 60) history.shift(); }
-  rerender();
+  const t = gpu?.gpus?.[0]?.tempC; if (t != null) { history.push(Math.round(t)); if (history.length > 40) history.shift(); }
+  const sig = JSON.stringify([gpu, error]);
+  if (sig !== lastGpuSig) { lastGpuSig = sig; rerender(); }
 }
 // refresh while the page is open; stop as soon as it is left
 function keepFresh() {
   if (timer) return;
-  timer = setInterval(() => { if (location.hash !== '#/fans' || document.hidden) { clearInterval(timer); timer = null; history = []; return; } load(); }, 2000);
+  timer = setInterval(() => { if (location.hash !== '#/fans' || document.hidden) { clearInterval(timer); timer = null; history = []; return; } load(); }, 3000);
 }
 
 // the same card as the processor's (ui/pc-health.js chipCard, 24 Oct 2026: one look for both)
@@ -109,18 +110,15 @@ function fanLightsCard() {
     button('Find lights', () => { lights = null; diag = null; rerender(); loadLights(true); }, { kind: 'ghost small', ic: 'refresh' })];
   if (!o) return loadingCard('Fan lights', 2);
   return card(head,
-    o.readOnly && list.length ? h('p', { class: 'faint fan-why' }, `Read only: ${o.readOnly}.`) : null,
+    o.readOnly && list.length ? h('p', { class: 'faint fan-why' }, `${o.readOnly}.`) : null,
     ...(list.length ? list.map((c) => h('div', { class: 'fan-light' },
       h('div', { class: 'fan-light-name' }, h('b', {}, c.name),
-        h('small', { class: 'faint' }, c.type === 'motherboard' ? 'Board and fan headers, one color' : `${c.zones?.length || 1} ${c.zones?.length === 1 ? 'zone' : 'zones'} · ${c.leds} lights`)),
+        c.type !== 'motherboard' && c.zones?.length ? h('small', { class: 'faint' }, `${c.zones.length} ${c.zones.length === 1 ? 'zone' : 'zones'}`) : null),
       h('div', { class: 'swatches compact' },
         ...SWATCHES.map((x) => h('button', { class: `swatch${c.same && c.color === x ? ' on' : ''}`, style: { '--s': x }, 'aria-label': `${c.name}: ${x}`, disabled: lightsBusy || !!o.readOnly, onclick: () => setFan(c, x) })),
         h('input', { type: 'color', class: 'swatch-custom', 'aria-label': `${c.name}: pick a colour`, value: c.color && !isOff(c.color) ? c.color : '#ffffff', disabled: lightsBusy || !!o.readOnly, onchange: (e) => setFan(c, e.target.value) }),
         offSwatch({ on: c.same && isOff(c.color), label: c.name, disabled: lightsBusy || !!o.readOnly, onclick: () => setFan(c, OFF) }))))
       : whyNone(o)),
-    // only the board itself (no fan hub or cooler on USB): where case fans must be plugged for the colour to reach them
-    // (23 Oct 2026, a friend's Corsair case: "cannot see his case fans")
-    list.length && list.every((c) => c.type === 'motherboard') ? h('p', { class: 'faint fan-why' }, "No change? The fans are on the case's own hub.") : null,
     row('Fan speed', 'Set by the BIOS fan curve.', pill('BIOS')));
 }
 
@@ -144,7 +142,6 @@ export default {
           : !gpu ? loadingCard('Graphics card', 4)
             : gpus.length ? gpuCard(gpus[0]) : card([h('h2', {}, 'Graphics card')], h('p', { class: 'faint' }, gpu.reason || 'Not read on this PC.')), 'pc-gpu'),
         tag(cpuCard(), 'pc-cpu'),
-        tag(fanLightsCard(), 'pc-lights'),
         tag(tempsCard(rerender, 'fans'), 'pc-temps'),
         tag(pcCheckCard(rerender), 'pc-check')));
   },

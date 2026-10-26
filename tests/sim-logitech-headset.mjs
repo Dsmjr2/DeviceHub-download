@@ -411,7 +411,7 @@ function simG522({ addr = 0x23, bridge = 3, direct = false, percent = 58, charge
   check((await d.connect()) === false && d.settings.length === 0, 'no headset: connect() is false, no settings');
   const meta = JSON.parse(fs.readFileSync(path.join(ROOT, 'device-library', 'logitech-hidpp-headset', 'device.json'), 'utf8'));
   check(validateMeta(meta) === null, `device.json is well formed (${validateMeta(meta)})`);
-  check(meta.status === 'untested' && meta.tested.length === 0, 'device.json says untested, with no test record');
+  check((meta.status === 'untested' || meta.status === 'read-only') && meta.tested.length === 0, 'device.json says untested or read-only, with no test record');
   check(meta.pids.map((p) => p.toUpperCase()).sort().join() === [...PIDS].sort().join(), 'device.json lists exactly the driver\'s product ids');
   check(meta.id === d.id, 'device.json id = the driver id');
   const never = JSON.parse(fs.readFileSync(path.join(ROOT, 'helpers', 'never-commands.json'), 'utf8'));

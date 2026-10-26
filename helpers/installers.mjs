@@ -16,7 +16,9 @@ import https from 'https';
 import crypto from 'crypto';
 import { execFile, spawn } from 'child_process';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
 import { UAC_LINE, UAC_WAIT_MS, record as recordUac, declinedText, unansweredText } from './uac.mjs';
+const require = createRequire(import.meta.url);
 
 const PF = process.env.ProgramFiles || 'C:\\Program Files';
 // tools shipped inside DeviceHub (22 Oct 2026, the owner's decision; helpers/bundled-tools.json, helpers/fetch-bundled.mjs):
@@ -286,6 +288,7 @@ export async function install(id) {
     const st = (await status({ fresh: true })).find((x) => x.id === t.id);
     try { fs.rmSync(file, { force: true }); } catch {}
     if (!st.installed) return finish(t, false, `${t.name}'s installer closed (code ${r.exitCode}) but it is not installed. Run it again or use the official page.`, { verified: v.how, page: t.page });
+    if (t.id === 'eqapo') { try { require('./eqapo').clearApoDefault?.(path.join(ROOT, 'backups')); } catch {} }
     return finish(t, true, `${t.name} ${st.version || ''} is installed.`.replace('  ', ' '), { verified: v.how, after: t.after, restart: t.restart, partial: st.partial });
   } catch (e) {
     try { fs.rmSync(`${file}.part`, { force: true }); } catch {}
@@ -306,6 +309,7 @@ async function installBundled(t) {
     step(t, 'Checking it is installed');
     const st = (await status({ fresh: true })).find((x) => x.id === t.id);
     if (!st.installed) return finish(t, false, `${t.name}'s installer closed (code ${r.exitCode}) but it is not installed. Run it again or use the official page.`, { verified: v.how, page: t.page });
+    if (t.id === 'eqapo') { try { require('./eqapo').clearApoDefault?.(path.join(ROOT, 'backups')); } catch {} }
     return finish(t, true, `${t.name} ${st.version || ''} is installed.`.replace('  ', ' '), { verified: v.how, after: t.after, restart: t.restart, partial: st.partial });
   } catch (e) { return finish(t, false, `Not installed: ${e.message}`, { page: t.page }); }
 }

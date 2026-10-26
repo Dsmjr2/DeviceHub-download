@@ -25,7 +25,7 @@ const h = (a) => Array.from(a, (b) => b.toString(16).padStart(2, '0')).join(' ')
 
 // ---- the file itself ----
 ok(validate(def).ok, `driver.json passes DeviceHub's safety check (${validate(def).problems.join('; ')})`);
-ok(!validateMeta(meta) && meta.id === def.id && meta.status === 'untested' && Array.isArray(meta.tested) && meta.tested.length === 0, 'device.json: well formed, same id, untested, no test record');
+ok(!validateMeta(meta) && meta.id === def.id && (meta.status === 'untested' || meta.status === 'read-only') && Array.isArray(meta.tested) && meta.tested.length === 0, 'device.json: well formed, same id, untested or read-only, no test record');
 ok(JSON.stringify(meta.pids) === JSON.stringify(def.pids.map((p) => p.toLowerCase())), 'device.json lists the same product ids as driver.json');
 
 // ---- the never lists: DeviceHub's (vendor 3434 or any VIA board) and the file's own ----

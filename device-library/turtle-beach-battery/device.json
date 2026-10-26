@@ -29,7 +29,7 @@
     "the Stealth Pro II's third, inferred GSI ask (token 11 01, not in the capture): left out, so a read on battery may fail on some units",
     "Stealth 600 Gen 3 (223A: its only source uses RACE nvkey commands, no battery read), Stealth 700 G2 and older headsets"
   ],
-  "status": "untested",
+  "status": "read-only",
   "tested": [],
   "source": "docs/brands/turtle-beach.md"
 }

@@ -20,7 +20,7 @@ const ok = (c, m) => { if (!c) { fails++; console.log(`  FAIL ${m}`); } };
 const h = (a) => Array.from(a, (b) => b.toString(16).padStart(2, '0')).join(' ');
 const attempt = async (fn) => { try { return { ok: true, v: await fn() }; } catch (e) { return { ok: false, e: e.message }; } };
 
-ok(!validateMeta(meta) && meta.id === shipped.id && meta.status === 'untested' && meta.tested.length === 0, 'device.json: well formed, same id, untested');
+ok(!validateMeta(meta) && meta.id === shipped.id && (meta.status === 'untested' || meta.status === 'read-only') && meta.tested.length === 0, 'device.json: well formed, same id, untested or read-only');
 ok(JSON.stringify([...meta.pids].sort()) === JSON.stringify([...PIDS].sort()) && !problem(shipped) && shipped.settings.length === 0, 'device.json lists the driver\'s ids; it loads with no settings');
 // the sheet's frames, exactly (tb section 2), with the leading 06 as the report id
 ok(h([0x06, ...FRAMES.enable]) === '06 06 00 05 5a 02 00 42 99', 'the enable frame is the sheet\'s 06 06 00 05 5A 02 00 42 99');

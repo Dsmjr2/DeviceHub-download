@@ -46,7 +46,7 @@ if ($shared -and -not $Overwrite -and (Get-Command git -ErrorAction SilentlyCont
   $ErrorActionPreference = 'Stop'
   if ($dirty.Count -or $own) {
     Write-Host ''
-    Write-Host '   This copy has changes made on this PC, so nothing was installed over them. Use Settings > Update (it brings them and the new version together), or ask Claude Code to "update DeviceHub".' -ForegroundColor Yellow
+    Write-Host '   This copy has changes made on this PC, so nothing was installed over them. Use Settings > Update in DeviceHub, or run this again with -Overwrite to replace them.' -ForegroundColor Yellow
     exit 3
   }
 }
@@ -102,7 +102,7 @@ if ($same) { Write-Host '   already in place' } else {
   }
   # this PC's own data in an existing install is never overwritten
   $keep = 'backups', 'profiles.json', 'settings.json', 'activity.jsonl', 'battery-history.jsonl', 'mouse-battery-study.jsonl',
-    'mouse-level.json', 'headset-lights.json', 'seen-devices.json', 'waiting-changes.json', 'last-device-values.json', 'waiting-monitors.json', 'last-monitor-values.json', 'daily-check.json', 'battery-care.json', 'lights-names.json', 'window-profile', '.git'
+    'mouse-level.json', 'headset-lights.json', 'seen-devices.json', 'waiting-changes.json', 'last-device-values.json', 'waiting-monitors.json', 'last-monitor-values.json', 'daily-check.json', 'battery-care.json', 'lights-names.json', 'eq-presets.json', 'window-profile', '.git'
   if (-not (Test-Path (Join-Path $Source 'node_modules\cue-sdk'))) { $keep += 'node_modules' }
   # Folders are merged with robocopy (21 Oct 2026): Copy-Item onto a folder that already exists puts the new one INSIDE
   # it (public\public), so a reinstall or an update left every folder's old files running. Files are always replaced

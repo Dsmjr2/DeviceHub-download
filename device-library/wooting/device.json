@@ -17,7 +17,7 @@
     "profiles (community protocol only), firmware updates (Wootility only)",
     "the original One / Two (vendor 03EB) and boards that only expose the FF55 config page"
   ],
-  "status": "untested",
+  "status": "read-only",
   "tested": [],
   "source": "docs/brands/wooting.md"
 }

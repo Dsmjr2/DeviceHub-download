@@ -20,7 +20,7 @@ const ok = (c, m) => { if (!c) { fails++; console.log(`  FAIL ${m}`); } };
 const h = (a) => Array.from(a, (b) => b.toString(16).padStart(2, '0')).join(' ');
 const attempt = async (fn) => { try { return { ok: true, v: await fn() }; } catch (e) { return { ok: false, e: e.message }; } };
 
-ok(!validateMeta(meta) && meta.id === shipped.id && meta.status === 'untested' && meta.tested.length === 0, 'device.json: well formed, same id, untested');
+ok(!validateMeta(meta) && meta.id === shipped.id && (meta.status === 'untested' || meta.status === 'read-only') && meta.tested.length === 0, 'device.json: well formed, same id, untested or read-only');
 ok(JSON.stringify(meta.pids) === JSON.stringify(PIDS) && meta.vid === '258a', 'device.json lists exactly the driver\'s ids');
 ok(!problem(shipped) && shipped.settings.length === 0, 'loads as a my-devices driver, with no settings at all');
 const specs = hidSpecs(shipped);

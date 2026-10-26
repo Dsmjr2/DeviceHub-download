@@ -2,9 +2,9 @@
 
 One Windows app for a mouse, a headset and a keyboard, instead of three vendor apps.
 
-**Different devices?** Plug them in: DeviceHub's shared library (18 drivers so far) sets up known ones by itself, and
-**Learn a device** (in the sidebar) teaches it the rest while you change settings in the maker's app. No Claude needed;
-[ADD-YOUR-DEVICES.md](ADD-YOUR-DEVICES.md) has the steps, and how to do it with Claude Code instead.
+**Different devices?** Plug them in: DeviceHub's shared library (21 drivers) sets up known ones by itself, and
+**Learn a device** (in the sidebar) teaches it the rest while you change settings in the maker's app.
+[ADD-YOUR-DEVICES.md](ADD-YOUR-DEVICES.md) has the steps.
 
 ## Supported devices
 
@@ -19,14 +19,10 @@ One Windows app for a mouse, a headset and a keyboard, instead of three vendor a
 | **Windows sound** (Equalizer APO) | headset and monitor EQ, Natural sound, mic filters |
 
 Plug in any of them and DeviceHub shows just the ones you have. Other devices come from the shared device library
-(`device-library/`, 18 drivers so far: Logitech, Razer, ASUS ROG, Glorious, SteelSeries, Corsair and ROCCAT mice; Logitech,
-SteelSeries Arctis, Corsair, HyperX and Turtle Beach headsets; Logitech, Razer, Corsair, Keychron, Wooting, ROCCAT and SteelSeries Apex keyboards;
-HyperX mice and keyboards), installed by auto setup when it
-matches your USB devices ("tested" and "read-only" ones by themselves, the rest from the Overview's Set up
-card), or from **Learn a device**, a step-by-step wizard that makes a driver from what the maker's
-app sends. Lighting > This PC lists what is inside the PC and any device from a known brand, with a Learn it button
-and a ready prompt to add it with Claude Code (the brand guide, docs/BRANDS.md: the 10 most popular brands for each
-kind of device).
+(`device-library/`, 21 drivers: Logitech, Razer, ASUS ROG, Glorious, SteelSeries, Corsair, HyperX and ROCCAT mice; Logitech,
+SteelSeries Arctis, Corsair, HyperX, Audeze Maxwell, Astro A50 and Turtle Beach headsets; Logitech, Razer, Corsair, Keychron, Wooting, ROCCAT, HyperX and SteelSeries Apex keyboards), installed automatically by auto setup when it
+matches your USB devices, or from **Learn a device**, a step-by-step wizard that makes a driver from what the maker's
+app sends. Setup lists what was found on the PC and any device from a known brand, with a Learn it button.
 
 Plus: profiles for all three and for devices you added (with automatic switching when a game starts), **Get help**
 (a short report about a device, shown to you in full first; GitHub opens only when you click), **Supported devices**
@@ -65,15 +61,12 @@ Demo with pretend devices: Settings > Demo mode.
 
 ## Updates and your own devices
 
-Settings shows when a new version is ready; Update installs it and keeps everything set up on your PC. Devices Claude
-adds for you live in the `my-devices` folder, each with its own page, and no update ever changes them. If DeviceHub's
-own files were changed on your PC too, Update brings those changes and the new version together; where both changed
-the same lines it stops and says which, and Claude Code ("update DeviceHub") brings them together.
+Settings shows when a new version is ready; Update installs it and keeps everything set up on your PC. Devices added on your PC live in the `my-devices` folder, each with its own page, and no update ever changes them. If DeviceHub's
+own files were changed on your PC too, Update brings those changes and the new version together, or keeps a copy of your changed files in `backups\` before installing the new version.
 
 ## Uninstall
 
-In DeviceHub: Settings > Uninstall (or Windows Settings > Apps > Installed apps > DeviceHub > Uninstall, or tell Claude
-Code "uninstall DeviceHub"). It asks once, quits DeviceHub, removes "start with Windows"
+In DeviceHub: Settings > Uninstall (or Windows Settings > Apps > Installed apps > DeviceHub > Uninstall). It asks once, quits DeviceHub, removes "start with Windows"
 and the shortcuts, keeps your backups in Documents\DeviceHub backups and deletes the DeviceHub folder. Your devices
 keep their settings.
 

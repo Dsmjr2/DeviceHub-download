@@ -47,14 +47,16 @@ export async function loadPc(fresh = false, after) {
 }
 
 // a row of color swatches and a color box; the current color has a ring
-const SWATCHES = ['#ffffff', '#ff2a2a', '#ff7a1a', '#ffd21a', '#35e06b', '#1ad0ff', '#2a5bff', '#a64dff', '#ff3fb4'];
+const SWATCHES = ['#ffffff', '#ff2d55', '#ff6a1a', '#ffd23f', '#3ddc97', '#3fe0ff', '#5b6cff', '#b48cff', '#ff5d8f'];
 function colorRow(label, current, set) {
   const cur = (current || '').toLowerCase();
-  return h('div', { class: 'pc-color-row', style: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '6px' } },
-    h('span', { class: 'muted', style: { minWidth: '110px', fontSize: '12.5px' } }, label),
-    ...SWATCHES.map((hx) => h('button', { class: 'swatch', 'aria-label': hx === '#000000' ? 'Off' : hx, style: { width: '20px', height: '20px', borderRadius: '50%', background: hx, border: hx === cur ? '2px solid var(--text)' : '1px solid var(--line2)', cursor: 'pointer', padding: 0 }, onclick: () => set(hx) })),
-    h('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(cur) && !isOff(cur) ? cur : '#ffffff', 'aria-label': `${label} color`, style: { width: '28px', height: '22px', padding: 0, border: 'none', background: 'none' }, onchange: (e) => set(e.target.value) }),
-    offSwatch({ on: isOff(cur), label, onclick: () => set(OFF) }));
+  const isCustom = /^#[0-9a-f]{6}$/i.test(cur) && !isOff(cur) && !SWATCHES.includes(cur);
+  return h('div', { class: 'pc-color-row' },
+    h('span', { class: 'pc-zone-label' }, label),
+    h('div', { class: 'pc-swatch-group' },
+      ...SWATCHES.map((hx) => h('button', { class: `swatch pc-swatch${hx === cur ? ' on' : ''}`, 'aria-label': hx, style: { '--s': hx }, onclick: () => set(hx) })),
+      h('input', { type: 'color', class: `swatch-custom pc-custom${isCustom ? ' on' : ''}`, title: 'Custom color', value: /^#[0-9a-f]{6}$/i.test(cur) && !isOff(cur) ? cur : '#ff6a1a', 'aria-label': `${label} color`, style: isCustom ? { background: cur } : {}, onchange: (e) => set(e.target.value) }),
+      offSwatch({ on: isOff(cur), label, onclick: () => set(OFF) })));
 }
 async function setPcColor(index, hex, zone) {
   if (isDemo()) { const c = st.orgb.controllers.find((x) => x.index === index); if (c) { if (zone === null) { c.color = hex; c.same = true; c.zones.forEach((z) => { z.color = hex; }); } else { c.zones[zone].color = hex; c.same = false; } } redraw(); return; }
@@ -79,7 +81,7 @@ export const pcIncluded = () => st.include && pcAvailable();
 export const setPcIncluded = (on) => { st.include = on; };
 
 
-// A ready prompt for Claude Code to add a device DeviceHub does not run yet, filled in from the brand guide.
+// A ready prompt for Claude Code (or any AI coding assistant) to add a device DeviceHub does not run yet, filled in from the brand guide.
 export function devicePrompt(u) {
   const b = u.brand || {};
   const routes = (b.transport || []).map((t) => ROUTE[t] || t).join(', ');
@@ -119,6 +121,7 @@ const VERDICT_TITLE = { reached: 'Board lights found', smbus: "On the board's SM
 function fanHelp() {
   const d = st.diag;
   if (!d || d.isolated) return null;
+  if (d.verdict?.kind === 'reached' && !d.problems?.length && !(d.seen || []).some((c) => c.found === false)) return null;
   const row = (label, what, how) => h('div', { class: 'pc-part' }, h('div', { class: 'pc-part-head' }, h('span', { class: 'muted' }, label), h('b', {}, what)), how ? h('small', { class: 'faint' }, how) : null);
   const seenHow = (c) => (c.found === true ? 'OpenRGB found it.' : c.found === false ? 'Plugged in, not listed by OpenRGB.' : 'Shows after Find lights.');
   return h('div', { class: 'pc-guide' },
@@ -126,9 +129,8 @@ function fanHelp() {
     h('div', { class: 'pc-parts' },
       row('Board', d.board || 'Not read', null),
       ...(d.seen || []).map((c) => row(c.kind === 'hub' ? 'Fan hub' : 'Lighting chip', `${c.name} (USB ${c.id})`, seenHow(c))),
-      d.verdict && d.verdict.kind !== 'usb' ? row('Result', VERDICT_TITLE[d.verdict.kind] || 'Checked', d.verdict.line[0].toUpperCase() + d.verdict.line.slice(1) + '.') : null),
-    ...(d.problems || []).map((p) => h('div', { class: 'gh-note', style: { margin: '8px 0 0' } }, h('b', {}, `${p.problem}. `), `${p.why} `, h('span', {}, `Fix: ${p.fix}`))),
-    getHelp('lights', () => '', { area: 'lights' }));
+      d.verdict && d.verdict.kind !== 'usb' && d.verdict.kind !== 'reached' ? row('Result', VERDICT_TITLE[d.verdict.kind] || 'Checked', d.verdict.line[0].toUpperCase() + d.verdict.line.slice(1) + '.') : null),
+    ...(d.problems || []).map((p) => h('div', { class: 'gh-note', style: { margin: '8px 0 0' } }, h('b', {}, `${p.problem}. `), `${p.why} `, h('span', {}, `Fix: ${p.fix}`))));
 }
 
 function pcLights() {

@@ -32,14 +32,24 @@ const DEMO_TEMPS = () => {
     cpu: { name: 'AMD Ryzen 7 5800X3D 8-Core Processor', tempC: lhm ? j(48) : null, coresMaxC: lhm ? j(52) : null, loadPct: j(14), clockMHz: 4300 + j(100), fanRpm: lhm ? j(1180) : null, fanName: lhm ? 'CPU Fan' : null, sensors: lhm },
   };
 };
-let temps = null, tempsErr = null, tempsTimer = null, onScreen = false, observer = null, redrawTemps = () => {};
+let temps = null, tempsErr = null, tempsTimer = null, fastTimer = null, onScreen = false, observer = null, redrawTemps = () => {};
 const canRead = (page) => shouldRead({ hash: location.hash, page, hidden: document.hidden, onScreen });
 // the CPU temperature over the last 2 minutes (one reading every 5 s; the graphics card keeps 2 minutes too), kept only while the page is open
 let cpuHistory = [];
+let loadingTemps = false, lastTempsSig = '', observedEl = null;
 async function loadTemps() {
+  if (loadingTemps) return;
+  loadingTemps = true;
   try { temps = isDemo() ? DEMO_TEMPS() : await env.api('/api/temps'); tempsErr = null; } catch (e) { tempsErr = e.message; }
+  loadingTemps = false;
   const t = temps?.cpu?.tempC; if (t != null) { cpuHistory.push(t); if (cpuHistory.length > 24) cpuHistory.shift(); }
-  redrawTemps();
+  // While the sensor reader is starting up, poll every 1.2s so CPU temperature appears as soon as it is ready
+  if (temps?.cpuSensors?.state === 'starting' && !fastTimer) {
+    fastTimer = setTimeout(() => { fastTimer = null; if (location.hash === '#/fans' && !document.hidden) loadTemps(); }, 1200);
+  }
+  const { at, ...cmp } = temps || {};
+  const sig = JSON.stringify([cmp, tempsErr]);
+  if (sig !== lastTempsSig) { lastTempsSig = sig; redrawTemps(); }
 }
 // every 5 s, only while the card is on screen and the window is shown
 function keepTemps(page) {
@@ -50,6 +60,8 @@ function keepTemps(page) {
   }, 5000);
 }
 function watchVisible(el, page) {
+  if (observedEl === el && observer) return;
+  observedEl = el;
   observer?.disconnect();
   if (typeof IntersectionObserver !== 'function') { onScreen = true; keepTemps(page); return; }
   observer = new IntersectionObserver((entries) => {
@@ -61,24 +73,64 @@ function watchVisible(el, page) {
 const value = (r) => [r.tempC != null ? `${r.tempC} °C` : null, r.fanPct != null ? (r.fanPct === 0 ? 'fans stopped' : `fans ${r.fanPct}%`) : null, r.fanRpm != null ? `${r.fanRpm} RPM` : null].filter(Boolean).join(', ') || 'no reading';
 const srcName = (s) => s.replace(/^Windows \(the card's own driver\)$/, 'Windows').replace(/^Windows \(ACPI\)$/, 'Windows').replace(/^NVIDIA's /, '');
 
+function friendlySensor(r, cpuFanName) {
+  const n = String(r.name || '').trim();
+  if (r.kind === 'fan') {
+    if (cpuFanName && n === cpuFanName) return { label: 'CPU cooler fan', sub: n };
+    const sys = /^System Fan #?(\d+)$/i.exec(n) || /^Chassis Fan #?(\d+)$/i.exec(n);
+    if (sys) return { label: `Case fan ${sys[1]}`, sub: `Motherboard SYS_FAN${sys[1]} header` };
+    const generic = /^Fan #?(\d+)$/i.exec(n);
+    if (generic) {
+      const idx = Number(generic[1]);
+      return idx === 1 ? { label: 'Motherboard fan 1', sub: 'Usually CPU_FAN header' } : { label: `Case fan ${idx - 1}`, sub: `Motherboard fan header #${idx}` };
+    }
+    if (/pump|aio/i.test(n)) return { label: 'Cooler pump', sub: n };
+    return { label: n, sub: 'Motherboard fan header' };
+  }
+  if (r.kind === 'board') {
+    const clean = n.replace(/^Board:\s*/i, '');
+    if (/vrm/i.test(clean)) return { label: 'Motherboard VRM', sub: 'Power delivery temperature' };
+    if (/^system/i.test(clean)) return { label: 'Motherboard ambient', sub: 'Case internal temperature' };
+    if (/pch|chipset/i.test(clean)) return { label: 'Motherboard chipset', sub: clean };
+    return { label: `Motherboard (${clean})`, sub: null };
+  }
+  return { label: n, sub: r.note || null };
+}
+
 export function tempsCard(rerender, page = 'fans') {
   redrawTemps = rerender;
-  if (!temps && !tempsErr) { queueMicrotask(() => { if (canRead(page) || typeof IntersectionObserver !== 'function') loadTemps(); }); const el = loadingCard('Temperatures and fans', 3); watchVisible(el, page); return el; }
+  if (!temps && !tempsErr) {
+    onScreen = true;
+    queueMicrotask(() => { loadTemps(); keepTemps(page); });
+    const el = loadingCard('Motherboard & case fans', 3);
+    watchVisible(el, page);
+    return el;
+  }
   const cs = temps?.cpuSensors || {};
-  // the CPU's own readings are on the Processor card (cpuCard below); the rest stays here
-  // the CPU and the graphics card have their own cards (cpuCard, the graphics card in pages/fans.js); the rest stays here
-  const rows = (temps?.readings || []).filter((r) => r.kind !== 'cpu' && !(r.kind === 'gpu' && /nvidia-smi/.test(r.source || '')))
-    .map((r) => (r.kind === 'fan' && temps.cpu?.fanName === r.name ? { ...r, name: `${r.name} · CPU fan` } : r));
-  const sources = [...new Set(rows.map((r) => srcName(r.source || '')).filter(Boolean))];
-  const el = card([h('h2', {}, 'Temperatures and fans'), h('span', { class: 'sub' }, 'Read only')],
-    tempsErr ? h('p', { class: 'faint' }, `Could not read them: ${tempsErr}`) : null,
-    h('div', { class: 'tf-list' }, ...rows.map((r) => h('div', { class: 'tf-row' },
-      h('span', { class: 'pcc-dot ok' }), h('span', { class: 'tf-name' }, r.name), h('b', { class: 'tf-val' }, value(r))))),
-    cs.setUp && cs.state === 'starting' ? h('p', { class: 'faint tf-note' }, 'Starting the CPU reader (a few seconds).') : null,
+  // Exclude CPU temps, NVIDIA GPU (has its own card), and the CPU fan (already displayed on the Processor card)
+  const cpuFan = temps?.cpu?.fanName;
+  const rows = (temps?.readings || []).filter((r) => r.kind !== 'cpu' && !(r.kind === 'gpu' && /nvidia-smi/.test(r.source || '')) && !(r.kind === 'fan' && cpuFan && r.name === cpuFan));
+  const fans = rows.filter((r) => r.kind === 'fan');
+  const boardTemps = rows.filter((r) => r.kind !== 'fan');
+  const el = card([h('h2', {}, 'Motherboard & case fans'), h('span', { class: 'sub' }, 'Board sensors')],
+    tempsErr ? h('p', { class: 'faint' }, `Could not read sensors: ${tempsErr}`) : null,
+    rows.length ? h('div', { class: 'tf-list' },
+      ...[...fans, ...boardTemps].map((r) => {
+        const info = friendlySensor(r, cpuFan);
+        return h('div', { class: 'tf-row' },
+          h('span', { class: 'pcc-dot ok' }),
+          h('div', { class: 'tf-name-wrap' },
+            h('span', { class: 'tf-name' }, info.label),
+            info.sub ? h('small', { class: 'faint tf-sub' }, info.sub) : null),
+          h('b', { class: 'tf-val' }, value(r)));
+      })) : (!cs.setUp ? null : h('p', { class: 'faint tf-note' }, 'No extra case fans or board sensors reported.')),
+    cs.setUp && cs.state === 'starting' ? h('p', { class: 'faint tf-note' }, 'Reading motherboard & CPU sensors…') : null,
     cs.setUp && cs.state === 'error' ? h('p', { class: 'faint tf-note' }, cs.why) : null,
-    cs.idleFans ? h('p', { class: 'faint tf-note' }, `${cs.idleFans} more fan ${cs.idleFans === 1 ? 'header reads' : 'headers read'} 0 RPM (nothing plugged in, or stopped).`) : null,
+    cs.idleFans ? h('p', { class: 'faint tf-note' }, `${cs.idleFans} unused motherboard fan ${cs.idleFans === 1 ? 'header reads' : 'headers read'} 0 RPM.`) : null,
     ...(temps?.notReadable || []).map((n) => h('div', { class: 'tf-row' },
-      h('span', { class: 'pcc-dot info' }), h('span', { class: 'tf-name' }, n.what), h('small', { class: 'faint tf-val' }, 'not read'))),
+      h('span', { class: 'pcc-dot info' }),
+      h('div', { class: 'tf-name-wrap' }, h('span', { class: 'tf-name' }, n.what), n.why ? h('small', { class: 'faint tf-sub' }, n.why) : null),
+      h('small', { class: 'faint tf-val' }, 'not active'))),
     h('div', { class: 'tf-setup' }, cpuSensors({ redraw: rerender, onDone: () => { temps = null; tempsErr = null; rerender(); } })),
     null);
   watchVisible(el, page);
@@ -121,16 +173,15 @@ export function chipCard({ title, name, tempC, fan, loadPct, history, everyS, ro
 // fans card), so without it they read "—" with one line saying where to add them. Uses the same 5 s reading as that card.
 const shortCpu = (n) => String(n || 'Processor').replace(/\((R|TM)\)/gi, '').replace(/\s+\d+-Core Processor$/i, '').replace(/ CPU @ .*$/i, '').replace(/\s+/g, ' ').trim();
 export function cpuCard() {
-  if (!temps && !tempsErr) return loadingCard('Processor', 3);
+  if (!temps && !tempsErr) { queueMicrotask(loadTemps); return loadingCard('Processor', 3); }
   const c = temps?.cpu;
   if (!c) return card([h('h2', {}, 'Processor')], h('p', { class: 'faint' }, tempsErr ? `Not read: ${tempsErr}` : 'Not read on this PC.'));
-  // the CPU fan: named for the CPU, or the board's first fan input (CPU_FAN on most boards: helpers/pc-sensors.js)
-  const fanRow = c.fanRpm == null ? (c.sensors ? (c.fanCount ? 'none named' : 'not read') : '—') : c.fanGuess ? `${c.fanName} (CPU_FAN)` : c.fanName;
+  const fanRow = c.fanRpm == null ? (c.sensors ? (c.fanCount ? 'None detected' : 'Not reported') : 'Needs sensor add-on') : c.fanGuess ? `CPU_FAN (${c.fanName})` : c.fanName;
   return chipCard({
     title: 'Processor', name: shortCpu(c.name), tempC: c.tempC, loadPct: c.loadPct, history: cpuHistory, everyS: 5,
     fan: { pct: pctOf(c.fanRpm, 2500), value: c.fanRpm == null ? '—' : `${c.fanRpm} RPM`, label: 'CPU fan' },
-    rows: [['Clock', c.clockMHz == null ? null : `${(c.clockMHz / 1000).toFixed(2)} GHz`], ['Hottest core', c.coresMaxC == null ? null : `${c.coresMaxC} °C`], ['CPU fan header', fanRow]],
-    note: c.sensors ? null : 'Temperature and fan: add the CPU reader in Temperatures and fans.',
+    rows: [['Clock speed', c.clockMHz == null ? null : `${(c.clockMHz / 1000).toFixed(2)} GHz`], ['Peak core temp', c.coresMaxC == null ? null : `${c.coresMaxC} °C`], ['Cooler header', fanRow]],
+    note: c.sensors ? null : 'Enable the sensor reader in Motherboard & case fans to read CPU temperature and fan RPM.',
   });
 }
 
@@ -174,15 +225,58 @@ async function runFix(l) {
   fixing = null;
   await runCheck(true);
 }
-const resultLink = (l) => (!l ? null
-  : l.app ? h('button', { class: 'pcc-link', onclick: () => openApp(l) }, l.text)
-    : l.settings ? h('button', { class: 'pcc-link', onclick: () => openSettings(l) }, l.text)
-      : l.fix ? h('button', { class: 'pcc-link', disabled: !!fixing, onclick: () => runFix(l) }, fixing === l.fix ? 'Switching…' : l.text)
-        : l.page ? h('a', { class: 'pcc-link', href: `#/${l.page}` }, l.text)
-          : h('small', { class: 'pcc-src' }, link(l.text, l.url)));
-const cell = (r) => h('div', { class: 'pcc-cell' },
-  h('span', { class: `pcc-dot ${r.level}`, 'aria-label': r.level === 'warn' ? 'Look at this' : r.level === 'ok' ? 'Fine' : 'Note' }),
-  h('div', {}, h('b', { class: 'pcc-title' }, r.title), h('span', { class: 'pcc-line' }, r.line), resultLink(r.link)));
+const CHECK_TAG = {
+  'power-plan': 'FPS & Gaming',
+  'game-mode': 'FPS & Gaming',
+  'bg-record': 'FPS & Gaming',
+  'gpu-scheduling': 'FPS & Gaming',
+  'windowed-games': 'FPS & Gaming',
+  'rebar': 'FPS & Gaming',
+  'ram-speed': 'FPS & Gaming',
+  'ram-channels': 'FPS & Gaming',
+  'refresh': 'FPS & Gaming',
+  'gpu-driver': 'FPS & Gaming',
+  'mouse-accel': 'FPS & Gaming',
+  'wifi-band': 'Wi-Fi & Ping',
+  'wifi-signal': 'Wi-Fi & Ping',
+  'wifi-speed': 'Wi-Fi & Ping',
+  'wifi-power': 'Wi-Fi & Ping',
+  'network-jitter': 'Wi-Fi & Ping',
+  'ethernet': 'Wi-Fi & Ping',
+};
+async function turnOffMouseAccel() {
+  if (fixing) return;
+  if (isDemo()) { appNote = 'Demo mode: turns off Windows Enhance pointer precision.'; redrawCheck(); return; }
+  fixing = 'mouse-accel'; redrawCheck();
+  try {
+    await env.api('/api/pointer', { key: 'precision', value: false });
+    appNote = 'Enhance pointer precision turned off for 1:1 gaming aim.';
+  } catch (e) { appNote = `Not changed: ${e.message}.`; }
+  fixing = null;
+  await runCheck(true);
+}
+const resultLink = (l, id) => {
+  const act = !l ? null
+    : l.app ? h('button', { class: 'pcc-link', onclick: () => openApp(l) }, l.text)
+      : l.settings ? h('button', { class: 'pcc-link', onclick: () => openSettings(l) }, l.text)
+        : l.fix ? h('button', { class: 'pcc-link', disabled: !!fixing, onclick: () => runFix(l) }, fixing === l.fix ? 'Switching…' : l.text)
+          : l.page ? h('a', { class: 'pcc-link', href: `#/${l.page}` }, l.text)
+            : h('small', { class: 'pcc-src' }, link(l.text, l.url));
+  if (id === 'mouse-accel') {
+    const quick = h('button', { class: 'pcc-link', disabled: !!fixing, onclick: turnOffMouseAccel }, fixing === 'mouse-accel' ? 'Turning off…' : 'Turn off now');
+    return h('div', { class: 'pcc-actions' }, quick, act);
+  }
+  return act;
+};
+const cell = (r) => {
+  const tag = CHECK_TAG[r.id];
+  return h('div', { class: 'pcc-cell' },
+    h('span', { class: `pcc-dot ${r.level}`, 'aria-label': r.level === 'warn' ? 'Look at this' : r.level === 'ok' ? 'Fine' : 'Note' }),
+    h('div', { style: { flex: 1, minWidth: 0 } },
+      h('div', { class: 'pcc-head-row' }, h('b', { class: 'pcc-title' }, r.title), tag ? h('span', { class: 'pcc-tag' }, tag) : null),
+      h('span', { class: 'pcc-line' }, r.line),
+      resultLink(r.link, r.id)));
+};
 // the summary of what is fine: each title once, in order ("Free space, drive health, crashes: all fine.")
 export function okSummary(results) {
   const t = [...new Set(results.map((r) => r.title))];
@@ -190,10 +284,15 @@ export function okSummary(results) {
   return `${t.map((x, i) => (i ? lowerFirst(x) : x)).join(', ')}: all fine.`;
 }
 export function splitResults(results) {
-  // shown: what needs a look, notes, and the graphics driver (it carries the driver app); the rest goes in the summary
-  const shown = results.filter((r) => r.level !== 'ok' || r.id === 'gpu-driver');
-  const order = { warn: 0, info: 1, ok: 2 };
-  shown.sort((a, b) => order[a.level] - order[b.level]);
+  // shown: what needs a look, notes, free space, and the graphics driver (it carries the driver app); the rest goes in the summary
+  const shown = results.filter((r) => r.level !== 'ok' || r.id === 'gpu-driver' || r.id === 'disk-space');
+  // keep warnings first so critical items stay on top; for all others maintain stable original order so toggles never shift position
+  shown.sort((a, b) => {
+    const isWarnA = a.level === 'warn' ? 0 : 1;
+    const isWarnB = b.level === 'warn' ? 0 : 1;
+    if (isWarnA !== isWarnB) return isWarnA - isWarnB;
+    return results.indexOf(a) - results.indexOf(b);
+  });
   return { shown, fine: results.filter((r) => !shown.includes(r)) };
 }
 export function pcCheckCard(rerender) {
@@ -203,11 +302,30 @@ export function pcCheckCard(rerender) {
   if (!check && !checkErr) return loadingCard('PC check', 3);
   const s = check?.summary;
   const { shown, fine } = splitResults(check?.results || []);
-  const head = [h('h2', {}, 'PC check'), s ? h('span', { class: 'sub' }, s.warn ? `${s.warn} ${s.warn === 1 ? 'thing' : 'things'} to look at` : 'Nothing needs you') : null,
+  const head = [h('h2', {}, 'PC check'),
     h('span', { class: 'spacer' }), button(checking ? 'Checking' : 'Check again', () => runCheck(true), { kind: 'ghost small', ic: 'refresh', disabled: checking })];
   const sum = okSummary(fine);
+  const lat = check?.latency;
+  const routerOk = lat && lat.gwMs <= 25 && lat.gwJitter < 20;
+  const netQuality = !lat || lat.gwMs == null ? null
+    : !routerOk ? 'Local Wi-Fi delay or lag spikes'
+      : (lat.inMs != null && (lat.inJitter >= 30 || lat.inMs > 90)) ? 'Outside internet lag (ISP / server)'
+        : 'Smooth gaming connection';
+
+  const latStrip = lat && lat.gwMs != null ? h('div', { class: 'pcc-net-strip' },
+    h('span', { class: `pcc-net-tag ${routerOk ? 'ok' : 'warn'}` }, netQuality),
+    h('span', { class: `pcc-net-stat${lat.gwJitter >= 20 || lat.gwMs > 35 ? ' warn' : ''}` },
+      h('span', { class: 'muted' }, 'Wi-Fi to router '),
+      h('b', {}, `${Math.round(lat.gwMs)}ms`),
+      lat.gwJitter > 2 ? h('small', { class: 'faint' }, ` (±${lat.gwJitter}ms spike)`) : null),
+    lat.inMs != null ? h('span', { class: `pcc-net-stat${lat.inJitter >= 30 || lat.inMs > 90 ? ' warn' : ''}` },
+      h('span', { class: 'muted' }, 'Internet ping '),
+      h('b', {}, `${Math.round(lat.inMs)}ms`),
+      lat.inJitter > 4 ? h('small', { class: 'faint' }, ` (±${lat.inJitter}ms spike)`) : null) : null,
+    check?.wifi?.band && !/invalid/i.test(check.wifi.band) ? h('span', { class: 'pcc-net-wifi faint' }, `Wi-Fi · ${check.wifi.band}`) : null) : null;
   return card(head,
     checkErr ? h('p', { class: 'faint' }, `The check could not run: ${checkErr}`) : null,
+    latStrip,
     h('div', { class: 'pcc-grid' }, ...shown.map(cell)),
     appNote ? h('p', { class: 'faint pcc-foot' }, appNote) : null,
     sum ? h('details', { class: 'pcc-ok', open: okOpen, ontoggle: (e) => { okOpen = e.target.open; } },

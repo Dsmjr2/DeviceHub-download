@@ -217,14 +217,11 @@ function gamePicker(p) {
 }
 
 // ---------- the cards ----------
+const startNew = () => { ui.adding = { step: 'name', name: '', error: '' }; ui.focusNew = true; ui.note = {}; rerender(); };
 function autoPanel() {
   const on = !!auto.settings.autoSwitch;
-  // "New profile" sits here, small, so it is never in the way of the profiles (Shawn, 22 Oct 2026)
-  const startNew = () => { ui.adding = { step: 'name', name: '', error: '' }; ui.focusNew = true; ui.note = {}; rerender(); };
-  return card(null, row('Switch profiles when games start', null,
-    h('div', { class: 'actions', style: { alignItems: 'center', flexWrap: 'nowrap' } },
-      ui.adding ? null : button('New profile', startNew, { kind: 'ghost small', ic: 'plus' }),
-      toggle({ value: on, label: 'Switch profiles when games start', onCommit: async (v) => { await saveSettings({ autoSwitch: v }); rerender(); } }))));
+  return card(null, row('Switch profiles when games start', 'Automatically activates a game\'s profile when it launches and switches back when it closes.',
+    toggle({ value: on, label: 'Switch profiles when games start', onCommit: async (v) => { await saveSettings({ autoSwitch: v }); rerender(); } })));
 }
 
 function confirmBox(text, yes, yesKind, onYes) {
@@ -232,24 +229,56 @@ function confirmBox(text, yes, yesKind, onYes) {
     h('div', { class: 'actions' }, button(yes, onYes, { kind: `${yesKind} small` }), button('Cancel', () => { ui.confirm = null; rerender(); }, { kind: 'ghost small' })));
 }
 
-const SHORT = 3;   // a profile with more lines than this shows a one-line summary and a "Show" button
 const devicesOf = (lines) => [...new Set(lines.map((l) => l.dev))];
-const lineEl = (l) => h('div', { class: 'prof-line' }, h('span', {}, `${l.dev} · ${l.label}: `, h('b', {}, l.text)), l.now ? h('span', { class: 'prof-now' }, l.now) : null);
+const isHex = (s) => /^#[0-9a-f]{6}$/i.test(String(s || '').trim());
+const valNode = (text) => isHex(text)
+  ? h('span', { class: 'prof-color-val' }, h('i', { class: 'prof-swatch', style: { background: text } }), text.toUpperCase())
+  : h('b', {}, text);
+const lineEl = (l) => h('div', { class: 'prof-line' },
+  h('span', { class: 'prof-line-k' }, l.label),
+  h('span', { class: 'prof-line-v' }, valNode(l.text), l.now && !/^now #/i.test(l.now) ? h('span', { class: 'prof-now' }, `(${l.now})`) : null));
 
-// What it sets: a short list as it is; a long one as "29 settings · Mouse, Headset, Keyboard", plus the lines that
-// differ right now (what Use now would change), and the whole list behind Show
+// Clean device summary chips + expandable grouped settings list
+function deviceSummary(p, dev, devLines) {
+  // Pick up to 2 key highlights for this device
+  const pick = [];
+  if (dev === 'Mouse') {
+    const stage = p.devices?.mouse?.dpiStage || 1;
+    const dpi = p.devices?.mouse?.[`dpi${stage - 1}`];
+    if (dpi) pick.push(`${num(dpi)} DPI`);
+    if (p.devices?.mouse?.pollingRate) pick.push(`${num(p.devices.mouse.pollingRate)} Hz`);
+  } else if (dev === 'Headset') {
+    const vol = p.devices?.headset?.['vol:playback'];
+    if (vol != null) pick.push(`Vol ${vol}%`);
+    const led = p.devices?.headset?.led;
+    if (led) pick.push(led === 'off' || led === '#000000' ? 'Lights off' : led);
+  } else if (dev === 'Keyboard') {
+    const eff = p.devices?.keyboard?.effect;
+    if (eff != null) pick.push(eff === 0 ? 'Lights off' : cap(EFFECTS[eff]) || `Effect #${eff}`);
+    const br = p.devices?.keyboard?.brightness;
+    if (br != null && eff !== 0) pick.push(pct255(br));
+  } else {
+    for (const l of devLines.slice(0, 2)) pick.push(`${l.label} ${l.text}`);
+  }
+  if (!pick.length) for (const l of devLines.slice(0, 2)) pick.push(`${l.label}: ${l.text}`);
+  return h('div', { class: 'prof-dev-row' },
+    h('span', { class: 'prof-dev-name' }, dev),
+    h('span', { class: 'prof-dev-vals' }, ...pick.map((x, idx) => [idx ? ' · ' : null, isHex(x) ? h('i', { class: 'prof-swatch', style: { background: x }, title: x }) : x]).flat().filter(Boolean)));
+}
+
 function setsBlock(p, lines) {
-  if (!lines.length) return h('div', { class: 'prof-sets faint' }, 'Sets nothing yet.');
-  if (lines.length <= SHORT) return h('div', { class: 'prof-sets' }, ...lines.map(lineEl));
+  if (!lines.length) return h('div', { class: 'prof-sets faint' }, 'No device settings saved yet.');
   const open = ui.showAll.has(p.name);
-  const differ = lines.filter((l) => l.now);
+  const devs = devicesOf(lines);
   const toggleAll = () => { if (open) ui.showAll.delete(p.name); else ui.showAll.add(p.name); rerender(); };
   return h('div', { class: 'prof-sets' },
+    h('div', { class: 'prof-devs' }, ...devs.map((dev) => deviceSummary(p, dev, lines.filter((l) => l.dev === dev)))),
     h('div', { class: 'prof-sum' },
-      h('span', {}, `${lines.length} settings · ${devicesOf(lines).join(', ')}`),
-      h('button', { class: 'prof-link', 'aria-expanded': String(open), 'aria-label': `Show what ${p.name} sets`, onclick: toggleAll }, open ? 'Hide' : 'Show')),
-    ...(open ? lines : differ.slice(0, SHORT)).map(lineEl),
-    !open && differ.length > SHORT ? h('div', { class: 'faint' }, `and ${differ.length - SHORT} more different right now`) : null);
+      h('span', { class: 'faint' }, `${lines.length} saved ${lines.length === 1 ? 'setting' : 'settings'} across ${devs.length} ${devs.length === 1 ? 'device' : 'devices'}`),
+      h('button', { class: 'prof-link', 'aria-expanded': String(open), 'aria-label': `Show what ${p.name} sets`, onclick: toggleAll }, open ? 'Hide details' : 'Details')),
+    open ? h('div', { class: 'prof-details' }, ...devs.map((dev) => h('div', { class: 'prof-detail-group' },
+      h('div', { class: 'prof-detail-head' }, dev),
+      ...lines.filter((l) => l.dev === dev).map(lineEl)))) : null);
 }
 
 // an extra line under the choice only when the choice alone does not tell the whole story
@@ -265,27 +294,32 @@ const labelled = (el, text) => { el.setAttribute('aria-label', text); return el;
 function profileCard(p) {
   const s = auto.settings;
   const rows = diff(p);
-  const active = !rows.some((r) => !r.blocked);
+  const readyChanges = rows.filter((r) => !r.blocked);
+  const active = !readyChanges.length;
   const use = useOf(p, s.defaultProfile, ui.pending.has(p.name));
   const lines = setsLines(p, rows);
   const asking = ui.confirm?.name === p.name ? ui.confirm.what : null;
   const note = ui.note[p.name];
   const extra = useNote(p, use, s);
-  const saved = p.savedAt && !Number.isNaN(Date.parse(p.savedAt)) ? `Saved ${new Date(p.savedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : '';
+  const saved = p.savedAt && !Number.isNaN(Date.parse(p.savedAt)) ? `Updated ${new Date(p.savedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : '';
   const ask = (what) => { ui.confirm = { name: p.name, what }; ui.note = {}; rerender(); };
-  return h('div', { class: 'profile', style: { '--pc': p.color } },
-    h('div', { class: 'prof-head' }, h('h3', {}, p.name, saved ? h('span', { class: 'prof-saved' }, saved) : null), active ? pill('Active', 'good') : null),
+  return h('div', { class: `profile${active ? ' is-active' : ''}`, style: { '--pc': p.color } },
+    h('div', { class: 'prof-head' },
+      h('div', {}, h('h3', {}, p.name), saved ? h('span', { class: 'prof-saved' }, saved) : null),
+      active ? pill('Active', 'good') : pill(`${readyChanges.length} ${readyChanges.length === 1 ? 'differs' : 'differ'}`)),
     h('div', { class: 'prof-use' },
+      h('div', { class: 'prof-label' }, 'Activate'),
       dropdown({ label: `When to use ${p.name}`, value: use, options: USES, onChange: (v) => setUse(p, v) }),
       extra ? h('div', { class: 'prof-note' }, extra) : null,
       use === 'named' ? gamePicker(p) : null),
     setsBlock(p, lines),
-    asking === 'save' ? confirmBox('Replace with current settings?', 'Yes', 'primary', () => saveHere(p))
-      : asking === 'delete' ? confirmBox('Delete this profile?', 'Delete', 'danger', () => deleteProfile(p))
+    asking === 'save' ? confirmBox('Overwrite this profile with your current device settings?', 'Save current', 'primary', () => saveHere(p))
+      : asking === 'delete' ? confirmBox(`Delete "${p.name}"?`, 'Delete', 'danger', () => deleteProfile(p))
         : h('div', { class: 'prof-foot' },
-          active ? null : button('Use now', () => { ui.note = {}; return applyWithPreview(p); }, { kind: 'primary small' }),
+          active ? button('Applied', () => {}, { kind: 'ghost small', disabled: true, ic: 'check' })
+            : button('Apply profile', () => { ui.note = {}; return applyWithPreview(p); }, { kind: 'primary small' }),
           h('div', { class: 'actions' },
-            button('Save current settings', () => ask('save'), { kind: 'ghost small' }),
+            button('Save current', () => ask('save'), { kind: 'ghost small', title: 'Update this profile with your current device settings' }),
             labelled(button('', () => ask('delete'), { kind: 'ghost small', ic: 'trash' }), `Delete ${p.name}`))),
     note ? h('div', { class: `prof-note${note.kind ? ` ${note.kind}` : ''}`, role: 'status' }, note.text) : null);
 }
@@ -392,7 +426,7 @@ export default {
     if (ui.focusNew) { ui.focusNew = false; setTimeout(() => document.querySelector('#main [data-newname]')?.focus(), 0); }
 
     return h('div', {},
-      topbar('Setups', 'Profiles', 'Switch every device at once.', null, helpHere('profiles')),
+      topbar('Setups', 'Profiles', 'Switch every device at once.', ui.adding ? null : button('New profile', startNew, { kind: 'primary', ic: 'plus' }), helpHere('profiles')),
       h('div', { style: { marginBottom: '18px' } }, autoPanel()),
       h('div', { class: 'profiles' }, newTile(), ...(list || []).map((p) => profileCard(p))));
   },

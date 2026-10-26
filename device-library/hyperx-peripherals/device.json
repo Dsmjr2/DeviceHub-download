@@ -18,7 +18,7 @@
     "Pulsefire Haste 2, Alloy Rise",
     "firmware updates (NGENUITY only)"
   ],
-  "status": "untested",
+  "status": "read-only",
   "tested": [],
   "source": "docs/brands/hyperx.md"
 }

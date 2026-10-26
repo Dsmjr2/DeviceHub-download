@@ -73,8 +73,12 @@ check(pc.wifi(w({}))?.some((r) => r.id === 'wifi-band'), '2.4 GHz with 5 GHz her
 check(pc.wifi(w({ fiveNearby: false })) === null && pc.wifi(w({ radios: '802.11b 802.11g 802.11n' })) === null && pc.wifi(w({ band: '5 GHz', channel: '36' })) === null, 'no 5 GHz nearby, a 2.4-only adapter, or already on 5 GHz: nothing');
 check(pc.wifi(w({ band: '5 GHz', signal: '40%' }))?.[0]?.id === 'wifi-signal', 'weak signal shown');
 check(pc.wifi(w({ band: '5 GHz' }, { wifiSaveAc: 3 }))?.[0]?.id === 'wifi-power' && pc.wifi(w({ band: '5 GHz' }, { wifiSaveAc: 0 })) === null, 'Wi-Fi power saving only when on');
+check(!pc.wifi(w({ band: '5 GHz', autoConfig: true }))?.some((r) => r.id === 'wifi-scan'), 'Wi-Fi auto-connect is never offered to be turned off (26 Oct 2026: it stopped reconnecting)');
 check(pc.wifi({ tune: {} }) === null, 'no Wi-Fi: nothing');
 check(pc.ethernet({ tune: { wired: [{ name: 'Realtek', bps: 1e9 }] } }) === null && pc.ethernet({ tune: { wired: [{ name: 'Realtek', bps: 1e8 }] } })?.[0]?.line.includes('100 Mbps'), 'Ethernet below gigabit');
+check(pc.networkLatency({ tune: { latency: { gwMs: 2.1, gwJitter: 1, inMs: 12, inJitter: 2 } } }) === null, 'clean latency and jitter: no warning');
+check(pc.networkLatency({ tune: { latency: { gwMs: 40, gwJitter: 80, inMs: 15, inJitter: 3 } } })?.level === 'warn', 'router jitter spike: warn');
+check(pc.networkLatency({ tune: { latency: { gwMs: 2, gwJitter: 1, inMs: 120, inJitter: 45 } } })?.level === 'info', 'clean router but high internet ping: info');
 
 // refresh rate from the display read
 check(pc.refreshRate({ screens: [{ name: 'LG', flag: { text: 'Running at 60 Hz; this screen does 144 Hz.' } }, { name: 'B', flag: null }] })?.length === 1, 'a screen below its rate: one line with the Monitors page');
@@ -82,7 +86,7 @@ check(pc.refreshRate({}) === null, 'screens not read: nothing');
 
 // the whole list: a PC already tuned shows none of these
 const tuned = pc.runChecks({ tune: { battery: false, power: { plans, active: PLAN.high }, gameMode: 1, bgRecord: 0, hags: 2, mouseAccel: '0', wired: [{ name: 'x', bps: 1e9 }] }, restart: { wu: false, cbs: false } });
-const TUNE = ['power-plan', 'game-mode', 'bg-record', 'gpu-scheduling', 'windowed-games', 'rebar', 'ram-channels', 'wifi-band', 'wifi-signal', 'wifi-power', 'ethernet', 'mouse-accel', 'refresh'];
+const TUNE = ['power-plan', 'game-mode', 'bg-record', 'gpu-scheduling', 'windowed-games', 'rebar', 'ram-channels', 'wifi-band', 'wifi-signal', 'wifi-power', 'network-jitter', 'ethernet', 'mouse-accel', 'refresh'];
 check(!tuned.some((x) => TUNE.includes(x.id)), 'a tuned PC: no tuning lines at all');
 
 // the CPU card

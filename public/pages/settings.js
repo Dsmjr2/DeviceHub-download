@@ -195,13 +195,13 @@ function publishRow() {
   const run = pub.run;
   if (running) setTimeout(() => { if (location.hash === '#/settings') rerender(); }, 3100);
   const mins = running ? Math.max(1, Math.round((Date.now() - run.startedAt) / 60000)) : 0;
-  // the zip and version file are up: friends have it while Setup.exe (for new people) finishes (helpers/publish-release.ps1)
-  if (running && /^friends/.test(run.step || '')) return row('Publish', `Published: friends get it with Update. Finishing Setup.exe… (${mins} min)`, null);
+  // the zip and version file are up: Update gets it while Setup.exe (for new people) finishes (helpers/publish-release.ps1)
+  if (running && /^(published|friends)/.test(run.step || '')) return row('Publish', `Published: use Update to get it. Finishing Setup.exe… (${mins} min)`, null);
   if (running) return row('Publish', `Publishing: ${run.step || 'Building'}… (${mins} min)`, null);
   // no signing key on this PC: the release would stop at signing, so say where it is first
   if (pub.keyHere === false) return row('Publish', 'No signing key here. Publish from the last PC.', null);
-  // nothing to publish (24 Oct 2026, Shawn: "make it so the publish doesnt show if it isnt necessary"): friends already
-  // have this PC's version and nothing failed; a publish that just finished stays said for 10 minutes
+  // nothing to publish (24 Oct 2026, Shawn: "make it so the publish doesnt show if it isnt necessary"): the release already
+  // has this PC's version and nothing failed; a publish that just finished stays said for 10 minutes
   const justDone = run?.state === 'done' && Date.now() - (run.endedAt || 0) < 10 * 60000;
   if (pub.ahead === 0 && run?.state !== 'failed' && !justDone) return null;
   const start = async () => {
@@ -209,8 +209,8 @@ function publishRow() {
     pubAt = 0; rerender();
   };
   const text = run?.state === 'failed' ? `Not published: ${run.error || 'it stopped'}.`
-    : run?.state === 'done' && pub.ahead === 0 ? `Published ${dayTime(run.endedAt)}. Friends get it with Update.`
-    : pub.ahead > 0 ? `Friends have the version from ${when}; this PC has ${pub.ahead} newer change${pub.ahead === 1 ? '' : 's'}.` : when ? `Friends have this PC's version (${when}).` : 'Send this version to friends.';
+    : run?.state === 'done' && pub.ahead === 0 ? `Published ${dayTime(run.endedAt)}. Use Update to get it.`
+    : pub.ahead > 0 ? `Published version is from ${when}; this PC has ${pub.ahead} newer change${pub.ahead === 1 ? '' : 's'}.` : when ? `Up to date (${when}).` : 'Use this to publish an update.';
   return row('Publish', text, button(run?.state === 'failed' ? 'Try again' : 'Publish', start, { kind: pub.ahead > 0 || run?.state === 'failed' ? 'primary small' : 'ghost small', ic: 'external' }));
 }
 function setupRow() {
@@ -342,15 +342,16 @@ function dailyLine(line) {
   const items = Object.entries(daily.items || {});
   const bad = items.filter(([, v]) => v.ok === false), later = items.filter(([, v]) => v.ok === null);
   const when = daily.at ? dayTime(daily.at) : 'not run yet';
-  const text = bad.length ? `${bad.length} to look at: ${bad.map(([k]) => k).join(', ')}` : later.length ? `all good · ${later.map(([k]) => k).join(', ')} when next connected` : 'all good';
+  const passedCount = items.filter(([, v]) => v.ok === true).length;
+  const text = bad.length ? `${bad.length} issue${bad.length === 1 ? '' : 's'}: ${bad.map(([k]) => k).join(', ')}` : later.length ? `Passed · ${later.map(([k]) => k).join(', ')} pending` : passedCount ? `Passed (${passedCount}/${items.length})` : 'Passed';
   return h('div', { title: items.map(([k, v]) => `${k}: ${v.text}`).join('\n') }, line('Daily check', `${text} · ${when}`, !bad.length));
 }
 // a weekday and time: "Sat 3:05 PM" (the daily check, the last publish)
 const dayTime = (t) => new Date(t).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
 const ago = (iso) => { const m = Math.round((Date.now() - new Date(iso)) / 60000); return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; };
 const upFor = (s) => (s < 3600 ? `${Math.round(s / 60)} min` : s < 86400 ? `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min` : `${Math.floor(s / 86400)} days ${Math.floor((s % 86400) / 3600)} h`);
-const stableFor = (iso) => {
-  if (!iso) return 'no crashes';
+const stableFor = (iso, uptimeS) => {
+  if (!iso) return uptimeS ? `${upFor(uptimeS)} (0 crashes)` : '0 crashes';
   const ms = Date.now() - Date.parse(iso), d = Math.floor(ms / 86400e3), hr = Math.floor(ms / 3600e3);
   return d >= 1 ? `${d} day${d === 1 ? '' : 's'}` : hr >= 1 ? `${hr} hour${hr === 1 ? '' : 's'}` : 'under an hour';
 };
@@ -360,16 +361,18 @@ function healthCard() {
   const line = (label, value, ok) => h('div', { class: 'health-row' }, h('span', { class: `health-dot ${ok ? 'ok' : 'warn'}` }), h('span', {}, label), h('b', {}, value));
   // Save a report: one text file (health, versions, devices, the end of the log) for whoever helps with a problem
   const saveReport = () => { if (isDemo()) { toast('Not in demo mode', 'info'); return; } const a = Object.assign(document.createElement('a'), { href: '/api/report', download: '' }); document.body.append(a); a.click(); a.remove(); toast('Report saved', 'good', { detail: 'In Downloads.' }); };
+  const totalMB = x ? x.serverMB + (x.helperMB || 0) : 0;
+  const memBreak = x ? (x.helperMB ? `${totalMB} MB (${x.serverMB} MB server · ${x.helperMB} MB helper)` : `${totalMB} MB (${x.serverMB} MB server)`) : '';
   return card([h('h2', {}, 'Health'), h('span', { class: 'spacer' }), h('div', { class: 'head-actions' }, button('Copy', copyShortReport, { kind: 'ghost small', ic: 'external' }), button('Save', saveReport, { kind: 'ghost small', ic: 'backups' }), button('Check', () => loadHealth(true), { kind: 'ghost small', ic: 'refresh' }))],
     !x ? h('p', { class: 'faint', style: { margin: 0 } }, isDemo() ? 'Not shown in demo mode.' : 'Checking…')
       : x.error ? h('p', { class: 'faint', style: { margin: 0 } }, 'DeviceHub did not answer.')
       : h('div', { class: 'health' },
         line('Running for', upFor(x.uptimeS), true),
-        line('Memory', `${x.serverMB + (x.helperMB || 0)} MB`, x.serverMB < 250 && (!x.helperMB || x.helperMB < 150)),
+        line('DeviceHub memory', memBreak, x.serverMB < 250 && (!x.helperMB || x.helperMB < 150)),
         // how long since DeviceHub last crashed (its launcher's log; a restart from outside does not count)
-        line('Stable for', stableFor(x.lastCrashAt), !x.crashes24h),
-        line('Crashes today', x.crashes24h ? `${x.crashes24h}, restarted by itself` : 'none', !x.crashes24h),
-        line('Last problem', x.lastProblem ? h('span', { title: x.lastProblem.text }, `${x.lastProblem.text.split(':')[0].slice(0, 40)} · ${ago(x.lastProblem.at)}`) : 'none', !x.lastProblem || Date.now() - new Date(x.lastProblem.at) > 24 * 3600 * 1000),
+        line('Stable for', stableFor(x.lastCrashAt, x.uptimeS), !x.crashes24h),
+        line('Crashes today', x.crashes24h ? `${x.crashes24h} (restarted automatically)` : '0', !x.crashes24h),
+        line('Last problem', x.lastProblem ? h('span', { title: x.lastProblem.text }, `${x.lastProblem.text.split(':')[0].slice(0, 40)} · ${ago(x.lastProblem.at)}`) : '0', !x.lastProblem || Date.now() - new Date(x.lastProblem.at) > 24 * 3600 * 1000),
         line('Backups', `${x.backups.count} · ${x.backups.mb} MB`, true),
         dailyLine(line)));
 }
@@ -437,7 +440,7 @@ function themeControls() {
   // backdrops as small previews of the app: the page color, a card, and the accent (22 Oct 2026, Shawn: "make this
   // area better looking and more options")
   const tile = ([key, name, bg, pool]) => h('button', { class: `theme-tile${t.bg === key ? ' sel' : ''}`, dataset: { bg: key }, 'aria-label': `${name} backdrop`, 'aria-pressed': String(t.bg === key),
-    onclick: async () => { await saveTheme({ themeBg: key }); rerender(); } },
+    onclick: async () => { await saveTheme({ themeBg: key }); toast(`Theme: ${name}`, 'good', { ms: 1400 }); rerender(); } },
     h('span', { class: 'theme-mini', style: { '--b': bg, '--p': pool } }, h('i', { class: 'mini-card' }), h('i', { class: 'mini-dot' })),
     h('span', { class: 'theme-tile-name' }, name));
   return h('div', { class: 'theme-grid' },
@@ -445,15 +448,7 @@ function themeControls() {
     h('div', { class: 'theme-tiles' }, ...THEME_BGS.map(tile)),
     // a background picture is picked on the Wallpapers page; here only a small way back to the plain backdrop (Shawn,
     // 22 Oct 2026: "the background picture shouldnt be there, just have the remove for it very small")
-    hasPicture() ? h('button', { class: 'theme-unpic', onclick: async () => { await removePicture(); rerender(); } }, 'Remove background picture') : null,
-    h('span', { class: 'theme-label' }, 'Accent'),
-    h('div', { class: 'theme-row' },
-      ...THEME_ACCENTS.map(([hex, name]) => h('button', { class: `theme-swatch${t.accent === hex ? ' sel' : ''}`, style: { '--s': hex, '--ink': inkOn(hex) }, 'aria-label': `${name} accent`, 'aria-pressed': String(t.accent === hex), onclick: () => pickAccent(hex, name) },
-        t.accent === hex ? icon('check') : null)),
-      h('label', { class: `theme-swatch theme-swatch-any${THEME_ACCENTS.some(([x]) => x === t.accent) ? '' : ' sel'}`, style: THEME_ACCENTS.some(([x]) => x === t.accent) ? { '--ink': '#1b1a18' } : { '--s': t.accent, '--ink': inkOn(t.accent) } },
-        icon(THEME_ACCENTS.some(([x]) => x === t.accent) ? 'plus' : 'check'),
-        h('input', { type: 'color', value: t.accent, 'aria-label': 'Any accent color', onchange: (e) => pickAccent(e.target.value.toLowerCase(), e.target.value) })),
-      h('span', { class: 'theme-name' }, accentName)));
+    hasPicture() ? h('button', { class: 'theme-unpic', onclick: async () => { await removePicture(); rerender(); } }, 'Remove background picture') : null);
 }
 
 // Reads every connected device twice and checks the two readings agree and pass their own checks. Writes nothing.
@@ -501,7 +496,16 @@ export default {
   // redrawn only by its own controls, never by a device's readings (21 Oct 2026: every headset update rebuilt it)
   watches: [],
   render() {
-    rerender = () => { const el = document.querySelector('#main .page'); if (el && location.hash === '#/settings') el.replaceWith(Object.assign(this.render(), { className: 'page no-anim' })); };
+    let settingsPending = false;
+    rerender = () => {
+      if (settingsPending) return;
+      settingsPending = true;
+      setTimeout(() => {
+        settingsPending = false;
+        const el = document.querySelector('#main .page');
+        if (el && location.hash === '#/settings') el.replaceWith(Object.assign(this.render(), { className: 'page no-anim' }));
+      }, 16);
+    };
     if (startup === null) loadStartup();
     if (self === null) loadSelf();
     if (syncSt === null) loadSyncPower();

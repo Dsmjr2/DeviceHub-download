@@ -8,8 +8,8 @@ import { env } from '../core/env.js';
 import { toast } from '../ui/overlay.js';
 
 const BANDS = ['32', '64', '125', '250', '500', '1k', '2k', '4k', '8k', '16k'];
-const DEMO = () => ({ engine: 'eqapo', speakerStarts: { 'Small monitor speakers': [-12, -10, -3, 2, 0, -1.5, 1, 1.5, 1, -1], Flat: Array(10).fill(0) },
-  speakers: [{ guid: 'd1', name: 'IPS', on: true, stages: [-12, -10, -3, 2, 0, -1.5, 1, 1.5, 1, -1] }, { guid: 'd2', name: 'OLED', on: false, stages: Array(10).fill(0) }] });
+const DEMO = () => ({ engine: 'eqapo', speakerStarts: { 'Small monitor speakers': [-12, -10, -3, 2, 0, -1.5, 1, 1.5, 1, -1], 'AGON OLED': [-12, -8, -2, 2, 1, -1.5, 1, 2, 1.5, 0], Flat: Array(10).fill(0) },
+  speakers: [{ guid: 'd1', name: 'IPS', on: true, stages: [-12, -10, -3, 2, 0, -1.5, 1, 1.5, 1, -1] }, { guid: 'd2', name: 'OLED', on: true, stages: [-12, -8, -2, 2, 1, -1.5, 1, 2, 1.5, 0] }] });
 let eq = null, loading = false, error = null, guard = null, at = 0;  // guard: settings.json ankerGuard (off unless true)
 let rerender = () => {};
 const drafts = {};  // guid -> stages being dragged
@@ -52,7 +52,8 @@ const timers = {};
 function band(sp, i, disabled) {
   const stages = () => drafts[sp.guid] || sp.stages;
   const v = stages()[i];
-  const input = h('input', { type: 'range', min: -12, max: 12, step: 0.5, value: v, disabled, 'aria-label': `${sp.name} ${BANDS[i]} Hz` });
+  const input = h('input', { type: 'range', min: -12, max: 12, step: 0.5, value, disabled, 'aria-label': `${sp.name} ${BANDS[i]} Hz` });
+  input.value = v;
   const box = h('input', { class: 'eq-val', type: 'text', inputmode: 'decimal', value: fmtBox(v), disabled, title: `${BANDS[i]} Hz in dB` });
   const send = (next, quiet) => { drafts[sp.guid] = next; clearTimeout(timers[sp.guid]); timers[sp.guid] = setTimeout(() => put(sp.guid, { stages: next }, quiet).then(() => { if (!quiet) delete drafts[sp.guid]; }), quiet ? 80 : 0); };
   input.addEventListener('input', () => { const n = [...stages()]; n[i] = Number(input.value); box.value = fmtBox(n[i]); send(n, true); });
@@ -68,12 +69,19 @@ function band(sp, i, disabled) {
   return h('div', { class: 'eq-band' }, box, input, h('span', {}, BANDS[i]));
 }
 
+function sameStages(a, b) {
+  return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) < 0.05);
+}
+
 function speakerBody(sp) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('id', `sp-curve-${sp.guid}`); svg.setAttribute('class', 'eq-curve-box'); svg.setAttribute('viewBox', `0 0 ${CW} ${CH}`);
   svg.innerHTML = svgFor(sp);
   const isMic = sp.kind === 'mic';
   const starts = Object.entries((isMic ? eq.micStarts : eq.speakerStarts) || {});
+  const defKey = isMic ? 'Webcam mic' : /oled|agon/i.test(sp.name || '') && eq.speakerStarts?.['AGON OLED'] ? 'AGON OLED' : 'Small monitor speakers';
+  const defStages = (isMic ? eq.micStarts : eq.speakerStarts)?.[defKey] || starts[0]?.[1];
+  const onDefault = defStages && sameStages(sp.stages, defStages);
   return h('div', {},
     // a camera mic: muted unless a Google Meet or Chat call is using it (helpers/anker-guard.js)
     isMic && /anker/i.test(sp.name) ? h('div', { class: 'srow', style: { borderTop: 0, paddingTop: 0 } },
@@ -85,21 +93,30 @@ function speakerBody(sp) {
     isMic ? h('div', { class: 'srow' },
       h('div', {}, h('div', { class: 'srow-title' }, 'Leveler'), h('div', { class: 'srow-desc' }, 'Keeps your voice even.')),
       h('div', { class: 'srow-ctl' }, toggle({ value: !!sp.level, label: 'Leveler', onCommit: (on) => put(sp.guid, { level: on }) }))) : null,
-    h('div', { class: 'srow', style: isMic && /anker/i.test(sp.name) ? {} : { borderTop: 0, paddingTop: 0 } },
-      h('div', {}, h('div', { class: 'srow-title' }, `${sp.name} EQ`), h('div', { class: 'srow-desc' }, sp.on ? (isMic ? 'On' : 'On') : (isMic ? 'Off: no EQ' : 'Off: no EQ'))),
+    h('div', { class: 'srow', style: isMic && /anker/i.test(sp.name) ? {} : { borderTop: 0, paddingTop: 0, marginBottom: '10px' } },
+      h('div', {}, h('div', { class: 'srow-title' }, `${sp.name} EQ`), h('div', { class: 'srow-desc' }, sp.on ? 'On' : 'Off: no EQ')),
       h('div', { class: 'srow-ctl' }, toggle({ value: sp.on, label: `${sp.name} EQ`, onCommit: (on) => put(sp.guid, { on }) }))),
-    h('div', { class: 'eq-bands', style: { opacity: sp.on ? 1 : 0.5 } }, ...BANDS.map((_, i) => band(sp, i, !sp.on))),
-    h('div', { class: 'eq-curve-wrap', style: { opacity: sp.on ? 1 : 0.5 } }, svg),
-    h('div', { class: 'actions', style: { marginTop: '12px', alignItems: 'center' } }, h('span', { class: 'faint', style: { fontSize: '13px' } }, 'Start from:'),
-      ...starts.map(([name, stages]) => button(name, () => put(sp.guid, { stages, on: true }), { kind: 'ghost small' }))),
-    h('p', { class: 'faint', style: { fontSize: '12.5px', marginBottom: 0 } }, isMic
-      ? 'Tip: lift 2-4 kHz for clarity.'
-      : 'Tip: add warmth at 250 Hz.'));
+    h('div', { class: 'eq-layout' },
+      h('div', { class: 'eq-presets' },
+        ...starts.map(([name, stages]) => {
+          const active = sameStages(sp.stages, stages);
+          return h('button', { class: `eq-preset${active ? ' sel' : ''}`, onclick: () => put(sp.guid, { stages, on: true }) },
+            h('span', {}, name),
+            name === defKey ? h('small', {}, 'preset') : null,
+            active && sp.on ? h('small', { class: 'inuse' }, 'in use') : null);
+        })),
+      h('div', {},
+        h('div', { class: 'eq-bands', style: { opacity: sp.on ? 1 : 0.5 } }, ...BANDS.map((_, i) => band(sp, i, !sp.on))),
+        h('div', { class: 'eq-curve-wrap', style: { opacity: sp.on ? 1 : 0.5 } }, svg),
+        h('div', { class: 'actions', style: { marginTop: '12px', alignItems: 'center' } },
+          defStages ? button(`Restore ${defKey} preset`, () => put(sp.guid, { stages: defStages, on: true }), { kind: onDefault && sp.on ? 'ghost small' : 'primary small', ic: 'undo', disabled: !!(onDefault && sp.on) }) : null,
+          h('span', { class: 'faint', style: { fontSize: '12.5px' } }, isMic ? 'Tip: lift 2-4 kHz for clarity.' : 'Tip: add warmth at 250 Hz.')))));
 }
 
 // the section for one speaker (guid), redrawn with the page's own redraw
-export function speakerSection(guid, redraw) {
+export function speakerSection(guid, redraw, sharedEq) {
   rerender = redraw;
+  if (sharedEq) { eq = sharedEq; at = Date.now(); }
   // read again when older than 10 s (never while a slider is being dragged), so a tab always shows what plays
   if (!loading && !Object.keys(drafts).length && (error ? Date.now() - at > 3000 : !eq || Date.now() - at > 10000)) load();
   if (error) return h('p', { class: 'faint' }, `Speakers not read: ${error}`);

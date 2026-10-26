@@ -120,8 +120,8 @@ function fakePc({ refuseReadBack = false } = {}) {
 // ---------- PC check ----------
 const GB = 1024 ** 3;
 const ds = pc.diskSpace({ volumes: [{ drive: 'C:', label: '', size: 1000 * GB, free: 50 * GB }, { drive: 'D:', label: 'Games', size: 1000 * GB, free: 300 * GB }] });
-check(ds[0].level === 'warn' && /C: is almost full: 50 GB free of 1000 GB \(5%\)/.test(ds[0].line), `under 10% warns (${ds[0].line})`);
-check(ds[1].level === 'ok' && ds[1].line === 'D: (Games) has 300 GB free of 1000 GB (30%).', `30% is fine (${ds[1].line})`);
+check(ds[0].level === 'warn' && /C: is almost full: 50 GB free of 1000 GB\./.test(ds[0].line), `under 10% warns (${ds[0].line})`);
+check(ds[1].level === 'ok' && ds[1].line === 'D: (Games) has 300 GB free of 1000 GB.', `30% is fine (${ds[1].line})`);
 check(pc.diskSpace({ volumes: [{ drive: 'E:', size: 100 * GB, free: 10 * GB }] })[0].level === 'ok', 'exactly 10% is not under 10%');
 
 const dh = pc.driveHealth({ disks: [{ id: '0', name: 'SSD A', media: 'SSD', health: 'Healthy' }, { id: '1', name: 'HDD B', media: 'HDD', health: 'Warning', status: 'Predictive Failure' }], reliability: [{ id: '0', wear: 3, tempC: 41 }] });
@@ -132,7 +132,7 @@ check(dh2.length === 1 && dh2[0].line === 'SSD A (SSD): healthy.', 'wear without
 const NOW = Date.parse('2026-10-24T12:00:00Z');
 const nv = (date) => ({ video: [{ name: 'NVIDIA GeForce RTX 4070', maker: 'NVIDIA', version: '32.0.16.2101', date }] });
 const fresh = pc.graphicsDriver(nv('2026-10-18'), NOW)[0];
-check(fresh.level === 'ok' && fresh.line === 'NVIDIA GeForce RTX 4070: driver 621.01, from Oct 18, 2026.' && fresh.link.url.includes('nvidia.com'), `a new driver is fine (${fresh.line})`);
+check(fresh.level === 'ok' && fresh.line === 'NVIDIA GeForce RTX 4070: driver 621.01 is up to date.' && fresh.link.url.includes('nvidia.com'), `a new driver is fine (${fresh.line})`);
 // the NVIDIA App when it is installed (found by helpers/pc-check.ps1), else the download page
 const win = (s) => s.split('/').join(String.fromCharCode(92));   // forward slashes to Windows' backslashes
 const PF = process.env.ProgramFiles || win('C:/Program Files');
@@ -146,11 +146,12 @@ check(ok(NVAPP) !== null, 'open-app: the NVIDIA App under Program Files');
 check(ok(win('C:/Users/me/NVIDIA App.exe')) === null && ok(`${PF}${win('/NVIDIA Corporation/evil.exe')}`) === null && ok(`${PF}${win('/../x/NVIDIA App.exe')}`) === null && pc.appPath('nvidia', null) === null && pc.appPath('notepad', { driverApps: { notepad: 'x' } }) === null, 'open-app refuses any other path, name or app');
 check(pc.appPath('nvidia', { driverApps: { nvidia: NVAPP } }, { exists: () => false }) === null, 'open-app refuses an exe that is gone');
 const old = pc.graphicsDriver(nv('2026-03-01'), NOW)[0];
-check(old.level === 'warn' && /over 6 months old/.test(old.line), `a driver over 6 months old warns (${old.line})`);
+check(old.level === 'warn' && /new driver update ready/.test(old.line), `a driver over 6 months old warns (${old.line})`);
 check(pc.graphicsDriver(nv('2026-05-01'), NOW)[0].level === 'ok', 'under 6 months is fine');
+check(pc.graphicsDriver({ ...nv('2026-10-18'), driverUpdates: { nvidia: '622.05' } }, NOW)[0].level === 'warn', 'newer driver version available online warns');
 check(pc.nvidiaNumber('32.0.15.6094') === '560.94' && pc.nvidiaNumber('32.0.16.2101') === '621.01' && pc.nvidiaNumber('x') === null, 'NVIDIA driver number from the Windows version');
 const amd = pc.graphicsDriver({ video: [{ name: 'AMD Radeon RX 7800 XT', maker: 'Advanced Micro Devices, Inc.', version: '32.0.12011.1036', date: '2026-09-01' }] }, NOW)[0];
-check(amd.level === 'ok' && amd.line.includes('32.0.12011.1036') && amd.link.url.includes('amd.com'), 'AMD: its version and its official page');
+check(amd.level === 'ok' && amd.line.includes('is up to date') && amd.link.url.includes('amd.com'), 'AMD: its version and its official page');
 check(pc.graphicsDriver({ video: [{ name: 'Microsoft Basic Display Adapter', maker: '(Standard display types)', version: '10.0', date: '2006-06-21' }] }, NOW)[0].level === 'warn', 'no real driver: warn');
 check([].concat(pc.graphicsDriver({ video: [{ name: 'Parsec Virtual Display Adapter', version: '1', date: '2020-01-01' }] }, NOW))[0].level === 'info', 'virtual adapters are not judged');
 
@@ -187,7 +188,7 @@ check(pc.restartPending({ restart: { cbs: false, wu: false } }).level === 'ok', 
 const all = pc.runChecks({ volumes: [] }, NOW, [pc.diskSpace, function broken() { throw new Error('boom'); }]);
 check(all.length === 2 && all[1].level === 'info' && /could not run: boom/.test(all[1].line), 'a check that fails is one plain line, not a crash');
 check(JSON.stringify(pc.summary([{ level: 'warn' }, { level: 'ok' }, { level: 'ok' }])) === '{"warn":1,"info":0,"ok":2}', 'summary counts');
-check(require('../helpers/pc-check.js').CHECKS.length === 18, 'eighteen checks in the list');
+check(require('../helpers/pc-check.js').CHECKS.length === 19, 'nineteen checks in the list');
 
 // ---------- temperatures ----------
 const t1 = sensors.decide({ nvidia: { available: true, gpus: [{ name: 'NVIDIA GeForce RTX 4070', tempC: 34.4, fanPct: 0 }] }, kmt: [{ name: 'NVIDIA GeForce RTX 4070', tempC: 33.9 }], zones: [{ name: '\\_TZ.UAD0', tenthsK: 2900 }], pawnio: true });

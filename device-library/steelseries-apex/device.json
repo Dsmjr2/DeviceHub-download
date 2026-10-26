@@ -52,7 +52,7 @@
     "Apex 3 brightness and colours (161a: T-zone, write-only; the keyboard is only named), Apex M750 (0616), Apex / Apex 350 (1202, 1206): no read-back documented",
     "unconfirmed: the wired boards' collection on interface 1 (chosen by its 64-byte output report); Gen 3 boards may not answer the brightness read without OpenRGB's 4B init"
   ],
-  "status": "untested",
+  "status": "read-only",
   "tested": [],
   "source": "OpenRGB Controllers/SteelSeriesController (SteelSeriesApexBaseController, SteelSeriesApexController, SteelSeriesApex8ZoneController, SteelSeriesDevices.h, SteelSeriesControllerDetect.cpp) @ bbc77470a7cba56af60989e54ba910d5ac66a3ac; docs/brands/steelseries.md"
 }

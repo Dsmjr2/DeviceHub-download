@@ -141,6 +141,26 @@ function askLibrary(d, redraw) {
 const newerLine = (d) => (d.adapter?.library?.newerDriver ? h('p', { style: { marginTop: '12px', fontSize: '13px' } }, icon('refresh'), ` ${d.adapter.library.newerDriver}`) : null);
 
 const ICON = { mouse: 'mouse', headset: 'headset', keyboard: 'keyboard' };
+const ACCENT = { mouse: 'var(--c-mouse)', headset: 'var(--c-headset)', keyboard: 'var(--c-keyboard)' };
+
+function turnOnBanner(d, redraw) {
+  const lib = d.adapter?.library;
+  if (!lib?.turnOn || d.status !== 'connected') return null;
+  const run = async () => {
+    checkNote[d.id] = 'Turning on…'; redraw();
+    try {
+      const r = await fetch('/api/diagnose/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'turn-on', id: d.id }) });
+      const j = await r.json().catch(() => ({}));
+      checkNote[d.id] = !r.ok || j.error ? `Not done: ${j.error || r.statusText}` : checkAnswer(j, 'turn-on');
+    } catch (e) { checkNote[d.id] = `Not done: ${e.message}`; }
+    redraw();
+  };
+  return h('div', { class: 'banner info' }, icon('shield'),
+    h('div', { class: 'grow' },
+      h('b', {}, `Reading your ${d.adapter.title} safely`),
+      h('small', {}, checkNote[d.id] || 'Settings start read-only. Click Turn on settings to verify and unlock controls on this device.')),
+    h('div', { class: 'actions' }, button('Turn on settings', run, { kind: 'primary small', ic: 'plug' })));
+}
 
 // the kinds beyond slider, toggle and choice (22 Oct 2026; helpers/my-devices.mjs): a reading, a color (one, or one
 // per zone) and button remaps. A zone or a button changes on its own, but the write is still the whole setting, once,
@@ -186,8 +206,10 @@ function control(d, s, off = false) {
 
 export function devicePage(id) {
   const d0 = devices[id];
+  const kindKey = String(d0.adapter.kind || '').toLowerCase();
+  const accent = kindKey.includes('mouse') ? ACCENT.mouse : kindKey.includes('headset') ? ACCENT.headset : kindKey.includes('keyboard') ? ACCENT.keyboard : 'var(--signal)';
   return {
-    id, title: d0.adapter.title, icon: ICON[String(d0.adapter.kind).toLowerCase()] || 'plug', device: id, watches: [id], accent: 'var(--signal)',
+    id, title: d0.adapter.title, icon: ICON[kindKey] || 'plug', device: id, watches: [id], accent,
     render(ctx = {}) {
       const d = devices[id];
       const a = d.adapter;
@@ -202,7 +224,7 @@ export function devicePage(id) {
           h('div', { class: 'actions' }, button('Look again', () => connect(id, false), { kind: 'primary', ic: 'plug' }))));
       }
       const shown = (a.settings || []).filter((s) => d.values?.[s.key] !== undefined);
-      return h('div', {}, head, awayBanner(d),
+      return h('div', {}, head, awayBanner(d), turnOnBanner(d, () => ctx.redraw?.()),
         h('div', { class: 'grid two top' },
           card([h('h2', {}, 'Settings'), batteryPill(d)],
             shown.length ? shown.map((s) => settingRow(d, s)) : h('p', { class: 'faint', style: { margin: 0 } }, 'No settings reported yet.'),

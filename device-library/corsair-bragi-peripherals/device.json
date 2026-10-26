@@ -110,7 +110,7 @@
     "unconfirmed on hardware: the peripheral frame is read from OpenLinkHub and ckb-next (Linux hidapi / libusb); on Windows a device without report ids gets report id 00 and 65-byte reports. If neither frame answers, the driver offers nothing",
     "the HS80 RGB Wireless (0a69, 0a6b, 0a71) and other headsets: device-library/corsair-bragi-headset and DeviceHub's own headset page"
   ],
-  "status": "untested",
+  "status": "read-only",
   "tested": [],
   "source": "docs/brands/corsair.md"
 }

@@ -21,7 +21,7 @@
     "ASTRO A50 Gen 4 (9886:002C: another protocol on another vendor id) and the A50 X (Centurion)",
     "firmware updates and pairing (never: they stay in G HUB)"
   ],
-  "status": "untested",
+  "status": "read-only",
   "tested": [],
   "source": "HeadsetControl (github.com/Sapd/HeadsetControl) lib/devices/logitech_astro_a50.hpp"
 }

@@ -17,7 +17,7 @@
     "firmware updates and DFU (never)",
     "Model O 2 / D 2 / I 2, Model I, Model O Eternal (vendor 3794), Series One Pro, GMMK keyboards"
   ],
-  "status": "untested",
+  "status": "read-only",
   "tested": [],
   "source": "docs/brands/glorious.md"
 }

@@ -29,19 +29,33 @@ const ICUE_ROWS = [
 // No "EQ preset" row: iCUE's SDK always reports 0 ("none") for the HS80, whose EQ lives in iCUE's own preset file
 // (the EQ card below reads that file and shows the real preset).
 
-// any other USB headset: what works, and a ready prompt to add the rest (its lights, battery, own settings)
+// a library or learned driver that runs this same USB headset (a my-devices page of kind Headset, same maker)
+function ownHeadset(a) {
+  const g = a.generic || {};
+  const vid = /VID_([0-9A-F]{4})/i.exec(g.usb || '')?.[1]?.toLowerCase();
+  const brand = brandForUsb(vid);
+  const maker = brand && !brand.shared ? brand.name.toLowerCase().split(' ')[0] : null;
+  return maker ? Object.values(devices).find((x) => x.adapter?.plugin && /headset/i.test(x.adapter.kind || '') && ['connected', 'asleep'].includes(x.status) && String(x.adapter.title || '').toLowerCase().includes(maker)) : null;
+}
+
+// any other headset: what works now, plus its driver page (if installed) or Learn a device for USB models
 function genericCard(a) {
   const g = a.generic || {};
+  if (isJack(g.usb)) {
+    return card([h('h2', {}, 'Wired headset')],
+      h('p', { class: 'faint', style: { margin: '0' } }, 'Sound, mic and the equalizer below work now. Wired headphones on the PC\'s sound jack have no battery or lights to read.'));
+  }
   const vid = /VID_([0-9A-F]{4})/i.exec(g.usb || '')?.[1]?.toLowerCase(), pid = /PID_([0-9A-F]{4})/i.exec(g.usb || '')?.[1]?.toLowerCase();
   const u = { id: `${vid}:${pid}`, vid, name: g.device, brand: brandForUsb(vid) };
-  // a library or learned driver that runs this same headset (a my-devices page of kind Headset, same maker): its
-  // battery and own settings are on that page
-  const maker = u.brand && !u.brand.shared ? u.brand.name.toLowerCase().split(' ')[0] : null;
-  const own = maker ? Object.values(devices).find((x) => x.adapter?.plugin && /headset/i.test(x.adapter.kind || '') && ['connected', 'asleep'].includes(x.status) && String(x.adapter.title || '').toLowerCase().includes(maker)) : null;
+  const own = ownHeadset(a);
   return card([h('h2', {}, 'Lights & battery')],
-    h('p', { class: 'faint', style: { margin: '0 0 10px' } }, 'Lights and battery need this model learned.'),
-    own ? h('p', { style: { margin: '0 0 10px' } }, `Battery: ${own.adapter.title} page. `, h('a', { href: `#/${own.id}` }, 'Open it')) : null,
-    h('div', { class: 'actions' }, button('Copy prompt', () => copyPrompt(u), { kind: 'small' })));
+    own
+      ? h('p', { style: { margin: '0 0 10px' } }, `Battery${own.battery?.percent != null ? ` (${own.battery.percent}%)` : ''} and headset settings are on the ${own.adapter.title} page.`)
+      : h('p', { class: 'faint', style: { margin: '0 0 10px' } }, 'Sound, mic and the equalizer below work now. Use Learn a device (or Copy prompt for AI) to add battery or lights for this model.'),
+    h('div', { class: 'actions' },
+      own ? button(`Open ${own.adapter.title}`, () => { location.hash = `#/${own.id}`; }, { kind: 'primary small' }) : null,
+      button('Learn a device', () => { location.hash = '#/learn'; }, { kind: own ? 'ghost small' : 'small' }),
+      button('Copy prompt', () => copyPrompt(u), { kind: 'ghost small' })));
 }
 
 // Two or more USB headsets (22 Oct 2026): which one this page controls. The choice is kept in DeviceHub's settings
@@ -92,20 +106,22 @@ export default {
     const generic = a.mode === 'generic';
     const head = topbar(generic ? `${isJack(a.generic?.usb) ? 'Wired headset' : 'USB headset'} · sound features` : direct ? 'Corsair · Wireless headset' : 'Corsair · Wireless headset · iCUE open', a.title, null, h('div', { class: 'chips' }, headsetPicker(a, redraw), undoButton(dev), dev.status === 'connected' && !dev.values?.headsetOn ? pill('headset off', 'warn') : statusPill(dev)), deviceHelp(dev));
     if (dev.status !== 'connected' && !(isAway(dev) && a.endpoints)) {
-      return h('div', {}, head, connectState(dev, 'Plug in the HS80 receiver.'));
+      return h('div', {}, head, connectState(dev, 'Plug in your headset or its USB receiver and switch it on.'));
     }
     const v = dev.values;
     const props = a.props || {};
     const eps = a.endpoints || [];
     const has = (flow) => eps.some((e) => e.flow === flow);
-    const bat = dev.battery?.percent;
+    const own = generic ? ownHeadset(a) : null;
+    const batSrc = dev.battery?.percent != null ? dev : own?.battery?.percent != null ? own : dev;
+    const bat = batSrc.battery?.percent;
     return h('div', {}, head, awayBanner(dev),
       // headset off: one clear line, no stale numbers (Shawn, 19 Oct 2026: "why are these displayed when the headset
       // isnt even on?")
       h('section', { class: `hero${v.headsetOn ? '' : ' off'}` },
         v.headsetOn ? h('div', {},
           h('div', { class: 'hero-stats' },
-            bat != null ? batteryCell({ id: 'headset', percent: bat, charging: !!dev.battery?.charging || /cable/i.test(dev.info?.Control || ''), big: true }) : null,
+            bat != null ? batteryCell({ id: batSrc.id || 'headset', percent: bat, charging: !!batSrc.battery?.charging || /cable/i.test(batSrc.info?.Control || ''), big: true }) : null,
             meter({ ic: 'volume', pct: v['vol:playback'], value: v['vol:playback'] != null ? `${v['vol:playback']}%` : '—', label: 'volume', big: true }),
             micState({ on: v['prop:micEnabled'], big: true }),
             meter({ ic: 'ear', pct: v.sidetoneOn === false ? 0 : v.sidetone, value: v.sidetone == null ? '—' : v.sidetoneOn === false ? 'Off' : `${v.sidetone}%`, label: 'sidetone', big: true })))
@@ -130,7 +146,7 @@ export default {
             ...SWATCHES.map((c) => h('button', { class: 'swatch', style: { '--s': c }, title: c, 'aria-label': `color ${c}`, onclick: () => set('led', c, 'Headset Color', c).then(() => setGlow(c)) })),
             h('input', { type: 'color', class: 'swatch-custom', title: 'Any color', value: v.led && !isOff(v.led) ? v.led : '#ff6a1a', 'aria-label': 'custom color', onchange: (e) => set('led', e.target.value, 'Headset Color', e.target.value) }),
             offSwatch({ on: isOff(v.led), label: 'Headset lights', onclick: () => set('led', OFF, 'Headset Color', 'off') }))),
-          direct && v.logoBrightness != null ? row('Logo brightness', '0 = off.', slider({ value: v.logoBrightness, min: 0, max: 100, unit: '%', accent: 'var(--c-headset)', grab: () => prepare('headset'), live: live('logoBrightness'), onCommit: (x) => set('logoBrightness', x, 'Ear Cup Logo', x ? `${x}%` : 'off') })) : null,
+          direct && v.logoBrightness != null ? row('Logo brightness', null, slider({ value: v.logoBrightness, min: 0, max: 100, unit: '%', accent: 'var(--c-headset)', grab: () => prepare('headset'), live: live('logoBrightness'), onCommit: (x) => set('logoBrightness', x, 'Ear Cup Logo', x ? `${x}%` : 'off') })) : null,
           direct && v.autoOff != null ? row('Sleep when silent', null, slider({ value: v.autoOff, min: 1, max: 120, unit: ' min', accent: 'var(--c-headset)', grab: () => prepare('headset'), onCommit: (x) => set('autoOff', x, 'Sleep after', `${x} min`) })) : null,
           direct && v.micLight != null ? row('Mic light', 'Red while muted.', toggle({ value: v.micLight, label: 'Mic light', onCommit: (on) => set('micLight', on, 'Mic light', on ? 'on when muted' : 'off') })) : null),
         micMeter(redraw))),

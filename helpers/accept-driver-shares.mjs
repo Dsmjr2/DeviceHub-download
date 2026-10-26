@@ -96,7 +96,7 @@ export function evaluate(issues, { root = ROOT, names = personalNames(), now = (
     for (let k = 2; lib.folders.has(name); k++) name = `${name.slice(0, 56)}-${k}`;
     const today = now().toISOString().slice(0, 10);
     const sha = driverSha(text);
-    const tested = { status: 'tested', real: true, by: 'works report', how: "learned on a friend's PC with Learn a device; its settings passed DeviceHub's self-check on the device, then shared by its owner",
+    const tested = { status: 'tested', real: true, by: 'works report', how: "learned with Learn a device; its settings passed DeviceHub's self-check on the device, then shared by its owner",
       date: /^\d{4}-\d{2}-\d{2}$/.test(r.date) ? r.date : today, devicehub: String(r.devicehub || 'unknown').slice(0, 60), driver: name, driverSha: sha,
       model: String(r.model || def.title || 'unknown').slice(0, 80), firmware: typeof r.firmware === 'string' && r.firmware.trim() ? r.firmware.slice(0, 160) : null,
       settings: passed.slice(0, 60), checked: Math.max(passed.length, Math.min(60, Number(r.checked) || passed.length)), issue: n };
@@ -104,7 +104,7 @@ export function evaluate(issues, { root = ROOT, names = personalNames(), now = (
     const labels = (def.settings || []).filter((s) => passed.includes(s.key)).map((s) => `${s.label || s.key} (checked on the device)`);
     const meta = { id: def.id, vendor, product: String(def.title || `USB device ${vid}:${pids[0]}`), kind: String(def.kind || 'Device'), vid, pids,
       models: [String(r.model || def.title || 'unknown')], works: labels, status: 'tested', tested: [tested], updated: today,
-      source: `shared from a friend's PC through Learn a device (DeviceHub-support #${n})` };
+      source: `shared through Learn a device (DeviceHub-support #${n})` };
     const bad = validateMeta(meta);
     if (bad) { fail(`its library entry would not be valid (${bad})`); continue; }
     usb.forEach((u) => taken.add(u));

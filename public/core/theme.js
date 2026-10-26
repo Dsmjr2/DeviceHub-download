@@ -20,11 +20,41 @@ export function setGlow(hex) {
 // nine looks (22 Oct 2026, Shawn: "truly make the themes beautiful ... add 2 more"): Neon became Noir and Duotone became
 // Tonal (same keys, so a saved choice carries over); the two new ones reuse two old keys the server already accepts
 // ('matte' is Titanium, 'glow' is Aurora), so they save with no server change
-export const ART_STYLES = [['photo', 'Realistic'], ['frosted', 'Classic'], ['matte', 'Titanium'], ['arctic', 'Arctic'], ['neon', 'Noir'], ['duo', 'Tonal'], ['glow', 'Aurora'], ['blueprint', 'Blueprint'], ['live', 'Live battery']];
+export const ART_STYLES = [['photo', 'Realistic'], ['blueprint', 'Blueprint'], ['glow', 'Vector'], ['live', 'Live battery'], ['neon', 'Noir'], ['frosted', 'Phantom'], ['matte', 'Outrun'], ['arctic', 'Solaris'], ['duo', 'Crimson']];
 const RENAMED = { studio: 'frosted', night: 'neon', pop: 'duo' };
-export function applyArtStyle(style) { style = RENAMED[style] || style; document.documentElement.dataset.art = ART_STYLES.some(([k]) => k === style) ? style : 'frosted'; }
+const ART_KEY = 'devicehub.artStyle';
+const BG_KEY = 'devicehub.themeBg';
+const ACCENT_KEY = 'devicehub.themeAccent';
+const getLocal = (k) => { try { return localStorage.getItem(k) || null; } catch { return null; } };
+const setLocal = (k, v) => { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch {} };
+
+export function applyArtStyle(style) {
+  style = RENAMED[style] || style;
+  const resolved = ART_STYLES.some(([k]) => k === style) ? style : 'blueprint';
+  document.documentElement.dataset.art = resolved;
+  return resolved;
+}
 export async function loadArtStyle() {
-  try { const s = await (await fetch('/api/settings')).json(); applyArtStyle(s.artStyle); applyTheme(s); } catch { applyArtStyle('frosted'); }
+  const localArt = getLocal(ART_KEY), localBg = getLocal(BG_KEY), localAccent = getLocal(ACCENT_KEY);
+  if (localArt) applyArtStyle(localArt);
+  if (localBg || localAccent) applyTheme({ themeBg: localBg, themeAccent: localAccent });
+  try {
+    const s = await (await fetch('/api/settings')).json();
+    const art = localArt || s.artStyle || 'blueprint';
+    const themeBg = localBg || s.themeBg || 'graphite';
+    const themeAccent = localAccent || s.themeAccent || SILVER;
+    applyArtStyle(art);
+    applyTheme({ themeBg, themeAccent });
+    if (!localArt && s.artStyle) setLocal(ART_KEY, s.artStyle);
+    if (!localBg && s.themeBg) setLocal(BG_KEY, s.themeBg);
+    if (!localAccent && s.themeAccent) setLocal(ACCENT_KEY, s.themeAccent);
+    // If localStorage had a newer choice the server didn't have yet, sync it back quietly
+    if ((localBg && s.themeBg !== localBg) || (localAccent && s.themeAccent !== localAccent) || (localArt && s.artStyle !== localArt)) {
+      fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ artStyle: art, themeBg, themeAccent }) }).catch(() => {});
+    }
+  } catch {
+    applyArtStyle(localArt || 'blueprint');
+  }
   loadPicture();
 }
 
@@ -57,9 +87,9 @@ export const THEME_ACCENTS = [[SILVER, 'Silver'], ['#d9c4a0', 'Sand'], ['#c9a27e
 // backdrops: [key, name, page color, the soft pools' tint]. Plum and Forest went (22 Oct 2026, Shawn: "I dont like the
 // pink or green backdrop. Make it more minimal"), and so did the light Cream and Paper the same day ("no light mode");
 // a saved one shows as the nearest that is left. Slate (too close to Graphite) became Ocean, a deep teal.
-export const THEME_BGS = [['graphite', 'Graphite', '#050507', '110, 120, 145'], ['black', 'Black', '#000000', '55, 55, 62'],
+export const THEME_BGS = [['graphite', 'Graphite', '#050507', '110, 120, 145'], ['black', 'Black', '#000000', '45, 45, 50', 'black'],
   // Ocean and Midnight went (22 Oct 2026, Shawn: "remove the ocean and midnight theme"); a saved one shows as Graphite
-  ['espresso', 'Espresso', '#0a0806', '150, 122, 96'],
+  ['espresso', 'Espresso', '#0b0806', '175, 132, 92', 'espresso'],
   // a whole look, not only a color (22 Oct 2026, Shawn: "make an old school runescape theme"): stone panels, orange
   // headings, square buttons, black text shadows (html[data-skin="old-school"], style.css end). Drawn in CSS only.
   ['old-school', 'Old School', '#16120d', '140, 105, 60', 'old-school'],
@@ -71,12 +101,18 @@ export const THEME_BGS = [['graphite', 'Graphite', '#050507', '110, 120, 145'], 
   // light look (glossy milk-white glass, a pale sky-blue accent, grey-blue words), and Coral Reef (deep teal water,
   // sea-glass panes, coral headings, buttons and bars). html[data-skin="milk"] / ["coral-reef"], style.css end. CSS only.
   ['milk', 'Milk', '#f4f2ec', '140, 180, 220', 'milk'],
-  ['coral-reef', 'Coral Reef', '#03202a', '30, 150, 160', 'coral-reef']];
+  ['coral-reef', 'Coral Reef', '#03202a', '30, 150, 160', 'coral-reef'],
+  // three more whole looks (25 Oct 2026, Shawn: "make the themes cleaner and smoother and overall lean into what each
+  // one is. I want to add some more too"): Cyberpunk (night-city neon cyan & magenta HUD), Sakura (twilight cherry
+  // blossom & rose-quartz glass), and Terminal (retro CRT phosphor green screen).
+  ['cyberpunk', 'Cyberpunk', '#07040e', '0, 240, 255', 'cyberpunk'],
+  ['sakura', 'Sakura', '#110a14', '255, 175, 195', 'sakura'],
+  ['terminal', 'Terminal', '#030804', '74, 246, 38', 'terminal']];
 const OLD_BGS = { plum: 'graphite', ocean: 'graphite', midnight: 'graphite', forest: 'graphite', cream: 'espresso', paper: 'graphite', slate: 'graphite', 'taco-night': 'verde' };
 const theme = { accent: SILVER, bg: 'graphite' };
 // what the silver accent becomes on each whole look, and its name in Settings
-export const SKIN_SILVER = { 'old-school': '#ffb83f', verde: '#8cc63f', milk: '#8cc4ec', 'coral-reef': '#ff7f6a' };
-export const SKIN_SILVER_NAME = { 'old-school': 'Gold', verde: 'Verde', milk: 'Sky blue', 'coral-reef': 'Coral' };
+export const SKIN_SILVER = { black: '#ffffff', espresso: '#dca878', 'old-school': '#ffb83f', verde: '#8cc63f', milk: '#8cc4ec', 'coral-reef': '#ff7f6a', cyberpunk: '#00f0ff', sakura: '#ffb7c5', terminal: '#4af626' };
+export const SKIN_SILVER_NAME = { black: 'Pure white', espresso: 'Crema', 'old-school': 'Gold', verde: 'Verde', milk: 'Sky blue', 'coral-reef': 'Coral', cyberpunk: 'Neon cyan', sakura: 'Blossom', terminal: 'Phosphor' };
 export const currentTheme = () => ({ ...theme });
 export function applyTheme(s = {}) {
   if (/^#[0-9a-f]{6}$/i.test(s.themeAccent || '')) theme.accent = s.themeAccent.toLowerCase();
@@ -97,13 +133,25 @@ export function applyTheme(s = {}) {
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bg[2]);
 }
 export async function saveTheme(change) {
+  if (change.themeBg && !change.themeAccent && THEME_BGS.find(([k]) => k === change.themeBg)?.[4]) {
+    change = { ...change, themeAccent: SILVER };
+  }
   applyTheme(change);
   if (new URLSearchParams(location.search).has('demo') || window.DEVICEHUB_DEMO === true) return;
+  if (change.themeBg) setLocal(BG_KEY, theme.bg);
+  if (change.themeAccent) setLocal(ACCENT_KEY, theme.accent);
   await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(change) });
 }
 export async function saveArtStyle(style) {
-  applyArtStyle(style);
+  const resolved = applyArtStyle(style);
   // demo mode (pretend devices) shows the look but never saves it to this PC's real settings (20 Oct 2026)
   if (new URLSearchParams(location.search).has('demo') || window.DEVICEHUB_DEMO === true) return;
-  await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ artStyle: style }) });
+  setLocal(ART_KEY, resolved);
+  await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ artStyle: resolved }) });
+}
+// Apply cached theme & appearance immediately on script evaluation so refreshes never flicker or reset
+if (typeof document !== 'undefined') {
+  const initArt = getLocal(ART_KEY), initBg = getLocal(BG_KEY), initAccent = getLocal(ACCENT_KEY);
+  if (initArt) applyArtStyle(initArt);
+  if (initBg || initAccent) applyTheme({ themeBg: initBg, themeAccent: initAccent });
 }

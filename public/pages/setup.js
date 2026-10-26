@@ -396,9 +396,13 @@ export default {
     if (!apps.length) st.ask = false;
     const can = steps.length || apps.length;
     const lines = st.all ? h('div', { class: 'su-lines' }, ...st.all.lines.map((l) => h('small', {}, l))) : null;
-    const ask = st.ask && !st.all?.busy ? h('div', { class: 'su-confirm su-ask' }, h('small', {}, askLine(apps)),
-      button('Yes, close them', () => { st.ask = false; doAll(steps, devRows, { close: apps }); }, { kind: 'primary small' }),
-      button('Not now', () => { st.ask = false; doAll(steps, devRows, { left: apps }); }, { kind: 'ghost small' })) : null;
+    const ask = st.ask && !st.all?.busy ? h('div', { class: 'su-confirm su-ask' },
+      h('div', { style: { marginBottom: '8px' } },
+        h('b', {}, askLine(apps)),
+        h('small', { class: 'faint', style: { display: 'block', marginTop: '3px' } }, 'Closing vendor software lets DeviceHub access your hardware directly. You can also choose "Not now" to leave them running.')),
+      h('div', { class: 'actions' },
+        button('Yes, close them', () => { st.ask = false; doAll(steps, devRows, { close: apps }); }, { kind: 'primary small' }),
+        button('Not now', () => { st.ask = false; doAll(steps, devRows, { left: apps }); }, { kind: 'ghost small' }))) : null;
     const status = n ? h('section', { class: 'panel su-status' },
       h('div', { class: 'su-status-top' },
         icon('plug'),
@@ -418,7 +422,7 @@ export default {
         lines);
 
     return h('div', { class: 'setup-page' },
-      topbar('', 'Setup', null),
+      topbar('', 'Setup', null, button('Back to Settings', () => { location.hash = '#/settings'; }, { kind: 'ghost small' })),
       demo,
       status,
       n ? h('section', { class: 'panel su-section su-todo' }, h('ul', { class: 'su-list' }, ...plan.needs.map(rowEl))) : null,

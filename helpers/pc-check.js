@@ -6,6 +6,7 @@
 // Read when the page opens (kept 60 s) and on Check again; never in the background.
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
 const { execFile, spawn } = require('child_process');
 
 const PS1 = path.join(__dirname, 'pc-check.ps1');
@@ -25,9 +26,21 @@ function diskSpace(f) {
   return v.map((x) => {
     const pct = Math.round((x.free / x.size) * 100);
     const name = `${x.drive}${x.label ? ` (${x.label})` : ''}`;
-    return x.free / x.size < 0.10
-      ? result('disk-space', 'Free space', 'warn', `${name} is almost full: ${size(x.free)} free of ${size(x.size)} (${pct}%).`)
-      : result('disk-space', 'Free space', 'ok', `${name} has ${size(x.free)} free of ${size(x.size)} (${pct}%).`);
+    const r = x.free / x.size < 0.10
+      ? result('disk-space', 'Free space', 'warn', `${name} is almost full: ${size(x.free)} free of ${size(x.size)}.`)
+      : result('disk-space', 'Free space', 'ok', `${name} has ${size(x.free)} free of ${size(x.size)}.`);
+    r.disk = {
+      drive: x.drive,
+      label: x.label,
+      free: x.free,
+      size: x.size,
+      used: x.size - x.free,
+      freeStr: size(x.free),
+      sizeStr: size(x.size),
+      usedStr: size(x.size - x.free),
+      pctUsed: 100 - pct,
+    };
+    return r;
   });
 }
 
@@ -77,10 +90,14 @@ function graphicsDriver(f, now = Date.now()) {
     // the maker's own app when it is installed (POST /api/pc-check/open-app starts only that exe), else its driver page
     const app = maker && DRIVER_APPS[maker[1]];
     const link = app && f.driverApps?.[app.id] ? { text: `Open ${app.name}`, app: app.id } : maker ? { text: `${maker[1]} drivers`, url: maker[2] } : null;
-    if (!v.date) return result('gpu-driver', 'Graphics driver', 'info', `${v.name}: driver ${ver}; its date is not known.`, link);
-    const age = Math.floor((now - Date.parse(`${v.date}T00:00:00Z`)) / DAY);
-    if (age > DRIVER_OLD_DAYS) return result('gpu-driver', 'Graphics driver', 'warn', `${v.name}: driver ${ver} is from ${day(v.date)}, over 6 months old.`, link);
-    return result('gpu-driver', 'Graphics driver', 'ok', `${v.name}: driver ${ver}, from ${day(v.date)}.`, link);
+    if (!v.date && !f.driverUpdates) return result('gpu-driver', 'Graphics driver', 'info', `${v.name}: driver ${ver}; its date is not known.`, link);
+    const age = v.date ? Math.floor((now - Date.parse(`${v.date}T00:00:00Z`)) / DAY) : 0;
+    const latest = f.driverUpdates?.[v.name] || (isNv ? f.driverUpdates?.nvidia : null);
+    const isNewer = latest && ver && String(latest).localeCompare(String(ver), undefined, { numeric: true }) > 0;
+    if (isNewer || age > DRIVER_OLD_DAYS) {
+      return result('gpu-driver', 'Graphics driver', 'warn', `${v.name}: new driver update ready.`, link);
+    }
+    return result('gpu-driver', 'Graphics driver', 'ok', `${v.name}: driver ${ver} is up to date.`, link);
   });
 }
 
@@ -261,12 +278,25 @@ function wifi(f) {
   const out = [];
   const signal = parseInt(w.signal, 10);
   const on24 = /2\.4/.test(w.band || '') || (!w.band && parseInt(w.channel, 10) <= 14);
-  if (on24 && w.fiveNearby && /802\.11(a|ac|ax)\b/i.test(w.radios || '')) {
-    out.push(result('wifi-band', 'Wi-Fi', 'warn', `On 2.4 GHz${w.ssid ? ` (${w.ssid})` : ''}. Your router also has 5 GHz here and this adapter can use it: faster, with steadier ping.`, { text: 'Wi-Fi settings', settings: 'wifi' }));
+  if (on24 && w.fiveNearby && /802\.11(a|ac|ax|be)\b/i.test(w.radios || '')) {
+    out.push(result('wifi-band', 'Wi-Fi', 'warn', 'On 2.4 GHz. Your router also has 5 GHz here and this adapter can use it: faster, with steadier ping.', { text: 'Wi-Fi settings', settings: 'wifi' }));
   }
   if (signal > 0 && signal <= 50) out.push(result('wifi-signal', 'Wi-Fi signal', 'warn', `Weak (${signal}%). A cable, or the PC nearer the router, gives a steadier ping.`));
+  else if (w.rxMbps > 0 && w.rxMbps < 100 && !on24) out.push(result('wifi-speed', 'Wi-Fi speed', 'warn', `Link rate is only ${Math.round(w.rxMbps)} Mbps. Interference or a crowded channel can cause lag spikes in games.`, { text: 'Wi-Fi settings', settings: 'wifi' }));
   if (f.tune.power?.wifiSaveAc > 0 && f.tune.battery === false) out.push(result('wifi-power', 'Wi-Fi power saving', 'info', 'On while plugged in. Set Wireless Adapter Settings to Maximum Performance (Power Options, advanced settings).', { text: 'Power Options', settings: 'power-options' }));
   return out.length ? out : null;
+}
+function networkLatency(f) {
+  const l = f.tune?.latency;
+  if (!l || l.gwMs == null) return null;
+  const { gwMs, gwJitter, inMs, inJitter } = l;
+  if (gwJitter >= 20 || gwMs > 35) {
+    return result('network-jitter', 'Network ping stability', 'warn', `Your Wi-Fi has ping spikes (takes ${Math.round(gwMs)}ms to reach your router, jumping by ±${gwJitter}ms). Usually caused by interference or Windows scanning for networks in the background.`);
+  }
+  if (inMs != null && (inJitter >= 30 || inMs > 90)) {
+    return result('network-jitter', 'Network ping stability', 'info', `Your Wi-Fi is fast (${Math.round(gwMs)}ms to your router), but outside internet ping is higher (${Math.round(inMs)}ms). Any lag is coming from your internet provider or the game's servers, not your PC.`);
+  }
+  return null;
 }
 function ethernet(f) {
   const slow = (f.tune?.wired || []).filter((a) => a.bps > 0 && a.bps < 1e9);
@@ -286,7 +316,7 @@ function refreshRate(f) {
 
 // the checks, in the order shown
 const CHECKS = [diskSpace, driveHealth, graphicsDriver, ramSpeed, deviceErrors, crashes, restartPending,
-  refreshRate, powerPlan, resizableBar, ramChannels, gameMode, backgroundRecording, gpuScheduling, windowedGames, wifi, ethernet, mouseAcceleration];
+  refreshRate, powerPlan, resizableBar, ramChannels, gameMode, backgroundRecording, gpuScheduling, windowedGames, wifi, ethernet, networkLatency, mouseAcceleration];
 
 // the Windows Settings pages a result may open (POST /api/pc-check/open-settings { page }); nothing else is started
 const PC_SETTINGS = {
@@ -305,11 +335,39 @@ function openSettings(page, { start = (cmd, args) => spawn(cmd, args, { detached
 // comes from this PC's own list (the last check), and it is the same switch as Power Options (powercfg /setactive, no
 // administrator). The plan it was on is said in the answer, to switch back from Power Options.
 function fix(id, { facts = cache.facts, run = (args) => new Promise((resolve, reject) => execFile('powercfg', args, { windowsHide: true, timeout: 15000 }, (e) => (e ? reject(new Error(String(e.message).split('\n')[0])) : resolve()))) } = {}) {
-  if (id !== 'power-plan') return Promise.reject(new Error('unknown fix'));
-  const fast = fastPlan(facts?.tune);
-  if (!fast || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(fast.guid)) return Promise.reject(new Error('no high performance plan on this PC; press Check again'));
-  const was = (facts.tune.power.plans || []).find((p) => p.guid === facts.tune.power.active)?.name || 'the plan before';
-  return run(['/setactive', fast.guid]).then(() => { cache.at = 0; return { ok: true, now: fast.name, was }; });
+  if (id === 'power-plan') {
+    const fast = fastPlan(facts?.tune);
+    if (!fast || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(fast.guid)) return Promise.reject(new Error('no high performance plan on this PC; press Check again'));
+    const was = (facts.tune.power.plans || []).find((p) => p.guid === facts.tune.power.active)?.name || 'the plan before';
+    return run(['/setactive', fast.guid]).then(() => { cache.at = 0; return { ok: true, now: fast.name, was }; });
+  }
+  return Promise.reject(new Error('unknown fix'));
+}
+
+let latestNvidiaCache = { at: 0, version: null };
+function fetchLatestNvidiaDriver() {
+  if (Date.now() - latestNvidiaCache.at < 6 * 3600 * 1000 && latestNvidiaCache.version) {
+    return Promise.resolve(latestNvidiaCache.version);
+  }
+  return new Promise((resolve) => {
+    const req = https.get('https://gfwsl.geforce.com/services_toolkit/services/com/nvidia/services/AjaxDriverService.php?func=DriverManualLookup&psid=127&osID=57&languageCode=1078&isWHQL=1&dltype=1&dch=1&sort1=0&numberOfResults=1', { timeout: 4000 }, (res) => {
+      let data = '';
+      res.on('data', (c) => { data += c; });
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          const v = json.IDS?.[0]?.downloadInfo?.Version;
+          if (v && /^\d+(\.\d+)+$/.test(v)) {
+            latestNvidiaCache = { at: Date.now(), version: v };
+            return resolve(v);
+          }
+        } catch {}
+        resolve(null);
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
 }
 
 function runChecks(facts, now = Date.now(), checks = CHECKS) {
@@ -354,12 +412,31 @@ async function check(fresh = false, { screens = null } = {}) {
   pending = (async () => {
     const [facts, sc] = await Promise.all([gather(), screens ? screens().catch(() => null) : null]);
     if (sc?.screens) facts.screens = sc.screens;
+    const hasNv = (facts.video || []).some((v) => /nvidia/i.test(`${v.maker} ${v.name}`));
+    if (hasNv && !facts.driverUpdates?.nvidia) {
+      const nvLatest = await fetchLatestNvidiaDriver().catch(() => null);
+      if (nvLatest) facts.driverUpdates = { ...(facts.driverUpdates || {}), nvidia: nvLatest };
+    }
     const results = runChecks(facts);
-    cache = { at: Date.now(), facts, value: { at: new Date().toISOString(), results, summary: summary(results) } };
+    const latency = facts.tune?.latency || null;
+    let band = facts.tune?.wifi?.band ? String(facts.tune.wifi.band).trim() : null;
+    const chVal = parseInt(facts.tune?.wifi?.channel, 10);
+    const radio = facts.tune?.wifi?.radio || '';
+    if (/invalid|unknown/i.test(band || '') || (!band && chVal)) {
+      if (/802\.11be/i.test(radio) || chVal === 133 || (chVal > 14 && chVal < 36) || chVal > 177) {
+        band = '6 GHz';
+      } else if (chVal > 14) {
+        band = '5 GHz';
+      } else if (chVal > 0) {
+        band = '2.4 GHz';
+      }
+    }
+    const wifiInfo = facts.tune?.wifi ? { name: facts.tune.wifi.name, band, channel: facts.tune.wifi.channel, signal: facts.tune.wifi.signal, rxMbps: facts.tune.wifi.rxMbps, autoConfig: facts.tune.wifi.autoConfig } : null;
+    cache = { at: Date.now(), facts, value: { at: new Date().toISOString(), results, summary: summary(results), latency, wifi: wifiInfo } };
     return cache.value;
   })();
   try { return await pending; } finally { pending = null; }
 }
 
 module.exports = { check, openApp, openSettings, fix, CHECKS, PC_SETTINGS, _test: { appPath, DRIVER_APPS, runChecks, summary, diskSpace, driveHealth, graphicsDriver, ramSpeed, deviceErrors, crashes, restartPending, nvidiaNumber, partSpeed, bugcheckCode,
-  powerPlan, gameMode, backgroundRecording, gpuScheduling, windowedGames, resizableBar, ramChannels, channelOf, wifi, ethernet, mouseAcceleration, refreshRate, fastPlan, PLAN } };
+  powerPlan, gameMode, backgroundRecording, gpuScheduling, windowedGames, resizableBar, ramChannels, channelOf, wifi, ethernet, networkLatency, mouseAcceleration, refreshRate, fastPlan, PLAN } };

@@ -30,7 +30,7 @@
     "HP-era (03F0) Cloud headsets: device-library/hyperx-cloud",
     "Kingston-era mice and keyboards (Pulsefire Haste 0951:1727, Alloy Origins 16E5, Origins Core 16E6, Origins 60 1734): need their own library folder"
   ],
-  "status": "untested",
+  "status": "read-only",
   "updated": "2026-10-23T12:00:00Z",
   "tested": [],
   "source": "docs/brands/hyperx.md"

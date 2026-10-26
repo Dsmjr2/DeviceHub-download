@@ -28,9 +28,10 @@ export function artDefs() {
     + `<radialGradient id="dhg-${dev}-${look}" cx=".32" cy=".22" r=".85" fx=".26" fy=".12">${stop(0, '--gg1')}${stop('.45', '--gg2')}${stop(1, '--gg3')}</radialGradient>`
     + `<linearGradient id="dha-${dev}-${look}" x1="0" y1="0" x2="0" y2="1">${stop(0, '--ga1')}${stop(1, '--ga2')}</linearGradient>`;
   const brush = (id, rot) => `<pattern id="${id}" patternUnits="userSpaceOnUse" width="40" height="3.7"${rot ? ' patternTransform="rotate(90)"' : ''}><rect width="40" height=".35" fill="#fff" fill-opacity=".1"/><rect y=".9" width="40" height=".25" fill="#000" fill-opacity=".09"/><rect y="1.6" width="40" height=".5" fill="#fff" fill-opacity=".05"/><rect y="2.5" width="40" height=".3" fill="#000" fill-opacity=".07"/><rect y="3.1" width="40" height=".25" fill="#fff" fill-opacity=".08"/></pattern>`;
+  const carbon = `<pattern id="dh-carbon" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(35)"><rect width="5" height="5" fill="#090a0d"/><rect width="2.5" height="2.5" fill="#171a21"/><rect x="2.5" y="2.5" width="2.5" height="2.5" fill="#171a21"/><rect width="2.5" height=".9" fill="#2a2f3b" fill-opacity=".65"/><rect x="2.5" y="2.5" width="2.5" height=".9" fill="#2a2f3b" fill-opacity=".65"/></pattern>`;
   // each look's set sits in a group that takes that look's colors (style.css), so a preview box shows its own look
   const set = (look) => `<g class="art-preview" data-art-preview="${look}">${['mouse', 'headset', 'keyboard'].map((d) => `<g class="art art-${d}">${g(d, look)}</g>`).join('')}</g>`;
-  return svgEl(`<svg class="art-defs" width="0" height="0" aria-hidden="true" style="position: absolute"><defs>${ART_LOOKS.map(set).join('')}${brush('dh-brush-h')}${brush('dh-brush-v', true)}</defs></svg>`);
+  return svgEl(`<svg class="art-defs" width="0" height="0" aria-hidden="true" style="position: absolute"><defs>${ART_LOOKS.map(set).join('')}${brush('dh-brush-h')}${brush('dh-brush-v', true)}${carbon}</defs></svg>`);
 }
 
 
@@ -57,9 +58,9 @@ function liquid(clip, x, y, w, h) {
       ${[0.15, 0.35, 0.55, 0.72, 0.88].map((f, i) => `<circle class="mote m${i}" cx="${(x + w * f).toFixed(1)}" cy="${y + 3}" r="${(0.7 + (i % 3) * 0.25).toFixed(2)}"/>`).join('')}
     </g><rect class="sheen" x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#${sh})"/></g>`;
 }
-// no words (Shawn, 21 Oct 2026: "remove all the words ... but make it still look cool"): a part is marked with a small
-// crosshair target, and a measurement is a line with end ticks and a centre tick
-const callout = (x, y) => `<g class="bp-mark"><circle class="bp-lead" cx="${x}" cy="${y}" r="3.2"/><path class="bp-lead" d="M${x - 5.5} ${y}H${x - 2}M${x + 2} ${y}H${x + 5.5}M${x} ${y - 5.5}V${y - 2}M${x} ${y + 2}V${y + 5.5}"/><circle class="bp-dot" cx="${x}" cy="${y}" r=".9"/></g>`;
+// no crosshairs on the devices (Shawn, 25 Oct 2026: "remove the crosshair looking symbols on the mouse, keyboard and headset"):
+// only the outside dimension ruler lines remain for Blueprint
+const callout = () => '';
 const dimV = (x, y1, y2) => `<path class="bp-lead" d="M${x} ${y1}V${y2}M${x - 2} ${y1}H${x + 2}M${x - 2} ${y2}H${x + 2}M${x - 1.2} ${(y1 + y2) / 2}H${x + 1.2}"/>`;
 const dimH = (y, x1, x2) => `<path class="bp-lead" d="M${x1} ${y}H${x2}M${x1} ${y - 2}V${y + 2}M${x2} ${y - 2}V${y + 2}M${(x1 + x2) / 2} ${y - 1.2}V${y + 1.2}"/>`;
 
@@ -92,7 +93,7 @@ export function mouseArt() {
     <path class="scan" d="${MOUSE_SHAPE}" pathLength="100"/>
     <text class="logo-text" x="26.5" y="96.5" text-anchor="middle">pulsar</text>
     <text class="lq-text" x="50" y="128" text-anchor="middle"><tspan class="lq-n"></tspan><tspan class="lq-u" dx="1">%</tspan></text>
-    <g class="bp">${dimV(-3, 2, 181)}${dimH(186, 2, 98)}${callout(50, 28)}${callout(4.4, 70)}</g>
+    <g class="bp">${dimV(-3, 2, 181)}${dimH(186, 2, 98)}${callout(50, 28)}${callout(50, 94)}${callout(4.4, 70)}</g>
   </g>
     <image class="photo" href="/img/xlite.png" x="0" y="0" width="100" height="183" preserveAspectRatio="xMidYMid meet"/>
   </svg>`);
@@ -249,11 +250,16 @@ export function genericMouseArt(dev) {
   const body = 'M50 6C70 6 82 18 84 42C86 64 86 98 84 122C82 148 68 162 50 162C32 162 18 148 16 122C14 98 14 64 16 42C18 18 30 6 50 6Z';
   return svgEl(`<svg class="art mark art-mouse generic" viewBox="0 0 100 168" aria-hidden="true"${devAttr(dev)}><g class="drawn">
     <ellipse class="floor" cx="50" cy="160" rx="34" ry="8"/>
-    <path class="solid" d="${body}"/>${addedLiquid(dev, `<path d="${body}"/>`, 14, 6, 72, 156)}
+    <path class="solid" d="${body}"/>
+    <path class="grain" d="${body}"/><path class="glaze" d="${body}"/>
+    ${addedLiquid(dev, `<path d="${body}"/>`, 14, 6, 72, 156)}
     <path class="shade" d="M84 42C86 64 86 98 84 122C82 148 68 162 54 162C68 152 76 134 77 112C78 88 77 60 74 38C77 38 81 39 84 42Z"/>
     <path class="hi" d="M22 30C19 46 18 62 19 76C24 60 30 42 40 16C31 18 25 22 22 30Z"/>
     <path class="cut-line" d="M50 6V66"/><path class="cut-line" d="M16.5 66Q50 74 83.5 66"/>
-    <rect class="cut" x="44" y="18" width="12" height="28" rx="6"/><rect class="soft" x="46" y="20.5" width="8" height="23" rx="4"/>${lqText(dev, 50, 120)}
+    <rect class="cut" x="44" y="18" width="12" height="28" rx="6"/><rect class="soft" x="46" y="20.5" width="8" height="23" rx="4"/>
+    <path class="scan" d="${body}" pathLength="100"/>
+    <g class="bp">${dimV(6, 6, 162)}${dimH(165, 16, 84)}${callout(50, 32)}${callout(50, 96)}</g>
+    ${lqText(dev, 50, 120)}
   </g></svg>`);
 }
 export function genericHeadsetArt(dev) {
@@ -262,24 +268,40 @@ export function genericHeadsetArt(dev) {
     <path class="solid" d="M30 96C30 26 150 26 150 96H142C142 36 38 36 38 96Z"/>
     <path class="hi-line" d="M34 76C37 36 143 36 146 76"/>
     <rect class="solid" x="26" y="84" width="12" height="20" rx="4"/><rect class="solid" x="142" y="84" width="12" height="20" rx="4"/>
-    <rect class="solid" x="12" y="98" width="40" height="56" rx="18"/><rect class="solid" x="128" y="98" width="40" height="56" rx="18"/>${addedLiquid(dev, '<rect x="12" y="98" width="40" height="56" rx="18"/><rect x="128" y="98" width="40" height="56" rx="18"/>', 12, 98, 156, 56)}
+    <rect class="solid" x="12" y="98" width="40" height="56" rx="18"/><rect class="solid" x="128" y="98" width="40" height="56" rx="18"/>
+    <rect class="grain" x="12" y="98" width="40" height="56" rx="18"/><rect class="grain" x="128" y="98" width="40" height="56" rx="18"/>
+    <rect class="glaze" x="12" y="98" width="40" height="56" rx="18"/><rect class="glaze" x="128" y="98" width="40" height="56" rx="18"/>
+    ${addedLiquid(dev, '<rect x="12" y="98" width="40" height="56" rx="18"/><rect x="128" y="98" width="40" height="56" rx="18"/>', 12, 98, 156, 56)}
     <rect class="soft" x="46" y="102" width="14" height="48" rx="7"/><rect class="soft" x="120" y="102" width="14" height="48" rx="7"/>
     <path class="shade" d="M12 116C12 106 20 98 30 98H26C20 101 17 107 17 116V136C17 145 20 151 27 154H30C20 154 12 146 12 136Z"/>
     <path class="shade" d="M168 116C168 106 160 98 150 98H154C160 101 163 107 163 116V136C163 145 160 151 153 154H150C160 154 168 146 168 136Z"/>
-    <path class="hi" d="M22 103C28 100.5 38 100.5 44 103C37 102.5 29 102.5 22 106Z"/><path class="hi" d="M136 103C142 100.5 152 100.5 158 103C151 102.5 143 102.5 136 106Z"/>${lqText(dev, 148, 132)}
+    <path class="hi" d="M22 103C28 100.5 38 100.5 44 103C37 102.5 29 102.5 22 106Z"/><path class="hi" d="M136 103C142 100.5 152 100.5 158 103C151 102.5 143 102.5 136 106Z"/>
+    <rect class="scan" x="128" y="98" width="40" height="56" rx="18" pathLength="100"/>
+    <g class="bp">${callout(32, 126)}${callout(148, 126)}${callout(90, 42)}</g>
+    ${lqText(dev, 148, 132)}
   </g></svg>`);
 }
 export function genericKeyboardArt(dev) {
   const u = 13, gap = 2.4, pad = 10, cols = 15, W = pad * 2 + cols * u - gap, H = pad * 2 + 5 * u - gap, f = (n) => n.toFixed(1);
   let keys = '';
-  for (let r = 0; r < 4; r++) for (let c = 0; c < cols; c++) keys += `<rect class="soft" x="${f(pad + c * u)}" y="${f(pad + r * u)}" width="${f(u - gap)}" height="${f(u - gap)}" rx="2.2"/>`;
+  for (let r = 0; r < 4; r++) for (let c = 0; c < cols; c++) {
+    const cls = (r === 0 && c === 0) || (r === 2 && c === cols - 1) ? 'accent' : 'soft';
+    keys += `<rect class="${cls}" x="${f(pad + c * u)}" y="${f(pad + r * u)}" width="${f(u - gap)}" height="${f(u - gap)}" rx="2.2"/>`;
+  }
   // the bottom row: modifiers, a long space bar, modifiers
-  [[0, 1.5], [1.5, 1.5], [3, 7.5], [10.5, 1.5], [12, 1.5], [13.5, 1.5]].forEach(([x, w]) => { keys += `<rect class="soft" x="${f(pad + x * u)}" y="${f(pad + 4 * u)}" width="${f(w * u - gap)}" height="${f(u - gap)}" rx="2.2"/>`; });
+  [[0, 1.5], [1.5, 1.5], [3, 7.5], [10.5, 1.5], [12, 1.5], [13.5, 1.5]].forEach(([x, w]) => {
+    const cls = x === 3 ? 'accent' : 'soft';
+    keys += `<rect class="${cls}" x="${f(pad + x * u)}" y="${f(pad + 4 * u)}" width="${f(w * u - gap)}" height="${f(u - gap)}" rx="2.2"/>`;
+  });
   return svgEl(`<svg class="art mark art-keyboard generic" viewBox="0 0 ${f(W)} ${f(H)}" aria-hidden="true"${devAttr(dev)}><g class="drawn">
     <ellipse class="floor" cx="${f(W / 2)}" cy="${f(H - 2)}" rx="${f(W / 2 - 4)}" ry="9"/>
     <rect class="solid" x="1" y="1" width="${f(W - 2)}" height="${f(H - 2)}" rx="9"/>
+    <rect class="grain" x="1" y="1" width="${f(W - 2)}" height="${f(H - 2)}" rx="9"/><rect class="glaze" x="1" y="1" width="${f(W - 2)}" height="${f(H - 2)}" rx="9"/>
     <rect class="cut" x="${f(pad - 3)}" y="${f(pad - 3)}" width="${f(W - 2 * pad + 6)}" height="${f(H - 2 * pad + 6)}" rx="5"/>${addedLiquid(dev, `<rect x="1" y="1" width="${f(W - 2)}" height="${f(H - 2)}" rx="9"/>`, 1, 1, W - 2, H - 2)}
-    ${keys}${lqText(dev, f(W / 2), f(H / 2 + 5))}
+    ${keys}
+    <rect class="scan" x="1" y="1" width="${f(W - 2)}" height="${f(H - 2)}" rx="9" pathLength="100"/>
+    <g class="bp">${callout(pad + 5.3, pad + 5.3)}${dimH(+f(H + 5), 1, +f(W - 1))}</g>
+    ${lqText(dev, f(W / 2), f(H / 2 + 5))}
   </g></svg>`);
 }
 export const genericArtFor = { mouse: genericMouseArt, headset: genericHeadsetArt, keyboard: genericKeyboardArt };

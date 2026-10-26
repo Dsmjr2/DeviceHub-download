@@ -31,7 +31,7 @@ for (const [name, ids] of [['audeze-maxwell', ['3329', ['4b19', '4b18', '4b29', 
   const meta = JSON.parse(fs.readFileSync(path.join(dir, 'device.json'), 'utf8'));
   const drv = (await import(`../device-library/${name}/device.mjs`)).default;
   ok(!validateMeta(meta), `${name}: device.json is well formed (${validateMeta(meta)})`);
-  ok(meta.id === drv.id && meta.status === 'untested' && meta.tested.length === 0, `${name}: same id, untested, no test record`);
+  ok(meta.id === drv.id && (meta.status === 'untested' || meta.status === 'read-only') && meta.tested.length === 0, `${name}: same id, untested or read-only, no test record`);
   ok(meta.vid === ids[0] && JSON.stringify(meta.pids) === JSON.stringify(ids[1]), `${name}: vid and pids (${meta.vid} ${meta.pids})`);
   ok(JSON.stringify(drv.hid.pids ? drv.hid.pids.map((p) => p.toLowerCase()) : [drv.hid.pid.toLowerCase()]) === JSON.stringify(meta.pids), `${name}: the HID channel covers the same pids`);
   ok(!problem(drv), `${name}: loads as a my-devices driver (${problem(drv)})`);

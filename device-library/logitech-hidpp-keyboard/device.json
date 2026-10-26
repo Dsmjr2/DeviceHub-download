@@ -76,7 +76,7 @@
     "c53f",
     "c54d"
   ],
-  "status": "untested",
+  "status": "read-only",
   "updated": "2026-10-24T19:42:41Z",
   "tested": [],
   "source": "Solaar lib/logitech_receiver (settings_templates.py, settings.py, settings_validator.py, special_keys.py, hidpp20_constants.py, descriptors.py, base_usb.py) @ e7304c4c451cc9bb4f206a914844525e67856a28; libratbag src/hidpp20.h @ 8235b5bb6032dea15901ab58a8218956f4494d08; Linux drivers/hid/hid-logitech-hidpp.c (hidpp_devices, Bluetooth ids) @ 3fabd8ec206bd48a45ef77aed170d25b322ad9a2; OpenRGB Controllers/LogitechController/LogitechControllerDetect.cpp @ a44f52507873f9810601a9ea2640cbe13a868c15; docs/brands/logitech.md; OpenRGB Controllers/LogitechController/LogitechControllerDetect.cpp and LogitechG815Controller/LogitechG815Controller.cpp @ bbc77470a7cba56af60989e54ba910d5ac66a3ac (the G813); libratbag data/devices/logitech-g413.device @ 8235b5bb6032dea15901ab58a8218956f4494d08; MatMoul/g810-led src/classes/Keyboard.h, Keyboard.cpp @ efa3c35e74f01a2ed2346320da8bad411bfe8ed8 (the G413); Solaar docs/devices/G515 LS TKL 40B4.text, lib/logitech_receiver/base_usb.py (LIGHTSPEED receivers), base.py (software id) @ e7304c4c451cc9bb4f206a914844525e67856a28"

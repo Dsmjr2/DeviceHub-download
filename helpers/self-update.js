@@ -216,7 +216,7 @@ async function updateSteps(opts = {}) {
   if (s.zip) return zipUpdate(opts);
   if (!s.git) throw new Error('this copy of DeviceHub is not connected to GitHub');
   if (s.error) throw new Error(s.error);
-  if (s.shared) return mergeUpdate(s);
+  if (s.shared) return mergeUpdate(s, opts);
   if (!s.behind) return { updated: false };
   // files changed on this PC and not committed (24 Oct 2026, Shawn's own PC: "34 file(s) were changed", work in progress
   // in that folder): the update goes ahead when none of them is in the new changes (git moves forward around them and
@@ -255,7 +255,7 @@ async function updateSteps(opts = {}) {
 // checked before DeviceHub restarts with it, and goes back to how it was if the check fails; a crash on start goes back
 // too (update-rollback.txt, helpers/keep-running.bat).
 const ME = ['-c', 'user.name=DeviceHub', '-c', 'user.email=devicehub@localhost'];
-async function mergeUpdate(s) {
+async function mergeUpdate(s, { overwrite = false } = {}) {
   if (!s.behind) return { updated: false };
   step('Keeping the changes made on this PC');
   if (s.changed) await git([...ME, 'commit', '-q', '-a', '-m', 'Changes made on this PC']);
@@ -268,9 +268,15 @@ async function mergeUpdate(s) {
     const both = (await git(['diff', '--name-only', '--diff-filter=U']).catch(() => '')).split('\n').filter(Boolean);
     await git(['merge', '--abort']).catch(() => {});
     await git(['reset', '-q', '--hard', before]).catch(() => {});
-    throw new Error(both.length
-      ? `the new version and this PC's changes both change ${both.slice(0, 4).join(', ')}${both.length > 4 ? ', …' : ''}; nothing changed. Ask Claude Code to "update DeviceHub".`
-      : `could not merge with this PC's files (${e.message}); nothing changed`);
+    if (overwrite) {
+      step('Keeping a copy of the changed files');
+      keepChanged(both.length ? both : (s.localFiles || []));
+      await git(['reset', '-q', '--hard', s.target]);
+    } else {
+      throw new Error(both.length
+        ? `the new version and this PC's changes both change ${both.slice(0, 4).join(', ')}${both.length > 4 ? ', …' : ''}; nothing changed. Use Update anyway to keep a copy of your changes in backups and install the new version.`
+        : `could not merge with this PC's files (${e.message}); nothing changed`);
+    }
   }
   const check = path.join(ROOT, 'tests', 'check.mjs');
   if (fs.existsSync(check)) {

@@ -99,7 +99,22 @@ try {
   $wi = & netsh wlan show interfaces 2>$null | Out-String
   if ($wi -match '(?m)^\s*State\s*:\s*connected') {
     $g = { param($label) $m = [regex]::Match($wi, "(?m)^\s*$label\s*:\s*(.+?)\s*$"); if ($m.Success) { $m.Groups[1].Value } else { $null } }
-    $w = [ordered]@{ ssid = (& $g 'SSID'); band = (& $g 'Band'); channel = (& $g 'Channel'); signal = (& $g 'Signal'); radio = (& $g 'Radio type') }
+    $b = (& $g 'Band')
+    if ($b) { $b = $b.Trim() }
+    $chVal = [int]((& $g 'Channel') -replace '[^0-9]', '')
+    $rad = (& $g 'Radio type')
+    if ($b -match '(?i)invalid|unknown' -or [string]::IsNullOrWhiteSpace($b)) {
+      if ($rad -match '802\.11be' -or $chVal -eq 133 -or ($chVal -gt 14 -and $chVal -lt 36) -or $chVal -gt 177) {
+        $b = '6 GHz'
+      } elseif ($chVal -gt 14) {
+        $b = '5 GHz'
+      } elseif ($chVal -gt 0 -and $chVal -le 14) {
+        $b = '2.4 GHz'
+      }
+    }
+    $w = [ordered]@{ name = (& $g 'Name'); ssid = (& $g 'SSID'); band = $b; channel = (& $g 'Channel'); signal = (& $g 'Signal'); radio = $rad; rxMbps = [double]((& $g 'Receive rate \(Mbps\)') -replace '[^0-9.]', ''); txMbps = [double]((& $g 'Transmit rate \(Mbps\)') -replace '[^0-9.]', '') }
+    $ac = & netsh wlan show autoconfig 2>$null | Out-String
+    $w.autoConfig = [bool]($ac -match '(?i)enabled on interface')
     $dr = & netsh wlan show drivers 2>$null | Out-String
     $w.radios = ([regex]::Match($dr, '(?m)^\s*Radio types supported\s*:\s*(.+?)\s*$')).Groups[1].Value
     # does the same network (or one named for 5 GHz) answer on a 5 or 6 GHz channel nearby?
@@ -111,6 +126,36 @@ try {
     }
     $w.fiveNearby = $five
     $tune.wifi = $w
+  }
+} catch {}
+# network latency and ping jitter: local router hop and internet
+try {
+  $gw = (Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Sort-Object RouteMetric | Select-Object -First 1).NextHop
+  if ($gw) {
+    $p = New-Object System.Net.NetworkInformation.Ping
+    $gwTimes = @()
+    for ($i = 0; $i -lt 3; $i++) {
+      try {
+        $r = $p.Send($gw, 200)
+        if ($r.Status -eq [System.Net.NetworkInformation.IPStatus]::Success) { $gwTimes += $r.RoundtripTime }
+      } catch {}
+    }
+    $inTimes = @()
+    for ($i = 0; $i -lt 3; $i++) {
+      try {
+        $r = $p.Send('1.1.1.1', 200)
+        if ($r.Status -eq [System.Net.NetworkInformation.IPStatus]::Success) { $inTimes += $r.RoundtripTime }
+      } catch {}
+    }
+    if ($gwTimes.Count) {
+      $tune.latency = [ordered]@{
+        gw = $gw
+        gwMs = [math]::Round(($gwTimes | Measure-Object -Average).Average, 1)
+        gwJitter = if ($gwTimes.Count -gt 1) { [int](($gwTimes | Measure-Object -Maximum).Maximum - ($gwTimes | Measure-Object -Minimum).Minimum) } else { 0 }
+        inMs = if ($inTimes.Count) { [math]::Round(($inTimes | Measure-Object -Average).Average, 1) } else { $null }
+        inJitter = if ($inTimes.Count -gt 1) { [int](($inTimes | Measure-Object -Maximum).Maximum - ($inTimes | Measure-Object -Minimum).Minimum) } else { 0 }
+      }
+    }
   }
 } catch {}
 $out.tune = $tune

@@ -116,10 +116,10 @@ check(r.body.includes('### PC lights') && r.body.includes('- OpenRGB: 1.1 (insid
 check(r.body.includes('### What DeviceHub found') && /Corsair Commander Pro was not found by OpenRGB/.test(r.body), 'the problem goes in as a finding');
 check(!/zorblax/.test(r.body) && /PC lights/.test(r.body.split('### Log')[1] || '') && !/unrelated line/.test(r.body), 'lights log lines only, nothing personal');
 
-// 9. the page: the fan section and its Get help (no pop-ups or tooltips in it)
+// 9. the page: the fan section (no pop-ups or tooltips in it)
 const page = fs.readFileSync(path.join(ROOT, 'public', 'pages', 'pc-lights.js'), 'utf8');
 const fan = page.slice(page.indexOf('function fanHelp()'), page.indexOf('function pcLights()'));
-check(fan.length > 100 && fan.includes("getHelp('lights', () => '', { area: 'lights' })") && !/toast\(|title:|confirm\(|alert\(/.test(fan), 'the fan section has Get help for lights and no pop-ups or tooltips');
+check(fan.length > 100 && !/toast\(|title:|confirm\(|alert\(/.test(fan), 'the fan section has no pop-ups or tooltips');
 check((page.match(/fanHelp\(\)/g) || []).length === 3 && page.includes("env.api('/api/lights/diagnose')"), 'shown before and after Find lights, read from /api/lights/diagnose');
 const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
 check(/pathname === '\/api\/lights\/diagnose'[\s\S]{0,200}openrgb\.status\(false\)/.test(server) && server.includes("'/api/lights/diagnose': { isolated: true"), 'the route reads OpenRGB without starting it, and isolated mode answers a stand-in');

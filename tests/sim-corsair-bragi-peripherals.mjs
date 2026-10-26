@@ -132,7 +132,7 @@ for (let id = 0; id < 0x100; id++) for (const v of [-1, 0, 1, 2, 4, 5, 99, 100, 
 }
 const meta = JSON.parse(fs.readFileSync(path.join(ROOT, 'device-library', 'corsair-bragi-peripherals', 'device.json'), 'utf8'));
 check(JSON.stringify([...meta.pids].sort()) === JSON.stringify(ALL_PIDS.map((p) => p.toLowerCase()).sort()), 'device.json pids are the table\'s');
-check(meta.vid === '1b1c' && meta.status === 'untested' && Array.isArray(meta.tested) && meta.tested.length === 0 && meta.id === real.id && meta.source === 'docs/brands/corsair.md', 'device.json: vid, status untested, tested [], id, source');
+check(meta.vid === '1b1c' && (meta.status === 'untested' || meta.status === 'read-only') && Array.isArray(meta.tested) && meta.tested.length === 0 && meta.id === real.id && meta.source === 'docs/brands/corsair.md', 'device.json: vid, status untested or read-only, tested [], id, source');
 check(!validateMeta(meta), `device.json passes the library's check (${validateMeta(meta)})`);
 check(!problem(real), `the driver passes the my-devices check (${problem(real)})`);
 check(NEVER.commands.some((c) => c.vid === '1B1C' && /sleep now/.test(c.what)) && NEVER.commands.some((c) => c.vid === '1B1C' && /pairing/.test(c.what)), 'the never list names Corsair sleep-now, handles, firmware and pairing');

@@ -98,15 +98,25 @@ const BT = `
 $ErrorActionPreference = 'SilentlyContinue'
 $all = Get-PnpDevice
 $top = $all | Where-Object { $_.InstanceId -match '^(BTHENUM|BTHLE)\\\\DEV_[0-9A-F]{12}' }
-# one batched read of every Bluetooth node's battery and every device's connection (one call each, not one per node)
-$nodes = @($all | Where-Object { $_.InstanceId -match '^(BTHENUM|BTHLE|BTHLEDEVICE)\\\\' } | ForEach-Object { $_.InstanceId })
+$hid = @($all | Where-Object { $_.Status -eq 'OK' -and $_.InstanceId -match '^HID\\\\VID_[0-9A-F]{4}&PID_[0-9A-F]{4}' })
+# one batched read of every Bluetooth and active USB HID node's battery and every device's connection (one call each, not one per node)
+$nodes = @($all | Where-Object { $_.InstanceId -match '^(BTHENUM|BTHLE|BTHLEDEVICE)\\\\' -or ($_.Status -eq 'OK' -and $_.InstanceId -match '^HID\\\\VID_[0-9A-F]{4}&PID_[0-9A-F]{4}') } | ForEach-Object { $_.InstanceId })
 $bats = @{}; if ($nodes.Count) { foreach ($p in @(Get-PnpDeviceProperty -InstanceId $nodes -KeyName '{104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2')) { if ($null -ne $p.Data) { $bats[$p.InstanceId] = [int]$p.Data } } }
 $conns = @{}; if ($top) { foreach ($p in @(Get-PnpDeviceProperty -InstanceId @($top | ForEach-Object { $_.InstanceId }) -KeyName '{83DA6326-97A6-4088-9453-A1923F573B29} 15')) { $conns[$p.InstanceId] = [bool]$p.Data } }
+$seenUsb = @{}
 $out = @(foreach ($d in $top) {
   $mac = ([regex]::Match($d.InstanceId, 'DEV_([0-9A-F]{12})')).Groups[1].Value
   $bat = $null
   foreach ($k in $bats.Keys) { if ($k -match $mac) { $bat = $bats[$k]; break } }
   [ordered]@{ name = $d.FriendlyName; le = [bool]($d.InstanceId -match '^BTHLE'); connected = [bool]$conns[$d.InstanceId]; battery = $bat }
+}) + @(foreach ($h in $hid) {
+  if ($null -ne $bats[$h.InstanceId] -and $h.FriendlyName) {
+    $vp = ([regex]::Match($h.InstanceId, 'VID_[0-9A-F]{4}&PID_[0-9A-F]{4}')).Value
+    if ($vp -and -not $seenUsb[$vp]) {
+      $seenUsb[$vp] = $true
+      [ordered]@{ name = $h.FriendlyName; le = $false; connected = $true; battery = $bats[$h.InstanceId] }
+    }
+  }
 })
 ConvertTo-Json -InputObject $out -Depth 3 -Compress
 `;

@@ -382,7 +382,7 @@ check(modelFor('05B7')?.readOnlyWhy && modelFor('1743')?.readOnlyWhy && !modelFo
 {
   const kmeta = JSON.parse(fs.readFileSync(new URL('../device-library/hyperx-kingston/device.json', import.meta.url), 'utf8'));
   check(problem(kdriver) === null, `Kingston: the driver passes my-devices' check (${problem(kdriver)})`);
-  check(validateMeta(kmeta) === null && kmeta.id === kdriver.id && kmeta.vid === '0951' && kmeta.status === 'untested' && kmeta.tested.length === 0, `Kingston: device.json valid, untested, vendor 0951 (${validateMeta(kmeta)})`);
+  check(validateMeta(kmeta) === null && kmeta.id === kdriver.id && kmeta.vid === '0951' && (kmeta.status === 'read-only' || kmeta.status === 'untested') && kmeta.tested.length === 0, `Kingston: device.json valid, read-only/untested, vendor 0951 (${validateMeta(kmeta)})`);
   check(JSON.stringify([...kmeta.pids].sort()) === JSON.stringify(K.MODELS.flatMap((m) => m.pids).sort()), 'Kingston: device.json lists every product id the driver answers on');
   const ks = hidSpecs(kdriver);
   const k1718 = ks.find((x) => x.pid === '1718'), kf = ks.find((x) => x.pid === '16C4');

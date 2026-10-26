@@ -85,8 +85,9 @@ function proxyAdapter(meta) {
 const lastSnap = {};
 function applyRemote(snap) {
   for (const s of snap.devices || []) {
-    const text = JSON.stringify(s);
-    if (lastSnap[s.id] === text && devices[s.id]) continue;
+    const { readAt, ...cmp } = s;
+    const text = JSON.stringify(cmp);
+    if (lastSnap[s.id] === text && devices[s.id]) { devices[s.id].readAt = readAt; continue; }
     lastSnap[s.id] = text;
     const cur = devices[s.id] || (devices[s.id] = { id: s.id });
     Object.assign(cur, { status: s.status, info: s.info, battery: s.battery, values: s.values, error: s.error, readAt: s.readAt, adapter: proxyAdapter(s.adapter), seen: s.seen, absent: !!s.absent, waiting: s.waiting || [], undo: s.undo || null });

@@ -20,7 +20,7 @@ const h = (a) => Array.from(a, (b) => b.toString(16).padStart(2, '0')).join(' ')
 const attempt = async (fn) => { try { return { ok: true, v: await fn() }; } catch (e) { return { ok: false, e: e.message }; } };
 
 // the entry
-ok(!validateMeta(meta) && meta.id === shipped.id && meta.status === 'untested' && meta.tested.length === 0, 'device.json: well formed, same id, untested');
+ok(!validateMeta(meta) && meta.id === shipped.id && (meta.status === 'untested' || meta.status === 'read-only') && meta.tested.length === 0, 'device.json: well formed, same id, untested or read-only');
 ok(JSON.stringify(meta.pids) === JSON.stringify(PIDS.map((p) => p.toLowerCase())) && meta.vid === shipped.hid.vid.toLowerCase(), 'device.json lists the driver\'s ids');
 ok(!problem(shipped) && shipped.settings.length === 0, `loads as a my-devices driver with no settings (${problem(shipped)})`);
 

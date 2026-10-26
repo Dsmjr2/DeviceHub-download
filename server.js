@@ -398,7 +398,7 @@ async function api(req, res, url) {
       for (const [k, type] of Object.entries({ autoSwitch: 'boolean', defaultProfile: 'string', artStyle: 'string', themeAccent: 'string', themeBg: 'string', ankerGuard: 'boolean', batterySaver: 'boolean', settingsSync: 'boolean', lightWindow: 'boolean', batteryCare: 'boolean', oneDriveCopy: 'boolean', autoReport: 'boolean', shareDrivers: 'boolean', setupSeen: 'boolean' }))if (typeof b[k] === type) cur[k] = type === 'string' ? b[k].slice(0, 100) : b[k];
       // the theme (Settings > Appearance): an accent color as #rrggbb and one of the backdrops
       if (cur.themeAccent && !/^#[0-9a-f]{6}$/i.test(cur.themeAccent)) delete cur.themeAccent;
-      if (cur.themeBg && !['graphite', 'black', 'ocean', 'midnight', 'espresso', 'old-school', 'verde', 'milk', 'coral-reef', 'taco-night', 'slate', 'plum', 'forest', 'cream', 'paper'].includes(cur.themeBg)) delete cur.themeBg;
+      if (cur.themeBg && !['graphite', 'black', 'ocean', 'midnight', 'espresso', 'old-school', 'verde', 'milk', 'coral-reef', 'cyberpunk', 'sakura', 'terminal', 'taco-night', 'slate', 'plum', 'forest', 'cream', 'paper'].includes(cur.themeBg)) delete cur.themeBg;
       if (cur.artStyle && !['photo', 'frosted', 'blueprint', 'neon', 'duo', 'pop', 'arctic', 'live', 'studio', 'glow', 'matte', 'night'].includes(cur.artStyle)) delete cur.artStyle;  // Settings > Appearance
       // a name for a headset (the Headset page's Rename; 22 Oct 2026, Shawn: the wired Audio-Technica): { key, name },
       // key a USB id or a wired headset's JACK_ key; an empty name puts Windows' name back
@@ -581,6 +581,18 @@ async function api(req, res, url) {
   if (url.pathname === '/api/monitors') {
     try { return send(res, 200, await monitors.list(url.searchParams.has('fresh'))); } catch (e) { return send(res, 500, { error: e.message }); }
   }
+  if (url.pathname === '/api/monitors/sleep' && req.method === 'POST') {
+    try {
+      // Windows' own monitor-off message through its signed PowerShell (26 Oct 2026: no third-party nircmd.exe)
+      const ps = path.join(__dirname, 'helpers', 'sleep-monitors.ps1');
+      require('child_process').spawn('powershell.exe', ['-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', ps], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+      serverLog({ kind: 'info', text: 'Monitors: sleep command sent' });
+      return send(res, 200, { ok: true });
+    } catch (e) {
+      serverLog({ kind: 'bad', text: `Monitors sleep: ${e.message}` });
+      return send(res, 500, { ok: false, error: e.message });
+    }
+  }
   if (url.pathname === '/api/cameras') {
     try { return send(res, 200, await camera.list(url.searchParams.has('fresh'))); } catch (e) { return send(res, 500, { error: e.message }); }
   }
@@ -657,7 +669,15 @@ async function api(req, res, url) {
   // why a device isn't working, and the fix (helpers/diagnose.mjs; read-only apart from closing a maker's app on a confirmed press)
   // optional tools (Equalizer APO, ReaPlugs, USBPcap): download, check the signature or hash, run the maker's installer on a click
   // Get the layout: a VIA keyboard's official definition file on the person's click (helpers/via-fetch.mjs, pinned sources)
-  if (url.pathname.startsWith('/api/via-fetch')) { try { if (await (await import('./helpers/via-fetch.mjs')).handle(url, req, res, send, readBody)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
+  if (url.pathname.startsWith('/api/via-fetch')) {
+    try {
+      const vf = await import('./helpers/via-fetch.mjs');
+      if (await vf.handle(url, req, res, (rs, code, body) => {
+        if (req.method === 'POST' && body?.ok && agent) { body.restart = false; setTimeout(() => { try { agent.connect('keyboard'); } catch {} }, 150); }
+        return send(rs, code, body);
+      }, readBody)) return;
+    } catch (e) { return send(res, 500, { error: e.message }); }
+  }
   if (url.pathname.startsWith('/api/installers')) { try { if (await (await import('./helpers/installers.mjs')).handle(url, req, res, send, readBody)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   // board, fan and RAM lights: PawnIO and the OpenRGB inside DeviceHub as administrator, set up or removed only on a click (helpers/board-lights.mjs)
   // CPU temperature and fan speeds: LibreHardwareMonitor's library behind an on-demand elevated reader, set up or removed only on a click (helpers/cpu-sensors.mjs)
@@ -797,7 +817,7 @@ async function api(req, res, url) {
     let keyHere = null;
     try { keyHere = (await import('./helpers/signing-key.mjs')).keyAvailable(); } catch {}
     if (publishRun?.state === 'running') {
-      try { const t = fs.readFileSync(publishRun.log, 'utf8'); publishRun.step = /Published\./.test(t) ? 'friends have it; finishing Setup.exe' : /Uploading/.test(t) ? 'Uploading' : /built .*Setup\.exe/.test(t) ? 'Uploading' : /built .*setup\.zip/.test(t) ? 'Building the installer' : /library bundle signed/.test(t) ? 'Packing the zip' : 'Building'; } catch {}
+      try { const t = fs.readFileSync(publishRun.log, 'utf8'); publishRun.step = /Published\./.test(t) ? 'published; finishing Setup.exe' : /Uploading/.test(t) ? 'Uploading' : /built .*Setup\.exe/.test(t) ? 'Uploading' : /built .*setup\.zip/.test(t) ? 'Building the installer' : /library bundle signed/.test(t) ? 'Packing the zip' : 'Building'; } catch {}
     }
     return send(res, 200, { owner: true, published, ahead, keyHere, run: publishRun });
   }

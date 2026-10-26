@@ -38,6 +38,36 @@ function eqName(redraw) {
 }
 
 const COLORS = { mouse: 'var(--c-mouse)', headset: 'var(--c-headset)', keyboard: 'var(--c-keyboard)' };
+const colorFor = (dOrId) => {
+  const d = typeof dOrId === 'string' ? devices[dOrId] : dOrId;
+  if (!d) return COLORS[dOrId] || 'var(--signal)';
+  if (COLORS[d.id]) return COLORS[d.id];
+  const k = String(d.adapter?.kind || '').toLowerCase();
+  return k.includes('mouse') ? COLORS.mouse : k.includes('headset') ? COLORS.headset : k.includes('keyboard') ? COLORS.keyboard : 'var(--signal)';
+};
+
+function pluginReadouts(d) {
+  const v = d.values || {}, settings = d.adapter?.settings || [];
+  const out = [];
+  for (const s of settings) {
+    const val = v[s.key];
+    if (val == null || val === '') continue;
+    if (/polling|reportrate/i.test(s.key) && Number.isFinite(Number(val))) out.push([s.label || 'Polling', signal({ hz: Number(val) })]);
+    else if (/brightness/i.test(s.key) && Number.isFinite(Number(val)) && s.max > 0) {
+      const pct = Math.round((Number(val) / s.max) * 100);
+      out.push([s.label || 'Brightness', meter({ ic: 'lighting', pct, value: `${pct}%` })]);
+    } else if (s.type === 'toggle') out.push([s.label || s.key, val ? 'On' : 'Off']);
+    else if (s.type === 'choice') {
+      const opt = (s.options || []).find((o) => o.value === val);
+      out.push([s.label || s.key, String(opt ? opt.label : val)]);
+    } else if (typeof val === 'number' || typeof val === 'string') {
+      out.push([s.label || s.key, `${Number.isFinite(val) && /dpi/i.test(s.key) ? fmt(val) : val}${s.unit || ''}`]);
+    }
+    if (out.length >= 3) break;
+  }
+  if (!out.length && d.info?.Model) out.push(['Model', String(d.info.Model).replace(/\s*\([^)]*\)\s*/g, ' ').trim()]);
+  return out.slice(0, 3);
+}
 
 function readouts(d, redraw) {
   const v = d.values;
@@ -53,11 +83,12 @@ function readouts(d, redraw) {
     const color = v.hue != null ? `hsl(${Math.round((v.hue / 255) * 360)} ${Math.round(((v.saturation ?? 255) / 255) * 100)}% 55%)` : null;
     return [['Layers', dots({ of: layers || 1, value: layers ?? '—' })], ['Backlight', meter({ ic: 'lighting', pct: pctB, value: pctB != null ? `${pctB}%` : '—' })], ['Effect', colorDot({ color, value: effectName(v.effect) })]];
   }
+  if (d.adapter?.plugin) return pluginReadouts(d);
   return [];
 }
 
 // A PC with none of the supported devices (yet): the shared library sets known ones up by itself; Learn a device for
-// the rest (ADD-YOUR-DEVICES.md for doing it with Claude Code).
+// the rest (ADD-YOUR-DEVICES.md).
 // While the window has just opened it only says it is looking, so a PC that has them never flashes this.
 function firstRun(go, redraw) {
   // the first seconds: the three device tiles as faint generic drawings with a light sweeping over them, marked Looking, and
@@ -76,7 +107,7 @@ function firstRun(go, redraw) {
     h('h2', {}, 'No devices set up yet'),
     h('p', {}, 'Known devices appear here by themselves.'),
     null,
-    // devices on this PC from a known brand, each with a ready prompt for Claude Code (the brand guide, docs/BRANDS.md)
+    // devices on this PC from a known brand
     (() => {
       if (!pcLoaded()) { loadPc(false, redraw); return null; }
       const found = otherDevices();
@@ -154,7 +185,7 @@ function bay(d, go, redraw) {
   const sub = d.status === 'connected' ? (d.id === 'headset' && !d.values.headsetOn ? 'Receiver connected · headset off' : 'Ready') : d.status === 'asleep' ? 'Asleep: move to wake' : d.error || (d.id === 'headset' ? 'Plug in receiver or cable' : isRemote() ? 'Not plugged in' : d.id === 'keyboard' ? 'One click after Chrome restarts' : 'Not connected yet');
   const muted = d.id === 'headset' && d.values?.['prop:micEnabled'] === false;
   const off = d.status === 'connected' && d.id === 'headset' && !d.values.headsetOn;
-  const el = h('div', { class: `bay ${d.status}${muted ? ' mic-muted' : ''}${off ? ' off' : ''}`, 'data-dev': d.id, 'data-shape': `${d.status}|${ro.length}|${bat != null}`, role: 'button', tabindex: 0, style: { '--cc': COLORS[d.id] }, onclick: () => go(d.id), onkeydown: (e) => { if (e.key === 'Enter') go(d.id); } },
+  const el = h('div', { class: `bay ${d.status}${muted ? ' mic-muted' : ''}${off ? ' off' : ''}`, 'data-dev': d.id, 'data-shape': `${d.status}|${ro.length}|${bat != null}`, role: 'button', tabindex: 0, style: { '--cc': colorFor(d) }, onclick: () => go(d.id), onkeydown: (e) => { if (e.key === 'Enter') go(d.id); } },
     // the pill carries the state: CONNECTED, ASLEEP, HEADSET OFF ... (no "Ready" line under the name)
     h('div', { class: 'bay-top' }, h('span', { class: 'bay-kind' }, a.kind), linkStatus(d, off)),
     h('div', { class: 'bay-art' }, artOf(d)),
@@ -253,7 +284,7 @@ function feed() {
   if (!items.length) return h('div', { class: 'feed-empty' }, 'No changes yet.');
   return h('div', { class: 'feed' }, ...items.map((a) => h('div', { class: `feed-item ${a.kind}` },
     h('time', {}, when(a.at)),
-    a.device ? h('span', { class: 'feed-dev', style: { '--cc': COLORS[a.device] } }, SHORT[a.device] || a.device) : h('span', { class: 'feed-dev' }, 'DeviceHub'),
+    a.device ? h('span', { class: 'feed-dev', style: { '--cc': colorFor(a.device) } }, SHORT[a.device] || devices[a.device]?.adapter?.title || a.device) : h('span', { class: 'feed-dev' }, 'DeviceHub'),
     h('span', {}, a.text, a.n > 1 ? h('span', { class: 'faint' }, ` ×${a.n}`) : null))));
 }
 
@@ -296,7 +327,8 @@ const DEMO_BT = [{ name: 'Xbox Wireless Controller', connected: true, battery: 8
 function batteries(redraw) {
   if (isDemo()) bt = DEMO_BT;
   else if (Date.now() - btAt > 60000) { btAt = Date.now(); env.api('/api/bluetooth').then((x) => { bt = Array.isArray(x) ? x : []; redraw(); }).catch(() => {}); }
-  const list = (bt || []).filter((d) => d.connected && d.battery != null);
+  const shownWithBat = shownDevices().filter((d) => d.battery?.percent != null).map((d) => String(d.adapter?.title || '').toLowerCase());
+  const list = (bt || []).filter((d) => d.connected && d.battery != null && !shownWithBat.some((t) => t && String(d.name || '').toLowerCase().includes(t)));
   if (!list.length) return null;
   return h('div', { class: 'ov-batteries', 'aria-label': 'Bluetooth batteries' },
     h('span', { class: 'ov-bat-label' }, 'Batteries'),

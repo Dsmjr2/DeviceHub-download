@@ -194,7 +194,7 @@ export function createLogitechHeadset({ open = defaultOpen, vendorApp = defaultV
     async connect() {
       if (this.dev && this.onAddr) this.dev.removeEventListener('inputreport', this.onAddr);
       this.dev = null; this.features = {}; this.caps = {}; this.bridge = null; this.q = Promise.resolve(); this.frame = null; this.direct = false; this.heardAddr = null; this.onAddr = null;
-      for (const pid of PIDS) {
+      for (const pid of (this.hid.pids || PIDS).map((p) => String(p).toUpperCase())) {
         const dev = await open(pid);
         if (!dev) continue;
         if (!dev.opened && dev.open) await dev.open();

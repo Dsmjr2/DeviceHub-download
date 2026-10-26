@@ -31,7 +31,7 @@
     "charging state (not documented)",
     "firmware updates (never: they stay in Audeze HQ)"
   ],
-  "status": "untested",
+  "status": "read-only",
   "tested": [],
   "source": "HeadsetControl (github.com/Sapd/HeadsetControl) lib/devices/audeze_maxwell_device.hpp"
 }

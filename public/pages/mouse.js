@@ -47,9 +47,9 @@ function pointerCard(redraw) {
   const page = p.scrollLines === -1;
   // the sliders together, then the switches (22 Oct 2026, Shawn: "group scrollables and buttons together")
   return card(head,
-    row('Pointer speed', 'Windows default: 10.', slider({ value: p.speed, min: 1, max: 20, live: livePointer('speed'), onCommit: (v) => setPointer('speed', v, 'Pointer speed', `${v}`, redraw) })),
+    row('Pointer speed', null, slider({ value: p.speed, min: 1, max: 20, live: livePointer('speed'), onCommit: (v) => setPointer('speed', v, 'Pointer speed', `${v}`, redraw) })),
     page ? null : row('Scroll lines', null, slider({ value: p.scrollLines, min: 1, max: 20, live: livePointer('scrollLines'), onCommit: (v) => setPointer('scrollLines', v, 'Scroll lines', `${v}`, redraw) })),
-    row('Double-click speed', 'Windows default: 500 ms.', slider({ value: p.doubleClick, min: 200, max: 900, step: 10, unit: ' ms', live: livePointer('doubleClick'), onCommit: (v) => setPointer('doubleClick', v, 'Double-click speed', `${v} ms`, redraw) })),
+    row('Double-click speed', null, slider({ value: p.doubleClick, min: 200, max: 900, step: 10, unit: ' ms', live: livePointer('doubleClick'), onCommit: (v) => setPointer('doubleClick', v, 'Double-click speed', `${v} ms`, redraw) })),
     row('Enhance pointer precision', 'Acceleration. Best off for games.', toggle({ value: p.precision, label: 'Enhance pointer precision', onCommit: (on) => setPointer('precision', on, 'Pointer precision', on ? 'on' : 'off', redraw) })),
     row('Scroll one page at a time', null, toggle({ value: page, label: 'Scroll one page', onCommit: (on) => setPointer('scrollLines', on ? -1 : 3, 'Scrolling', on ? 'one page' : '3 lines', redraw) })));
 }

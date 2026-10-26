@@ -323,7 +323,7 @@ async function selfChecked(d, sim, label) {
   const d = createRoccat({ open: async () => null, vendorApp: async () => null });
   check((await d.connect()) === false, 'nothing plugged in: connect() is false');
   const meta = JSON.parse(fs.readFileSync(path.join(ROOT, 'device-library', 'roccat-peripherals', 'device.json'), 'utf8'));
-  check(validateMeta(meta) === null && meta.status === 'untested' && Array.isArray(meta.tested) && meta.tested.length === 0, `device.json well formed and untested (${validateMeta(meta)})`);
+  check(validateMeta(meta) === null && (meta.status === 'untested' || meta.status === 'read-only') && Array.isArray(meta.tested) && meta.tested.length === 0, `device.json well formed and untested or read-only (${validateMeta(meta)})`);
   check(meta.id === d.id && meta.vid.toUpperCase() === d.hid.vid && meta.pids.map((p) => p.toUpperCase()).sort().join() === [...PIDS].sort().join(), 'device.json lists exactly the driver\'s ids');
   // no other library entry claims one of these ids, and none is one DeviceHub's own drivers run
   const claims = [];

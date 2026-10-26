@@ -18,7 +18,7 @@
     "other Kingston-era mice and keyboards (Pulsefire Dart, FPS Pro, Core, Surge, Raid, Alloy Elite, FPS): not mapped yet",
     "firmware updates (NGENUITY only)"
   ],
-  "status": "untested",
+  "status": "read-only",
   "updated": "2026-10-23T12:00:00Z",
   "tested": [],
   "source": "docs/brands/hyperx.md"
