@@ -189,6 +189,20 @@ function eqCard(redraw) {
         try { await env.api('/api/eq/turn-on', {}); ui.eqOnNote = { ok: true, text: 'Tick the headset, click OK, then restart the PC.' }; } catch (e) { ui.eqOnNote = { ok: false, text: `Not opened: ${e.message}` }; }
         rerender();
       }, { kind: 'primary small', disabled: !!ui.eqOnNote?.wait })) : null,
+    // Corsair's old sound effects left on the headset after iCUE was removed (27 Oct 2026, helpers/corsair-apo.js): they
+    // made Discord's join sound late; one click turns them off. The answer stays in place, no toast.
+    ui.eq.corsairApo?.flagged?.length || ui.corsairNote ? h('div', { class: 'eq-off' }, icon('shield'),
+      h('span', { class: 'grow' }, ui.corsairNote?.ok ? ui.corsairNote.text : "Corsair's old sound effects slow Discord's join sound. Windows asks once; sound stops for a few seconds."),
+      ui.corsairNote && !ui.corsairNote.ok ? h('span', { class: ui.corsairNote.wait ? 'uac-wait' : 'faint', role: 'status' }, ui.corsairNote.text) : null,
+      ui.corsairNote?.ok ? null : button(ui.corsairNote?.wait ? 'Waiting…' : ui.corsairNote ? 'Try again' : 'Fix it', async () => {
+        ui.corsairNote = { wait: true, text: "Click Yes in Windows' prompt (taskbar shield)." }; rerender();
+        try {
+          const r = await env.api('/api/eq/corsair-fix', {});
+          ui.corsairNote = { ok: !!r.ok, text: r.text };
+          if (ui.eq && r.corsairApo) ui.eq.corsairApo = r.corsairApo;
+        } catch (e) { ui.corsairNote = { ok: false, text: `Not fixed: ${e.message}` }; }
+        rerender();
+      }, { kind: 'primary small', disabled: !!ui.corsairNote?.wait })) : null,
     h('div', { class: 'eq-layout' },
       h('div', { class: 'eq-presets' }, ...[...ui.eq.presets.filter((q) => !q.builtIn), ...ui.eq.presets.filter((q) => q.builtIn)].map((x) => h('button', { class: `eq-preset${x.id === ui.sel ? ' sel' : ''}`, disabled: ui.saving, onclick: () => { if (x.id === ui.sel && (!APO() || ui.eq.activeId === x.id)) return; ui.sel = x.id; ui.draft = null; if (APO()) activate(x.id); rerender(); } },
         h('span', {}, x.name), x.builtIn ? h('small', {}, 'built-in') : null, inUse.has(x.id) ? h('small', { class: 'inuse' }, 'in use') : null))),
@@ -271,8 +285,6 @@ export function soundTools() {
     row('Balance', 'Louder left or right.',
       slider({ value: x.balance, min: -12, max: 12, step: 0.5, format: balanceText, live: isDemo() ? null : (v) => env.api('/api/eq/extras', { balance: v }).catch(() => {}), onCommit: (v) => setExtras({ balance: v }) })),
     h('h3', { class: 'eq-sub' }, 'Mic'),
-    // (27 Oct 2026, Shawn: Discord's join sound came late while Equalizer APO was on for the headset mic)
-    h('p', { class: 'faint', style: { margin: '0 0 6px' } }, "These make Discord's join sound late."),
     ui.eq.micFound ? null : h('p', { class: 'faint', style: { margin: '0 0 6px' } }, 'Headset mic not connected.'),
     row('Cut rumble', 'Removes hum and bumps.',
       toggle({ value: x.micRumble, label: 'Cut rumble', onCommit: (on) => setExtras({ micRumble: on }) })),

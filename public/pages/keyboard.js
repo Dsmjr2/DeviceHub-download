@@ -4,7 +4,7 @@ import { h, icon } from '../ui/dom.js';
 import { card, row, slider, stepper, button, toggle } from '../ui/controls.js';
 import { dropdown } from '../ui/dropdown.js';
 import { devices, write, writeBatch, isDemo, prepare } from '../core/devices.js';
-import { topbar, connectState, deviceActions, vendorNote, kv, statusPill, isAway, awayBanner, undoButton, deviceHelp } from './common.js';
+import { topbar, connectState, deviceActions, vendorNote, kv, statusPill, isAway, awayBanner, undoButton, deviceHelp, checkAnswer } from './common.js';
 import { modal } from '../ui/overlay.js';
 import { keyName, shortName, isSpecialKey, isDangerous, pickerGroups, hex, CODE_TO_HID, EFFECTS } from '../devices/keycodes.js';
 import { hsv255ToHex, rgbToHsv255 } from '../devices/keyboard-adapter.js';
@@ -163,7 +163,9 @@ function cheatSheet(s) {
 function knobPanel(s) {
   if (!s.encoders) return null;
   const enc = s.encoders[ui.layer];
-  const press = s.keymap[ui.layer][0][14];
+  // pressing it is the layout's knob key (the P75: 0,14); a keyboard with no drawn layout shows only the turns (27 Oct 2026)
+  const kk = layoutOf().keys.find((k) => k.knob);
+  const press = kk ? s.keymap?.[ui.layer]?.[kk.row]?.[kk.col] : undefined;
   const pick = (target) => { ui.target = target; rerender(); requestAnimationFrame(() => document.querySelector('.picker')?.scrollIntoView({ behavior: 'smooth', block: 'center' })); };
   const row = (what, how, code, target, isSel) => h('div', { class: `knob-act${isSel ? ' sel' : ''}` },
     h('div', { class: 'knob-what' }, h('b', {}, what), h('small', {}, how)),
@@ -173,7 +175,7 @@ function knobPanel(s) {
   return card([h('h2', {}, 'Knob'), h('span', { class: 'sub' }, ui.layer ? `on the ${LAYER_NAMES[ui.layer]} layer` : null)],
     row('Turn left', null, enc[0], { type: 'enc', cw: false }, t?.type === 'enc' && !t.cw),
     row('Turn right', null, enc[1], { type: 'enc', cw: true }, t?.type === 'enc' && t.cw),
-    row('Press', null, press, { type: 'key', r: 0, c: 14 }, t?.type === 'key' && t.r === 0 && t.c === 14));
+    press == null ? null : row('Press', null, press, { type: 'key', r: kk.row, c: kk.col }, t?.type === 'key' && t.r === kk.row && t.c === kk.col));
 }
 
 let activeMacroInput = null;
@@ -321,6 +323,40 @@ function viaHelp() {
     h('p', { style: { margin: 0 } }, `USB ${u.id}, plugged in.`), viaFileNote(u.vid, u.pid, u.brand.name)))) : null;
 }
 
+// An unlisted VIA keyboard (27 Oct 2026, helpers/via-generic.mjs): read-only until the person presses Turn on settings;
+// DeviceHub then writes each group's current value back once (a key, the knob, a macro, the lighting effect) and opens
+// only the groups that read back the same. The answer shows on the line; nothing pops up.
+const gateNote = { t: null };
+function viaGate(dev) {
+  const v = dev.adapter?.via;
+  if (!v?.unlisted || isDemo() || dev.status !== 'connected') return null;
+  const failed = Object.entries(v.checks || {}).filter(([, c]) => c && !c.ok);
+  if (!v.needsTurnOn && !failed.length) return null;
+  const run = async () => {
+    gateNote.t = v.needsTurnOn ? 'Turning on…' : 'Checking…'; rerender();
+    try {
+      const r = await fetch('/api/diagnose/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'turn-on', id: 'keyboard' }) });
+      const j = await r.json().catch(() => ({}));
+      gateNote.t = !r.ok || j.error ? `Not done: ${j.error || r.statusText}` : checkAnswer(j, 'turn-on');
+    } catch (e) { gateNote.t = `Not done: ${e.message}`; }
+    rerender();
+  };
+  const line = v.needsTurnOn ? `Read-only: this keyboard is not on DeviceHub's list, so DeviceHub only reads it until you turn its settings on. ${v.turnOnLine}`
+    : `Read-only: ${failed.map(([g]) => g).join(', ')} (${failed[0][1].why}).`;
+  return card([h('h2', {}, 'Settings')], h('div', { class: 'actions', style: { alignItems: 'center' } },
+    button(v.needsTurnOn ? 'Turn on settings' : 'Check again', run, { kind: v.needsTurnOn ? 'primary small' : 'ghost small', ic: v.needsTurnOn ? 'plug' : 'search' }),
+    h('span', { class: 'faint', style: { fontSize: '12.5px' } }, gateNote.t || line)));
+}
+
+// a VIA keyboard whose key layout is not published (27 Oct 2026): it still connects with what VIA reports
+function noLayoutCard(dev, s) {
+  const v = dev.adapter?.via;
+  return card([h('h2', {}, 'Key mapping')],
+    h('p', { style: { margin: 0 } }, `This keyboard's key layout isn't published, so its keys can't be drawn or changed here. Its ${s.info.layers} layers${s.encoders ? ', knob' : ''}, macros and lights still work.`),
+    s.layout?.none ? h('p', { class: 'faint', style: { margin: '6px 0' } }, s.layout.none[0].toUpperCase() + s.layout.none.slice(1) + '.') : null,
+    v?.vid && v?.pid ? viaFileNote(v.vid, v.pid, null) : null);
+}
+
 export default {
   id: 'keyboard', title: 'Keyboard', icon: 'keyboard', device: 'keyboard', accent: 'var(--c-keyboard)', watches: ['keyboard'],
   render() {
@@ -332,8 +368,15 @@ export default {
       return h('div', {}, head, connectState(dev, 'Plug in its USB cable, press Connect. Close VIA and the maker\'s app first.'), viaHelp());
     }
     const s = a.session;
+    if (!s.keymap || s.layout?.none) {
+      return h('div', {}, head, awayBanner(dev), viaGate(dev), noLayoutCard(dev, s),
+        h('div', { class: 'grid two', style: { marginTop: '18px' } },
+          h('div', { class: 'stack' }, knobPanel(s), lightingPanel(dev)),
+          macroPanel(s)),
+        h('div', { style: { marginTop: '18px' } }, card([h('h2', {}, 'Device'), h('span', { class: 'spacer' }), deviceActions(dev)], kv(dev.info), h('div', { style: { marginTop: '14px' } }, vendorNote(a)))));
+    }
     const changed = s.original ? s.keymap.reduce((n, l, li) => n + l.reduce((m, r, ri) => m + r.filter((k, ci) => k !== s.original[li][ri][ci]).length, 0), 0) : 0;
-    return h('div', {}, head, awayBanner(dev),
+    return h('div', {}, head, awayBanner(dev), viaGate(dev),
       card([h('h2', {}, 'Key mapping'), h('span', { class: 'sub' }, changed ? `${changed} key${changed === 1 ? '' : 's'} changed this session` : null),
         h('span', { class: 'spacer' }),
         ui.tester ? h('span', { class: 'tester-count faint', style: { fontSize: '12.5px' } }, testerCount()) : null,

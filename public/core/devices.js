@@ -262,6 +262,10 @@ export function turnOn(id) {
   const a = devices[id]?.adapter;
   if (!a?.turnOn) return Promise.resolve({ ran: false, on: false, why: 'this device has no driver from the device library' });
   return withDevice(id, async () => {
+    // a built-in slot whose turnOn writes itself (27 Oct 2026, an unlisted VIA keyboard): its backup first, as before any write
+    if (a.backupBeforeTurnOn && devices[id].status === 'connected') {
+      try { await backupUnlocked(id, 'before Turn on settings'); } catch (e) { return { ran: false, on: false, why: `the backup before the check failed (${e.message}), so nothing was written` }; }
+    }
     const r = await a.turnOn();
     await refreshUnlocked(id, { full: true });
     set(id, { readAt: new Date() });

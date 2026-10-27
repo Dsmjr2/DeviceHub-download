@@ -604,6 +604,11 @@ async function api(req, res, url) {
   if (url.pathname === '/api/eq/turn-on' && req.method === 'POST') {
     try { return send(res, 200, await require('./helpers/eqapo-devices').turnOn()); } catch (e) { return send(res, 400, { error: e.message }); }
   }
+  // Corsair's old sound effects under Equalizer APO, turned off on the person's click (27 Oct 2026, helpers/corsair-apo.js:
+  // with iCUE removed they made Discord's join sound about 1 s late)
+  if (url.pathname === '/api/eq/corsair-fix' && req.method === 'POST' && eqapo.installed()) {
+    try { const d = await eqapo.devices(); return send(res, 200, await require('./helpers/corsair-apo').fix({ render: d.headset, capture: d.mic })); } catch (e) { return send(res, 400, { error: e.message }); }
+  }
   if (url.pathname === '/api/eq' && req.method === 'GET' && eqapo.installed()) {
     try {
       const r = await eqapo.read();
@@ -613,6 +618,8 @@ async function api(req, res, url) {
       const x = r.extras || {};
       const micUsed = !!(x.micRumble || x.micClarity || x.micDeEss || x.micLevel || x.micBoost);
       r.notOn = (await require('./helpers/eqapo-devices').status({ render: d.headset, capture: micUsed ? d.mic : [] })).off;
+      // Corsair's old effects still on the headset with iCUE gone (27 Oct 2026, helpers/corsair-apo.js); a failed read shows nothing
+      r.corsairApo = await require('./helpers/corsair-apo').check({ render: d.headset, capture: d.mic }).catch(() => ({ flagged: [], icue: null }));
       return send(res, 200, r);
     } catch (e) { return send(res, 400, { error: e.message }); }
   }

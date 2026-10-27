@@ -285,6 +285,10 @@ the person (a download or install, a learning session, or a check in the maker's
      keyboard it found and where its layout came from (`[keyboard] ...`). If editing is blocked ("does not match the
      layout"), the definition is for another revision of the board: get the maker's file. QMK boards without VIA
      need VIA enabled in their firmware, which is the owner's call (never flash it for them).
+     A VIA keyboard no driver names by id (27 Oct 2026, helpers/via-generic.mjs) is asked only VIA's protocol version
+     first (no answer: stepped aside, nothing else sent), then only read until the person presses Turn on settings on
+     the Keyboard page; each group (keys, knob, macros, lighting) opens only after its write-then-read-back check. With
+     no published layout it still connects (layers, knob, macros, lights), its keys not drawn.
      A board VIA's library lacks (Keychron Pro, Max, HE, 8K; Lemokey) has a **Get the layout** button on the Keyboard
      page: it gets Keychron's official file (helpers/via-sources.json, pinned commits), checks it is for that vid/pid and
      drawable, saves it, then DeviceHub needs a restart (docs/handoff/via-fetch.md).

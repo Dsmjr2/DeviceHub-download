@@ -12,11 +12,37 @@ import { encodeMacro, decodeMacro, splitMacros, joinMacros } from './macros.js';
 import { P75, keymapLooksRight } from './via-layout.js';
 
 let layout = P75;
-// the agent sets the layout of the VIA keyboard it found (null: the P75)
-export function useLayout(l) { layout = l || P75; }
+// the agent sets the layout of the VIA keyboard it found (null: the P75). none (27 Oct 2026): a VIA keyboard with no
+// published layout: { name, why }; it still connects with what VIA itself reports (layers, knob, macros, lighting)
+export function useLayout(l, none = null) { layout = l || (none ? noLayout(none) : P75); }
+const noLayout = (none) => ({ name: String(none.name || 'VIA keyboard').slice(0, 60), vpid: null, rows: 0, cols: 0, width: 0, height: 0, keys: [], none: String(none.why || 'no layout was found for it') });
 let kb = null;
 let base = null;           // session data: { info, keymap, encoders, macros, macroInfo, original }
 let lightingOk = false;
+
+// An unlisted VIA keyboard (27 Oct 2026, helpers/via-generic.mjs): one no driver of DeviceHub's names by id. It is asked
+// only VIA's protocol version (0x01) until it answers one; then it is only read until the person presses Turn on
+// settings, and each group of settings opens only once its write-then-read-back check passed (turnOn below).
+// gate: { id 'vid:pid', vid, pid, unlisted, store: { get(id), set(id, rec) }, onStepAside(id, why) }
+let gate = { id: null, unlisted: false, store: null, onStepAside: null };
+let aside = null;          // { id, why }: it did not answer VIA, so nothing more is sent to it
+let memory = {};           // id -> record when no store is given (tests)
+export function useViaGate(g) { gate = { id: null, unlisted: false, store: null, onStepAside: null, ...g }; aside = null; }
+const record = () => (gate.store ? gate.store.get(gate.id) : memory[gate.id]) || null;
+const saveRecord = (r) => { if (gate.store) gate.store.set(gate.id, r); else memory[gate.id] = r; };
+const TURN_ON_LINE = "DeviceHub writes each setting's current value back once to check it.";
+const validProtocol = (v) => Number.isInteger(v) && v >= 7 && v <= 0x20;
+const groupOf = (kind, key) => (kind === 'key' ? 'keys' : kind === 'enc' ? 'knob' : kind === 'macro' || kind === 'macroRaw' ? 'macros' : LIGHT_KEYS.includes(key) ? 'lighting' : null);
+// null = the write may go ahead; else why not
+function gateWhy(group) {
+  if (!gate.unlisted) return null;
+  const r = record();
+  if (!r?.settingsOn?.at) return `its settings are not turned on yet: press Turn on settings (${TURN_ON_LINE})`;
+  const c = r.checks?.[group];
+  if (!c) return 'its check has not run yet: press Turn on settings again';
+  if (!c.ok) return `its check did not pass (${c.why || 'the value read back differed'})`;
+  return null;
+}
 
 // The matrix size is not reported by VIA: the layout gives it, and the base layer read with it must look right
 // (the P75: its measured keys; another keyboard: few empty or repeated codes where keys are) before anything is edited.
@@ -67,22 +93,110 @@ const adapter = {
   get session() { return base; },
 
   async connect(prompt) {
+    // stepped aside (27 Oct 2026): nothing is sent to it again until the person presses Connect
+    if (aside && aside.id === gate.id && !prompt) return false;
     kb = await ViaKeyboard.connect(prompt);
     if (!kb) return false;
+    // identify first (27 Oct 2026): VIA's protocol version is the only question until it answers one. A keyboard that
+    // does not (no reply, 0xFF, a version VIA never had) is not driven: let go of, and the agent tries the next one.
+    if (gate.id && layout !== P75) {
+      let v = null, why = null;
+      try { v = await kb.protocolVersion(); } catch (e) { why = `it did not answer VIA's protocol version question (${e.message})`; }
+      if (!why && !validProtocol(v)) why = `it answered protocol version ${v}, which is not VIA`;
+      if (why) {
+        aside = { id: gate.id, why };
+        try { kb.device.close?.(); } catch {}
+        kb = null; base = null;
+        try { gate.onStepAside?.(gate.id, why); } catch {}
+        return false;
+      }
+      aside = null;
+    }
     const info = await kb.info();
-    if (!(info.protocol >= 7 && info.protocol <= 0x20)) throw new Error(`answered VIA version ${info.protocol}: firmware does not speak VIA`);
-    const keymap = await kb.readKeymap(layout.rows, layout.cols);
-    if (!keymapLooksRight(layout, keymap)) throw new Error(`the keymap does not match the ${layout.name} layout; editing is blocked to be safe`);
+    if (!validProtocol(info.protocol)) throw new Error(`answered VIA version ${info.protocol}: firmware does not speak VIA`);
+    let keymap = null;
+    if (!layout.none) {
+      keymap = await kb.readKeymap(layout.rows, layout.cols);
+      if (!keymapLooksRight(layout, keymap)) {
+        if (layout === P75) throw new Error(`the keymap does not match the ${layout.name} layout; editing is blocked to be safe`);
+        // another keyboard (27 Oct 2026): its definition is for another revision of the board; it still connects, keys not drawn
+        layout = noLayout({ name: layout.name, why: `the layout file does not match this keyboard's keymap (another revision of the board?), so its keys are not drawn and cannot be changed` });
+        keymap = null;
+      }
+    }
     const encoders = await loadEncoders(info.layers);
     const macros = await loadMacros();
     lightingOk = !!(await kb.findLightingChannel());
-    base = { info, keymap, encoders, macros, layout, original: keymap.map((l) => l.map((r) => [...r])) };
+    base = { info, keymap, encoders, macros, layout, original: keymap ? keymap.map((l) => l.map((r) => [...r])) : null };
     return true;
+  },
+
+  // what the Keyboard page and Set up show (27 Oct 2026): this keyboard's id, whether it is unlisted, and whether its
+  // settings are on and checked. Read-only.
+  get via() {
+    if (!gate.id) return null;
+    const r = record();
+    const checks = r?.checks || {};
+    return { id: gate.id, vid: gate.vid || null, pid: gate.pid || null, unlisted: !!gate.unlisted, on: !!r?.settingsOn?.at, checks,
+      needsTurnOn: !!gate.unlisted && !aside && (!r?.settingsOn?.at || !Object.keys(checks).length),
+      aside: aside?.id === gate.id ? aside.why : null, noLayout: layout.none || null, turnOnLine: TURN_ON_LINE };
+  },
+  // the person's Turn on settings (27 Oct 2026; POST /api/agent/turn-on, under the device's lock, a backup first:
+  // backupBeforeTurnOn): kept per keyboard, then each group's check: a value read just before is written back once and
+  // read back (one key, the knob, the first macro bytes, the lighting effect). Only a group that passed opens.
+  backupBeforeTurnOn: true,
+  async turnOn(now = new Date()) {
+    if (!gate.unlisted) return { ran: false, on: true, why: 'this keyboard is already on DeviceHub\'s list; its settings are on' };
+    if (!kb || !base) return { ran: false, on: false, why: 'connect it first' };
+    const at = now.toISOString();
+    const rec = { ...(record() || {}), settingsOn: { at } };
+    const checks = {};
+    const run = async (group, fn) => {
+      try { const why = await fn(); checks[group] = why === 'skip' ? null : why ? { ok: false, why, at } : { ok: true, at }; }
+      catch (e) { checks[group] = { ok: false, why: e.message, at }; }
+      if (!checks[group]) delete checks[group];
+    };
+    // keys: the first drawn key of the base layer, its own code put back
+    if (base.keymap && !layout.none) await run('keys', async () => {
+      const k = layout.keys.find((x) => !x.knob && !isDangerous(base.keymap[0][x.row][x.col]));
+      if (!k) return 'skip';
+      const was = await kb.getKeycode(0, k.row, k.col);
+      if (isDangerous(was)) return 'skip';
+      const now2 = await kb.setKeycode(0, k.row, k.col, was);
+      base.keymap[0][k.row][k.col] = now2;
+      return now2 === was ? null : `the key read back 0x${now2.toString(16)} after 0x${was.toString(16)} was written`;
+    });
+    if (base.encoders) await run('knob', async () => {
+      const was = await kb.getEncoder(0, 0, false);
+      if (isDangerous(was)) return 'skip';
+      const now2 = await kb.setEncoder(0, 0, false, was);
+      base.encoders[0][0] = now2;
+      return now2 === was ? null : 'the knob read back differently';
+    });
+    // macros: the first bytes of the macro buffer, exactly as read, written back and read back
+    await run('macros', async () => {
+      const mi = await kb.macroInfo();
+      if (!mi.count || !mi.size) return 'skip';
+      const was = [...(await kb.readMacroBuffer(Math.min(28, mi.size)))];
+      await kb.writeMacroBuffer(was);   // reads back and compares itself
+      base.macros = await loadMacros();
+      return null;
+    });
+    if (lightingOk) await run('lighting', async () => {
+      const l = await kb.getLighting();
+      const after = await kb.setLighting('effect', l.effect);
+      return after.effect === l.effect ? null : `the lighting effect read back ${after.effect} after ${l.effect} was written`;
+    });
+    rec.checks = checks;
+    saveRecord(rec);
+    const list = Object.values(checks);
+    const passed = list.filter((c) => c.ok).length;
+    return { ran: list.length > 0, on: true, why: list.length ? null : 'it has nothing DeviceHub can check', counts: { checked: list.length, passed, failed: list.length - passed, waiting: 0 } };
   },
 
   async info() {
     const i = base.info;
-    return { Model: i.name || layout.name, Protocol: `VIA ${i.protocol}`, Layers: i.layers, Matrix: `${layout.rows} × ${layout.cols}`, Layout: layout.builtIn ? 'built in' : 'VIA definition', Knob: base.encoders ? 'yes' : 'no', Macros: `${base.macros.mi.count} slots` };
+    return { Model: i.name || layout.name, Protocol: `VIA ${i.protocol}`, Layers: i.layers, Matrix: layout.none ? 'not published' : `${layout.rows} × ${layout.cols}`, Layout: layout.builtIn ? 'built in' : layout.none ? 'not published' : 'VIA definition', Knob: base.encoders ? 'yes' : 'no', Macros: `${base.macros.mi.count} slots` };
   },
 
   battery: async () => null,
@@ -98,7 +212,7 @@ const adapter = {
 
   // Everything, freshly read from the board, for the backup file.
   async rawBackup() {
-    const keymap = await kb.readKeymap(layout.rows, layout.cols);
+    const keymap = layout.none ? null : await kb.readKeymap(layout.rows, layout.cols);
     const encoders = await loadEncoders(base.info.layers);
     const macros = await loadMacros();
     return { model: layout.name, rows: layout.rows, cols: layout.cols, layers: base.info.layers, keymap, encoders, macroBuffer: [...macros.buf.slice(0, macros.raw.reduce((n, m) => n + m.length + 1, 0))] };
@@ -107,6 +221,10 @@ const adapter = {
   async write(key, value) {
     const [kind, ...rest] = key.split(':');
     const layers = base.info.layers;
+    // an unlisted keyboard (27 Oct 2026): nothing is sent until its settings are on and that group's check passed
+    if (kind === 'key' && layout.none) throw new Error('this keyboard has no published key layout, so its keys cannot be changed here');
+    const shut = gateWhy(groupOf(kind, key));
+    if (shut) throw new Error(`${key} is read-only: ${shut}`);
     if (kind === 'key' || kind === 'enc') {
       if (!isInt(value, 0, 0xffff)) throw new Error(`keycode ${value} is not valid`);
       if (isDangerous(value)) throw new Error('reset / bootloader keycodes are blocked');

@@ -21,7 +21,7 @@ import * as myDevices from './my-devices.mjs';
 import * as autoReport from './auto-report.mjs';
 import { applyAdded } from './profile-added.mjs';
 import { useKeyboardIds } from '../public/devices/via.js';
-import { useLayout } from '../public/devices/keyboard-adapter.js';
+import { useLayout, useViaGate } from '../public/devices/keyboard-adapter.js';
 import { fromDefinition } from '../public/devices/via-layout.js';
 
 const require = createRequire(import.meta.url);
@@ -136,24 +136,45 @@ export async function start({ port, corsairHelper }) {
   setAnnounceHandlers((id) => core.refresh(id, { quiet: true, dpi: true }).catch(() => {}), (id, on) => { if (id === 'mouse') env.dpiEvents = on; });
   if (corsair) setCorsairCall(async (action, body) => corsair.handle(action, body || {}));
   mouse.levelFilter = require('./mouse-level').filter;  // the mouse's real battery level (helpers/mouse-level.js)
-  // Any VIA keyboard (20 Oct 2026; helpers/via-defs.js): no P75 here but another VIA keyboard: its VIA definition gives
-  // the layout, and the keyboard slot uses it. DEVICEHUB_VIA_TEST=1 runs the P75 itself this way (via-definitions\
-  // 342DE479.json), to test the path on a known board.
+  // Any VIA keyboard, any brand (27 Oct 2026, helpers/via-generic.mjs): found by its VIA collection (FF60:0061), never
+  // while the P75 is plugged in. A listed one (an id DeviceHub's drivers name) runs as before; an unlisted one is asked
+  // only VIA's protocol version first and then only read until Turn on settings (keyboard-adapter.js). One that does
+  // not answer steps aside and the next VIA keyboard is tried. No layout: it still connects, its keys not drawn.
   try {
     const via = require('./via-defs');
+    const vg = await import('./via-generic.mjs');
     const found = await via.findKeyboards();
-    const p75 = found.some((k) => k.vid === '342D' && k.pid === 'E479');
-    const other = process.env.DEVICEHUB_VIA_TEST === '1' ? found.find((k) => k.vid === '342D' && k.pid === 'E479') : (p75 ? null : found[0]);
     if (found.length) console.log(`[keyboard] VIA keyboards: ${found.map((k) => `${k.name || 'unnamed'} (${k.vid}:${k.pid})`).join(', ')}`);
-    if (other) {
+    const listed = vg.listedIds();
+    const store = vg.settingsStore();
+    const aside = new Set();
+    const pick = () => vg.candidates(found, { listed, aside, viaTest: process.env.DEVICEHUB_VIA_TEST === '1' })[0] || null;
+    const use = async (other) => {
+      let layout = null, none = null;
       try {
         const { def, from } = await via.definitionFor(other.vid, other.pid);
-        const layout = fromDefinition(def);
+        layout = fromDefinition(def);
         if (!layout.name || layout.name === 'VIA keyboard') layout.name = other.name || layout.name;
-        useLayout(layout); useKeyboardIds(parseInt(other.vid, 16), parseInt(other.pid, 16)); useKeyboardSpec(other.vid, other.pid, other.name);
         console.log(`[keyboard] ${layout.name}: layout from ${from}, ${layout.rows}x${layout.cols}, ${layout.keys.length} keys`);
-      } catch (e) { console.log(`[keyboard] ${other.name || other.vid + ':' + other.pid}: no layout (${e.message})`); }
+      } catch (e) {
+        none = { name: other.name || `VIA keyboard ${other.vid}:${other.pid}`, why: `its key layout is not published (${e.message})` };
+        console.log(`[keyboard] ${other.name || other.vid + ':' + other.pid}: no layout (${e.message}); it connects without its keys drawn`);
+      }
+      useLayout(layout, none);
+      useViaGate({ id: other.id, vid: other.vid, pid: other.pid, unlisted: other.unlisted, store, onStepAside });
+      useKeyboardIds(parseInt(other.vid, 16), parseInt(other.pid, 16));
+      // an unlisted keyboard's channel checks the never list before every send (VIA 0x06 / 0x0A / 0x0B / 0x10)
+      useKeyboardSpec(other.vid, other.pid, other.name, { never: other.unlisted });
+      if (other.unlisted) console.log(`[keyboard] ${other.name || other.id}: not on DeviceHub's list: it is identified first, then read only until Turn on settings`);
+    };
+    function onStepAside(id, why) {
+      aside.add(id);
+      console.log(`[keyboard] ${id}: stepped aside: ${why}; nothing more is sent to it`);
+      const next = pick();
+      if (next) use(next).then(() => setTimeout(() => core.connect('keyboard', false).catch(() => {}), 300)).catch(() => {});
     }
+    const first = pick();
+    if (first) await use(first);
   } catch (e) { console.log(`[keyboard] looking for VIA keyboards failed: ${e.message}`); }
   for (const a of [mouse, headset, keyboard]) core.register(a);
   // devices added on this PC (my-devices/<name>/device.mjs; helpers/my-devices.mjs): an update never touches them
@@ -288,6 +309,8 @@ function adapterMeta(d) {
   // while the mouse is away its flash is not read: which settings read back cleanly is taken from its last visit
   if (a.id === 'mouse') meta.trusted = Object.fromEntries(Object.keys(d.values || {}).map((k) => [k, d.status !== 'connected' && d.savedTrusted ? !!d.savedTrusted[k] : !!a.trusted?.(k)]));
   if (a.id === 'headset') { meta.props = a.props; meta.endpoints = a.endpoints; meta.mode = a.mode; meta.generic = a.generic ? { usb: a.generic.usb, device: a.generic.device } : null; meta.headsets = a.headsets; meta.picked = a.picked; }
+  // an unlisted VIA keyboard's id, Turn on settings state and missing layout (27 Oct 2026, helpers/via-generic.mjs)
+  if (a.id === 'keyboard') meta.via = a.via || null;
   if (a.id === 'keyboard' && a.session) {
     const s = a.session;
     meta.session = { info: s.info, keymap: s.keymap, encoders: s.encoders, original: s.original, layout: s.layout, macros: { mi: s.macros.mi, list: s.macros.list, editable: s.macros.editable, raw: s.macros.raw } };

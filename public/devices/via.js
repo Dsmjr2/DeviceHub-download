@@ -45,6 +45,10 @@ export class ViaKeyboard {
       return true;
     } });
     this.lightingChannel = null;
+    // (27 Oct 2026) the refused commands are stopped here too, below cmd(), so no path (the lighting probe included)
+    // can ever send a reset or bootloader jump
+    const request = this.ch.request.bind(this.ch);
+    this.ch.request = (bytes, o) => (FORBIDDEN.has(bytes[0]) ? Promise.reject(new Error(`refusing VIA command 0x${bytes[0].toString(16)}`)) : request(bytes, o));
   }
 
   static async connect(prompt = true) {
@@ -60,6 +64,13 @@ export class ViaKeyboard {
     const r = await this.ch.request(bytes);
     if (r[0] === 0xff) throw new Error(`keyboard does not handle command 0x${bytes[0].toString(16)}`);
     return r;
+  }
+
+  // VIA's protocol version, and nothing else (27 Oct 2026): the one question asked of a keyboard before DeviceHub knows
+  // it speaks VIA (keyboard-adapter.js connect). Throws on no reply or an unhandled command (0xFF).
+  async protocolVersion() {
+    const p = await this.cmd([CMD.protocolVersion]);
+    return (p[1] << 8) | p[2];
   }
 
   async info() {

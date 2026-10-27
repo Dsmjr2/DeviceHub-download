@@ -369,10 +369,11 @@ export function addSpec(spec) {
   s.never = true;   // a library or my-devices driver's channel: the never list is checked before every send (checkNever)
   SPECS.push(s); hosts.push(new HostDevice(s));
 }
-// another VIA keyboard instead of the P75 (helpers/via-defs.js): same channel settings, its own ids
-export function useKeyboardSpec(vid, pid, name) {
+// another VIA keyboard instead of the P75 (helpers/via-defs.js): same channel settings, its own ids. never (27 Oct 2026):
+// an unlisted VIA keyboard's channel checks the never list before every send, as a library driver's does
+export function useKeyboardSpec(vid, pid, name, { never = false } = {}) {
   const i = SPECS.findIndex((s) => s.id === 'keyboard');
-  const s = { ...SPECS[i], vid, pid, vendorId: parseInt(vid, 16), productId: parseInt(pid, 16), productName: name || 'VIA keyboard' };
+  const s = { ...SPECS[i], vid, pid, vendorId: parseInt(vid, 16), productId: parseInt(pid, 16), productName: name || 'VIA keyboard', ...(never ? { never: true } : {}) };
   SPECS[i] = s; hosts[i] = new HostDevice(s);
 }
 // the helper stopped: every open device is gone until it reopens

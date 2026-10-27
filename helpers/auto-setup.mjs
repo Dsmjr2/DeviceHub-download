@@ -203,6 +203,15 @@ export function summary({ root = ROOT, sources = {} } = {}) {
   for (const d of devs.filter((x) => ['mouse', 'headset', 'keyboard'].includes(x.id))) {
     if (!d.seen && !['connected', 'asleep'].includes(d.status)) continue;
     const model = d.info?.Model && d.info.Model !== d.adapter?.title ? ` (${d.info.Model})` : '';
+    // an unlisted VIA keyboard (27 Oct 2026, helpers/via-generic.mjs): it reads by itself; its settings wait for Turn on settings
+    if (d.id === 'keyboard' && d.adapter?.via?.needsTurnOn) {
+      const title = d.adapter?.title || 'VIA keyboard';
+      const item = { what: d.id, state: 'one-click', name: title, page: d.id, short: d.status === 'connected' ? 'VIA keyboard found. Turn on its settings: DeviceHub tests each one first.' : 'VIA keyboard found. Connect it, then turn on its settings.',
+        line: `${title}${model}: a VIA keyboard not on DeviceHub's list; it reads by itself, its settings are read-only until you press Turn on settings on the Keyboard page. ${d.adapter.via.turnOnLine || TURN_ON_LINE}` };
+      if (d.status === 'connected') item.action = { kind: 'turn-on', id: 'keyboard', label: `Turn on settings for ${title}` };
+      works.push(item); attention.push(item.line);
+      continue;
+    }
     works.push({ what: d.id, line: `${d.adapter?.title || d.id}${model}: runs on its ${d.adapter?.kind || d.id} page${d.status === 'connected' ? '' : ` (${d.status} now)`}`,
       state: 'ready', name: d.adapter?.title || d.id, short: `Ready on the ${d.adapter?.kind || d.id} page${d.status === 'connected' ? '' : ` (${d.status} now)`}.`, page: d.id });
   }

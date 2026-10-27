@@ -20,7 +20,9 @@ export function lineFor(title, r) {
 
 // waiting for Turn on settings: a library or learned driver (adapter.library) that says so (library.turnOn)
 // (never one that found nothing of its own on this PC: d.absent, helpers/my-devices.mjs isAbsent)
-export const waitingForTurnOn = (d) => !!d?.adapter?.plugin && !d.absent && !!d.adapter.library && d.adapter.library.turnOn === true;
+// or an unlisted VIA keyboard in the keyboard slot (27 Oct 2026, adapter.via.needsTurnOn; helpers/via-generic.mjs)
+export const waitingForTurnOn = (d) => (!!d?.adapter?.plugin && !d.absent && !!d.adapter.library && d.adapter.library.turnOn === true)
+  || (d?.id === 'keyboard' && d.adapter?.via?.needsTurnOn === true);
 
 export async function turnOnAll({ port = PORT, fetch: get = fetch, timeoutMs = 120000 } = {}) {
   const base = `http://127.0.0.1:${port}`;

@@ -10,6 +10,9 @@ const native = require('./native');
 const { writeAtomic } = require('./safe-write');
 
 const DIR = path.join(__dirname, '..', 'via-definitions');
+// swappable for tests (tests/via-generic.mjs): where definitions are kept, and the one GET to VIA's library
+const deps = { dir: DIR, fetch: (u, o) => fetch(u, o) };
+const LIBRARY_HOST = 'usevia.app';
 const LIBRARY = (vpid) => `https://usevia.app/definitions/v3/${vpid}.json`;
 
 // [{ vid: '342D', pid: 'E479', name: 'EPOMAKER P75' }]
@@ -21,26 +24,35 @@ async function findKeyboards() {
 }
 
 async function definitionFor(vid, pid) {
-  const file = path.join(DIR, `${vid}${pid}.json`.toUpperCase().replace('.JSON', '.json'));
+  const file = path.join(deps.dir, `${vid}${pid}.json`.toUpperCase().replace('.JSON', '.json'));
   try { if (fs.existsSync(file)) return { def: JSON.parse(fs.readFileSync(file, 'utf8')), from: `via-definitions\\${path.basename(file)}` }; }
   catch (e) { throw new Error(`via-definitions\\${path.basename(file)} is not valid JSON (${e.message})`); }
   const vpid = parseInt(vid, 16) * 65536 + parseInt(pid, 16);
-  const r = await fetch(LIBRARY(vpid), { signal: AbortSignal.timeout(15000) }).catch(() => null);
+  // VIA's library (27 Oct 2026: the same rules as helpers/via-fetch.mjs): HTTPS to usevia.app only (a redirect elsewhere
+  // is refused), JSON only, at most its MAX_BYTES, and the file must be a definition for THIS keyboard (vendor and
+  // product id) that DeviceHub can draw (via-fetch.mjs check) before it is saved. Data only: never run.
+  const vf = await import('./via-fetch.mjs').catch(() => null);
+  const r = await deps.fetch(LIBRARY(vpid), { signal: AbortSignal.timeout(15000) }).catch(() => null);
   const type = r?.headers?.get('content-type') || '';
-  if (r?.ok && type.includes('json')) {
-    const text = await r.text();
-    const def = JSON.parse(text);
-    fs.mkdirSync(DIR, { recursive: true });
-    writeAtomic(file, text);
-    return { def, from: 'VIA\'s library' };
+  let finalHost = null;
+  try { const u = new URL(r?.url || LIBRARY(vpid)); finalHost = u.protocol === 'https:' ? u.hostname : null; } catch {}
+  if (r?.ok && type.includes('json') && finalHost === LIBRARY_HOST && vf) {
+    const said = Number(r.headers.get('content-length'));
+    const text = said > vf.MAX_BYTES ? null : await r.text();
+    if (text != null && Buffer.byteLength(text) <= vf.MAX_BYTES) {
+      vf.check(text, String(vid).toUpperCase(), String(pid).toUpperCase());   // throws one sentence when it is not
+      const def = JSON.parse(text.replace(/^\uFEFF/, ''));
+      fs.mkdirSync(deps.dir, { recursive: true });
+      writeAtomic(file, text);
+      return { def, from: 'VIA\'s library' };
+    }
   }
   // Not in VIA's bundled library (e.g. Keychron Pro / Max / HE / 8K, Lemokey): auto-fetch from pinned official VIA sources
   try {
-    const vf = await import('./via-fetch.mjs');
     const got = await vf.get(vid, pid);
     if (got?.ok && fs.existsSync(file)) return { def: JSON.parse(fs.readFileSync(file, 'utf8')), from: `via-definitions\\${path.basename(file)}` };
   } catch {}
   throw new Error('not in VIA\'s library: put the maker\'s VIA definition file in the via-definitions folder');
 }
 
-module.exports = { findKeyboards, definitionFor, DIR };
+module.exports = { findKeyboards, definitionFor, DIR, deps };
