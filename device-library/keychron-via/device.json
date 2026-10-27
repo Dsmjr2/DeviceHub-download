@@ -8,7 +8,6 @@
     "0b10", "0b11", "0b12", "0220", "0221", "0222", "0223", "0224", "0225", "0a20", "0a21", "0a22", "0a23", "0a24", "0a25", "0e20", "0e21", "0e22",
     "0280", "0281", "0282", "0283", "0284", "0285", "0310", "0311", "0312", "0313", "0314", "0315", "0317", "0913", "0914", "0915", "0f10",
     "0160", "0161", "0162", "0163", "0860", "0861"],
-  "family": ["FF60:0061"],
   "models": ["Q1 (v1)", "Q1 (v2)", "Q1 Pro", "Q1 Max", "Q1 HE", "K2 Pro", "K2 Max", "K2 HE", "K8 Pro", "V1", "V1 Max", "V1 8K", "Q6", "Q6 Max"],
   "works": [
     "written from docs/brands/keychron.md (Keychron's QMK fork) and checked against a simulated keyboard only (tests/sim-keychron-via.mjs)",
