@@ -15,7 +15,8 @@ Push-Location $root
 try {
   # the committed version is published (git archive below), so changes still open in the folder do not block it or go out
   $private = (git rev-parse --short=12 HEAD).Trim()
-  $files = @(git ls-files | Where-Object { $_ -ne 'JOURNAL.md' -and $_ -notmatch '^public/preview-' -and $_ -notmatch '^screenshots/' })
+  # the makers' product photos stay on the publisher's PC too (27 Oct 2026, helpers/make-installer.ps1)
+  $files = @(git ls-files | Where-Object { $_ -ne 'JOURNAL.md' -and $_ -notmatch '^public/preview-' -and $_ -notmatch '^screenshots/' -and $_ -notmatch '^public/img/(xlite|hs80|p75)\.png$' })
 } finally { Pop-Location }
 
 if (-not (Test-Path (Join-Path $Clone '.git'))) { & git clone -q --no-checkout $url $Clone 2>&1 | Out-Null; if ($LASTEXITCODE) { throw "could not clone $url" } }

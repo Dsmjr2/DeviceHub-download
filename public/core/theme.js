@@ -30,10 +30,18 @@ const ACCENT_KEY = 'devicehub.themeAccent';
 const getLocal = (k) => { try { return localStorage.getItem(k) || null; } catch { return null; } };
 const setLocal = (k, v) => { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch {} };
 
+// The makers' product photos are only on the publisher's PC (27 Oct 2026, Shawn: "just keep this on mine"): a copy without
+// them shows Realistic as Blueprint, and Settings does not offer it; the saved choice stays as it is. null = not known yet.
+let photos = null, shown = null;
+export const photosHere = () => photos !== false;
+const photosCheck = typeof fetch === 'function' && typeof document !== 'undefined'
+  ? fetch('/img/hs80.png', { method: 'HEAD' }).then((r) => r.ok, () => true).then((ok) => { photos = ok; if (!ok && shown === 'photo') applyArtStyle('photo'); })
+  : null;
 export function applyArtStyle(style) {
   style = RENAMED[style] || style;
   const resolved = ART_STYLES.some(([k]) => k === style) ? style : 'blueprint';
-  document.documentElement.dataset.art = resolved;
+  shown = resolved;
+  document.documentElement.dataset.art = resolved === 'photo' && photos === false ? 'blueprint' : resolved;
   return resolved;
 }
 export async function loadArtStyle() {

@@ -13,7 +13,9 @@ $appCommit = $null
 if ($args -notcontains '-NoPublish') { $appCommit = (& (Join-Path $PSScriptRoot 'publish-code.ps1') | Select-Object -Last 1); if ($appCommit -notmatch '^[0-9a-f]{7,40}$') { $appCommit = $null } }
 Push-Location $root
 try {
-  $files = git ls-files | Where-Object { $_ -notmatch '^public/preview-' -and $_ -notmatch '^screenshots/' -and $_ -ne 'JOURNAL.md' -and $_ -ne 'eq-presets.json' }
+  # the makers' product photos (public/img xlite, hs80, p75) stay on the publisher's PC (27 Oct 2026, Shawn: "just keep
+  # this on mine"); a copy without them shows the drawings (public/core/theme.js)
+  $files = git ls-files | Where-Object { $_ -notmatch '^public/preview-' -and $_ -notmatch '^screenshots/' -and $_ -ne 'JOURNAL.md' -and $_ -ne 'eq-presets.json' -and $_ -notmatch '^public/img/(xlite|hs80|p75)\.png$' }
   if (-not $files) { throw 'git ls-files returned nothing' }
   $dist = Join-Path $root 'dist'
   New-Item -ItemType Directory -Force $dist | Out-Null
@@ -177,6 +179,8 @@ try {
     $extra = $names | Where-Object { $_ -like 'node_modules/*' } | ForEach-Object { $_.Split('/')[1] } | Sort-Object -Unique | Where-Object { $_ -notin $libs }
     if ($extra) { throw "unexpected libraries in the zip: $($extra -join ', ')" }
     if ($names -notcontains 'runtime/node.exe') { throw 'runtime/node.exe is missing from the zip' }
+    $photos = $names | Where-Object { $_ -match '^public/img/(xlite|hs80|p75)\.png$' }
+    if ($photos) { throw "the makers' product photos got into the zip: $($photos -join ', ')" }
     # the third-party notices and every license text they name (27 Oct 2026; THIRD-PARTY-NOTICES.txt, helpers\licenses), tracked in git so they go in with the app's files
     $noLic = @('THIRD-PARTY-NOTICES.txt', 'helpers/licenses/GPL-2.0.txt', 'helpers/licenses/GPL-3.0.txt', 'helpers/licenses/LGPL-3.0.txt', 'helpers/licenses/LGPL-2.1.txt', 'helpers/licenses/hidapi-BSD.txt', 'helpers/licenses/DirectXShaderCompiler-LICENSE.txt', 'helpers/licenses/nodejs-v24.14.0-LICENSE.txt') | Where-Object { $names -notcontains $_ }
     if ($noLic) { throw "license files missing from the zip (commit them first): $($noLic -join ', ')" }

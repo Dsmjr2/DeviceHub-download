@@ -61,7 +61,8 @@ Pixelify Sans (public/fonts/PixelifySans.woff2), Copyright 2021 The Pixelify San
   Source: https://github.com/eifetx/Pixelify-Sans
 
 The makers' product photos (public/img/xlite.png, hs80.png, p75.png): pictures of the Pulsar X-Lite, Corsair HS80 and
-  Epomaker P75 from their makers, used for the Realistic look. They belong to their makers.
+  Epomaker P75 from their makers, used for the Realistic look. They belong to their makers. Not shipped since 27 Oct
+  2026: they stay on the publisher's own PC, and other copies show the drawings.
 
 DOWNLOADED FROM THE MAKER, ONLY WHEN YOU CLICK (not shipped by DeviceHub)
 -------------------------------------------------------------------------

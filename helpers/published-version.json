@@ -1,7 +1,7 @@
 {
-  "version": "1.4",
-  "commit": "3552a3320ec0",
+  "version": "1.5",
+  "commit": "a94cf427730f",
   "notes": [
-    "Smaller updates: download only changed files; quieter when idle"
+    "Product photos stay on this PC only"
   ]
 }

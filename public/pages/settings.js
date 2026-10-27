@@ -25,7 +25,7 @@ async function uninstall() {
   } catch { toast('DeviceHub is not running', 'bad'); }
 }
 import { env } from '../core/env.js';
-import { ART_STYLES, saveArtStyle, THEME_ACCENTS, THEME_BGS, SKIN_SILVER_NAME, currentTheme, saveTheme, hasPicture, removePicture } from '../core/theme.js';
+import { ART_STYLES, photosHere, saveArtStyle, THEME_ACCENTS, THEME_BGS, SKIN_SILVER_NAME, currentTheme, saveTheme, hasPicture, removePicture } from '../core/theme.js';
 import { slotArt } from '../ui/art.js';
 import { copyDownloadLink, copyShortReport } from '../core/share.js';
 import { installerButton, installerStatus, installing } from '../ui/installer-button.js';
@@ -439,7 +439,7 @@ function autoReportSwitch() {
 function appearanceCard() {
   const cur = document.documentElement.dataset.art || 'frosted';  // applyArtStyle has already mapped an old look to its new one
   return card([h('h2', {}, 'Appearance')],
-    h('div', { class: 'art-styles' }, ...ART_STYLES.map(([key, name]) => h('button', { class: `art-style${key === cur ? ' sel' : ''}`, 'aria-pressed': String(key === cur), dataset: { look: key },
+    h('div', { class: 'art-styles' }, ...ART_STYLES.filter(([key]) => key !== 'photo' || photosHere()).map(([key, name]) => h('button', { class: `art-style${key === cur ? ' sel' : ''}`, 'aria-pressed': String(key === cur), dataset: { look: key },
       onclick: async () => { await saveArtStyle(key); toast(`Drawings: ${name}`, 'good', { ms: 1400 }); rerender(); } },
       h('div', { class: 'art-preview', dataset: { artPreview: key } }, slotArt('mouse', devices.mouse), slotArt('headset', devices.headset), slotArt('keyboard', devices.keyboard)),
       h('span', {}, name)))),
