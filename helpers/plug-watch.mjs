@@ -43,7 +43,7 @@ export function describe(added, { usb = [], rec = null, brands = {}, own = { min
     if (all.length && !inst) continue;   // only a maybe driver went in for it: nothing to say until it finds its device
     const b = brands[vid.toLowerCase()];
     const name = u.name || (b ? `${b.name} device` : `USB device ${k}`);
-    if (inst) { out.push({ vid, pid, name: inst.product || name, brand: b?.name || null, installed: { name: inst.name, id: inst.id || null } }); continue; }
+    if (inst) { out.push({ vid, pid, name: inst.product || name, brand: b?.name || null, installed: { name: inst.name, id: inst.id || null, proven: !!inst.proven } }); continue; }
     if (mine.has(k) || !b || b.shared || vendorRefusal(vid)) continue;
     if (!b.kinds.some((x) => ['mouse', 'keyboard', 'headset'].includes(x))) continue;
     if (canSet(k) === false) continue;
