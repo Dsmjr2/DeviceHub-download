@@ -72,7 +72,11 @@ if ($gh -and $signedIn) {
   Write-Host "Uploading to $Repo release ${Tag}: the zip ($(& $mb $files[0]) MB) and Setup.exe ($(& $mb $files[3]) MB) at the same time..." -ForegroundColor Cyan
   $zipUp = Start-Upload $files[0] 'zip'
   $exeUp = Start-Upload $files[3] 'exe'
+  # the file list for smaller updates (27 Oct 2026, helpers/update-files.js), up before version.json names it
+  $filesGz = Join-Path $dist 'DeviceHub-files.json.gz'
+  $listUp = if (Test-Path $filesGz) { Start-Upload $filesGz 'files' } else { $null }
   Wait-Upload $zipUp 'DeviceHub-setup.zip'
+  if ($listUp) { Wait-Upload $listUp 'DeviceHub-files.json.gz' }
   Write-Host "  zip uploaded [$([int]$clock.Elapsed.TotalSeconds) s]"
   & gh release upload $Tag $files[1] $files[2] --repo $Repo --clobber
   if ($LASTEXITCODE) { $exeUp.WaitForExit(); throw 'the upload of version.json and the library failed (see above)' }

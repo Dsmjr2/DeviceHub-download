@@ -107,9 +107,44 @@ try {
     }
     # ---- end BUNDLED TOOLS ----
   } finally { $z.Dispose() }
+  # ---- FILE LIST (27 Oct 2026, smaller updates; helpers/update-files.js) ----
+  # dist\DeviceHub-files.json.gz: every file in the zip with its SHA-256 and size; "r" = also in the public download
+  # repository at the app commit (an update downloads only those that changed), "d" = the file itself for the ones made
+  # at each build (release.json, the helper, ...). Node, node_modules and the bundled tools are named only: a copy whose
+  # own differ takes the whole zip. Only for a published, unmodified version (the repository must hold the same files).
+  $filesGz = Join-Path $dist 'DeviceHub-files.json.gz'
+  if (Test-Path $filesGz) { Remove-Item $filesGz -Force }
+  $filesInfo = $null
+  $clone = Join-Path (Split-Path $root -Parent) 'DeviceHub-publish'
+  if ($appCommit -and $commit -notlike '*-modified' -and (Test-Path (Join-Path $clone '.git'))) {
+    $fullApp = (& git -C $clone rev-parse "$appCommit^{commit}").Trim()
+    $inRepo = @{}; foreach ($f in $files) { $inRepo[$f] = $true }
+    $sha = [Security.Cryptography.SHA256]::Create()
+    $fileList = [ordered]@{}
+    $z = [System.IO.Compression.ZipFile]::OpenRead($zip)
+    try {
+      foreach ($en in $z.Entries) {
+        if ($en.FullName.EndsWith('\') -or $en.FullName.EndsWith('/')) { continue }
+        $name = ($en.FullName -replace '[\\/]', '/') -replace '^DeviceHub/', ''
+        $ms = New-Object IO.MemoryStream; $st = $en.Open(); $st.CopyTo($ms); $st.Dispose()
+        $bytes = $ms.ToArray(); $ms.Dispose()
+        $item = [ordered]@{ h = ([BitConverter]::ToString($sha.ComputeHash($bytes)) -replace '-', '').ToLower(); s = $bytes.Length }
+        if ($inRepo.ContainsKey($name)) { $item.r = 1 }
+        elseif ($name -notlike 'node_modules/*' -and $name -notlike 'tools/*' -and $name -ne 'runtime/node.exe' -and $bytes.Length -le 1MB) { $item.d = [Convert]::ToBase64String($bytes) }
+        $fileList[$name] = $item
+      }
+    } finally { $z.Dispose() }
+    $json = [Text.Encoding]::UTF8.GetBytes((@{ commit = $fullApp; files = $fileList } | ConvertTo-Json -Compress -Depth 4))
+    $fs = [IO.File]::Create($filesGz); $gz = New-Object IO.Compression.GZipStream($fs, [IO.Compression.CompressionLevel]::Optimal); $gz.Write($json, 0, $json.Length); $gz.Dispose(); $fs.Dispose()
+    $filesInfo = [ordered]@{ size = (Get-Item $filesGz).Length; sha256 = (Get-FileHash $filesGz -Algorithm SHA256).Hash.ToLower() }
+    Write-Host "   file list: $($fileList.Count) files, $([math]::Round($filesInfo.size / 1KB)) KB"
+  }
+  # ---- end FILE LIST ----
   # the release's version file, published beside the zip: version, size and SHA-256, so an update is checked whole
   $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-  @{ commit = $commit; builtAt = $builtAt; appCommit = $appCommit; size = (Get-Item $zip).Length; sha256 = $hash } | ConvertTo-Json -Compress | Set-Content -Path (Join-Path $dist 'version.json') -Encoding ascii -NoNewline
+  $vj = [ordered]@{ commit = $commit; builtAt = $builtAt; appCommit = $appCommit; size = (Get-Item $zip).Length; sha256 = $hash }
+  if ($filesInfo) { $vj.files = $filesInfo }
+  $vj | ConvertTo-Json -Compress | Set-Content -Path (Join-Path $dist 'version.json') -Encoding ascii -NoNewline
   Remove-Item $helperDir -Recurse -Force -ErrorAction SilentlyContinue
   # signed with the publisher's key, kept only on this PC (helpers/sign-release.mjs): copies install only what it signs.
   # -NoSign: a test build left unsigned (copies refuse it as an update), so the key is not used for it.

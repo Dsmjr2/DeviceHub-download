@@ -6,6 +6,7 @@
 //   onEvent(type, fn)          fn(data) for each event; a late 'hello' listener gets the last hello at once
 //   onOpen(fn)                 fn() each time the stream (re)opens: read the full state again, nothing was missed
 //   streamUp()                 the stream is open now
+//   streamId()                 its id, for POST /api/events/want (the Overview's GPU chip asks for 'gpu' events)
 // The browser retries a dropped stream by itself, but gives up for good if a retry meets an error answer (a DeviceHub
 // restart caught mid-start; 19 Oct 2026: the window then showed a frozen picture). Every 5 s, a stream the browser
 // gave up on is replaced. ES / setI are for tests (tests/events.mjs).
@@ -49,3 +50,6 @@ export function onEvent(type, fn) {
 export function onOpen(fn) { openers.add(fn); return () => openers.delete(fn); }
 
 export const streamUp = () => !!es && !!ESource && es.readyState === ESource.OPEN;
+
+// this stream's id (from its hello), for POST /api/events/want; null before the first hello
+export const streamId = () => lastHello?.stream ?? null;

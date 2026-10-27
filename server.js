@@ -259,6 +259,10 @@ let updateNotice = null;
 // pushed when they change, beside the agent's device events, so the window polls none of them
 const windowEvents = require('./helpers/window-events');
 const hub = windowEvents.createHub();
+// the Overview's GPU chip on the stream, read only while a window shows it (helpers/gpu-watch.js); each stream has an id
+const gpuWatch = require('./helpers/gpu-watch').createGpuWatch({ read: () => require('./helpers/gpu').read() });
+const streams = new Map();   // id -> res
+let streamSeq = 0;
 let pushedVersion = null, pushedBackup = null;
 const helloNow = () => {
   pushedVersion = appVersion(); pushedBackup = windowEvents.lastBackupAt(BACKUPS);
@@ -535,13 +539,23 @@ async function api(req, res, url) {
     if (AGENT_ON && !agent && !agentTried) return send(res, 503, { error: 'agent starting' });
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
     res.write(': connected\n\n');
-    res.write(windowEvents.frame('hello', helloNow()));
+    const sid = ++streamSeq;
+    streams.set(sid, res);
+    res.write(windowEvents.frame('hello', { ...helloNow(), stream: sid }));
     openWindows++;
     const offHub = hub.add(res);
     const offAgent = agent ? agent.subscribe((type, data) => res.write(windowEvents.frame(type, data))) : () => {};
     const ping = setInterval(() => res.write(': ping\n\n'), 25000);
-    req.on('close', () => { offHub(); offAgent(); clearInterval(ping); openWindows--; });
+    req.on('close', () => { offHub(); offAgent(); clearInterval(ping); openWindows--; streams.delete(sid); gpuWatch.drop(sid); });
     return;
+  }
+  // what one window's stream wants beside the usual events: { stream, gpu } (the Overview's GPU chip, helpers/gpu-watch.js)
+  if (url.pathname === '/api/events/want' && req.method === 'POST') {
+    const b = await readBody(req);
+    const res2 = streams.get(Number(b?.stream));
+    if (!res2) return send(res, 404, { error: 'no such stream' });
+    gpuWatch.want(Number(b.stream), b.gpu === true, (d) => { try { res2.write(windowEvents.frame('gpu', d)); } catch {} });
+    return send(res, 200, { ok: true });
   }
   // Whether this server runs an agent (the window must then never open the devices itself), and whether it is up.
   if (url.pathname === '/api/agent-config') return send(res, 200, { agent: AGENT_ON, ready: !!agent });

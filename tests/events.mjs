@@ -101,7 +101,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const dev = src('public/core/devices.js');
   check(!/new EventSource/.test(dev) && /startEvents\(\)/.test(dev) && /onOpen\(/.test(dev), 'the devices use the same one stream, and read the full state on each open');
   const server = src('server.js');
-  check(/url\.pathname === '\/api\/events'/.test(server) && /frame\('hello', helloNow\(\)\)/.test(server), 'server.js has /api/events, hello first');
+  check(/url\.pathname === '\/api\/events'/.test(server) && /frame\('hello', \{ \.\.\.helloNow\(\), stream: sid \}\)/.test(server), 'server.js has /api/events, hello first');
   check(/hub\.push\('version'/.test(server) && /hub\.push\('backup'/.test(server) && /hub\.push\('power'/.test(server) && /hub\.push\('notice'/.test(server), 'server.js pushes version, backup, power and notice');
 }
 

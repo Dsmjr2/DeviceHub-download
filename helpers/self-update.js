@@ -33,14 +33,18 @@ const releasePayload = (v) => JSON.stringify([v.commit, v.builtAt, v.appCommit ?
 // (27 Oct 2026, readable versions) the version number and what's new have a second signature over everything
 // (helpers/sign-release.mjs payload2); `signature` stays as it was, so copies from before still accept the file
 const releasePayload2 = (v) => JSON.stringify([v.commit, v.builtAt, v.appCommit ?? null, v.size, v.sha256, v.version ?? null, v.notes ?? null]);
-// true when v is signed by this key: `signature` always, and `signature2` too when v carries a version or notes
+// (27 Oct 2026, smaller updates) the file list's size and SHA-256 (helpers/update-files.js), signed by `signature3`
+const releasePayload3 = (v) => JSON.stringify([v.commit, v.builtAt, v.appCommit ?? null, v.size, v.sha256, v.version ?? null, v.notes ?? null, v.files?.size ?? null, v.files?.sha256 ?? null]);
+// true when v is signed by this key: `signature` always, `signature2` too when v carries a version or notes, and
+// `signature3` when it carries a file list
 function verifyRelease(v, keyPem) {
   const crypto = require('crypto');
   try {
     const key = crypto.createPublicKey(keyPem);
     if (!v?.signature || !crypto.verify(null, Buffer.from(releasePayload(v)), key, Buffer.from(v.signature, 'base64'))) return false;
-    if (v.version == null && v.notes == null) return true;
-    return !!v.signature2 && crypto.verify(null, Buffer.from(releasePayload2(v)), key, Buffer.from(v.signature2, 'base64'));
+    if ((v.version != null || v.notes != null) && !(v.signature2 && crypto.verify(null, Buffer.from(releasePayload2(v)), key, Buffer.from(v.signature2, 'base64')))) return false;
+    if (v.files == null) return true;
+    return !!v.signature3 && crypto.verify(null, Buffer.from(releasePayload3(v)), key, Buffer.from(v.signature3, 'base64'));
   } catch { return false; }
 }
 async function releaseInfo() {
@@ -120,6 +124,29 @@ async function zipUpdate({ overwrite = false } = {}) {
   const crypto = require('crypto'), os = require('os');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'devicehub-update-'));
   const zip = path.join(dir, 'DeviceHub-setup.zip');
+  const ps = (cmd, ms) => runAsync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', cmd], { timeout: ms });
+  let src = path.join(dir, 'DeviceHub'), small = null, whole = null;
+  // only the changed files when the release lists them (helpers/update-files.js); else, or if that fails, the whole zip
+  if (rel.files && rel.appCommit) {
+    try { small = await changedOnly(rel, src); }
+    catch (e) { small = null; whole = e.message; fs.rmSync(src, { recursive: true, force: true }); }
+  }
+  if (!small) await wholeZip(rel, zip, dir, src, ps);
+  return { ...(await installFrom(src, dir, rel, kept, small)), ...(whole ? { whole } : {}) };
+}
+// the signed file list, then only the files that changed (helpers/update-files.js)
+async function changedOnly(rel, dest) {
+  const crypto = require('crypto'), uf = require('./update-files');
+  step('Checking what changed');
+  const r = await fetch(RELEASE + 'DeviceHub-files.json.gz', { signal: AbortSignal.timeout(60000) });
+  if (!r.ok) throw new Error(`the file list answered ${r.status}`);
+  const gz = Buffer.from(await r.arrayBuffer());
+  if (gz.length !== rel.files.size || crypto.createHash('sha256').update(gz).digest('hex') !== rel.files.sha256) throw new Error('the file list fails its checksum');
+  const manifest = uf.parseManifest(gz);
+  return uf.stage({ manifest, root: ROOT, dest, onProgress: (n, of) => step(of ? `Downloading ${of} changed file${of === 1 ? '' : 's'}` : 'Putting the new version together', of ? Math.round((n / of) * 100) : null) });
+}
+async function wholeZip(rel, zip, dir, src, ps) {
+  const crypto = require('crypto');
   step('Downloading', 0);
   const r = await fetch(RELEASE + 'DeviceHub-setup.zip', { signal: AbortSignal.timeout(10 * 60 * 1000) });
   if (!r.ok) throw new Error(`the download failed (${r.status})`);
@@ -131,11 +158,12 @@ async function zipUpdate({ overwrite = false } = {}) {
   if (buf.length !== rel.size) throw new Error(`the download is ${buf.length} bytes, not ${rel.size}; nothing was changed`);
   if (crypto.createHash('sha256').update(buf).digest('hex') !== rel.sha256) throw new Error('the download fails its checksum; nothing changed');
   fs.writeFileSync(zip, buf);
-  const ps = (cmd, ms) => runAsync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', cmd], { timeout: ms });
   step('Unpacking');
   const x = await ps(`Expand-Archive -LiteralPath '${zip.replace(/'/g, "''")}' -DestinationPath '${dir.replace(/'/g, "''")}' -Force`, 5 * 60 * 1000);
-  const src = path.join(dir, 'DeviceHub');
   if (x.status !== 0 || !fs.existsSync(path.join(src, 'helpers', 'install.ps1'))) throw new Error('the download could not be unpacked; nothing changed');
+}
+async function installFrom(src, dir, rel, kept, small) {
+  if (!fs.existsSync(path.join(src, 'helpers', 'install.ps1'))) throw new Error('the new version is missing its installer; nothing changed');
   // the new version checks itself before it is installed
   step('Checking the new version');
   const check = path.join(src, 'tests', 'check.mjs');
@@ -167,7 +195,7 @@ async function zipUpdate({ overwrite = false } = {}) {
   const p = spawn('powershell.exe', ['-NoProfile', '-EncodedCommand', Buffer.from(launcher, 'utf16le').toString('base64')], { cwd: dir, stdio: 'ignore', windowsHide: true });
   p.on('error', () => {});
   step('Installing; DeviceHub restarts by itself');
-  return { updated: true, installing: true, count: 1, latest: `version from ${new Date(rel.builtAt).toLocaleDateString()}`, ...(kept ? { kept: path.relative(ROOT, kept) } : {}) };
+  return { updated: true, installing: true, count: 1, latest: `version from ${new Date(rel.builtAt).toLocaleDateString()}`, ...(small ? { downloaded: small.downloaded, downloadedBytes: small.bytes } : {}), ...(kept ? { kept: path.relative(ROOT, kept) } : {}) };
 }
 
 // The last answer, so Update right after Settings showed it does not ask GitHub again (23 Oct 2026, Shawn: "make the

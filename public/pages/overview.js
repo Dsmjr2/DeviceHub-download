@@ -5,6 +5,7 @@ import { button, card, pill, batteryCell, loadBatteryEstimates, skeleton } from 
 import { devices, activity, connect, isDemo, isRemote, shownDevices, noDevicesYet, stillLooking } from '../core/devices.js';
 import { artOf, genericArtFor } from '../ui/art.js';
 import { prettyExe } from '../core/autoswitch.js';
+import { onEvent, streamUp, streamId } from '../core/events.js';
 import { gameModeLine } from './game-mode-card.js';   // (27 Oct 2026) "Valorant mode on" under Profiles
 import { loadProfiles, apply } from '../core/profiles.js';
 import { EFFECTS } from '../devices/keycodes.js';
@@ -293,18 +294,40 @@ function feed() {
 // the graphics card's temperature in a small chip (20 Oct 2026): read every 15 s (5 s until 26 Oct 2026: each read starts
 // nvidia-smi) only while the overview is open and shown (it
 // changes its own text, never redraws the page) and stops as soon as the overview is left; click = the PC page
-let gpuTimer = null, gpuText = null;
+// (27 Oct 2026) On the live stream: the window says once that it shows the chip (POST /api/events/want) and DeviceHub
+// sends 'gpu' only when the temperature changes (helpers/gpu-watch.js); it asked /api/gpu every 15 s before. Leaving the
+// Overview or hiding the window says so too. Without the stream (it is reconnecting) the old 15 s read stands in.
+let gpuTimer = null, gpuText = null, gpuWired = false, gpuWanted = false;
+const onOverview = () => location.hash === '#/overview' || location.hash === '' || location.hash === '#/';
+const showGpu = (tempC) => {
+  gpuText = tempC != null ? `GPU ${tempC} °C` : null;
+  const span = document.querySelector('.gpu-chip span');
+  if (span) span.textContent = gpuText || 'GPU';
+  document.querySelector('.gpu-chip')?.toggleAttribute('hidden', !gpuText);
+};
+const wantGpu = async () => {
+  const on = onOverview() && !document.hidden, id = streamId();
+  if (!id || on === gpuWanted) return;
+  gpuWanted = on;
+  try { await env.api('/api/events/want', { stream: id, gpu: on }); } catch { gpuWanted = false; }
+};
 function gpuChip(go) {
   const el = h('button', { class: 'pill gpu-chip', title: 'GPU temperature', onclick: () => go('fans') }, icon('thermo'), h('span', {}, gpuText || 'GPU'));
   const tick = async () => {
-    if (location.hash !== '#/overview' && location.hash !== '' && location.hash !== '#/') { clearInterval(gpuTimer); gpuTimer = null; return; }
+    if (!onOverview()) { clearInterval(gpuTimer); gpuTimer = null; return; }
     if (document.hidden) return;
-    if (isDemo()) gpuText = 'GPU 61 °C';
-    else try { const g = (await env.api('/api/gpu')).gpus?.[0]; gpuText = g?.tempC != null ? `GPU ${g.tempC} °C` : null; } catch { gpuText = null; }
-    const span = document.querySelector('.gpu-chip span');
-    if (span) span.textContent = gpuText || 'GPU';
-    document.querySelector('.gpu-chip')?.toggleAttribute('hidden', !gpuText);
+    if (isDemo()) return showGpu(61);
+    if (streamUp() && gpuWanted) return;
+    try { showGpu((await env.api('/api/gpu')).gpus?.[0]?.tempC ?? null); } catch { showGpu(null); }
   };
+  if (!isDemo() && !gpuWired) {
+    gpuWired = true;
+    onEvent('gpu', (d) => { if (onOverview()) showGpu(d.tempC ?? null); });
+    onEvent('hello', () => { gpuWanted = false; wantGpu(); });   // a new stream (a reconnect) has a new id
+    addEventListener('hashchange', wantGpu);
+    document.addEventListener('visibilitychange', wantGpu);
+  }
+  wantGpu();
   if (!gpuTimer) { gpuTimer = setInterval(tick, 15000); setTimeout(tick, 200); }
   if (!gpuText) el.hidden = true;
   return el;

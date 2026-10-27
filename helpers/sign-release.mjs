@@ -20,11 +20,15 @@ export const payload = (v) => JSON.stringify([v.commit, v.builtAt, v.appCommit ?
 // second signature over everything: copies made before 27 Oct check only `signature` over the fields above, so they
 // keep accepting the new version.json; newer copies also check `signature2` (helpers/self-update.js verifyRelease)
 export const payload2 = (v) => JSON.stringify([v.commit, v.builtAt, v.appCommit ?? null, v.size, v.sha256, v.version ?? null, v.notes ?? null]);
+// (27 Oct 2026, smaller updates) the list of every file's SHA-256 (DeviceHub-files.json.gz, helpers/update-files.js): its
+// size and SHA-256 in `files`, signed by a third signature over everything; copies from before ignore it
+export const payload3 = (v) => JSON.stringify([v.commit, v.builtAt, v.appCommit ?? null, v.size, v.sha256, v.version ?? null, v.notes ?? null, v.files?.size ?? null, v.files?.sha256 ?? null]);
 export function signRelease(v, key) {
   const out = { ...v };
-  delete out.signature; delete out.signature2;
+  delete out.signature; delete out.signature2; delete out.signature3;
   out.signature = crypto.sign(null, Buffer.from(payload(out)), key).toString('base64');
   if (out.version != null || out.notes != null) out.signature2 = crypto.sign(null, Buffer.from(payload2(out)), key).toString('base64');
+  if (out.files != null) out.signature3 = crypto.sign(null, Buffer.from(payload3(out)), key).toString('base64');
   return out;
 }
 
@@ -59,7 +63,8 @@ if (process.argv[2]) {
   // check it with the public key the app carries before it is published
   const pk = crypto.createPublicKey(fs.readFileSync(pub));
   if (!crypto.verify(null, Buffer.from(payload(signed)), pk, Buffer.from(signed.signature, 'base64'))
-    || (signed.signature2 && !crypto.verify(null, Buffer.from(payload2(signed)), pk, Buffer.from(signed.signature2, 'base64')))) { console.error('the signature does not match the app\'s public key'); process.exit(1); }
+    || (signed.signature2 && !crypto.verify(null, Buffer.from(payload2(signed)), pk, Buffer.from(signed.signature2, 'base64')))
+    || (signed.signature3 && !crypto.verify(null, Buffer.from(payload3(signed)), pk, Buffer.from(signed.signature3, 'base64')))) { console.error('the signature does not match the app\'s public key'); process.exit(1); }
   fs.writeFileSync(file, JSON.stringify(signed));
   console.log(`   release signed${signed.version ? ` (DeviceHub ${signed.version})` : ''}`);
 }

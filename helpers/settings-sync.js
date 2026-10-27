@@ -67,14 +67,22 @@ async function apply(remote, local) {
   return changed;
 }
 
+// the code's GitHub address, asked once per start (it does not change while DeviceHub runs)
+let originOnce;
 async function sync() {
   if (busy) return status; busy = true;
   try {
     const st = readJson(STATE, {});
     if (readJson(SETTINGS, {}).settingsSync === false) { status = { ...status, enabled: false }; return status; }
+    // the main PC only sends (27 Oct 2026, idle CPU: two git runs and a GitHub fetch every 2 minutes for nothing): with
+    // nothing changed here since it last sent, there is nothing to do and git is not started
+    if (st.role === 'main' && st.lastLocal && fs.existsSync(path.join(DIR, '.git')) && hash(await current()) === st.lastLocal) {
+      status.enabled = true; status.notSetUp = false; status.role = 'main'; status.last = new Date().toISOString(); status.error = null;
+      return status;
+    }
     // a copy from the installer zip (no git, or no GitHub remote) has nowhere to sync to: not set up, not an error
-    let origin = null;
-    try { origin = await git(['remote', 'get-url', 'origin'], ROOT, 10000); } catch {}
+    let origin = originOnce ?? null;
+    if (origin == null) { try { origin = originOnce = await git(['remote', 'get-url', 'origin'], ROOT, 10000); } catch {} }
     // a copy installed from the public download repository has no settings repository of its own: not set up
     if (!origin || /\/DeviceHub-download(\.git)?\/?$/i.test(origin.trim())) { status = { ...status, enabled: false, notSetUp: true, error: null }; return status; }
     status.enabled = true; status.notSetUp = false;
