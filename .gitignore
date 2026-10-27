@@ -64,3 +64,6 @@ pc-check-cache.json
 
 # the slow reads' last answers (helpers/last-answer.js: Bluetooth, optional tools, OpenRGB, board lights), this PC's own
 read-cache/
+
+# local logs and the 24-hour memory test (27 Oct 2026)
+logs/
