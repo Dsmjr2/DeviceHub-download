@@ -10,12 +10,16 @@ import { toast, modal } from '../ui/overlay.js';
 
 // Uninstall from here (20 Oct 2026, Shawn: "make the uninstall easy"): one question, then helpers/uninstall.ps1 closes
 // this window and removes DeviceHub; it says something only if it could not finish
+// (27 Oct 2026) it also removes what DeviceHub added under Windows' one prompt (CPU sensors, Wi-Fi pause, board
+// lights); other programs stay and are named at the end; one unticked box empties Equalizer APO's DeviceHub settings
 async function uninstall() {
-  const yes = await modal('Uninstall DeviceHub?', h('p', {}, 'Backups move to Documents\\DeviceHub backups.'),
+  const eq = h('input', { type: 'checkbox' });
+  const yes = await modal('Uninstall DeviceHub?', h('div', {}, h('p', {}, 'Backups move to Documents\\DeviceHub backups. Windows may ask once, to remove the parts DeviceHub set up as administrator.'),
+    h('label', {}, eq, ' Also clear DeviceHub\'s sound settings from Equalizer APO')),
     [{ label: 'Cancel', value: false, kind: 'ghost' }, { label: 'Uninstall', value: true, kind: 'primary' }]);
   if (!yes) return;
   try {
-    const r = await fetch('/api/uninstall', { method: 'POST' }); const j = await r.json();
+    const r = await fetch('/api/uninstall', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clearEq: eq.checked }) }); const j = await r.json();
     if (!r.ok) return toast('Not removed', 'bad', { detail: j.error });
     toast('Removing DeviceHub…', 'info', { ms: 20000 });
   } catch { toast('DeviceHub is not running', 'bad'); }
@@ -227,7 +231,12 @@ function setupRow() {
 function selfRow() {
   if (isDemo()) return null;
   const s = self || {};
-  let text = s.checking && selfBar ? selfBar.el : !self || s.checking ? 'Checking…' : !s.git && !s.zip ? 'Not set up for this copy.' : s.error ? `Couldn't check: ${s.error}` : s.blocked ? `A new version is ready, but ${lowerFirst(s.blocked)}` : s.behind ? (s.zip ? `Ready: ${s.latest}` : `${s.behind} new change${s.behind === 1 ? '' : 's'}: ${s.latest}`) : s.skipped ? 'The newest version did not start here, so this one stays. A fix will show here.' : 'Up to date.';
+  // readable numbers (27 Oct 2026, helpers/release-notes.mjs): "DeviceHub 1.5 is ready (you have 1.4)" and what's new;
+  // a release from before then has no number, and the row reads as it did
+  const have = s.current ? ` (you have ${s.current})` : '';
+  const ready = s.versionName ? `DeviceHub ${s.versionName} is ready${have}.` : null;
+  let text = s.checking && selfBar ? selfBar.el : !self || s.checking ? 'Checking…' : !s.git && !s.zip ? 'Not set up for this copy.' : s.error ? `Couldn't check: ${s.error}` : s.blocked ? `${ready ? `${ready.slice(0, -1)}, but` : 'A new version is ready, but'} ${lowerFirst(s.blocked)}` : s.behind ? (ready || (s.zip ? `Ready: ${s.latest}` : `${s.behind} new change${s.behind === 1 ? '' : 's'}: ${s.latest}`)) : s.skipped ? 'The newest version did not start here, so this one stays. A fix will show here.' : `Up to date${s.current ? ` (DeviceHub ${s.current})` : ''}.`;
+  if (typeof text === 'string' && s.behind && s.notes?.length) text = h('div', {}, text, h('ul', { class: 'whats-new' }, ...s.notes.map((x) => h('li', {}, x))));
   // while it looks or updates, the bar has the whole row (no button beside it: on a narrow window the two did not fit
   // and ran off the card, 22 Oct 2026)
   if ((selfBusy || s.checking) && selfBar) return row('DeviceHub updates', selfBar.el, null);

@@ -30,18 +30,33 @@ const mine = () => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, 're
 // not hand out an update: an unsigned or altered one is refused, and a merging copy merges only the signed version.
 const PUBLIC_KEY = path.join(ROOT, 'helpers', 'release-public-key.pem');
 const releasePayload = (v) => JSON.stringify([v.commit, v.builtAt, v.appCommit ?? null, v.size, v.sha256]);
+// (27 Oct 2026, readable versions) the version number and what's new have a second signature over everything
+// (helpers/sign-release.mjs payload2); `signature` stays as it was, so copies from before still accept the file
+const releasePayload2 = (v) => JSON.stringify([v.commit, v.builtAt, v.appCommit ?? null, v.size, v.sha256, v.version ?? null, v.notes ?? null]);
+// true when v is signed by this key: `signature` always, and `signature2` too when v carries a version or notes
+function verifyRelease(v, keyPem) {
+  const crypto = require('crypto');
+  try {
+    const key = crypto.createPublicKey(keyPem);
+    if (!v?.signature || !crypto.verify(null, Buffer.from(releasePayload(v)), key, Buffer.from(v.signature, 'base64'))) return false;
+    if (v.version == null && v.notes == null) return true;
+    return !!v.signature2 && crypto.verify(null, Buffer.from(releasePayload2(v)), key, Buffer.from(v.signature2, 'base64'));
+  } catch { return false; }
+}
 async function releaseInfo() {
   const r = await fetch(RELEASE + 'version.json', { signal: AbortSignal.timeout(20000) });
   if (!r.ok) throw new Error(`the download page answered ${r.status}`);
   const v = await r.json();
-  if (fs.existsSync(PUBLIC_KEY)) {
-    const crypto = require('crypto');
-    let ok = false;
-    try { ok = !!v.signature && crypto.verify(null, Buffer.from(releasePayload(v)), crypto.createPublicKey(fs.readFileSync(PUBLIC_KEY)), Buffer.from(v.signature, 'base64')); } catch {}
-    if (!ok) throw new Error('the update is not signed by DeviceHub\'s publisher; not used');
-  }
+  if (fs.existsSync(PUBLIC_KEY) && !verifyRelease(v, fs.readFileSync(PUBLIC_KEY))) throw new Error('the update is not signed by DeviceHub\'s publisher; not used');
   return v;
 }
+// the readable version of a release or of this copy (helpers/release-notes.mjs): "1.5" and up to 5 short lines
+const MAX_NOTES = 5;
+const versionName = (v) => (typeof v === 'string' && /^\d{1,4}\.\d{1,6}$/.test(v) ? v : undefined);
+const notesOf = (n) => (Array.isArray(n) ? n.filter((x) => typeof x === 'string' && x.trim()).slice(0, MAX_NOTES).map((x) => x.trim().slice(0, 120)) : []);
+// this copy's own version number (helpers/published-version.json, in every copy made since 27 Oct 2026)
+const ownVersion = (root = ROOT) => { try { return versionName(JSON.parse(fs.readFileSync(path.join(root, 'helpers', 'published-version.json'), 'utf8').replace(/^\uFEFF/, '')).version); } catch { return undefined; } };
+const named = (rel) => (versionName(rel?.version) ? { versionName: rel.version, notes: notesOf(rel.notes) } : {});
 // app files changed on this PC since it was installed (release-files.json: each file's SHA-256 then): an update
 // would undo them, so it is not offered over them (21 Oct 2026)
 // A file that matches any version DeviceHub ever shipped (release-history.json, helpers/release-history.mjs: every
@@ -80,8 +95,9 @@ async function zipStatus() {
     let failed = null; try { failed = fs.readFileSync(path.join(ROOT, 'update-failed.txt'), 'utf8').trim(); } catch {}
     const newer = rel.commit && rel.commit !== own.commit && rel.builtAt > own.builtAt && failed !== rel.commit;
     const blocked = newer ? changedFiles() : [];
-    // version, versionAt: the signed version's id and date (the update pop-up, helpers/update-notice.mjs)
-    return { git: false, zip: true, behind: newer ? 1 : 0, blocked: blocked.length ? blockedText(blocked) : undefined, blockedFiles: blocked.length ? blocked : undefined, latest: newer ? `a new version from ${new Date(rel.builtAt).toLocaleDateString()}` : null, at: own.builtAt, skipped: failed === rel.commit ? 'the newest version' : undefined, version: newer ? rel.commit : undefined, versionAt: newer ? rel.builtAt : undefined };
+    // version, versionAt: the signed version's id and date (the update pop-up, helpers/update-notice.mjs); versionName,
+    // notes: its number and what's new; current: this copy's own number (27 Oct 2026)
+    return { git: false, zip: true, current: ownVersion(), ...(newer ? named(rel) : {}), behind: newer ? 1 : 0, blocked: blocked.length ? blockedText(blocked) : undefined, blockedFiles: blocked.length ? blocked : undefined, latest: newer ? `a new version from ${new Date(rel.builtAt).toLocaleDateString()}` : null, at: own.builtAt, skipped: failed === rel.commit ? 'the newest version' : undefined, version: newer ? rel.commit : undefined, versionAt: newer ? rel.builtAt : undefined };
   } catch (e) { return { git: false, zip: true, error: e.message }; }
 }
 // How far an update has got (21 Oct 2026, for Settings' loading bar): the step in words and, while downloading, a
@@ -170,9 +186,10 @@ async function statusNow() {
     // a copy installed on someone's PC, tied to the public download repository: its updates merge (mergeUpdate), and
     // it follows the signed release, never whatever is newest on the branch (releaseInfo checks the signature)
     const shared = /DeviceHub-download/.test(await git(['remote', 'get-url', 'origin']).catch(() => ''));
-    let target = '@{u}', behind;
+    let target = '@{u}', behind, rel = null;
     if (shared) {
-      const signed = (await releaseInfo()).appCommit;
+      rel = await releaseInfo();
+      const signed = rel.appCommit;
       if (!signed || !/^[0-9a-f]{7,40}$/.test(signed)) behind = 0;
       else {
         await git(['cat-file', '-e', `${signed}^{commit}`]).catch(() => git(['fetch', '--quiet', 'origin', signed], 30000));
@@ -199,7 +216,7 @@ async function statusNow() {
         localFiles = [...new Set([...(await names([base, 'HEAD'])), ...(await names(['HEAD']))].map((f) => f.trim()).filter(Boolean))];
       } catch { localFiles = changed ? ['(could not tell which)'] : []; }
     }
-    return { git: true, shared, behind, changed, latest: shownLatest, at, target, ...(shared && behind ? { version: target, versionAt, localFiles } : {}) };
+    return { git: true, shared, behind, changed, latest: shownLatest, at, target, current: ownVersion(), ...(shared && behind ? { version: target, versionAt, localFiles, ...named(rel) } : {}) };
   } catch (e) { return { git: true, error: e.message }; }
 }
 
@@ -299,4 +316,4 @@ function confirm(log) {
   return true;
 }
 
-module.exports = { status, update, confirm, getProgress, releaseInfo, _test: { changedFiles, keepChanged, blockedText } };
+module.exports = { status, update, confirm, getProgress, releaseInfo, _test: { changedFiles, keepChanged, blockedText, verifyRelease, ownVersion, named } };

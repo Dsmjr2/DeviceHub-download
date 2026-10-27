@@ -32,6 +32,31 @@ if (fs.existsSync(key)) {
   check(ok, 'a release signed by the publisher was refused');
   check(await refused({ ...good, sha256: 'b'.repeat(64) }), 'a signed release with a changed checksum was accepted');
   check(await refused({ ...good, appCommit: 'f'.repeat(40) }), 'a signed release pointing at other code was accepted');
+  // (27 Oct 2026) a properly signed release with a version number slipped in unsigned is refused by releaseInfo itself
+  check(await refused({ ...good, version: '9.9', notes: ['Free money'], signature2: good.signature }), 'a signed release with an added, unsigned version number was accepted');
+}
+// readable versions (27 Oct 2026): version and notes are signed by signature2; signature stays over the old fields, so a
+// copy from before 27 Oct (which checks only that) still accepts the new version.json. With a throwaway key pair.
+{
+  const { signRelease, payload2 } = await import('../helpers/sign-release.mjs');
+  const { verifyRelease } = require('../helpers/self-update.js')._test;
+  const t = crypto.generateKeyPairSync('ed25519');
+  const pem = t.publicKey.export({ type: 'spki', format: 'pem' });
+  // exactly what copies before 27 Oct do (helpers/self-update.js releaseInfo as of 21 Oct 2026)
+  const oldClient = (v) => { try { return !!v.signature && crypto.verify(null, Buffer.from(JSON.stringify([v.commit, v.builtAt, v.appCommit ?? null, v.size, v.sha256])), crypto.createPublicKey(pem), Buffer.from(v.signature, 'base64')); } catch { return false; } };
+  const fresh = signRelease({ ...base, version: '1.5', notes: ['Any VIA keyboard connects by itself', 'Mic EQ no longer asked for'] }, t.privateKey);
+  check(typeof fresh.commit === 'string' && fresh.commit === base.commit, 'the new version.json lost its commit field');
+  check(!!fresh.signature && !!fresh.signature2, 'a release with a version number lacks one of its two signatures');
+  check(oldClient(fresh), 'a copy from before 27 Oct refuses the new version.json');
+  check(verifyRelease(fresh, pem), 'the new version.json is refused by a new copy');
+  check(!verifyRelease({ ...fresh, version: '9.9' }, pem), 'a changed version number was accepted');
+  check(!verifyRelease({ ...fresh, notes: ['Free money'] }, pem), 'changed notes were accepted');
+  const noSig2 = { ...fresh }; delete noSig2.signature2;
+  check(!verifyRelease(noSig2, pem), 'a version number without its signature was accepted');
+  check(!verifyRelease({ ...fresh, signature: 'x' }, pem), 'a release with a broken first signature was accepted');
+  const plain = signRelease({ ...base }, t.privateKey);
+  check(!plain.signature2 && verifyRelease(plain, pem) && oldClient(plain), 'a release with no version number (as before 27 Oct) was refused, or got a second signature');
+  check(payload2(fresh) === JSON.stringify([base.commit, base.builtAt, base.appCommit, base.size, base.sha256, '1.5', fresh.notes]), 'signature2 does not cover every field, the version and the notes');
 }
 srv.close();
 if (fails.length) { console.log(`release signing: ${fails.length} problem(s)\n${fails.map((f) => `- ${f}`).join('\n')}`); process.exit(1); }

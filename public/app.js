@@ -422,7 +422,9 @@ if (!DEMO) {
     if (wait > 0) { clearTimeout(later); later = setTimeout(() => ask(n), wait); return; }
     asked = n.version;
     const { modal } = await import('./ui/overlay.js');
-    const go = await modal('Update ready', n.text, [{ label: 'Later', value: false, kind: 'ghost' }, { label: 'Update', value: true, kind: 'primary' }]);
+    // "DeviceHub 1.5 is ready" and what's new, up to 5 short lines (27 Oct 2026; an older release has only the text)
+    const body = n.notes?.length ? h('div', {}, h('p', {}, n.text), h('p', { class: 'muted' }, "What's new:"), h('ul', { class: 'whats-new' }, ...n.notes.map((x) => h('li', {}, x)))) : n.text;
+    const go = await modal('Update ready', body, [{ label: 'Later', value: false, kind: 'ghost' }, { label: 'Update', value: true, kind: 'primary' }]);
     if (go) { location.hash = '#/settings'; (await import('./pages/settings.js')).runSelfUpdate(); }
   };
   onEvent('hello', (x) => ask(x.notice));

@@ -1,0 +1,78 @@
+DeviceHub: third-party programs and their licenses
+==================================================
+
+(27 Oct 2026) DeviceHub's own code is Shawn's. It ships some programs made by others, unchanged, and downloads a few
+more from their makers only when you click to install them. Each is listed here with its version, license and the
+source code for that exact version. The license texts are in helpers/licenses/ (and beside each tool in tools/).
+
+SHIPPED INSIDE DeviceHub (the zip and DeviceHub-Setup.exe)
+----------------------------------------------------------
+
+OpenRGB 1.1 (tools/openrgb/), unchanged from its official Windows 64-bit portable zip
+  License: GPL-2.0 (helpers/licenses/GPL-2.0.txt)
+  Source for this exact version: https://codeberg.org/OpenRGB/OpenRGB/src/tag/release_1.1
+  Official download: https://codeberg.org/OpenRGB/OpenRGB/releases/download/release_1.1/OpenRGB_1.1_Windows_64_8e16de2.zip
+  Its zip carries these libraries, shipped with it unchanged:
+  - Qt 6.8.3 (Qt6Core, Qt6Core5Compat, Qt6Gui, Qt6OpenGL, Qt6Widgets and the plugins in imageformats/, platforms/,
+    styles/): LGPL-3.0 (helpers/licenses/LGPL-3.0.txt, which builds on helpers/licenses/GPL-3.0.txt). The DLLs are
+    separate files and can be replaced with your own build of Qt 6.8.3.
+    Source: https://download.qt.io/archive/qt/6.8/6.8.3/single/
+  - libusb 1.0.27 (libusb-1.0.dll): LGPL-2.1 (helpers/licenses/LGPL-2.1.txt)
+    Source: https://github.com/libusb/libusb/releases/tag/v1.0.27
+  - hidapi 0.15.0 (hidapi-hotplug.dll): used under its BSD-style license (helpers/licenses/hidapi-BSD.txt)
+    Source: https://github.com/libusb/hidapi/releases/tag/hidapi-0.15.0
+  - PawnIOLib.dll, PawnIO's user-mode library: LGPL-2.1 (helpers/licenses/LGPL-2.1.txt)
+    Source: https://github.com/namazso/PawnIO (folder PawnIOLib); the copy OpenRGB 1.1 ships:
+    https://codeberg.org/OpenRGB/OpenRGB/src/tag/release_1.1/dependencies/PawnIO
+  - PawnIO modules (tools/openrgb/board-modules/*.bin, used only for board lights): LGPL-2.1
+    (helpers/licenses/LGPL-2.1.txt). Source: https://github.com/namazso/PawnIO.Modules; the copies OpenRGB 1.1 ships:
+    https://codeberg.org/OpenRGB/OpenRGB/src/tag/release_1.1/dependencies/PawnIO
+  - dxcompiler.dll and dxil.dll (Microsoft's DirectX shader compiler, version 10.0.19041, from the Windows SDK):
+    dxcompiler.dll under the LLVM/University of Illinois NCSA license and the others in
+    helpers/licenses/DirectXShaderCompiler-LICENSE.txt (source: https://github.com/microsoft/DirectXShaderCompiler);
+    dxil.dll is Microsoft's own redistributable file, under the Windows SDK's license terms.
+  The PawnIO driver itself is never shipped.
+
+Equalizer APO 1.4.2 (tools/equalizerapo/EqualizerAPO-x64-1.4.2.exe), its official installer, unchanged
+  License: GPL-2.0 (helpers/licenses/GPL-2.0.txt)
+  Source: the project's code repository, https://sourceforge.net/p/equalizerapo/code/ (the 1.4.2 release)
+  Official download: https://sourceforge.net/projects/equalizerapo/files/1.4.2/EqualizerAPO-x64-1.4.2.exe/download
+
+Node.js (runtime/node.exe), the official Windows x64 build, unchanged. The version is named in runtime/LICENSES.txt.
+  License: MIT, with the licenses of its own parts (V8, libuv, OpenSSL, ICU, zlib and others).
+  Full text for v24.14.0: helpers/licenses/nodejs-v24.14.0-LICENSE.txt; for any version:
+  https://github.com/nodejs/node/blob/<version>/LICENSE
+  Source: https://github.com/nodejs/node (the tag of the version in runtime/LICENSES.txt, e.g. v24.14.0)
+
+cue-sdk 4.0.84 (node_modules/cue-sdk), Corsair's iCUE SDK for Node, with Corsair's iCUESDK.x64_2019.dll
+  License: MIT, Copyright (c) 2020 Corsair Memory, Inc. (its LICENSE file, also in runtime/LICENSES.txt)
+  Source: https://github.com/CorsairOfficial/cue-sdk-node/tree/v4.0.84
+
+node-addon-api 5.1.0 (node_modules/node-addon-api)
+  License: MIT (its LICENSE.md, also in runtime/LICENSES.txt)
+  Source: https://github.com/nodejs/node-addon-api/tree/v5.1.0
+
+node-gyp-build 4.6.0 (node_modules/node-gyp-build)
+  License: MIT (its LICENSE, also in runtime/LICENSES.txt)
+  Source: https://github.com/prebuild/node-gyp-build/tree/v4.6.0
+
+Pixelify Sans (public/fonts/PixelifySans.woff2), Copyright 2021 The Pixelify Sans Project Authors
+  License: SIL Open Font License 1.1 (public/fonts/PixelifySans-OFL.txt)
+  Source: https://github.com/eifetx/Pixelify-Sans
+
+The makers' product photos (public/img/xlite.png, hs80.png, p75.png): pictures of the Pulsar X-Lite, Corsair HS80 and
+  Epomaker P75 from their makers, used for the Realistic look. They belong to their makers.
+
+DOWNLOADED FROM THE MAKER, ONLY WHEN YOU CLICK (not shipped by DeviceHub)
+-------------------------------------------------------------------------
+
+LibreHardwareMonitor 0.9.6 (CPU temperature and fans; its official release zip from GitHub)
+  License: MPL-2.0. Source: https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/tree/v0.9.6
+PawnIO 2.2.0 (the driver for board, fan and RAM lights and the CPU sensors; its maker's official installer)
+  License: GPL-2.0 or later, with an exception for modules. Source: https://github.com/namazso/PawnIO
+USBPcap 1.5.4.0 (for learning sessions; its official installer from GitHub)
+  License: BSD-2-Clause for its programs; its driver GPL-2.0 or BSD-2-Clause (as its README states). Source: https://github.com/desowin/usbpcap/tree/1.5.4.0
+ReaPlugs 2.36 (extra EQ plug-ins; DeviceHub opens its official page, https://www.reaper.fm/reaplugs/)
+  License: Cockos' free license for ReaPlugs (freeware, not open source).
+Keyboard layouts from VIA's library (usevia.app), fetched for a VIA keyboard that is plugged in
+  License: those of the-via/keyboards (GPL-3.0). Source: https://github.com/the-via/keyboards

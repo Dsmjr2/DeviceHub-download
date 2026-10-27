@@ -157,6 +157,9 @@ export function readme(tools) {
     '==============================',
     '',
     'DeviceHub carries these two free tools so nobody has to download them separately (decided 22 Oct 2026).',
+    // (27 Oct 2026, license check) the libraries in OpenRGB's zip have licenses of their own, listed there
+    'THIRD-PARTY-NOTICES.txt (in the DeviceHub folder) lists every program DeviceHub ships, the libraries inside',
+    'OpenRGB\'s zip too, with its license, the source for that exact version, and the license texts in helpers\\licenses\\.',
     'Each file is the project\'s own official download, unchanged, checked against the SHA-256 pinned in',
     'helpers/bundled-tools.json when this zip was built. Nothing here is installed or started at boot:',
     '- Equalizer APO: its own installer, run only when you click Install (Settings > Optional tools, or the',

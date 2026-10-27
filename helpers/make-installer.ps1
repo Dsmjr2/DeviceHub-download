@@ -54,7 +54,7 @@ try {
     if ((& $node -p process.arch) -ne 'x64') { throw 'the bundled Node.js must be the x64 build' }
     [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($z, $node, (Ent 'runtime/node.exe'), 'Optimal')
     $libs = 'cue-sdk', 'node-addon-api', 'node-gyp-build'
-    $lic = (Get-Content (Join-Path (Join-Path $root 'helpers') 'runtime-licenses.txt') -Raw) + "`r`nBundled Node.js version: $ver`r`n"
+    $lic = (Get-Content (Join-Path (Join-Path $root 'helpers') 'runtime-licenses.txt') -Raw) + "`r`nBundled Node.js version: $ver`r`nIts full license, with every part's (27 Oct 2026): https://github.com/nodejs/node/blob/$ver/LICENSE (a copy for v24.14.0: helpers\licenses\nodejs-v24.14.0-LICENSE.txt; THIRD-PARTY-NOTICES.txt lists every program DeviceHub ships)`r`n"
     foreach ($lib in $libs) {
       $dir = Join-Path (Join-Path $root 'node_modules') $lib
       if (-not (Test-Path $dir)) { throw "node_modules/$lib is missing: run npm install first" }
@@ -142,6 +142,9 @@ try {
     $extra = $names | Where-Object { $_ -like 'node_modules/*' } | ForEach-Object { $_.Split('/')[1] } | Sort-Object -Unique | Where-Object { $_ -notin $libs }
     if ($extra) { throw "unexpected libraries in the zip: $($extra -join ', ')" }
     if ($names -notcontains 'runtime/node.exe') { throw 'runtime/node.exe is missing from the zip' }
+    # the third-party notices and every license text they name (27 Oct 2026; THIRD-PARTY-NOTICES.txt, helpers\licenses), tracked in git so they go in with the app's files
+    $noLic = @('THIRD-PARTY-NOTICES.txt', 'helpers/licenses/GPL-2.0.txt', 'helpers/licenses/GPL-3.0.txt', 'helpers/licenses/LGPL-3.0.txt', 'helpers/licenses/LGPL-2.1.txt', 'helpers/licenses/hidapi-BSD.txt', 'helpers/licenses/DirectXShaderCompiler-LICENSE.txt', 'helpers/licenses/nodejs-v24.14.0-LICENSE.txt') | Where-Object { $names -notcontains $_ }
+    if ($noLic) { throw "license files missing from the zip (commit them first): $($noLic -join ', ')" }
     # helpers/bin holds exactly the pre-built helper and the hash of its sources
     $bin = @($names | Where-Object { $_ -like 'helpers/bin/*' } | Sort-Object)
     if (($bin -join ',') -ne 'helpers/bin/DeviceHubHelper.exe,helpers/bin/helper-sources.sha256') { throw "helpers/bin in the zip is not the pre-built helper and its hash: $($bin -join ', ')" }

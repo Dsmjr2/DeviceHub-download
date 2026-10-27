@@ -1002,7 +1002,9 @@ async function api(req, res, url) {
     } catch {}
     // not detached: from DeviceHub's hidden window a detached PowerShell never started (measured 20 Oct 2026). It
     // outlives the server it quits all the same (Windows does not end a child with its parent).
-    const p = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(ROOT, 'helpers', 'uninstall.ps1'), '-Key', key, '-Port', String(PORT), '-FromApp'], { stdio: 'ignore', windowsHide: true, cwd: require('os').tmpdir() });   // not in the folder it deletes
+    // (27 Oct 2026) the page's one unticked box: also empty Equalizer APO's config.txt when DeviceHub wrote it
+    const clearEq = (await readBody(req).catch(() => ({})))?.clearEq === true;
+    const p = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(ROOT, 'helpers', 'uninstall.ps1'), '-Key', key, '-Port', String(PORT), '-FromApp', ...(clearEq ? ['-ClearEq'] : [])], { stdio: 'ignore', windowsHide: true, cwd: require('os').tmpdir() });   // not in the folder it deletes
     p.on('error', (e) => console.log(`[uninstall] could not start: ${e.message}`));
     p.unref();
     return send(res, 200, { ok: true });

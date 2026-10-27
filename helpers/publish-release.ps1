@@ -9,16 +9,42 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $dist = Join-Path $root 'dist'
 
+# READABLE VERSION (27 Oct 2026, helpers/release-notes.mjs; friends saw commit ids like 003fa1d): the next number
+# ("1.4" -> "1.5") and up to 5 short lines on what changed since the last publish (its commit subjects) go in
+# helpers/published-version.json, committed on its own before the build, so the published code carries its own number.
+# If the build fails, that commit is taken back (the file as it was); once the build succeeds it is pushed.
+# helpers/sign-release.mjs puts the number and the lines into version.json, signed. Preview: node helpers/release-notes.mjs --dry-run
+$verFile = 'helpers/published-version.json'
+Push-Location $root
+try {
+  $next = (& (Get-Command node).Source (Join-Path $PSScriptRoot 'release-notes.mjs') --bump | Select-Object -Last 1)
+  if ($LASTEXITCODE -or $next -notmatch '^\d+\.\d+$') { & git checkout -q HEAD -- $verFile; throw 'the next version number could not be worked out (helpers/release-notes.mjs); nothing was built' }
+  & git commit -q -m "DeviceHub $next" -- $verFile
+  if ($LASTEXITCODE) { & git checkout -q HEAD -- $verFile; throw 'the version number could not be committed; nothing was built' }
+  $bump = (& git rev-parse HEAD).Trim()
+} finally { Pop-Location }
+function Undo-Bump {
+  Push-Location $root
+  try { if ((& git rev-parse HEAD).Trim() -eq $bump) { & git reset -q --soft HEAD~1; & git checkout -q HEAD -- $verFile } } finally { Pop-Location }
+}
+Write-Host "Publishing DeviceHub $next" -ForegroundColor Cyan
+
 Write-Host 'Building the new version (code, zip, version file, library bundle; signed)...' -ForegroundColor Cyan
 $build = [Diagnostics.Stopwatch]::StartNew()
 & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'make-installer.ps1')
-if ($LASTEXITCODE) { throw 'make-installer.ps1 failed (see above); nothing was uploaded' }
+if ($LASTEXITCODE) { Undo-Bump; throw 'make-installer.ps1 failed (see above); nothing was uploaded' }
 Write-Host "  built [$([int]$build.Elapsed.TotalSeconds) s]"
 # make-installer.ps1 builds DeviceHub-Setup.exe too (it was built twice before 23 Oct 2026)
 
 $files = 'DeviceHub-setup.zip', 'version.json', 'device-library.json', 'DeviceHub-Setup.exe' | ForEach-Object { Join-Path $dist $_ }
 $missing = $files | Where-Object { -not (Test-Path $_) }
-if ($missing) { throw "missing from dist: $($missing -join ', ')" }
+if ($missing) { Undo-Bump; throw "missing from dist: $($missing -join ', ')" }
+# the build succeeded: the version number's commit goes to this repository's GitHub too (a failed push is said, not fatal)
+Push-Location $root
+try {
+  & { $ErrorActionPreference = 'Continue'; & git push -q 2>&1 | Out-Null }
+  if ($LASTEXITCODE) { Write-Host "  DeviceHub $next is committed here but could not be pushed; run git push later" -ForegroundColor Yellow }
+} finally { Pop-Location }
 
 $gh = Get-Command gh -ErrorAction SilentlyContinue
 $signedIn = $false

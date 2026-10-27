@@ -919,6 +919,8 @@ pre.json { margin: 0; max-height: 50vh; overflow: auto; font: 12px/1.5 var(--mon
 /* ---------- misc ---------- */
 .muted { color: var(--muted); } .faint { color: var(--faint); }
 .mono { font-family: var(--mono); }
+/* what's new in an update (27 Oct 2026): the pop-up and Settings > DeviceHub updates */
+.whats-new { margin: 6px 0 0; padding-left: 18px; } .whats-new li { margin: 2px 0; }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 18px; font-size: 13.5px; }
 .kv dt { color: var(--faint); }
 .kv dd { margin: 0; font-family: var(--mono); font-size: 12.5px; color: var(--text); word-break: break-all; }
