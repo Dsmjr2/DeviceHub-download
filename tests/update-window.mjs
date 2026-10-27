@@ -24,6 +24,20 @@ check(/\$hadWindow\s*=\s*\$false/.test(inst), 'install.ps1 starts with $hadWindo
 check(/if \(\$hadWindow\) \{ @\('\/afterupdate'\) \}/.test(inst), 'install.ps1 starts DeviceHub.vbs with /afterupdate when a window was open');
 const vbs = fs.readFileSync(path.join(ROOT, 'DeviceHub.vbs'), 'utf8');
 check((vbs.match(/sh\.Run /g) || []).length === 1 && !/sh\.AppActivate\("DeviceHub"\) Then/.test(vbs), 'DeviceHub.vbs starts things only through Launch (so the test sees them)');
+// DeviceHub's own window keeps its memory flags on both launch lines (--app-id and --app), and keeps site isolation
+// (links open in that profile) and the GPU in its own process (27 Oct 2026)
+{
+  const own = vbs.split(/\r?\n/).filter((l) => /^\s*Launch .*--user-data-dir=/.test(l));
+  check(own.length === 2, `DeviceHub.vbs has two own-window launch lines (${own.length})`);
+  for (const l of own) {
+    const kind = /--app-id=/.test(l) ? '--app-id' : '--app';
+    const feats = ((/--disable-features=(\S+)/.exec(l) || [])[1] || '').split(',');
+    for (const f of ['OptimizationGuideModelDownloading', 'OptimizationHints', 'OptimizationTargetPrediction', 'SpareRendererForSitePerProcess']) check(feats.includes(f), `${kind} launch line disables ${f}`);
+    for (const f of ['--disable-extensions', '--disable-component-update', '--disk-cache-size=8388608']) check(l.includes(f), `${kind} launch line has ${f}`);
+    check((l.match(/--disable-features=/g) || []).length === 1, `${kind} launch line has one --disable-features (Chrome reads only the last)`);
+    check(!/site-per-process|--disable-site-isolation|--in-process-gpu|--single-process|--enable-low-end-device-mode/.test(l), `${kind} launch line keeps site isolation, the GPU process and full picture quality`);
+  }
+}
 
 if (process.platform === 'win32' && fs.existsSync(path.join(process.env.WINDIR || 'C:\\Windows', 'System32', 'cscript.exe'))) {
   const parse = spawnSync('powershell.exe', ['-NoProfile', '-Command', `$e = $null; [void][System.Management.Automation.Language.Parser]::ParseFile('${path.join(ROOT, 'helpers', 'install.ps1').replace(/'/g, "''")}', [ref]$null, [ref]$e); if ($e.Count) { $e | ForEach-Object { $_.Message }; exit 1 }`], { encoding: 'utf8', windowsHide: true, timeout: 60000 });

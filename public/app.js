@@ -17,6 +17,7 @@ import { commands } from './core/commands.js';
 import { startAutoSwitch, loadSettings, auto } from './core/autoswitch.js';
 import { firstStart } from './core/first-run.js';
 import { everyVisible, isHidden } from './core/visible-timer.js';
+import { startEvents, onEvent, streamUp } from './core/events.js';
 import { startIdleClose, unsavedWatcher } from './core/idle-close.js';
 import { displayWaiting } from './ui/display-settings.js';
 
@@ -35,6 +36,9 @@ if (AGENT) {
 }
 // Without an agent (DEVICEHUB_AGENT=0 or an older server) the window connects through WebHID itself.
 const LOCAL = !DEMO && !AGENT;
+// the window's one live stream (core/events.js; already open when the agent answered): DeviceHub says what changed, so
+// the window polls nothing it can be told (27 Oct 2026). Demo mode has none and keeps its version check.
+if (!DEMO) startEvents();
 const adapters = DEMO ? demoAdapters() : [mouse, headset, keyboard];
 if (!REMOTE) adapters.forEach(register);
 // demo mode's pretend added device (?demo&added, public/devices/demo.js): its graph readings and time left are its own
@@ -140,23 +144,23 @@ function buildRail() {
 }
 
 // The shield on Backups: green when DeviceHub made a backup in the last 10 minutes (every change makes one), grey
-// otherwise; hovering it says when the last one was. Read from the backups folder every 30 s (a local file list).
+// otherwise; hovering it says when the last one was. The newest backup's time comes on the live stream (core/events.js:
+// hello, then backup whenever a file lands in the backups folder; 27 Oct 2026, it was read every 30 s), and it turns
+// grey by itself when that time is 10 minutes old.
 const FRESH_MS = 10 * 60 * 1000;
-let lastBackupAt = null;
-async function readLastBackup() {
-  if (DEMO || document.hidden) return;
-  try { const list = await (await fetch('/api/backups')).json(); lastBackupAt = list.reduce((m, f) => Math.max(m, new Date(f.at).getTime()), 0) || null; } catch {}
-  paintShield();
-}
+let lastBackupAt = null, staleTimer = null;
+const setLastBackup = (at) => { lastBackupAt = at ? new Date(at).getTime() || null : null; paintShield(); };
 function paintShield() {
+  clearTimeout(staleTimer);
+  const fresh = lastBackupAt && Date.now() - lastBackupAt < FRESH_MS;
+  if (fresh) staleTimer = setTimeout(paintShield, lastBackupAt + FRESH_MS - Date.now() + 50);
   const el = document.querySelector('.nav-shield');
   if (!el) return;
-  const fresh = lastBackupAt && Date.now() - lastBackupAt < FRESH_MS;
   el.classList.toggle('fresh', !!fresh);
   el.ariaLabel = lastBackupAt ? `Last backup ${dateTime(lastBackupAt)}` : 'No backups yet';
 }
-everyVisible(readLastBackup, 30000);   // only while the window is shown (core/visible-timer.js)
-setTimeout(readLastBackup, 500);
+onEvent('hello', (x) => setLastBackup(x.backupAt));
+onEvent('backup', (x) => setLastBackup(x.at));
 
 // Setup in the sidebar only while something needs the person, with how many (23 Oct 2026, Shawn: "put the set up area
 // in settings when its fully set up ... I need the app to recognize when it is and isnt fully set up"); fully set up, it
@@ -214,6 +218,7 @@ env.onNewDevice = (x) => {
 everyVisible(paintSetupNav, 5 * 60000);
 function paintRail() {
   paintSetupNav();
+  paintShield();
   const setupHidden = document.querySelector('.nav[data-page="setup"]')?.hidden;
   document.querySelectorAll('.nav').forEach((b) => b.classList.toggle('active', b.dataset.page === current?.id || (current?.id === 'setup' && setupHidden && b.dataset.page === 'settings')));
   // a device this PC does not have gets no sidebar entry (core/devices.js shownDevices)
@@ -365,48 +370,63 @@ async function reloadWhenUp() {
   }
   location.reload();
 }
-// Lighter glass on battery: while the battery saver is saving, html[data-saving] drops the panes' blur (style.css)
-async function checkSaving() {
-  if (DEMO || document.hidden) return;
-  try { const p = await (await fetch('/api/power')).json(); document.documentElement.toggleAttribute('data-saving', !!p.saving); } catch {}
-}
-checkSaving(); everyVisible(checkSaving, 30000);
+// Lighter glass on battery: while the battery saver is saving, html[data-saving] drops the panes' blur (style.css).
+// Told on the live stream (hello, then power when the saver turns on or off; 27 Oct 2026, it was asked every 30 s).
+const paintSaving = (p) => document.documentElement.toggleAttribute('data-saving', !!p?.saving);
+onEvent('hello', paintSaving);
+onEvent('power', paintSaving);
 
-// Pause infinite CSS animations and background polls while minimized or behind a game
+// Pause infinite CSS animations while minimized or behind a game
 const syncVisibility = () => {
   const hid = document.hidden;
   document.documentElement.toggleAttribute('data-hidden', hid);
-  if (!hid) { checkSaving(); readLastBackup(); }
+  if (!hid) paintShield();
 };
 document.addEventListener('visibilitychange', syncVisibility);
 syncVisibility();
 
-// Reload by itself when DeviceHub's files are updated (only while nothing is being changed on a device).
-let version = null;
+// Reload by itself when DeviceHub's files are updated (only while nothing is being changed on a device, and, as
+// before, once the window is shown). The version comes on the live stream: hello on every (re)open, so a restart with
+// new files is seen when it reconnects, and version when a file in public/ changes (27 Oct 2026: it was asked every
+// 20 s). Asked every 20 s only while the stream is not open (demo mode, DeviceHub restarting).
+let version = null, newVersion = null, reloading = false;
+function sawVersion(v) {
+  if (!v) return;
+  if (!version) version = v;
+  else if (v !== version) newVersion = v;
+  reloadIfNew();
+}
+function reloadIfNew() {
+  if (!newVersion || reloading || isHidden() || isBusy()) return;
+  // new files: reload, but only once DeviceHub answers steadily (19 Oct 2026: a reload during its restart left the
+  // window blank)
+  reloading = true; toast('DeviceHub updated', 'info', { detail: 'Reloading…' }); reloadWhenUp();
+}
+onEvent('hello', (x) => sawVersion(x.version));
+onEvent('version', (x) => sawVersion(x.version));
+document.addEventListener('visibilitychange', reloadIfNew);
 everyVisible(async () => {
-  try {
-    const v = (await (await fetch('/api/version')).json()).version;
-    // new files: reload, but only once DeviceHub answers steadily (19 Oct 2026: a reload during its restart left the
-    // window blank)
-    if (version && v !== version && !isBusy()) { toast('DeviceHub updated', 'info', { detail: 'Reloading…' }); reloadWhenUp(); }
-    version = version || v;
-  } catch {}
+  if (streamUp()) return reloadIfNew();   // no request: a reload that waited for a device change goes now
+  try { sawVersion((await (await fetch('/api/version')).json()).version); } catch {}
 }, 20000);
 // A new version is ready (24 Oct 2026, Shawn: "I do want you to provide a pop up that says there is an update"): DeviceHub
 // checks once, 2 minutes after it starts (server.js, helpers/update-notice.mjs); the window asks once per version per
 // start, Update or Later. Update runs the same path as Settings' Update button.
+// The notice comes on the live stream (hello, or notice the moment the check finds one; 27 Oct 2026, it was asked at
+// 130 s and 300 s): never in the window's first 130 s, as before, and asked again a minute later while a change runs.
 if (!DEMO) {
-  let asked = null;
-  const ask = async () => {
-    let n = null;
-    try { n = (await (await fetch('/api/update-notice')).json()).notice; } catch {}
-    if (!n || asked === n.version || isBusy()) return;
+  let asked = null, later = null;
+  const ask = async (n) => {
+    if (!n || asked === n.version) return;
+    const wait = Math.max(130000 - performance.now(), isBusy() ? 60000 : 0);
+    if (wait > 0) { clearTimeout(later); later = setTimeout(() => ask(n), wait); return; }
     asked = n.version;
     const { modal } = await import('./ui/overlay.js');
     const go = await modal('Update ready', n.text, [{ label: 'Later', value: false, kind: 'ghost' }, { label: 'Update', value: true, kind: 'primary' }]);
     if (go) { location.hash = '#/settings'; (await import('./pages/settings.js')).runSelfUpdate(); }
   };
-  setTimeout(ask, 130000); setTimeout(ask, 300000);
+  onEvent('hello', (x) => ask(x.notice));
+  onEvent('notice', (x) => ask(x.notice));
 }
 // One click, always (24 Oct 2026, Shawn: "why is it making click the buttons twice to update or publish"): a page that
 // redraws (Settings does whenever one of its checks answers) replaces the button between the press and the release, and

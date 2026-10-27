@@ -271,6 +271,8 @@ export function soundTools() {
     row('Balance', 'Louder left or right.',
       slider({ value: x.balance, min: -12, max: 12, step: 0.5, format: balanceText, live: isDemo() ? null : (v) => env.api('/api/eq/extras', { balance: v }).catch(() => {}), onCommit: (v) => setExtras({ balance: v }) })),
     h('h3', { class: 'eq-sub' }, 'Mic'),
+    // (27 Oct 2026, Shawn: Discord's join sound came late while Equalizer APO was on for the headset mic)
+    h('p', { class: 'faint', style: { margin: '0 0 6px' } }, "These make Discord's join sound late."),
     ui.eq.micFound ? null : h('p', { class: 'faint', style: { margin: '0 0 6px' } }, 'Headset mic not connected.'),
     row('Cut rumble', 'Removes hum and bumps.',
       toggle({ value: x.micRumble, label: 'Cut rumble', onCommit: (on) => setExtras({ micRumble: on }) })),
@@ -279,6 +281,5 @@ export function soundTools() {
     row('Smooth highs', 'Tames hiss and sharp sounds.',
       toggle({ value: !!x.micDeEss, label: 'Smooth highs', onCommit: (on) => setExtras({ micDeEss: on }) })),
     row('Even volume', ui.eq.levelerAvailable ? 'Turn off Discord\'s auto gain.' : 'Needs ReaPlugs installed.',
-      toggle({ value: !!x.micLevel && ui.eq.levelerAvailable, disabled: !ui.eq.levelerAvailable, label: 'Even volume', onCommit: (on) => setExtras({ micLevel: on }) })),
-    h('p', { class: 'faint', style: { fontSize: '12.5px', margin: '12px 0 0' } }, 'Monitors and camera mic: top of the Equalizer.'));
+      toggle({ value: !!x.micLevel && ui.eq.levelerAvailable, disabled: !ui.eq.levelerAvailable, label: 'Even volume', onCommit: (on) => setExtras({ micLevel: on }) })));
 }

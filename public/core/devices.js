@@ -6,6 +6,7 @@
 //  - the app window as a client of that agent (useRemote(): every call goes to /api/agent/*)
 //  - the app window on its own (demo mode, or WebHID when no agent is running)
 import { env } from './env.js';
+import { startEvents, onEvent, onOpen } from './events.js';
 import { rgbToHsv255 } from '../devices/keyboard-adapter.js';
 
 const listeners = new Set();
@@ -105,8 +106,8 @@ export async function useRemote() {
   remote = true;
   for (const k of Object.keys(devices)) delete devices[k];
   // Open the live stream first, then take the full snapshot each time it (re)opens, so no change is missed in
-  // between and activity from a DeviceHub restart is picked up.
-  let es = new EventSource('/api/agent/events');
+  // between and activity from a DeviceHub restart is picked up. The window's one stream (core/events.js, 27 Oct 2026):
+  // the same events as before, plus what the window used to poll for (app.js).
   const resync = async () => {
     try {
       const snap = await env.api('/api/agent/state');
@@ -116,31 +117,21 @@ export async function useRemote() {
       emit('activity');
     } catch {}
   };
-  const listen = (src) => {
-    src.addEventListener('device', (e) => applyRemote({ devices: [JSON.parse(e.data)] }));
-    src.addEventListener('auto', (e) => applyRemote({ auto: JSON.parse(e.data) }));
-    // a device just plugged in (helpers/plug-watch.mjs): the window says what DeviceHub did or can do
-    src.addEventListener('newdevice', (e) => { try { env.onNewDevice?.(JSON.parse(e.data)); } catch {} });
-    src.addEventListener('activity', (e) => {
-      const a = JSON.parse(e.data);
-      activity.unshift({ ...a, at: new Date(a.at) });
-      activity.length = Math.min(activity.length, 200);
-      emit('activity');
-      if (a.auto) env.toast(a.text, a.kind === 'bad' ? 'bad' : 'good');
-      if (a.lowBattery) env.toast(a.text, 'bad', { detail: 'Time to charge it.', ms: 9000 });
-    });
-  };
-  const opened = new Promise((resolve) => { es.onopen = () => { resync().then(resolve); }; setTimeout(resolve, 3000); });
-  listen(es);
-  // The browser retries a dropped stream by itself, but gives up for good if a retry meets an error answer (a
-  // DeviceHub restart caught mid-start); the window then showed a frozen picture (19 Oct 2026: a cable plug showed
-  // nothing). Every 5 s: a stream the browser gave up on is replaced, and the full state read again.
-  setInterval(() => {
-    if (es.readyState !== EventSource.CLOSED) return;
-    es = new EventSource('/api/agent/events');
-    es.onopen = () => { resync(); };
-    listen(es);
-  }, 5000);
+  onEvent('device', (d) => applyRemote({ devices: [d] }));
+  onEvent('auto', (a) => applyRemote({ auto: a }));
+  // a device just plugged in (helpers/plug-watch.mjs): the window says what DeviceHub did or can do
+  onEvent('newdevice', (x) => env.onNewDevice?.(x));
+  onEvent('activity', (a) => {
+    activity.unshift({ ...a, at: new Date(a.at) });
+    activity.length = Math.min(activity.length, 200);
+    emit('activity');
+    if (a.auto) env.toast(a.text, a.kind === 'bad' ? 'bad' : 'good');
+    if (a.lowBattery) env.toast(a.text, 'bad', { detail: 'Time to charge it.', ms: 9000 });
+  });
+  let first = null;
+  const opened = new Promise((resolve) => { first = resolve; setTimeout(resolve, 3000); });
+  onOpen(() => { resync().then(() => first?.()); });
+  startEvents();
   await opened;
   if (!Object.keys(devices).length) await resync(); // the stream was slow to open: snapshot anyway
   return true;

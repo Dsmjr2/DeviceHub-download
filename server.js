@@ -254,6 +254,16 @@ function windowMemory() {
 let publishRun = null;
 // a signed new version found by the one check after start (helpers/update-notice.mjs); the window asks Update or Later
 let updateNotice = null;
+// The window's one live stream, GET /api/events (helpers/window-events.js; 27 Oct 2026, Shawn: the open window asked
+// ~126 times in 10 minutes doing nothing): a new version, the battery saver, a new backup and the update notice are
+// pushed when they change, beside the agent's device events, so the window polls none of them
+const windowEvents = require('./helpers/window-events');
+const hub = windowEvents.createHub();
+let pushedVersion = null, pushedBackup = null;
+const helloNow = () => {
+  pushedVersion = appVersion(); pushedBackup = windowEvents.lastBackupAt(BACKUPS);
+  return { version: pushedVersion, saving: !!require('./helpers/power').state().saving, backupAt: pushedBackup, notice: updateNotice };
+};
 // what the server does once Update has the new version: a copy from the zip is already being installed (its installer
 // quits and restarts DeviceHub); a git copy restarts with code 3
 function afterSelfUpdate(r) {
@@ -500,6 +510,21 @@ async function api(req, res, url) {
     if (VENDOR_APPS[app]) return send(res, 404, { error: 'it is not installed on this PC' });
     return send(res, 404, { error: 'unknown app' });
   }
+  // The window's live stream (helpers/window-events.js): hello on every open, then only what changes; with an agent, its
+  // device, activity, auto and newdevice events too. While the agent is still starting (a reconnect right after a restart)
+  // it is refused, so the window opens it again in 5 s and gets the device events as well.
+  if (url.pathname === '/api/events' && req.method === 'GET') {
+    if (AGENT_ON && !agent && !agentTried) return send(res, 503, { error: 'agent starting' });
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
+    res.write(': connected\n\n');
+    res.write(windowEvents.frame('hello', helloNow()));
+    openWindows++;
+    const offHub = hub.add(res);
+    const offAgent = agent ? agent.subscribe((type, data) => res.write(windowEvents.frame(type, data))) : () => {};
+    const ping = setInterval(() => res.write(': ping\n\n'), 25000);
+    req.on('close', () => { offHub(); offAgent(); clearInterval(ping); openWindows--; });
+    return;
+  }
   // Whether this server runs an agent (the window must then never open the devices itself), and whether it is up.
   if (url.pathname === '/api/agent-config') return send(res, 200, { agent: AGENT_ON, ready: !!agent });
   // The background agent (helpers/agent.mjs): state, live events, and operations for the window and the tray.
@@ -507,7 +532,7 @@ async function api(req, res, url) {
     if (!agent) return send(res, 503, { error: 'agent not running' });
     const name = url.pathname.slice('/api/agent/'.length);
     if (name === 'state' && req.method === 'GET') return send(res, 200, agent.state());
-    if (name === 'events' && req.method === 'GET') {
+    if (name === 'events' && req.method === 'GET') {   // the agent's events alone (the window uses /api/events)
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
       res.write(': connected\n\n');
       openWindows++;
@@ -583,7 +608,11 @@ async function api(req, res, url) {
     try {
       const r = await eqapo.read();
       const d = await eqapo.devices();  // the headset the Headset page controls (helpers/headset-pick-eq.js)
-      r.notOn = (await require('./helpers/eqapo-devices').status({ render: d.headset, capture: d.mic })).off;
+      // the mic only when a mic setting is on (27 Oct 2026, Shawn: Equalizer APO on the headset mic made Discord's join
+      // sound late, on every output; a friend is not asked to switch it on for the mic unless they use a mic setting)
+      const x = r.extras || {};
+      const micUsed = !!(x.micRumble || x.micClarity || x.micDeEss || x.micLevel || x.micBoost);
+      r.notOn = (await require('./helpers/eqapo-devices').status({ render: d.headset, capture: micUsed ? d.mic : [] })).off;
       return send(res, 200, r);
     } catch (e) { return send(res, 400, { error: e.message }); }
   }
@@ -1027,6 +1056,11 @@ http.createServer(async (req, res) => {
   // isolated test mode: none of the background parts below (self-update, agent, auto setup, library updates, audio,
   // battery saver, Anker guard, settings sync, receiver light, backup tidy, battery history, tray)
   if (ISOLATED) { console.log('[isolated] test mode: no devices, helper, iCUE, OpenRGB, tray, sync or updates'); return; }
+  // what the window's live stream pushes (27 Oct 2026, see helloNow): new files in public/ (an update, an edit), a new
+  // backup (the Backups shield), the battery saver turning on or off; read only while a window is open
+  windowEvents.watchFolder(PUBLIC, () => { if (!hub.count()) return; const v = appVersion(); if (v !== pushedVersion) { pushedVersion = v; hub.push('version', { version: v }); } }, { recursive: true, waitMs: 1500 });
+  windowEvents.watchFolder(BACKUPS, () => { if (!hub.count()) return; const at = windowEvents.lastBackupAt(BACKUPS); if (at !== pushedBackup) { pushedBackup = at; hub.push('backup', { at }); } });
+  require('./helpers/power').onChange(() => hub.push('power', require('./helpers/power').state()));
   // automatic problem reports to Shawn (helpers/auto-report.mjs): the helper's problems as they happen, and 2 minutes
   // in, whether this run started after DeviceHub stopped with an error. Never from the owner's own PC.
   let autoReport = null;
@@ -1048,6 +1082,7 @@ http.createServer(async (req, res) => {
       try {
         const owner = await import('./helpers/auto-report.mjs').then((m) => m.isOwnerPc(ROOT)).catch(() => true);
         updateNotice = (await import('./helpers/update-notice.mjs')).notice({ owner, status: await require('./helpers/self-update').status() });
+        if (updateNotice) hub.push('notice', { notice: updateNotice });   // an open window asks at once (app.js)
       } catch (e) { console.error('[update] check:', e.message); }
     }, 120000);
     t.unref?.();
@@ -1071,6 +1106,7 @@ http.createServer(async (req, res) => {
       if (process.env.DEVICEHUB_TEST !== '1') import('./helpers/library-updates.mjs').then((m) => m.schedule({ root: ROOT, log: serverLog })).catch((e) => console.error('[library] updates:', e.message));  // LIBRARY UPDATES: the signed library bundle every 3 hours (and at start, above)
     } catch (e) { agent = null; console.error('[agent] could not start:', e); autoReport?.agentFailed(String(e?.message || e)); }
   }
+  agentTried = true;   // /api/events opens now, with or without the agent
   // DeviceHub's handling of Windows' speakers (helpers/audio-follow.js: one HS80 connection at a time, apps following
   // a new default) is OFF unless settings.json has "audioSwitching": true. Off since 19 Oct 2026: Shawn's Windows
   // sound menu stopped switching smoothly while it ran; Windows alone decides the speaker.
@@ -1124,7 +1160,7 @@ http.createServer(async (req, res) => {
 });
 
 const AGENT_ON = process.env.DEVICEHUB_AGENT !== '0';
-let agent = null;
+let agent = null, agentTried = false;
 let tray = false;
 let quitting = false;
 async function shutdown() {

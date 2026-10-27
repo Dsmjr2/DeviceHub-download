@@ -59,17 +59,20 @@ check(isHidden({ hidden: true }) && !isHidden({ hidden: false }), 'isHidden fall
 // the window's own timers use it, and a hidden window redraws nothing until it is shown
 const src = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
 const app = src('public/app.js');
-check(/everyVisible\(readLastBackup, 30000\)/.test(app), 'the backup shield reads only while the window is shown');
+// the backup shield, the battery saver and the version come on the live stream (27 Oct 2026, tests/events.mjs); the
+// version is asked for only while the stream is not open, and then only while the window is shown
+check(/onEvent\('backup', \(x\) => setLastBackup\(x\.at\)\)/.test(app) && !/fetch\('\/api\/backups'\)/.test(app), 'the backup shield is told on the stream, never read');
 check(/everyVisible\(paintSetupNav, 5 \* 60000\)/.test(app), 'the Setup check\'s 5-minute look runs only while the window is shown');
-check(/everyVisible\(checkSaving, 30000\)/.test(app), 'the battery-saver look runs only while the window is shown');
-check(/everyVisible\(async \(\) => \{\s*try \{\s*const v = \(await \(await fetch\('\/api\/version'\)\)/.test(app), 'the version check runs only while the window is shown');
+check(/onEvent\('power', paintSaving\)/.test(app) && !/fetch\('\/api\/power'\)/.test(app), 'the battery saver is told on the stream, never read');
+check(/everyVisible\(async \(\) => \{\s*if \(streamUp\(\)\) return reloadIfNew\(\);[^\n]*\n\s*try \{ sawVersion\(\(await \(await fetch\('\/api\/version'\)\)/.test(app), 'the version check runs only while the window is shown, and only while the stream is down');
+check(/function reloadIfNew\(\) \{\s*if \(!newVersion \|\| reloading \|\| isHidden\(\) \|\| isBusy\(\)\) return;/.test(app), 'a hidden window reloads for new files only once it is shown');
 check(/onChange\(\(id\) => \{ if \(isHidden\(\)\) \{ changedWhileHidden = true; return; \} pageChanged\(id\); \}\)/.test(app), 'a hidden window does not redraw on a device change');
 check(/if \(!isHidden\(\) && changedWhileHidden\) \{ changedWhileHidden = false; pageChanged\('\*'\); \}/.test(app), 'it redraws once when shown again');
 check(!/setInterval\(/.test(app.replace(/\/\/[^\n]*/g, '')), 'app.js has no plain setInterval left');
 check(/if \(document\.hidden \|\| /.test(src('public/pages/eq-panel.js')), 'the Equalizer card reads nothing while hidden');
 check(/if \(document\.hidden\) return;/.test(src('public/pages/overview.js')), 'the Overview\'s GPU chip reads nothing while hidden');
 // the stream's reconnect check keeps running while hidden (device reconnects are never missed)
-check(/if \(es\.readyState !== EventSource\.CLOSED\) return;/.test(src('public/core/devices.js')), 'the live stream is still replaced when it drops, hidden or not');
+check(/if \(es\.readyState !== ESource\.CLOSED\) return;/.test(src('public/core/events.js')), 'the live stream is still replaced when it drops, hidden or not');
 
 // a device going to sleep or waking re-reads only the Setup summary, not the slow reads; the GPU chip every 15 s
 const setup = src('public/pages/setup.js');

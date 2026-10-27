@@ -3,7 +3,6 @@ rem DeviceHub's keep-running loop (20 Oct 2026: replaces the script-host loop in
 rem wait; this hidden cmd uses ~4 MB). Starts the server and keeps it running: after a crash it starts it again in 3 s,
 rem at most 5 times in 10 minutes. A normal Quit (code 0), or a server that finds DeviceHub already running, ends the
 rem loop. Code 3 is DeviceHub updating itself: started again at once, not counted. The log is moved aside over 2 MB.
-rem A new version that crashes on start goes back to the old one (update-rollback.txt, helpers/self-update.js).
 setlocal EnableDelayedExpansion
 cd /d "%~dp0.."
 set "NODE=node"
@@ -22,13 +21,15 @@ if exist server.log for %%F in (server.log) do if %%~zF GTR 2097152 (
   if exist server.old.log del /q server.old.log
   move /y server.log server.old.log >nul
 )
-%NODE% --no-warnings server.js >> server.log 2>&1
+rem (27 Oct 2026) smaller V8 memory limits, ~3 MB less (below)
+%NODE% --no-warnings --max-semi-space-size=1 --max-old-space-size=512 server.js >> server.log 2>&1
+rem the young generation at 1 MB, the heap capped at 512 MB (it uses ~20): measured, no slower
 set code=!errorlevel!
 if "!code!"=="0" exit /b 0
 if "!code!"=="3" goto loop
 rem code 4: the port belongs to another program (server.log says so); starting again would not help
 if "!code!"=="4" exit /b 4
-rem a new version that crashes before it has run well for a minute: back to the version before it (helpers/self-update.js)
+rem a new version that crashes on start (update-rollback.txt), before it has run well for a minute: back to the version before it (helpers/self-update.js)
 if exist update-rollback.txt (
   set /p old=<update-rollback.txt
   >> server.log echo [launcher] %date:~4% %time:~0,8% the new version stopped with code !code! on start; going back to !old!

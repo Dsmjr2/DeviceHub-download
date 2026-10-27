@@ -180,10 +180,14 @@ If light Then
 End If
 ' its page cache kept to 8 MB, and none of Chrome's downloaded models: a page served from this PC needs neither
 ' (27 Oct 2026: the folder had grown to 181 MB, 47 MB of it cache and about 80 MB models)
+' No spare renderer (27 Oct 2026, measured headless with these flags): Chrome keeps one empty page process ready for
+' the next tab; this window has one page, so it saved about 12 MB and a process. Nothing else tried saved memory
+' without a cost: site isolation off saved nothing more (and links open in this profile), low-end mode trades
+' picture quality, the rest (sync, pings, crash, V8, GPU memory caps, one renderer) measured within the noise.
 profile = dir & "\window-profile"
 appId = "gbcckkpijkfkcllfaiefimkinkmpohlk"
 If fs.FolderExists(profile & "\Default\Web Applications\Manifest Resources\" & appId) Then
-  Launch """" & chrome & """" & " --user-data-dir=""" & profile & """ --no-first-run --no-default-browser-check --hide-crash-restore-bubble --disable-extensions --disable-component-update --disk-cache-size=8388608 --disable-features=OptimizationGuideModelDownloading,OptimizationHints,OptimizationTargetPrediction --start-maximized --app-id=" & appId, 1
+  Launch """" & chrome & """" & " --user-data-dir=""" & profile & """ --no-first-run --no-default-browser-check --hide-crash-restore-bubble --disable-extensions --disable-component-update --disk-cache-size=8388608 --disable-features=OptimizationGuideModelDownloading,OptimizationHints,OptimizationTargetPrediction,SpareRendererForSitePerProcess --start-maximized --app-id=" & appId, 1
 Else
-  Launch """" & chrome & """" & " --user-data-dir=""" & profile & """ --no-first-run --no-default-browser-check --hide-crash-restore-bubble --disable-extensions --disable-component-update --disk-cache-size=8388608 --disable-features=OptimizationGuideModelDownloading,OptimizationHints,OptimizationTargetPrediction --app=http://localhost:" & port & "/ --start-maximized", 1
+  Launch """" & chrome & """" & " --user-data-dir=""" & profile & """ --no-first-run --no-default-browser-check --hide-crash-restore-bubble --disable-extensions --disable-component-update --disk-cache-size=8388608 --disable-features=OptimizationGuideModelDownloading,OptimizationHints,OptimizationTargetPrediction,SpareRendererForSitePerProcess --app=http://localhost:" & port & "/ --start-maximized", 1
 End If
