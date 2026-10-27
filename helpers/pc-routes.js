@@ -10,6 +10,8 @@
 //   POST /api/pc-check/open-app     { app: 'nvidia' | 'amd' }: starts the maker's app the last check found, nothing else
 //   POST /api/pc-check/open-settings { page }: a Windows Settings page a check names (helpers/pc-check.js PC_SETTINGS)
 //   POST /api/pc-check/fix          { id: 'power-plan' }: the high performance plan, on the person's click
+//   GET  /api/startup-apps[?fresh=1] what starts with Windows (helpers/startup-apps.js; 27 Oct 2026)
+//   POST /api/startup-apps/set      { id, on }: one start-up app on or off, the way Task Manager does it
 const { spawn } = require('child_process');
 
 const SETTINGS = { display: 'ms-settings:display', nightlight: 'ms-settings:nightlight', hdr: 'ms-settings:display-advancedcolor' };
@@ -59,10 +61,17 @@ async function handle(req, res, url, { send, readBody, backups, log = () => {} }
       const { app } = await readBody(req);
       return send(res, 200, require('./pc-check').openApp(String(app || '')));
     }
+    if (p === '/api/startup-apps' && req.method === 'GET') return send(res, 200, await require('./startup-apps').list(url.searchParams.has('fresh')));
+    if (p === '/api/startup-apps/set' && req.method === 'POST') {
+      const { id, on } = await readBody(req);
+      const r = await require('./startup-apps').set(String(id || ''), on === true);
+      log(`[startup] ${r.text}${r.backup ? ` (backup ${r.backup})` : ''}`);
+      return send(res, 200, r);
+    }
     return send(res, 404, { error: 'not found' });
   } catch (e) { return send(res, 400, { error: e.message }); }
 }
 
-const handles = (p) => p === '/api/display' || p.startsWith('/api/display/') || p === '/api/temps' || p === '/api/pc-check' || p.startsWith('/api/pc-check/');
+const handles = (p) => p === '/api/display' || p.startsWith('/api/display/') || p === '/api/temps' || p === '/api/pc-check' || p.startsWith('/api/pc-check/') || p === '/api/startup-apps' || p.startsWith('/api/startup-apps/');
 
 module.exports = { handle, handles };

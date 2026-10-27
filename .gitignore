@@ -55,6 +55,9 @@ wallpaper-previous/
 auto-report-state.json
 # zone names from Find my lights (helpers/find-lights.js), this PC's own
 lights-names.json
+# game mode's games and what to put back (helpers/game-mode.mjs), this PC's own
+game-mode.json
+game-mode-state.json
 
 # the tools the installer ships (Equalizer APO, OpenRGB), copied in from bundled-cache/ on a development copy
 tools/

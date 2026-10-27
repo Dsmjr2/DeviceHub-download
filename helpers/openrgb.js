@@ -473,8 +473,25 @@ async function putBack(s, entries) {
 
 // forget the last reading (board lights were just set up or removed)
 const forget = () => { answer.invalidate(); };
+// Game mode (27 Oct 2026, helpers/game-mode-live.mjs): every light's mode and colors now, which game mode keeps on disk
+// so a restart mid-game can still put them back, and putting such a list back. capture never starts OpenRGB (not
+// running = nothing to keep) and is backed up like a first change.
+async function capture() {
+  return serial(() => withOpenRGB(false, async (s) => {
+    writable(s);
+    const list = (await readAll(s)).filter((c) => usable(s, c) && !isOwn(c));
+    if (!list.length) throw new Error('no OpenRGB lights');
+    backupNew(list);
+    return list.map(entryOf);
+  }));
+}
+async function putBackAll(entries) {
+  if (!Array.isArray(entries) || !entries.length) return { restored: [] };
+  return serial(() => withOpenRGB('write', async (s) => { writable(s); const { done } = await putBack(s, entries); return { restored: done.map((b) => b.name) }; }));
+}
+
 // Find my lights (helpers/find-lights.js): one color per zone, then the person's names saved and the lights put back
 const find = require('./find-lights').create({ serial, withOpenRGB, writable, readAll, usable, isOwn, keyOf, entryOf, backupNew, sendColors, putBack, shapeOut,
   forget: () => { answer.invalidate(); }, names: { read: readNames, file: () => namesFile, reload: () => { namesCache = null; } } });
-module.exports = { start: (dir, opts = {}) => { backupDir = dir; ownDevice = opts.ownDevice || null; namesFile = opts.namesFile || null; namesCache = null; }, status, setColor, restore,
+module.exports = { start: (dir, opts = {}) => { backupDir = dir; ownDevice = opts.ownDevice || null; namesFile = opts.namesFile || null; namesCache = null; }, status, setColor, restore, capture, putBackAll,
   findStart: find.start, findSave: find.save, findCancel: find.cancel, findState: find.state, stop: stopBundled, forget, BOARD, _test: { parseController, PORT, bundle, deps, bundleCheck, buildOf, FIXED_BUILD, placeOnly, answer: () => answer } };

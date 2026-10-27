@@ -49,6 +49,8 @@ async function tick() {
   if (!auto.settings.autoSwitch || auto.busy || isDemo()) return;
   let running;
   try { running = new Set((await env.api('/api/processes')).map(norm)); } catch { return; }
+  // a game set up in Game mode is game mode's alone (27 Oct 2026, helpers/game-mode.mjs): never a profile switch too
+  for (const x of env.gameModeExes?.() || []) running.delete(x);
   const profiles = await loadProfiles();
   const all = await games();
   const match = profiles.find((p) => (p.games || []).some((g) => gameRunning(g, running, all)));

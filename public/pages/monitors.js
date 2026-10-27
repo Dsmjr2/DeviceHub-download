@@ -123,7 +123,7 @@ function colorBalance(m) {
 
 async function sleepMonitors() {
   if (isDemo()) { toast('Demo: putting monitors to sleep', 'info'); return; }
-  toast('Putting monitors to sleep in 1s...', 'info');
+  toast('Putting monitors to sleep in 2s...', 'info');
   try {
     const r = await env.api('/api/monitors/sleep', {});
     if (!r?.ok && r?.error) toast(`Sleep failed: ${r.error}`, 'bad');

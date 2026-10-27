@@ -5,6 +5,7 @@ import { button, card, pill, batteryCell, loadBatteryEstimates, skeleton } from 
 import { devices, activity, connect, isDemo, isRemote, shownDevices, noDevicesYet, stillLooking } from '../core/devices.js';
 import { artOf, genericArtFor } from '../ui/art.js';
 import { prettyExe } from '../core/autoswitch.js';
+import { gameModeLine } from './game-mode-card.js';   // (27 Oct 2026) "Valorant mode on" under Profiles
 import { loadProfiles, apply } from '../core/profiles.js';
 import { EFFECTS } from '../devices/keycodes.js';
 import { meter, micState, dots, signal, colorDot } from '../ui/gauges.js';
@@ -368,7 +369,7 @@ export default {
         : h('div', { class: 'bays', style: { gridTemplateColumns: `repeat(${list.length}, minmax(0, 1fr))` } }, ...list.map((d) => bay(d, go, redraw))),
       batteries(redraw),
       h('div', { class: 'grid ov-bottom' },
-        card([h('h2', {}, 'Profiles'), h('span', { class: 'spacer' }), button('Manage', () => go('profiles'), { kind: 'ghost small' })],
+        card([h('h2', {}, 'Profiles'), h('span', { class: 'spacer' }), gameModeLine() ? h('span', { class: 'pill accent' }, gameModeLine()) : null, button('Manage', () => go('profiles'), { kind: 'ghost small' })],
           profiles?.length
             ? h('div', { class: 'ov-profiles' }, ...profiles.map((p, i) => button(p.name, async () => {
               const r = await apply(p);

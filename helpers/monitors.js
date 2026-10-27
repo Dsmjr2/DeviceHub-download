@@ -196,7 +196,12 @@ async function builtIn(list) {
 // is used as it is; an older one is shown at once while a new read runs (the page asks again for it, fresh); none at all
 // (only before the first read, which start() does in the background soon after DeviceHub starts) waits for the read.
 let refreshing = null;
+// after Monitors > Sleep no DDC/CI read for 10 minutes (27 Oct 2026, Shawn: Sleep did not work; a read over the
+// monitor's cable can wake it): the last reading is shown; a change the person makes ends the quiet at once
+let quietUntil = 0;
+const quiet = (ms = 10 * 60000) => { quietUntil = Date.now() + ms; };
 async function list(fresh) {
+  if (Date.now() < quietUntil && cache.list) return cache.list;
   if (!fresh && cache.list && Date.now() - cache.at < 10000) return cache.list;
   if (!fresh && cache.list) {
     if (!refreshing) list(true).catch(() => {});
@@ -226,6 +231,7 @@ async function readAll() {
 function warm(ms = 15000) { setTimeout(() => { if (!cache.list) list(true).catch(() => {}); }, ms).unref?.(); }
 
 async function set(id, feature, value, { live = false, fromQueue = false } = {}) {
+  if (!fromQueue) quietUntil = 0;   // the person changed something: they are at the screens
   const code = FEATURES[feature];
   if (code == null) throw new Error('unknown setting');
   // a reading from the last 30 s checks the value and fills the backup (20 Oct 2026: a fresh read of every monitor
@@ -308,4 +314,4 @@ function wait(m, feature, value) {
   return { name: m.name, feature, value, waiting: true };
 }
 
-module.exports = { start(nat, dir, applied) { native = nat; backupDir = dir; if (applied) onApplied = applied; keepTrying(); warm(); }, list, set, FEATURES, _test: { vcpList, supportsList, warm, age: (ms) => { cache.at -= ms; }, customFirst, refusesColor } };
+module.exports = { quiet, start(nat, dir, applied) { native = nat; backupDir = dir; if (applied) onApplied = applied; keepTrying(); warm(); }, list, set, FEATURES, _test: { vcpList, supportsList, warm, age: (ms) => { cache.at -= ms; }, customFirst, refusesColor } };

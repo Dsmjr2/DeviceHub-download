@@ -145,6 +145,8 @@ function syncRows() {
       toggle({ value: opts?.settingsSync !== false, label: 'Settings sync', onCommit: (on) => setOpt('settingsSync', on) }))),
     oneDriveRow(),
     // battery care (helpers/battery-care.mjs): the wireless devices' lights down on a low battery, back once they charge
+    // (27 Oct 2026, Shawn) Windows' sound and mic move to the headset when it turns on (helpers/headset-sound.mjs); on unless off
+    row('Headset sound', 'Switch sound to the headset when it turns on.', toggle({ value: opts?.headsetSoundSwitch !== false, label: 'Switch sound to the headset when it turns on', onCommit: (on) => setOpt('headsetSoundSwitch', on) })),
     row('Save device battery', 'At 20%: lights off, mouse 1000 Hz.', toggle({ value: opts?.batteryCare !== false, label: 'Save device battery', onCommit: (on) => setOpt('batteryCare', on) })),
     // only a PC with a battery has anything to save (a desktop always runs at full speed)
     powerSt && !pw.hasBattery ? null : row('Battery saver', powerText, toggle({ value: opts?.batterySaver !== false, label: 'Battery saver', onCommit: (on) => setOpt('batterySaver', on) })),

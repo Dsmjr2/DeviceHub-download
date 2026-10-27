@@ -15,6 +15,7 @@ import { LIFT_OFF } from '../devices/pulsar.js';
 import { EFFECTS } from '../devices/keycodes.js';
 import { modal, toast } from '../ui/overlay.js';
 import { helpHere } from '../ui/get-help.js';
+import { gameModeCard } from './game-mode-card.js';   // (27 Oct 2026) per-game switches put back when the game quits
 
 let list = null;
 let rerender = () => {};
@@ -428,6 +429,7 @@ export default {
     return h('div', {},
       topbar('Setups', 'Profiles', 'Switch every device at once.', ui.adding ? null : button('New profile', startNew, { kind: 'primary', ic: 'plus' }), helpHere('profiles')),
       h('div', { style: { marginBottom: '18px' } }, autoPanel()),
+      h('div', { style: { marginBottom: '18px' } }, gameModeCard(() => rerender())),
       h('div', { class: 'profiles' }, newTile(), ...(list || []).map((p) => profileCard(p))));
   },
 };

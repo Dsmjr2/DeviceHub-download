@@ -223,7 +223,7 @@ function isolatedApi(req, res, url) {
     '/api/agent-config': { agent: false, ready: false, isolated: true },
     '/api/health': { uptimeS: Math.round(process.uptime()), serverMB: +(m.rss / 1048576).toFixed(0), heapMB: +(m.heapUsed / 1048576).toFixed(0), helperMB: null, crashes24h: 0, lastCrashAt: null, lastProblem: null, backups: { count: 0, mb: 0 }, isolated: true },
     '/api/setups': [], '/api/monitors': [], '/api/cameras': [], '/api/power': { saver: false, isolated: true },
-    '/api/startup': { enabled: false, isolated: true }, '/api/processes': [], '/api/games': [],
+    '/api/startup': { enabled: false, isolated: true }, '/api/processes': [], '/api/games': [], '/api/game-mode': { games: [], status: null }, '/api/game-mode/installed': [],
     '/api/battery-estimate': {}, '/api/helper-calls': { uptimeS: Math.round(process.uptime()), calls: {} },
     '/api/settings-sync': { isolated: true, on: false }, '/api/auto-report': { isolated: true, on: true, configured: false, owner: false, active: false }, '/api/self-update': { isolated: true, count: 0 }, '/api/publish-release': { owner: false }, '/api/driver-share': { choice: null, owner: true }, '/api/self-update/progress': {},
     '/api/updates': { isolated: true, apps: [] }, '/api/openrgb': { running: false, isolated: true, controllers: [] }, '/api/openrgb/find': { running: false, isolated: true },
@@ -441,6 +441,24 @@ async function api(req, res, url) {
   // "Any game": program names found in the game folders (helpers/games.js), for auto-switch's '*games*' entry.
   if (url.pathname === '/api/games') return send(res, 200, url.searchParams.has('titles') ? await require('./helpers/games').titles() : await require('./helpers/games').names());
   if (url.pathname === '/api/processes') return send(res, 200, await runningPrograms(url.searchParams.has('windows')));
+  // Game mode (27 Oct 2026, helpers/game-mode.mjs): the games set up (game-mode.json), the installed games to pick from
+  // (helpers/games.js installed, read-only), the switches now ("Use now's settings"), and what is on now
+  if (url.pathname.startsWith('/api/game-mode')) {
+    const file = path.join(ROOT, 'game-mode.json');
+    const status = async () => (agent ? (await agent.op('game-mode-reload', {})).status : null);
+    try {
+      if (url.pathname === '/api/game-mode' && req.method === 'GET') return send(res, 200, { games: readJsonFile(file, {}).games || [], status: agent ? agent.state().auto.game : null });
+      if (url.pathname === '/api/game-mode/installed' && req.method === 'GET') return send(res, 200, await require('./helpers/games').installed());
+      if (url.pathname === '/api/game-mode/now' && req.method === 'GET') return send(res, 200, agent ? await agent.op('game-mode-now', {}) : {});
+      if (url.pathname === '/api/game-mode' && req.method === 'POST') {
+        const { cleanGames } = await import('./helpers/game-mode.mjs');
+        const games = cleanGames((await readBody(req)).games);
+        writeAtomic(file, JSON.stringify({ games }, null, 1));
+        return send(res, 200, { games, status: await status() });
+      }
+    } catch (e) { return send(res, 400, { error: e.message }); }
+    return send(res, 404, { error: 'not found' });
+  }
   // Start with Windows: a shortcut to DeviceHub.vbs in the user's Startup folder (only when the user turns it on).
   if (url.pathname === '/api/startup') {
     const lnk = path.join(process.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'DeviceHub.lnk');
@@ -469,7 +487,7 @@ async function api(req, res, url) {
       // setupSeen: the window opened once on this PC, so it no longer opens Setup by itself (public/core/first-run.js).
       const cur = readJsonFile(SETTINGS, {});
       const b = await readBody(req);
-      for (const [k, type] of Object.entries({ autoSwitch: 'boolean', defaultProfile: 'string', artStyle: 'string', themeAccent: 'string', themeBg: 'string', ankerGuard: 'boolean', batterySaver: 'boolean', settingsSync: 'boolean', lightWindow: 'boolean', batteryCare: 'boolean', oneDriveCopy: 'boolean', autoReport: 'boolean', shareDrivers: 'boolean', setupSeen: 'boolean', wifiPauseGaming: 'boolean', closeWhenMinimized: 'boolean' }))if (typeof b[k] === type) cur[k] = type === 'string' ? b[k].slice(0, 100) : b[k];
+      for (const [k, type] of Object.entries({ autoSwitch: 'boolean', defaultProfile: 'string', artStyle: 'string', themeAccent: 'string', themeBg: 'string', ankerGuard: 'boolean', batterySaver: 'boolean', settingsSync: 'boolean', lightWindow: 'boolean', batteryCare: 'boolean', oneDriveCopy: 'boolean', autoReport: 'boolean', shareDrivers: 'boolean', setupSeen: 'boolean', wifiPauseGaming: 'boolean', closeWhenMinimized: 'boolean', headsetSoundSwitch: 'boolean' }))if (typeof b[k] === type) cur[k] = type === 'string' ? b[k].slice(0, 100) : b[k];
       // the theme (Settings > Appearance): an accent color as #rrggbb and one of the backdrops
       if (cur.themeAccent && !/^#[0-9a-f]{6}$/i.test(cur.themeAccent)) delete cur.themeAccent;
       if (cur.themeBg && !['graphite', 'black', 'ocean', 'midnight', 'espresso', 'old-school', 'verde', 'milk', 'coral-reef', 'cyberpunk', 'sakura', 'terminal', 'taco-night', 'slate', 'plum', 'forest', 'cream', 'paper'].includes(cur.themeBg)) delete cur.themeBg;
@@ -690,7 +708,8 @@ async function api(req, res, url) {
     try {
       // Windows' own monitor-off message through its signed PowerShell (26 Oct 2026: no third-party nircmd.exe)
       const ps = path.join(__dirname, 'helpers', 'sleep-monitors.ps1');
-      require('child_process').spawn('powershell.exe', ['-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', ps], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+      require('child_process').spawn('powershell.exe', ['-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', ps], { stdio: 'ignore', windowsHide: true }).unref();   // not detached: started detached it quit at once, before its first line (27 Oct 2026, Shawn: Sleep did nothing)
+      monitors.quiet();   // no DDC/CI reads that could wake them (helpers/monitors.js)
       serverLog({ kind: 'info', text: 'Monitors: sleep command sent' });
       return send(res, 200, { ok: true });
     } catch (e) {

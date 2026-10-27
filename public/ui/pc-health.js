@@ -14,6 +14,7 @@ import { isDemo } from '../core/devices.js';
 import { cpuSensors, cpuSensorsSetUp } from './cpu-sensors.js';
 import { shouldRead } from '../core/cpu-sensors.js';
 import { wifiPause } from './wifi-pause.js';
+import { startupApps } from './startup-apps.js';
 
 const link = (text, url) => h('a', { href: url, target: '_blank', rel: 'noopener' }, text);
 
@@ -333,5 +334,7 @@ export function pcCheckCard(rerender) {
     sum ? h('details', { class: 'pcc-ok', open: okOpen, ontoggle: (e) => { okOpen = e.target.open; } },
       h('summary', {}, h('span', { class: 'pcc-dot ok' }), h('span', {}, sum)),
       h('div', { class: 'pcc-grid' }, ...fine.map(cell))) : null,
+    // what starts with Windows, one line that opens (27 Oct 2026, ui/startup-apps.js)
+    startupApps({ redraw: rerender }),
     null);
 }

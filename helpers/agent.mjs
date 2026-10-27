@@ -15,7 +15,9 @@ import * as weekly from './weekly-setup.mjs';
 // (27 Oct 2026, memory) onedrive-setup.mjs only when a OneDrive copy is written (saveOneDrive below)
 import * as daily from './daily-check.mjs';
 import * as batteryCare from './battery-care.mjs';
+import { headsetSound } from './headset-sound.mjs';
 import { loadProfiles, apply } from '../public/core/profiles.js';
+import { startGameMode, nowValues } from './game-mode-live.mjs';
 import { provider, closeAll, setGoneHandler, setMovedHandler, devicesChanged, useKeyboardSpec, addSpec, useWindowsEvents, setAnnounceHandlers } from './hid-host.mjs';
 import * as myDevices from './my-devices.mjs';
 import * as autoReport from './auto-report.mjs';
@@ -203,6 +205,12 @@ export async function start({ port, corsairHelper }) {
     pending.set(id, setTimeout(() => { pending.delete(id); send('device', snapshot(id)); }, 60));
   });
   onAuto(() => send('auto', autoState()));
+  // (27 Oct 2026, Shawn) Windows' sound and mic move to the headset when it turns on (helpers/headset-sound.mjs); not in
+  // a test install (DEVICEHUB_TEST), which never touches Windows sound
+  if (corsair && process.env.DEVICEHUB_TEST !== '1') {
+    const hs = headsetSound({ call: (action, body) => corsair.handle(action, body || {}), log: (text, kind) => core.log(text, kind, 'headset'), readSettings: () => readJson(SETTINGS_FILE) });
+    core.onChange((id) => { if (id === 'headset' && core.devices.headset) hs.seen(core.devices.headset)?.catch?.(() => {}); });
+  }
 
   await core.loadHistory();
   setHeadsetPick(readJson(SETTINGS_FILE).headsetPick);  // the headset picked on the Headset page, if any
@@ -211,6 +219,16 @@ export async function start({ port, corsairHelper }) {
   daily.start(pathSeen.dirname(SEEN_FILE), core);  // the quiet daily self-check (helpers/daily-check.mjs)
   batteryCare.start(pathSeen.dirname(SEEN_FILE), core);  // lights down on a low battery, back once it charges
   startAutoSwitch();
+  // Game mode (27 Oct 2026, helpers/game-mode-live.mjs): a set-up game's switches while it runs, then everything put
+  // back; the program list from the native helper only (no tasklist); not in a test install (DEVICEHUB_TEST)
+  if (corsair && process.env.DEVICEHUB_TEST !== '1') {
+    gameMode = startGameMode({
+      core, api: env.api, root: pathSeen.dirname(SEEN_FILE), every: env.every, log: (text, kind) => core.log(text, kind),
+      procs: async () => { const r = await corsair.handle('procs', {}); if (!Array.isArray(r.names)) throw new Error('no names'); return r.names; },
+      profileBusy: () => auto.busy, onChange: () => send('auto', autoState()),
+    });
+    env.gameModeExes = () => gameMode.exes();   // auto-switch leaves these games to game mode (public/core/autoswitch.js)
+  }
   // the weekly setup file (helpers/weekly-setup.mjs): checked 90 s after start (the devices have connected) and daily
   setTimeout(() => weekly.saveIfDue(core, core.log).catch((e) => console.error('[setup] weekly', e.message)), 90000);
   setInterval(() => weekly.saveIfDue(core, core.log).catch((e) => console.error('[setup] weekly', e.message)), 24 * 3600 * 1000);
@@ -296,7 +314,9 @@ export async function start({ port, corsairHelper }) {
 
 export function stop() { closeAll(); }
 
-const autoState = () => ({ settings: auto.settings, active: auto.active });
+let gameMode = null;
+// game: the game mode on now ({ active: { name }, restoring }), for the Overview's "Valorant mode on" line
+const autoState = () => ({ settings: auto.settings, active: auto.active, game: gameMode ? gameMode.status() : null });
 
 function adapterMeta(d) {
   const a = d.adapter;
@@ -368,6 +388,9 @@ export async function op(name, b) {
     case 'log': core.log(String(b.text || '').slice(0, 300), b.kind === 'bad' ? 'bad' : b.kind === 'good' ? 'good' : 'info', b.device); return { ok: true };
     // one added device's part of a profile, from a window's apply (public/core/profiles.js)
     case 'profile-added': return applyAdded({ id: String(b.id || ''), values: b.values, name: b.name, quiet: b.quiet === true }, { core });
+    // Game mode (27 Oct 2026): the saved games read again after a save; what each switch is now ("Use now's settings")
+    case 'game-mode-reload': if (gameMode) { gameMode.reload(); gameMode.tick().catch(() => {}); } return { ok: true, status: gameMode ? gameMode.status() : null };
+    case 'game-mode-now': return nowValues({ core, api: env.api });
     case 'apply-profile': {
       const p = (await loadProfiles()).find((x) => x.name === b.name);
       if (!p) throw new Error(`no profile called "${b.name}"`);

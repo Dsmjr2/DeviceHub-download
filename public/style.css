@@ -2754,6 +2754,18 @@ html[data-skin="coral-reef"]:not([data-art="live"]) .art.mark { filter: sepia(.2
 .pcc-ok > summary::after { content: 'Show'; margin-left: auto; font-size: 12px; color: var(--muted); }
 .pcc-ok[open] > summary::after { content: 'Hide'; }
 .pcc-ok > summary .pcc-dot { margin-top: 0; }
+/* Start-up apps in the PC check (27 Oct 2026, public/ui/startup-apps.js): one short row each, three columns, a switch */
+.su-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 18px; }
+@media (max-width: 1180px) { .su-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .su-list { grid-template-columns: minmax(0, 1fr); } }
+.su-app { display: flex; align-items: center; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 13px; min-width: 0; }
+.su-app-name { flex: 1; min-width: 0; display: grid; line-height: 1.3; }
+.su-app-title, .su-app-name small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.su-app-name small { font-size: 11.5px; }
+.su-app-note { color: var(--warn); }
+.su-app-impact { flex: none; min-width: 3.5em; text-align: right; font-size: 11.5px; color: var(--muted); }
+.su-app-impact.warn { color: var(--warn); }
+.su-foot { margin: 6px 0 0; font-size: 12px; }
 .pcc-foot { margin: 8px 0 0; font-size: 12px; }
 
 /* ==========================================================================================================
