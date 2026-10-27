@@ -20,3 +20,6 @@ export function parseHex(text) {
   if (/^[0-9a-f]{3}$/.test(t)) return `#${[...t].map((c) => c + c).join('')}`;
   return null;
 }
+// the preset colors of the Color cards (Headset, Lighting, PC, each light on Lighting > This PC). Here rather than on the
+// Headset page so the PC lights card does not load that page (27 Oct 2026)
+export const SWATCHES = ['#ff6a1a', '#ff2d55', '#ff5d8f', '#b48cff', '#5b6cff', '#3fe0ff', '#3ddc97', '#c6ff3d', '#ffd23f', '#ffffff'];

@@ -173,8 +173,10 @@ try {
   ok(ar.crashBefore(['DeviceHub on http://localhost:5577', '[launcher] 10/22/2026 14:03:11 server exited with code -1; restart 1 of 5', 'DeviceHub on http://localhost:5577']) === null, 'code -1 (stopped from outside) is not a crash');
   // support issue 3 (22 Oct 2026): Windows closing DeviceHub at sign-out, shutdown or a closed console is not a crash
   ok(ar.crashBefore(['DeviceHub on http://localhost:5577', '[launcher] 10/22/2026 19:44:45 server exited with code 1073807364; restart 1 of 5', 'DeviceHub on http://localhost:5577']) === null, 'code 1073807364 (0x40010004, Windows closed the console) is not a crash');
+  ok(ar.crashBefore(['DeviceHub on http://localhost:5577', '[launcher] 10/27/2026 1:00:00 server exited with code 1; restart 1 of 5', 'DeviceHub on http://localhost:5577']) === null, 'code 1 with no [crash] line (End task, taskkill /F) is not a crash');
+  ok(ar.crashBefore(['DeviceHub on http://localhost:5577', '[crash] uncaught error: Error: x', '[launcher] 10/27/2026 1:00:00 server exited with code 1; restart 1 of 5', 'DeviceHub on http://localhost:5577'])?.code === 1, 'code 1 after a [crash] line is a crash');
   ok(ar.crashBefore(['DeviceHub on http://localhost:5577', '[launcher] 10/22/2026 19:44:45 server exited with code -1073741510; restart 1 of 5', 'DeviceHub on http://localhost:5577']) === null, 'code -1073741510 (0xC000013A, Ctrl+C) is not a crash');
-  ok(ar.crashBefore(['DeviceHub on http://localhost:5577', '[launcher] 10/22/2026 20:01:15 server exited with code 1; restart 1 of 5', 'DeviceHub on http://localhost:5577'])?.code === 1, 'code 1 still is');
+  ok(ar.crashBefore(['DeviceHub on http://localhost:5577', '[crash] unhandled rejection: Error: y', '[launcher] 10/22/2026 20:01:15 server exited with code 1; restart 1 of 5', 'DeviceHub on http://localhost:5577'])?.code === 1, 'code 1 with its [crash] line still is');
   ok(ar.crashBefore(['[launcher] 10/22/2026 14:03:11 server exited with code 1; restart 1 of 5', 'DeviceHub on http://localhost:5577', 'DeviceHub on http://localhost:5577']) === null, 'an older crash (before the previous start) is not this start\'s');
   ar.checkCrash(lines);
   await ar.settle();

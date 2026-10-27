@@ -12,7 +12,7 @@ import headset, { setCorsairCall, setHeadsetPick } from '../public/devices/heads
 import { cleanPick } from '../public/core/headset-pick.js';
 import { auto, startAutoSwitch, loadSettings, onAuto } from '../public/core/autoswitch.js';
 import * as weekly from './weekly-setup.mjs';
-import * as oneDrive from './onedrive-setup.mjs';
+// (27 Oct 2026, memory) onedrive-setup.mjs only when a OneDrive copy is written (saveOneDrive below)
 import * as daily from './daily-check.mjs';
 import * as batteryCare from './battery-care.mjs';
 import { loadProfiles, apply } from '../public/core/profiles.js';
@@ -357,6 +357,6 @@ export async function op(name, b) {
 
 // this PC's setup in OneDrive (helpers/onedrive-setup.mjs; the extras without wallpapers, helpers/setup-extras.js)
 const extras = require('./setup-extras.js').create();
-export const saveOneDrive = (opts) => oneDrive.save(core, extras, opts);
+export const saveOneDrive = async (opts) => (await import('./onedrive-setup.mjs')).save(core, extras, opts);
 // the weekly setup files, for the server's /api/setups routes
 export const setups = { list: weekly.list, read: weekly.read, saveNow: () => weekly.saveIfDue(core, core.log, { force: true }) };

@@ -1,13 +1,15 @@
 // Command palette entries. Static ones are filtered by text; "dynamic" ones are built from what was typed.
 import { devices, write, backupNow, connect, isDemo } from './devices.js';
 import { loadProfiles } from './profiles.js';
-import { applyWithPreview } from '../pages/profiles.js';
-import { applyColor } from '../pages/lighting.js';
 import { POLLING, snapDpi } from '../devices/mouse-adapter.js';
 import { toast } from '../ui/overlay.js';
 import { env } from './env.js';
 import { copyDownloadLink, copyShortReport } from './share.js';
 import { loadIndex, findSettings, showSetting } from '../ui/find-settings.js';
+// the Profiles and Lighting pages' code loads only when one of their commands is run (27 Oct 2026: Search loaded both
+// pages, and everything they use, when the window opened)
+const applyWithPreview = async (p) => (await import('../pages/profiles.js')).applyWithPreview(p);
+const applyColor = async (hex) => (await import('../pages/lighting.js')).applyColor(hex);
 
 let profiles = [];
 let loadedAt = 0;

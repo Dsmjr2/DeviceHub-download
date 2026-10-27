@@ -82,17 +82,17 @@ for (const f of tracked.filter((x) => x.endsWith('.json') || x.endsWith('.webman
   try { JSON.parse(fs.readFileSync(path.join(ROOT, f), 'utf8')); } catch (e) { problems.push(`${f}: ${e.message}`); }
 }
 
-// 4. the pages in the sidebar (app.js PAGES) each import a file with an id
+// 4. the pages in the sidebar (app.js PAGES, each loaded when first opened: page(id, title, icon, () => import(file)))
+// each load a file with the same id
 const app = fs.readFileSync(path.join(ROOT, 'public/app.js'), 'utf8');
-const names = (/const PAGES = \[([^\]]+)\]/.exec(app) || [])[1]?.split(',').map((s) => s.trim()) || [];
-if (!names.length) problems.push('public/app.js: no PAGES list found');
+const entries = [...app.matchAll(/^\s*page\('([\w-]+)', '[^']*', '[\w-]+', \(\) => import\('\.\/(pages\/[\w-]+\.js)'\)/gm)];
+if (!entries.length) problems.push('public/app.js: no PAGES list found');
 const ids = [];
-for (const n of names) {
-  const imp = new RegExp(`import ${n} from '\\./(pages/[\\w-]+\\.js)'`).exec(app);
-  if (!imp) { problems.push(`public/app.js: page ${n} has no import`); continue; }
-  const src = fs.readFileSync(path.join(ROOT, 'public', imp[1]), 'utf8');
+for (const [, n, file] of entries) {
+  if (!fs.existsSync(path.join(ROOT, 'public', file))) { problems.push(`public/app.js: page ${n} loads ${file}, which is missing`); continue; }
+  const src = fs.readFileSync(path.join(ROOT, 'public', file), 'utf8');
   const id = (/export default \{[\s\S]*?\bid: '([\w-]+)'/.exec(src) || /\bid: '([\w-]+)'/.exec(src) || [])[1];  // the page's own id
-  if (!id) problems.push(`${imp[1]}: no page id`); else ids.push(id);
+  if (!id) problems.push(`${file}: no page id`); else if (id !== n) problems.push(`public/app.js: page ${n} loads ${file}, whose id is ${id}`); else ids.push(id);
 }
 const dup = ids.filter((x, i) => ids.indexOf(x) !== i);
 if (dup.length) problems.push(`page ids used twice: ${dup.join(', ')}`);

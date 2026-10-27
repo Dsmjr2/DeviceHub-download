@@ -83,8 +83,11 @@ async function eqDevices() {
 const ankerGuard = require('./helpers/anker-guard');
 const settingsSync = require('./helpers/settings-sync');
 const monitors = require('./helpers/monitors');
-const wallpapers = require('./helpers/wallpapers').create({ root: ROOT });
-const setupExtras = require('./helpers/setup-extras').create({ root: ROOT, wallpapers });
+// (27 Oct 2026, memory and start-up) the wallpapers and the setup extras are made on the first request that uses them
+// (/api/wallpapers, /api/setup-extras), not at start; the same objects after that
+let wallpapersMade = null, setupExtrasMade = null;
+const wallpapers = () => (wallpapersMade ||= require('./helpers/wallpapers').create({ root: ROOT }));
+const setupExtras = () => (setupExtrasMade ||= require('./helpers/setup-extras').create({ root: ROOT, wallpapers: wallpapers() }));
 if (!ISOLATED) monitors.start(require('./helpers/native'), BACKUPS, (text, bad) => serverLog({ kind: bad ? 'bad' : 'good', text }));  // the last: changes made while a monitor was off, applied
 const camera = require('./helpers/camera');
 if (!ISOLATED) camera.start(require('./helpers/native'), BACKUPS);
@@ -320,8 +323,13 @@ async function api(req, res, url) {
       for (const f of ['server.log', 'server.old.log']) {
         const p = path.join(ROOT, f);
         if (!fs.existsSync(p)) continue;
+        let crashLine = false;
         for (const l of fs.readFileSync(p, 'utf8').split('\n')) {
+          if (/^\[crash\]|^\s+at .+:\d+:\d+\)?\s*$|^\w*Error\b/.test(l)) crashLine = true;   // auto-report.mjs CRASH_LINE
           const mm = /^\[launcher\] (.+?) server exited/.exec(l);
+          // code 1 without a "[crash]" line or stack from that run is a stop from outside (End task, taskkill /F): not a crash
+          // (27 Oct 2026: 10 "crashes" in a day were all restarts; helpers/auto-report.mjs crashLineIn)
+          if (mm) { const one = /exited with code 1;/.test(l) && !crashLine; crashLine = false; if (one) continue; }
           // code -1 is a process stopped from outside (a restart), not a crash; nor is Windows closing DeviceHub at
           // sign-out, shutdown or a closed console (1073807364 = 0x40010004, -1073741510 = 0xC000013A; auto-report.mjs)
           if (mm && !/exited with code (-1|1073807364|-1073741510|3221225786);/.test(l)) {
@@ -518,16 +526,16 @@ async function api(req, res, url) {
     try {
       const sub = url.pathname.slice('/api/setup-extras'.length);
       if (sub === '' && req.method === 'GET') {
-        if (url.searchParams.has('size')) { const l = wallpapers.list(); return send(res, 200, { wallpaperBytes: l.totalBytes, wallpaperCount: l.items.length }); }
-        return send(res, 200, setupExtras.gather({ withWallpapers: url.searchParams.get('wallpapers') === '1' }));
+        if (url.searchParams.has('size')) { const l = wallpapers().list(); return send(res, 200, { wallpaperBytes: l.totalBytes, wallpaperCount: l.items.length }); }
+        return send(res, 200, setupExtras().gather({ withWallpapers: url.searchParams.get('wallpapers') === '1' }));
       }
-      if (sub === '/plan' && req.method === 'POST') return send(res, 200, setupExtras.plan(await readBody(req)));
+      if (sub === '/plan' && req.method === 'POST') return send(res, 200, setupExtras().plan(await readBody(req)));
       if (sub === '/apply' && req.method === 'POST') {
         const chunks = []; let size = 0, big = false;
         await new Promise((resolve, reject) => { req.on('data', (c) => { size += c.length; if (size > 1024 * 1024 * 1024) big = true; else chunks.push(c); }); req.on('end', resolve); req.on('error', reject); });
         if (big) return send(res, 413, { error: 'That setup file is over 1 GB.' });
         const x = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
-        const r = setupExtras.apply(x);
+        const r = setupExtras().apply(x);
         if (typeof x.headsetPick === 'string') { try { await agent?.op('headset-pick', { pick: x.headsetPick }); } catch {} }
         agent?.reloadSettings();
         return send(res, 200, r);
@@ -704,7 +712,7 @@ async function api(req, res, url) {
   // Wallpapers (22 Oct 2026, Shawn: "store them in this wallpaper area so people can easily get them and preview them and
   // back them up"): Pictures\DeviceHub Wallpapers, outside this folder (helpers/wallpapers.js; public/pages/wallpapers.js)
   if (url.pathname === '/api/wallpapers' || url.pathname.startsWith('/api/wallpapers/')) {
-    if (await wallpapers.handle(url, req, res, send, readBody) === false) send(res, 404, { error: 'not found' });
+    if (await wallpapers().handle(url, req, res, send, readBody) === false) send(res, 404, { error: 'not found' });
     return;
   }
   if (url.pathname === '/api/bluetooth') {

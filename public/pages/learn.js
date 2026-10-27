@@ -21,6 +21,7 @@ import { h } from '../ui/dom.js';
 import { card, row, segmented, button, pill } from '../ui/controls.js';
 import { installerButton } from '../ui/installer-button.js';
 import { isDemo, devices, connect } from '../core/devices.js';
+import { env } from '../core/env.js';
 import { topbar, checkAnswer } from './common.js';
 import { genericDongle } from '../core/generic-dongle.js';
 import { getHelp, helpHere } from '../ui/get-help.js';
@@ -76,6 +77,8 @@ async function startAuto(d) {
 // a learning session is under way (the window is not closed while one runs, core/idle-close.js): any step past
 // picking the device and its checks, or Learn it for me still running
 export const learnBusy = () => (st.step === 'auto' ? !!auto.s && !AUTO_OVER.includes(auto.s.phase) : !['pick', 'preflight'].includes(st.step));
+// told to the window (app.js), which loads this file only when Learn is first used (27 Oct 2026)
+env.learnBusy = learnBusy;
 function pollAuto() {
   clearTimeout(auto.timer);
   auto.timer = setTimeout(async () => {
@@ -581,7 +584,7 @@ function changeOf(it) {
     if (it.role === 'battery') return [{ value: vals[0], line: `Open the battery page in ${appName()} now. Then press Done.` }];
     if (it.role === 'charging') return [{ value: true, line: `Plug in its cable. When ${appName()} shows charging, press Done.` },
       { value: false, line: `Unplug its cable. When ${appName()} shows not charging, press Done.` }];
-    return [{ value: vals[0], line: `Make the device report ${it.label} = ${show(vals[0])} now. Then press Done.` }, { value: vals[1], line: `Now make it report ${show(vals[1])}. Then press Done.` }];
+    return [{ value: vals[0], line: `Set ${it.label} to ${show(vals[0])} in ${appName()} (or wait for the device to report it). Then press Done.` }, { value: vals[1], line: `Now set ${it.label} to ${show(vals[1])} in ${appName()}. Then press Done.` }];
   }
   const [a, b] = vals;
   return [{ value: b, line: `Change ${it.label} from ${show(a)} to ${show(b)} in ${appName()} now. Then press Done.` },
@@ -839,7 +842,7 @@ function takeStep() {
   const doIt = set.kind !== 'reading' ? `set ${label} to ${v} in the maker's app`
     : set.role === 'battery' ? `open the battery page in the maker's app and wait until it shows ${v}`
       : set.role === 'charging' ? (value ? 'plug in its cable so it charges, and wait until the maker\'s app shows it charging' : 'unplug its cable, and wait until the maker\'s app shows it is not charging')
-        : `make the device report ${label} = ${v} (for example, move its wheel or button), and wait until the maker's app shows it`;
+        : `set ${label} = ${v} in the maker's app, and wait until it is applied`;
   const before = set.kind !== 'reading' ? `Set ${label} to anything but ${v}. Press Record, ${doIt}, then Done.`
     : `Press Record, ${doIt}, then Done.`;
   return card([h('h2', {}, `Recording ${Math.min(done + 1, total)} of ${total}: ${label} = ${v}`), h('span', { class: 'spacer' }), stepNo('take')],

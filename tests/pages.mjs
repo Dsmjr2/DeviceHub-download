@@ -16,10 +16,10 @@ try { await fetch(`${BASE}/api/version`); } catch { console.log(`pages: skipped 
 // the page ids from the sidebar list (same rule as check.mjs)
 const app = fs.readFileSync(path.join(ROOT, 'public/app.js'), 'utf8');
 const pages = [];
-for (const n of (/const PAGES = \[([^\]]+)\]/.exec(app) || [])[1].split(',').map((s) => s.trim())) {
-  const f = new RegExp(`import ${n} from '\\./(pages/[\\w-]+\\.js)'`).exec(app)[1];
+for (const [, , f] of app.matchAll(/^\s*page\('([\w-]+)', '[^']*', '[\w-]+', \(\) => import\('\.\/(pages\/[\w-]+\.js)'\)/gm)) {   // each loaded when first opened (27 Oct 2026)
   { const src = fs.readFileSync(path.join(ROOT, 'public', f), 'utf8'); pages.push((/export default \{[\s\S]*?\bid: '([\w-]+)'/.exec(src) || /\bid: '([\w-]+)'/.exec(src))[1]); }  // the page's own id, not a demo row's
 }
+if (!pages.length) { console.log('pages: no PAGES list found in public/app.js'); process.exit(1); }
 
 const chromes = [process.env.DEVICEHUB_CHROME || '', 'C:/Program Files/Google/Chrome/Application/chrome.exe', path.join(process.env.LOCALAPPDATA || '', 'Google/Chrome/Application/chrome.exe'), 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'];
 const exe = chromes.find((p) => fs.existsSync(p));

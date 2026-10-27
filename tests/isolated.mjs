@@ -76,8 +76,7 @@ try {
   // the sidebar's page ids (as tests/pages.mjs reads them)
   const app = fs.readFileSync(path.join(ROOT, 'public/app.js'), 'utf8');
   const pages = [];
-  for (const n of (/const PAGES = \[([^\]]+)\]/.exec(app) || [])[1].split(',').map((s) => s.trim())) {
-    const f = new RegExp(`import ${n} from '\\./(pages/[\\w-]+\\.js)'`).exec(app)[1];
+  for (const [, , f] of app.matchAll(/^\s*page\('([\w-]+)', '[^']*', '[\w-]+', \(\) => import\('\.\/(pages\/[\w-]+\.js)'\)/gm)) {
     pages.push(/\bid: '([\w-]+)'/.exec(fs.readFileSync(path.join(ROOT, 'public', f), 'utf8'))[1]);
   }
 

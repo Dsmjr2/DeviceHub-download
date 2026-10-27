@@ -10,12 +10,13 @@ import { EFFECTS } from '../devices/keycodes.js';
 import { meter, micState, dots, signal, colorDot } from '../ui/gauges.js';
 import { toast } from '../ui/overlay.js';
 import { loadPc, otherDevices, pcLoaded, copyPrompt } from './pc-lights.js';
-import { learnThis } from './learn.js';
 import { getHelp } from '../ui/get-help.js';
 import { genericDongle } from '../core/generic-dongle.js';
 import { deviceRows, countNeeds, summaryLine } from '../core/setup-list.js';
 import { LIFT_OFF } from '../devices/pulsar.js';
-import { reviewSetup } from './backups.js';
+// Learn a device and Backups load only when used from here (27 Oct 2026: the Overview, the first page, loaded both)
+const learnThis = async (...a) => (await import('./learn.js')).learnThis(...a);
+const reviewSetup = async (...a) => (await import('./backups.js')).reviewSetup(...a);
 
 let profiles = null;
 let loading = false;
@@ -118,7 +119,7 @@ function firstRun(go, redraw) {
           return h('div', { class: 'pc-other' }, h('div', { class: 'grow' }, h('b', {}, u.name || (gd ? 'USB receiver' : `${u.brand.name} device`)), h('small', { class: 'faint' }, ` ${u.brand.shared ? u.brand.name : u.brand.name + ' · ' + u.brand.category} · USB ${u.id}`),
             gd ? h('small', { style: { display: 'block' } }, gd.line) : null),
           gd ? getHelp(`request:${u.vid}:${u.pid}`, null, { label: 'Request support', request: { vid: u.vid, pid: u.pid, name: u.name || '' }, kind: 'ghost small' })
-            : button('Learn it', () => { learnThis(u.vid, u.pid); go('learn'); }, { kind: 'ghost small', ic: 'plug' }),
+            : button('Learn it', async () => { await learnThis(u.vid, u.pid); go('learn'); }, { kind: 'ghost small', ic: 'plug' }),
           button('Copy prompt', () => copyPrompt(u), { kind: 'ghost small' }));
         })) : null;
     })(),
@@ -149,7 +150,7 @@ function oneDriveBanner(redraw, fresh) {
     try {
       const r = await fetch(`/api/onedrive/read?pc=${encodeURIComponent(o.pc)}`);
       if (!r.ok) throw new Error(`error ${r.status}`);
-      reviewSetup(await r.json(), `on ${o.pc} (${when})`, o.pc);
+      await reviewSetup(await r.json(), `on ${o.pc} (${when})`, o.pc);
     } catch (e) { toast('Could not read it', 'bad', { detail: e.message }); }
   };
   return h('div', { class: 'banner info od-offer' }, icon('backups'),

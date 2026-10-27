@@ -14,12 +14,12 @@ import { eqPanel, soundTools } from './eq-panel.js';
 import { micMeter } from './mic-meter.js';
 import { copyPrompt } from './pc-lights.js';
 import { brandForUsb } from '../core/brands.js';
+import { SWATCHES } from '../core/color.js';
 
 const d = () => devices.headset;
 const set = (key, value, label, display) => write('headset', key, value, { label, display }).catch(() => {});
 // a slider step while dragging: the headset follows at once (21 Oct 2026)
 const live = (key) => (value) => write('headset', key, value, { live: true }).catch(() => {});
-export const SWATCHES = ['#ff6a1a', '#ff2d55', '#ff5d8f', '#b48cff', '#5b6cff', '#3fe0ff', '#3ddc97', '#c6ff3d', '#ffd23f', '#ffffff'];
 
 const ICUE_ROWS = [
   ['micEnabled', 'Microphone', (v) => (v ? 'on' : 'muted')],

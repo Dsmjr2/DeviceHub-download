@@ -178,10 +178,12 @@ If light Then
   Launch """" & chrome & """" & " --app=http://localhost:" & port & "/ --start-maximized", 1
   WScript.Quit
 End If
+' its page cache kept to 8 MB, and none of Chrome's downloaded models: a page served from this PC needs neither
+' (27 Oct 2026: the folder had grown to 181 MB, 47 MB of it cache and about 80 MB models)
 profile = dir & "\window-profile"
 appId = "gbcckkpijkfkcllfaiefimkinkmpohlk"
 If fs.FolderExists(profile & "\Default\Web Applications\Manifest Resources\" & appId) Then
-  Launch """" & chrome & """" & " --user-data-dir=""" & profile & """ --no-first-run --no-default-browser-check --hide-crash-restore-bubble --disable-extensions --disable-component-update --start-maximized --app-id=" & appId, 1
+  Launch """" & chrome & """" & " --user-data-dir=""" & profile & """ --no-first-run --no-default-browser-check --hide-crash-restore-bubble --disable-extensions --disable-component-update --disk-cache-size=8388608 --disable-features=OptimizationGuideModelDownloading,OptimizationHints,OptimizationTargetPrediction --start-maximized --app-id=" & appId, 1
 Else
-  Launch """" & chrome & """" & " --user-data-dir=""" & profile & """ --no-first-run --no-default-browser-check --hide-crash-restore-bubble --disable-extensions --disable-component-update --app=http://localhost:" & port & "/ --start-maximized", 1
+  Launch """" & chrome & """" & " --user-data-dir=""" & profile & """ --no-first-run --no-default-browser-check --hide-crash-restore-bubble --disable-extensions --disable-component-update --disk-cache-size=8388608 --disable-features=OptimizationGuideModelDownloading,OptimizationHints,OptimizationTargetPrediction --app=http://localhost:" & port & "/ --start-maximized", 1
 End If

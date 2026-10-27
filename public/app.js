@@ -13,23 +13,6 @@ import { demoAdapters } from './devices/demo.js';
 import { useDemoHistory } from './ui/battery-chart.js';
 import { useDemoEstimate } from './ui/controls.js';
 import { dropdownOpen } from './ui/dropdown.js';
-import overview from './pages/overview.js';
-import setupPage from './pages/setup.js';
-import { setupNeeds, watchSetup } from './pages/setup.js';
-import mousePage from './pages/mouse.js';
-import keyboardPage from './pages/keyboard.js';
-import headsetPage from './pages/headset.js';
-import lightingPage from './pages/lighting.js';
-import profilesPage from './pages/profiles.js';
-import backupsPage from './pages/backups.js';
-import monitorsPage from './pages/monitors.js';
-import fansPage from './pages/fans.js';
-import settingsPage from './pages/settings.js';
-import learnPage from './pages/learn.js';
-import { learnThis, learnBusy } from './pages/learn.js';
-import supportedPage from './pages/supported.js';
-import wallpapersPage from './pages/wallpapers.js';
-import { devicePage } from './pages/my-device.js';
 import { commands } from './core/commands.js';
 import { startAutoSwitch, loadSettings, auto } from './core/autoswitch.js';
 import { firstStart } from './core/first-run.js';
@@ -57,17 +40,46 @@ if (!REMOTE) adapters.forEach(register);
 // demo mode's pretend added device (?demo&added, public/devices/demo.js): its graph readings and time left are its own
 if (DEMO) for (const a of adapters) if (a.demoHistory) { useDemoHistory(a.id, a.demoHistory); if (a.demoEstimate) useDemoEstimate(a.id, a.demoEstimate); }
 
-const PAGES = [overview, setupPage, mousePage, headsetPage, keyboardPage, fansPage, lightingPage, monitorsPage, wallpapersPage, profilesPage, backupsPage, settingsPage, learnPage, supportedPage];
+// Each page's code loads the first time the page is opened (27 Oct 2026: the window opens faster and holds less; it
+// loaded all fourteen pages, and everything they use, before drawing the first). The sidebar and Search need only the
+// id, title and icon, listed here (tests/lazy-pages.mjs checks they match each page's own); device and rail as on the page.
+const page = (id, title, icon, load, more = {}) => ({ id, title, icon, load, ...more });
+const PAGES = [
+  page('overview', 'Overview', 'overview', () => import('./pages/overview.js')),
+  page('setup', 'Setup', 'check', () => import('./pages/setup.js')),
+  page('mouse', 'Mouse', 'mouse', () => import('./pages/mouse.js'), { device: 'mouse' }),
+  page('headset', 'Headset', 'headset', () => import('./pages/headset.js'), { device: 'headset' }),
+  page('keyboard', 'Keyboard', 'keyboard', () => import('./pages/keyboard.js'), { device: 'keyboard' }),
+  page('fans', 'PC', 'fan', () => import('./pages/fans.js')),
+  page('lighting', 'Lighting', 'lighting', () => import('./pages/lighting.js')),
+  page('monitors', 'Monitors', 'monitor', () => import('./pages/monitors.js')),
+  page('wallpapers', 'Wallpapers', 'wallpapers', () => import('./pages/wallpapers.js')),
+  page('profiles', 'Profiles', 'profiles', () => import('./pages/profiles.js')),
+  page('backups', 'Backups', 'backups', () => import('./pages/backups.js'), { rail: false }),
+  page('settings', 'Settings', 'settings', () => import('./pages/settings.js')),
+  page('learn', 'Learn a device', 'plug', () => import('./pages/learn.js')),
+  page('supported', 'Supported devices', 'plug', () => import('./pages/supported.js'), { rail: false }),
+];
+// a page's code (p.code, its default export), loaded once; a load that failed (DeviceHub restarting) is tried again
+// the next time the page is opened
+function loadPage(p) {
+  p.loading ??= p.load().then((m) => { p.code = m.default; if (m.setupNeeds) useSetup(m); }, (e) => { p.loading = null; throw e; });
+  return p.loading;
+}
 // devices added on this PC (my-devices/, 21 Oct 2026): a page each, after the built-in devices
 // A device whose driver arrives after the window opened (installed from the library, loaded a moment late, plugged in)
 // gets its page and sidebar entry then (23 Oct 2026, a friend's HyperX headset: its tile did nothing, as no page had
 // been made for it, and a click fell back to the Overview)
+// its title and icon by the same rule as pages/my-device.js devicePage, which is loaded when the page is first opened
+const KIND_ICON = { mouse: 'mouse', headset: 'headset', keyboard: 'keyboard' };
 function ensureDevicePages() {
   if (!(REMOTE || DEMO)) return false;
   let added = false;
   for (const d of Object.values(devices)) {
     if (!d.adapter?.plugin || PAGES.some((p) => p.id === d.id)) continue;
-    PAGES.splice(PAGES.indexOf(fansPage), 0, devicePage(d.id));
+    const id = d.id;
+    PAGES.splice(PAGES.findIndex((p) => p.id === 'fans'), 0, page(id, d.adapter.title, KIND_ICON[String(d.adapter.kind || '').toLowerCase()] || 'plug',
+      () => import('./pages/my-device.js').then((m) => ({ default: m.devicePage(id) })), { device: id }));
     added = true;
   }
   return added;
@@ -110,7 +122,7 @@ function buildRail() {
     h('div', { class: 'brand' }, h('img', { class: 'brand-mark', src: '/icon-64.png', alt: '' }), h('div', {}, 'DeviceHub', DEMO ? h('small', {}, 'DEMO MODE') : null)),
     navBtn(PAGES[0]),
     // Setup, right under the Overview (22 Oct 2026, Shawn: "I want the setup to all be on one page"; pages/setup.js)
-    navBtn(setupPage),
+    navBtn(PAGES.find((p) => p.id === 'setup')),
     h('div', { class: 'nav-label' }, 'Devices'),
     ...PAGES.filter((p) => p.device).map(navBtn),
     // the rest in two groups (20 Oct 2026, seven entries were one long list): the person's setup, and the app itself.
@@ -157,7 +169,7 @@ let setupLast = (() => { try { const v = localStorage.getItem('setup.needs'); re
 function paintSetupNav() {
   const nav = document.querySelector('.nav[data-page="setup"]');
   if (!nav) return;
-  const now = setupNeeds();
+  const now = setupCode ? setupCode.setupNeeds() : null;
   if (now != null && now !== setupLast) { setupLast = now; try { localStorage.setItem('setup.needs', String(now)); } catch {} }
   const n = now ?? setupLast;
   // not known yet (the first 45 s, with no last answer in this window's storage) hides it, unless it is the page open
@@ -173,16 +185,29 @@ function paintSetupNav() {
   const c = nav.querySelector('.nav-count');
   if (c) { c.hidden = !n; c.textContent = n ? String(n) : ''; }
 }
-watchSetup(paintSetupNav);
+// The Setup check lives with the Setup page (pages/setup.js) and reads nothing in the window's first 45 s, so its code
+// loads then (27 Oct 2026, pages load when first opened), or sooner when Setup is opened; until then the last answer stands
+let setupCode = null;
+function useSetup(m) {
+  if (setupCode) return;
+  setupCode = m;
+  m.watchSetup(paintSetupNav);
+  paintSetupNav();
+}
+setTimeout(() => loadPage(PAGES.find((p) => p.id === 'setup')).catch(() => {}), Math.max(0, 46000 - performance.now()));
+// what is learning right now (pages/learn.js, loaded when it is first used, says so on env): nothing before then
+const learnBusy = () => !!env.learnBusy?.();
+const learnThis = async (...a) => (await import('./pages/learn.js')).learnThis(...a);
 // A device plugged in while DeviceHub runs (helpers/plug-watch.mjs, 23 Oct 2026, Shawn: "connect and wait"): its
 // library driver was installed (Open its page), or DeviceHub can learn it (Learn it for me, one click from here)
 env.onNewDevice = (x) => {
   if (x.installed) {
-    toast(`${x.name} is ready`, 'good', { detail: 'Turn on settings on its page.', ms: 15000,
+    const detail = x.installed.proven ? 'Connected and ready to customize.' : 'Open to verify and customize.';
+    toast(`${x.name} is ready`, 'good', { detail, ms: 15000,
       action: x.installed.id ? { label: 'Open', run: () => { location.hash = `#/${x.installed.id}`; } } : null });
   } else if (x.learn) {
     toast(`New: ${x.name}`, 'info', { ms: 20000,
-      action: { label: 'Learn it for me', run: () => { learnThis(x.vid, x.pid, { start: true }); location.hash = '#/learn'; } } });
+      action: { label: 'Learn it for me', run: async () => { await learnThis(x.vid, x.pid, { start: true }); location.hash = '#/learn'; } } });
   }
 };
 // the Setup check's background look (setupNeeds: ~7 reads) every 5 minutes, only while the window is shown
@@ -213,19 +238,30 @@ function go(id) {
 
 let pending = false;
 let seq = 0; // render counter: a late swap from an older render never replaces a newer page
+let loadFresh = false; // a fresh draw asked for while the page's code was loading
 function render(fresh) {
   const id = location.hash.replace(/^#\//, '') || 'overview';
   if (ensureDevicePages()) buildRail();
   const page = PAGES.find((p) => p.id === id) || PAGES[0];
+  // first time this page is opened: its code loads, then it draws (the page on screen stays until then); a newer render
+  // meanwhile wins
+  if (!page.code) {
+    loadFresh = loadFresh || !!fresh;
+    const mySeq = ++seq;
+    loadPage(page).then(() => { if (seq !== mySeq) return; const f = loadFresh; loadFresh = false; render(f); },
+      (e) => { if (seq === mySeq) toast(`${page.title} did not open`, 'bad', { detail: e?.message || 'Try again.' }); });
+    return;
+  }
+  const code = page.code;
   const changed = page !== current;
   current = page;
   const main = $('#main');
   const scroll = main.scrollTop;
   // the device's color tints only its drawing (--page-tone); controls keep the one calm accent (19 Oct 2026)
-  document.documentElement.style.setProperty('--page-tone', page.accent || 'var(--signal)');
-  document.documentElement.toggleAttribute('data-device-page', !!page.device);
+  document.documentElement.style.setProperty('--page-tone', code.accent || 'var(--signal)');
+  document.documentElement.toggleAttribute('data-device-page', !!code.device);
   document.documentElement.dataset.page = page.id;  // which page is open (style.css: the Mouse page's arrow cursor)
-  const el = page.render({ go, fresh: !!fresh, redraw: () => { if (current === page) render(false); } });
+  const el = code.render({ go, fresh: !!fresh, redraw: () => { if (current === page) render(false); } });
   el.classList.add('page');
   if (!changed && !fresh) el.classList.add('no-anim');
   const mySeq = ++seq;
@@ -275,8 +311,9 @@ function pageChanged(id) {
   // another VIA keyboard: its drawing from its own layout (ui/art.js)
   if (id === 'keyboard') setKeyboardLayout(devices.keyboard?.adapter?.session?.layout);
   paintRail();
-  if (!current || (current.watches && !current.watches.includes(id) && id !== '*')) return;
-  if (current.keepAlive?.(id)) return;
+  const code = current?.code;
+  if (!code || (code.watches && !code.watches.includes(id) && id !== '*')) return;
+  if (code.keepAlive?.(id)) return;
   if (pending) return;
   pending = true;
   setTimeout(() => { pending = false; if (holding) heldRender = true; else render(false); }, 16); // not rAF: it never fires while the window is hidden

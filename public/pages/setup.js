@@ -17,9 +17,7 @@ import { button, skeleton } from '../ui/controls.js';
 import { env } from '../core/env.js';
 import { devices, isDemo, connect } from '../core/devices.js';
 import { topbar, checkAnswer } from './common.js';
-import { learnThis } from './learn.js';
-import { isViaKeyboard } from './keyboard.js';
-import { brandForUsb } from '../core/brands.js';
+import { brandForUsb, isViaKeyboard } from '../core/brands.js';
 import { getHelp, helpHere } from '../ui/get-help.js';
 import { worksReport, offersWorks } from '../ui/works-report.js';
 import { installerInline, installerStatus } from '../ui/installer-button.js';
@@ -286,7 +284,7 @@ function control(r) {
     case 'turn-on': return button('Turn on settings', () => runOne(r), { kind: 'primary small', ic: 'plug', disabled: busy });
     case 'check-again': return button('Check again', () => runOne(r), { kind: 'ghost small', ic: 'search', disabled: busy });
     case 'get-layout': return button('Get layout', () => runOne(r), { kind: 'primary small', disabled: busy });
-    case 'learn': return button(a.vid ? 'Learn it for me' : 'Learn a device', () => { if (a.vid) learnThis(a.vid, a.pid, { start: true }); location.hash = '#/learn'; }, { kind: 'ghost small', ic: 'plug' });
+    case 'learn': return button(a.vid ? 'Learn it for me' : 'Learn a device', async () => { if (a.vid) (await import('./learn.js')).learnThis(a.vid, a.pid, { start: true }); location.hash = '#/learn'; }, { kind: 'ghost small', ic: 'plug' });
     case 'request': return getHelp(`request:${a.vid}:${a.pid}`, null, { label: 'Request support', request: { vid: a.vid, pid: a.pid, name: a.name || '' }, kind: 'ghost small' });
     case 'works': return worksReport(devices[a.id] || { id: a.id, adapter: {} });
     case 'settings': return button(a.label || 'Open', () => runOne(r), { kind: 'ghost small', ic: 'external' });
@@ -371,7 +369,8 @@ export function setupNeeds({ refresh = false } = {}) {
   const p = planNow();
   return p ? p.plan.needs.length : null;
 }
-const pageOpenedAt = Date.now();
+// the window's open, not this file's load: the window loads it 46 s in, or when Setup is opened (27 Oct 2026, app.js)
+const pageOpenedAt = performance.timeOrigin;
 let graceTimer = null;
 export function watchSetup(fn) { watchers.add(fn); return () => watchers.delete(fn); }
 

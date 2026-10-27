@@ -10,6 +10,7 @@ import { keyName, shortName, isSpecialKey, isDangerous, pickerGroups, hex, CODE_
 import { hsv255ToHex, rgbToHsv255 } from '../devices/keyboard-adapter.js';
 import { toast } from '../ui/overlay.js';
 import { loadPc, pcLoaded, otherDevices } from './pc-lights.js';
+import { isViaKeyboard } from '../core/brands.js';
 
 // The keyboard's layout (devices/via-layout.js): the P75's built in, any other VIA keyboard's from its VIA definition,
 // sent with the keyboard's session. [row][col] -> [x, y, width, kind] in key units; null = no key.
@@ -286,7 +287,6 @@ let rerender = () => {};
 // A VIA keyboard whose layout VIA's library does not have (Keychron Pro and Max boards among them): DeviceHub then
 // needs the maker's VIA file in the via-definitions folder, named <VID><PID>.json (helpers/via-defs.js definitionFor),
 // and reads it when it starts. Shown here and on Lighting > This PC for a VIA keyboard brand that nothing runs yet.
-export const isViaKeyboard = (u) => !!(u?.brand?.transport?.includes('via-qmk') && u.brand.categories?.includes('keyboard') && !/mouse|receiver|dongle/i.test(u.name || ''));
 export function viaFileNote(vid, pid, maker) {
   const file = `${vid}${pid}`.toUpperCase() + '.json';
   const site = maker ? `${maker}'s website` : 'the maker\'s website';

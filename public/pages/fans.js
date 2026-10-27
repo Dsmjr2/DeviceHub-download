@@ -7,7 +7,7 @@
 import { h } from '../ui/dom.js';
 import { card, row, loadingCard, button, pill, offSwatch, isOff, OFF } from '../ui/controls.js';
 import { toast } from '../ui/overlay.js';
-import { SWATCHES } from './headset.js';
+import { SWATCHES } from '../core/color.js';
 import { helpHere } from '../ui/get-help.js';
 import { boardLights } from '../ui/board-lights.js';
 import { env } from '../core/env.js';

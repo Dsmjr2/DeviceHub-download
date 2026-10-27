@@ -6,7 +6,7 @@ import { artOf } from '../ui/art.js';
 import { topbar } from './common.js';
 import { setGlow, getGlow } from '../core/theme.js';
 import { toast } from '../ui/overlay.js';
-import { SWATCHES } from './headset.js';
+import { SWATCHES } from '../core/color.js';
 import { pcLightsCard, applyPc, pcIncluded, pcAvailable, setPcIncluded, pcPick } from './pc-lights.js';
 import { colorPicker } from '../ui/color-picker.js';
 import { hexToRgb, rgbToHex } from '../core/color.js';

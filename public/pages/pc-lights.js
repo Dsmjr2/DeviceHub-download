@@ -7,7 +7,7 @@
 //   never writes to the motherboard's SMBus itself.
 import { h } from '../ui/dom.js';
 import { card, button, pill, skeleton, isOff, OFF } from '../ui/controls.js';
-import { SWATCHES } from './headset.js';
+import { SWATCHES } from '../core/color.js';
 import { groupLights, applyLocal, liveWriter } from '../core/light-groups.js';
 import { env } from '../core/env.js';
 import { isDemo } from '../core/devices.js';

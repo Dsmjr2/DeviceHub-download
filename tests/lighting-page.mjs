@@ -125,7 +125,7 @@ check(/findLights\(o, redraw\)/.test(pc) && /button\('Undo'/.test(pc), 'Find my 
 // each row (26 Oct 2026, Shawn: with every light off, each row was two slashed circles and a white dot): its own preset
 // dots, the picked-color dot and a text Off; a light that is off reads "Off"
 const rowSrc = body(pc, 'function lightRow(', '\n}\n');
-check(/import \{ SWATCHES \} from '\.\/headset\.js'/.test(pc) && /SWATCHES\.map\(\(c\) => h\('button', \{ class: 'swatch pcl-preset'[\s\S]{0,240}onclick: \(\) => presetRow\(key, writes, c\)/.test(rowSrc), 'each row has the Color card presets, each writing that row only');
+check(/import \{ SWATCHES \} from '\.\.\/core\/color\.js'/.test(pc) && /import \{ SWATCHES \} from '\.\.\/core\/color\.js'/.test(src('pages/headset.js')) && /SWATCHES\.map\(\(c\) => h\('button', \{ class: 'swatch pcl-preset'[\s\S]{0,240}onclick: \(\) => presetRow\(key, writes, c\)/.test(rowSrc), 'each row has the Color card presets, each writing that row only');
 check(/const presetRow = async \(key, writes, hex\) => \{[^\n]*sendWrites\(writes, hex\)/.test(pc), "a preset sends its color to the row's own writes");
 check(/const now = h\('span', \{ class: 'swatch pcl-current'/.test(rowSrc) && !/pcl-live|useRow\(/.test(rowSrc) && /pcl-paint'[^\n]*presetRow\(key, writes, pickNow\(\)\)/.test(rowSrc), 'the row ends with its current color as a plain dot, and a + sends the custom color once (27 Oct 2026)');
 check(/class: 'btn ghost small pcl-off'[^\n]*onclick: \(\) => offRow\(key, writes\) \}, 'Off'\)/.test(rowSrc) && !/offSwatch/.test(pc), 'Off is a small text button, no slashed circle');

@@ -35,3 +35,6 @@ export function brandForUsb(vid) {
   const name = hits[0]?.name.replace(/\s*\(.*\)$/, '');
   return merged(hits.filter((b) => b.name.replace(/\s*\(.*\)$/, '') === name));
 }
+// a VIA keyboard (a brand that runs over VIA/QMK and makes keyboards; not its mouse or receiver). Here rather than on the
+// Keyboard page so the Setup check does not load that page (27 Oct 2026)
+export const isViaKeyboard = (u) => !!(u?.brand?.transport?.includes('via-qmk') && u.brand.categories?.includes('keyboard') && !/mouse|receiver|dongle/i.test(u.name || ''));

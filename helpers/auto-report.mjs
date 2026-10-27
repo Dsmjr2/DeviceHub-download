@@ -334,9 +334,17 @@ export function crashBefore(lines) {
   const to = starts[starts.length - 1], from = starts.length > 1 ? starts[starts.length - 2] : -1;
   for (let i = to - 1; i > from; i--) {
     const m = /^\[launcher\] .*?(?:server exited|the new version stopped) with code (-?\d+)/.exec(lines[i]);
-    if (m && m[1] !== '-1' && !closedByWindows(m[1])) return { line: lines[i], code: Number(m[1]) };
+    if (m && m[1] !== '-1' && !closedByWindows(m[1]) && !(m[1] === '1' && !crashLineIn(lines, from, i))) return { line: lines[i], code: Number(m[1]) };
   }
   return null;
+}
+// code 1 is a crash only when that run wrote a "[crash]" line (helpers/driver-guard.js) or Node's own error and stack
+// (an error before driver-guard was installed); without one it was stopped from outside, by Task Manager's End task or
+// taskkill /F (27 Oct 2026: 10 "crashes" in a day were all restarts). server.js /api/health uses the same rule.
+export const CRASH_LINE = /^\[crash\]|^\s+at .+:\d+:\d+\)?\s*$|^\w*Error\b/;
+export function crashLineIn(lines, from, to) {
+  for (let i = to - 1; i > from; i--) if (CRASH_LINE.test(lines[i])) return true;
+  return false;
 }
 function logLines() {
   const out = [];

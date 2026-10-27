@@ -23,8 +23,8 @@ import os from 'os';
 import path from 'path';
 import { execFile } from 'child_process';
 import { fileURLToPath } from 'url';
-import * as inst from './installers.mjs';
-import * as bl from './board-lights.mjs';
+// (27 Oct 2026, memory) installers.mjs and board-lights.mjs only when setting up or removing: this file loads 20 s after
+// every start (onStart), and those two are only for their own pages
 import { declinedText, unansweredText } from './uac.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -42,7 +42,7 @@ export const MAX_MS = 4 * 60 * 60 * 1000;   // a pause ends after 4 hours at mos
 export const DROP_MS = 10000;               // Wi-Fi disconnected longer than this while paused: resume
 export const WATCH_MS = 3000;
 export const GAMING = 'Gaming';
-export const DIR = inst.DIR;
+export const DIR = path.join(os.tmpdir(), 'DeviceHub-downloads');   // installers.mjs's DIR (the same folder)
 export const RESULT = path.join(DIR, 'wifi-pause-result.txt');
 const user = () => `${process.env.USERDOMAIN || os.hostname()}\\${os.userInfo().username}`;
 const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
@@ -146,8 +146,8 @@ export const deps = {
   // starts one of the two tasks; the name is one of WIFI's two, never from a request
   runTask: (name) => new Promise((resolve) => execFile('schtasks.exe', ['/Run', '/TN', name], { windowsHide: true, timeout: 15000 }, (err, out, errOut) => resolve(err ? { ok: false, error: String(errOut || err.message).trim().split(/\r?\n/)[0] } : { ok: true }))),
   exists: (f) => fs.existsSync(f),
-  sha256: (file) => inst.deps.sha256(file),
-  elevate: (script, action, next, opts) => bl.elevateWatched(script, action, next, opts),
+  sha256: async (file) => (await import('./installers.mjs')).deps.sha256(file),
+  elevate: async (script, action, next, opts) => (await import('./board-lights.mjs')).elevateWatched(script, action, next, opts),
   readResult: (f) => { try { return fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, '').trim(); } catch { return ''; } },
   clearResult: (f) => { try { fs.rmSync(f, { force: true }); } catch {} },
   gamingOn: () => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'settings.json'), 'utf8')).wifiPauseGaming === true; } catch { return false; } },
