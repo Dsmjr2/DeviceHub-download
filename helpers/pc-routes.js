@@ -12,6 +12,7 @@
 //   POST /api/pc-check/fix          { id: 'power-plan' }: the high performance plan, on the person's click
 //   GET  /api/startup-apps[?fresh=1] what starts with Windows (helpers/startup-apps.js; 27 Oct 2026)
 //   POST /api/startup-apps/set      { id, on }: one start-up app on or off, the way Task Manager does it
+//   POST /api/startup-apps/remove   { id }: a leftover entry (its program is gone) removed, backed up first
 const { spawn } = require('child_process');
 
 const SETTINGS = { display: 'ms-settings:display', nightlight: 'ms-settings:nightlight', hdr: 'ms-settings:display-advancedcolor' };
@@ -65,6 +66,12 @@ async function handle(req, res, url, { send, readBody, backups, log = () => {} }
     if (p === '/api/startup-apps/set' && req.method === 'POST') {
       const { id, on } = await readBody(req);
       const r = await require('./startup-apps').set(String(id || ''), on === true);
+      log(`[startup] ${r.text}${r.backup ? ` (backup ${r.backup})` : ''}`);
+      return send(res, 200, r);
+    }
+    if (p === '/api/startup-apps/remove' && req.method === 'POST') {
+      const { id } = await readBody(req);
+      const r = await require('./startup-apps').remove(String(id || ''));
       log(`[startup] ${r.text}${r.backup ? ` (backup ${r.backup})` : ''}`);
       return send(res, 200, r);
     }

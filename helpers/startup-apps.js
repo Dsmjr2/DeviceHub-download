@@ -10,6 +10,9 @@
 //                      the value is read back. HKCU needs nothing; HKLM asks Windows once (powershell.exe -Verb RunAs,
 //                      hidden, only for that click), recorded like every prompt (helpers/uac.mjs). Never deletes a Run
 //                      value, a shortcut or a file, and never touches scheduled tasks or services.
+//   remove(id)         only a leftover (removable: its program is gone, or the old Teams machine-wide uninstaller): its
+//                      Run value and StartupApproved value are exported to backups\ first, then deleted (a Startup
+//                      folder shortcut is moved into backups\, not deleted); HKLM asks Windows once; read back gone.
 // Impact: Task Manager's "Startup impact" has no public API. DeviceHub measures it at sign-in the way Task Manager does
 // (CPU and disk in the first minutes, helpers/startup-impact.js, no admin): a row gets High, Medium or Low from the
 // last sign-in DeviceHub watched, and "Not measured" when none of its programs ran then. Before the first one, Windows'
@@ -102,12 +105,16 @@ function impactOf(it, impact, run) {
   return LEVELS.find(([ms]) => worst >= ms)[1];
 }
 const idOf = (it) => `${it.scope}|${it.key}|${it.name}`;
+// a leftover that can be removed from the list (28 Oct 2026, Shawn: "why are the program not found ones coming up? I
+// dont want teamsmachine on my pc"): its program is gone (an app uninstalled without taking its start-up entry), or
+// it is the old Teams machine-wide installer's own uninstaller entry. Never DeviceHub's own entry.
+const removable = (it) => !isSelf(it) && (!it.found || /^TeamsMachineUninstaller/i.test(String(it.name)));
 // the read script's JSON -> what the page shows
 function fromRead(j, at = deps.now(), run = deps.measured()) {
   const items = (j && Array.isArray(j.items) ? j.items : []).filter((it) => it && SCOPES.includes(it.scope) && KEYS.includes(it.key) && it.name);
   const apps = items.map((it) => {
     const s = stateOf(it.approved);
-    return { id: idOf(it), name: nameOf(it), publisher: publisherOf(it), on: s.on, offSince: s.offSince, impact: impactOf(it, j.impact, run), self: isSelf(it), scope: it.scope, admin: it.scope === 'HKLM' };
+    return { id: idOf(it), name: nameOf(it), publisher: publisherOf(it), on: s.on, offSince: s.offSince, impact: impactOf(it, j.impact, run), self: isSelf(it), scope: it.scope, admin: it.scope === 'HKLM', removable: removable(it) };
   }).sort((a, b) => (a.on === b.on ? a.name.localeCompare(b.name) : a.on ? -1 : 1));
   const im = j && j.impact, readable = !!(run || (im && im.readable));
   return {
@@ -158,6 +165,101 @@ function adminScript(key, name, hex, { started, cancel }) {
 
 let busy = false;
 const readText = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return ''; } };
+// one Windows prompt for an HKLM change: null when the script ran and exited 0, else the answer to send back
+async function askAdmin(makeScript, action, raw, file) {
+  const logs = path.join(deps.root, 'logs');
+  fs.mkdirSync(logs, { recursive: true });
+  const started = path.join(logs, 'startup-apps.started.txt'), cancel = path.join(logs, 'startup-apps.cancel.txt');
+  for (const f of [started, cancel]) { try { fs.rmSync(f, { force: true }); } catch {} }   // DeviceHub's own marker files
+  const ac = new AbortController();
+  let unanswered = false;
+  const timer = setTimeout(() => { if (!fs.existsSync(started)) { unanswered = true; try { fs.writeFileSync(cancel, 'cancel'); } catch {} ac.abort(); } }, deps.uacWaitMs);
+  const r = await deps.elevate(makeScript({ started, cancel }), ac.signal);
+  clearTimeout(timer);
+  if (unanswered) { deps.record({ action, outcome: 'unanswered' }); answer().invalidate(); return { ok: false, uac: 'unanswered', text: "Windows' prompt was not answered in 2 minutes. Nothing changed.", apps: await list(true) }; }
+  if (r.declined || (r.error && !readText(started))) { deps.record({ action, outcome: 'declined' }); return { ok: false, uac: 'declined', text: "Windows' prompt was declined. Nothing changed.", apps: fromRead(raw) }; }
+  deps.record({ action, outcome: 'yes' });
+  if (r.code !== 0) { answer().invalidate(); return { ok: false, text: `Not changed (code ${r.code ?? r.error}).`, backup: file, apps: await list(true) }; }
+  return null;
+}
+
+// ---- removing a leftover ----
+// the Run key an entry lives in (the read script's source, e.g. HKLM\Software\WOW6432Node\...\Run), for reg.exe
+const RUN_KEYS = { 'HKCU|Run': 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', 'HKLM|Run': 'HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', 'HKLM|Run32': 'HKLM\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Run' };
+// both keys exported into one backup file per key; the file names, or throws
+async function backupForRemove(it, raw) {
+  const files = [];
+  if (RUN_KEYS[`${it.scope}|${it.key}`]) {
+    const dir = path.join(deps.root, 'backups');
+    fs.mkdirSync(dir, { recursive: true });
+    let file = path.join(dir, `startup-run-${it.scope}-${it.key}-${stamp(deps.now())}.reg`);
+    for (let n = 2; fs.existsSync(file); n++) file = file.replace(/(_\d+)?\.reg$/, `_${n}.reg`);
+    await deps.run('reg.exe', ['export', RUN_KEYS[`${it.scope}|${it.key}`], file, '/y']);
+    let size = 0;
+    try { size = fs.statSync(file).size; } catch {}
+    if (!size) throw new Error('not removed: the backup was not written');
+    files.push(path.basename(file));
+  }
+  files.push(await backup(it.scope, it.key, raw.approvedKeys ? raw.approvedKeys[`${it.scope}|${it.key}`] : undefined));
+  return files;
+}
+// the elevated script for an HKLM leftover: that one Run value (or the all-users shortcut, moved into backups\) and its
+// StartupApproved value; the name and paths travel as base64, never as code
+function removeScript(it, moveTo, { started, cancel }) {
+  const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
+  const b64 = (s) => `[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(String(s), 'utf8').toString('base64')}'))`;
+  const lines = [
+    `if (Test-Path -LiteralPath ${q(cancel)}) { exit 4 }`,
+    `Set-Content -LiteralPath ${q(started)} -Value 'started' -Encoding UTF8 -ErrorAction SilentlyContinue`,
+    "$ErrorActionPreference = 'Stop'",
+    'try {',
+    `  $n = ${b64(it.name)}`,
+  ];
+  if (it.key === 'StartupFolder') lines.push(`  Move-Item -LiteralPath (${b64(it.command)}) -Destination (${b64(moveTo)})`);
+  else lines.push(`  Remove-ItemProperty -LiteralPath ${q(`Registry::${RUN_KEYS[`HKLM|${it.key}`].replace(/^HKLM/, 'HKEY_LOCAL_MACHINE')}`)} -Name $n`);
+  lines.push(
+    `  Remove-ItemProperty -LiteralPath ${q(`HKLM:\\${APPROVED}\\${it.key}`)} -Name $n -ErrorAction SilentlyContinue`,
+    '  exit 0',
+    '} catch { exit 3 }');
+  return lines.join('\r\n');
+}
+async function remove(id) {
+  if (busy) throw new Error('busy with the last change; wait for it');
+  busy = true;
+  try {
+    const raw = await deps.read();
+    const it = (raw && Array.isArray(raw.items) ? raw.items : []).find((x) => x && idOf(x) === String(id));
+    if (!it || !SCOPES.includes(it.scope) || !KEYS.includes(it.key)) throw new Error('that app is not in the start-up list any more');
+    const name = nameOf(it);
+    if (!removable(it)) throw new Error(`${name} is not a leftover; turn it off instead`);
+    const files = await backupForRemove(it, raw);
+    // a Startup folder shortcut is kept in backups\ (moved, not deleted)
+    let moveTo = null;
+    if (it.key === 'StartupFolder') {
+      const dir = path.join(deps.root, 'backups', `startup-removed-${stamp(deps.now())}`);
+      fs.mkdirSync(dir, { recursive: true });
+      moveTo = path.join(dir, it.name);
+      files.push(path.relative(path.join(deps.root, 'backups'), moveTo));
+    }
+    const action = `remove ${name} from start-up`;
+    if (it.scope === 'HKCU') {
+      if (it.key === 'StartupFolder') fs.renameSync(it.command, moveTo);
+      else {
+        const r = await deps.run('reg.exe', ['delete', RUN_KEYS[`HKCU|${it.key}`], '/v', it.name, '/f']);
+        if (r.code !== 0) throw new Error(`not removed: ${String(r.out || '').trim() || `reg.exe ${r.code}`}`);
+      }
+      if (it.approved != null) await deps.run('reg.exe', ['delete', regPath('HKCU', it.key), '/v', it.name, '/f']);
+    } else {
+      const stop = await askAdmin((m) => removeScript(it, moveTo, m), action, raw, files.join(', '));
+      if (stop) return stop;
+    }
+    // read back: the entry must be gone
+    answer().invalidate();
+    const after = await deps.read();
+    const still = (after && Array.isArray(after.items) ? after.items : []).some((x) => x && idOf(x) === idOf(it));
+    return { ok: !still, text: still ? `${name}: still there. Look again.` : `${name} removed from start-up.`, backup: files.join(', '), apps: fromRead(after), name };
+  } finally { busy = false; }
+}
 async function set(id, on) {
   if (busy) throw new Error('busy with the last change; wait for it');
   busy = true;
@@ -176,19 +278,8 @@ async function set(id, on) {
       const r = await deps.run('reg.exe', ['add', regPath('HKCU', it.key), '/v', it.name, '/t', 'REG_BINARY', '/d', hex, '/f']);
       if (r.code !== 0) throw new Error(`not changed: ${String(r.out || '').trim() || `reg.exe ${r.code}`}`);
     } else {
-      const logs = path.join(deps.root, 'logs');
-      fs.mkdirSync(logs, { recursive: true });
-      const started = path.join(logs, 'startup-apps.started.txt'), cancel = path.join(logs, 'startup-apps.cancel.txt');
-      for (const f of [started, cancel]) { try { fs.rmSync(f, { force: true }); } catch {} }   // DeviceHub's own marker files
-      const ac = new AbortController();
-      let unanswered = false;
-      const timer = setTimeout(() => { if (!fs.existsSync(started)) { unanswered = true; try { fs.writeFileSync(cancel, 'cancel'); } catch {} ac.abort(); } }, deps.uacWaitMs);
-      const r = await deps.elevate(adminScript(it.key, it.name, hex, { started, cancel }), ac.signal);
-      clearTimeout(timer);
-      if (unanswered) { deps.record({ action, outcome: 'unanswered' }); answer().invalidate(); return { ok: false, uac: 'unanswered', text: "Windows' prompt was not answered in 2 minutes. Nothing changed.", apps: await list(true) }; }
-      if (r.declined || (r.error && !readText(started))) { deps.record({ action, outcome: 'declined' }); return { ok: false, uac: 'declined', text: "Windows' prompt was declined. Nothing changed.", apps: fromRead(raw) }; }
-      deps.record({ action, outcome: 'yes' });
-      if (r.code !== 0) { answer().invalidate(); return { ok: false, text: `Not changed (code ${r.code ?? r.error}).`, backup: file, apps: await list(true) }; }
+      const stop = await askAdmin((m) => adminScript(it.key, it.name, hex, m), action, raw, file);
+      if (stop) return stop;
     }
     // read back: the value must now hold exactly what was written
     answer().invalidate();
@@ -200,4 +291,4 @@ async function set(id, on) {
   } finally { busy = false; }
 }
 
-module.exports = { list, set, _test: { deps, stateOf, bytesFor, fromRead, adminScript, impactOf, ELEVATE, reset: () => { cache = null; busy = false; } } };
+module.exports = { list, set, remove, _test: { deps, stateOf, bytesFor, fromRead, adminScript, removeScript, removable, impactOf, ELEVATE, reset: () => { cache = null; busy = false; } } };

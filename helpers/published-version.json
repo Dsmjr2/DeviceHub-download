@@ -1,9 +1,7 @@
 {
-  "version": "1.6",
-  "commit": "1fd84d45c124",
+  "version": "1.7",
+  "commit": "2d9250302dc5",
   "notes": [
-    "Isolated copies never move files",
-    "Move this PC's files into data and the server log into logs",
-    "Start-up apps: impact measured at sign-in, no admin needed"
+    "Start-up apps: Remove for leftovers whose program is gone"
   ]
 }

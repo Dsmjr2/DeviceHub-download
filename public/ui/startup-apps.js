@@ -7,11 +7,12 @@ import { toggle } from './controls.js';
 import { env } from '../core/env.js';
 import { isDemo } from '../core/devices.js';
 
-const DEMO = () => ({ at: new Date().toISOString(), on: 3, total: 4, impact: { readable: true, measuredAt: new Date(Date.now() - 3 * 3600e3).toISOString(), note: null }, apps: [
+const DEMO = () => ({ at: new Date().toISOString(), on: 3, total: 5, impact: { readable: true, measuredAt: new Date(Date.now() - 3 * 3600e3).toISOString(), note: null }, apps: [
   { id: 'HKCU|StartupFolder|DeviceHub.lnk', name: 'DeviceHub', publisher: '', on: true, impact: 'Medium', self: true },
   { id: 'HKCU|Run|OneDrive', name: 'Microsoft OneDrive', publisher: 'Microsoft Corporation', on: true, impact: 'High' },
   { id: 'HKLM|Run|SecurityHealth', name: 'Windows Security notification icon', publisher: 'Microsoft Corporation', on: true, impact: 'Low', admin: true },
-  { id: 'HKCU|Run|Edge', name: 'Microsoft Edge', publisher: 'Microsoft Corporation', on: false, impact: 'Not measured' }] });
+  { id: 'HKCU|Run|Edge', name: 'Microsoft Edge', publisher: 'Microsoft Corporation', on: false, impact: 'Not measured' },
+  { id: 'HKCU|Run|Pulsar', name: 'Pulsar', publisher: 'Program not found', on: false, impact: 'Not measured', removable: true }] });
 let data = null, err = null, loading = false, at = 0, lastDrawn = 0, open = false, busy = null, note = null, redraw = () => {};
 
 async function load(fresh) {
@@ -32,6 +33,17 @@ async function flip(a, on) {
   } catch (e) { note = { id: a.id, text: note?.text || `Not changed: ${e.message}` }; throw e; }
   finally { busy = null; redraw(); }
 }
+// a leftover (its program is gone): removed from the list, backed up first (helpers/startup-apps.js remove)
+async function removeIt(a) {
+  if (isDemo()) { data.apps = data.apps.filter((x) => x.id !== a.id); data.total--; redraw(); return; }
+  busy = a.id; note = a.admin ? { id: a.id, text: "Click Yes in Windows' prompt (if hidden, the blinking taskbar shield)." } : null; redraw();
+  try {
+    const r = await env.api('/api/startup-apps/remove', { id: a.id });
+    if (r.apps) data = r.apps;
+    note = r.ok ? null : { id: a.id, text: r.text };
+  } catch (e) { note = { id: a.id, text: `Not removed: ${e.message}` }; }
+  finally { busy = null; redraw(); }
+}
 
 const row = (a) => h('div', { class: 'su-app' },
   h('div', { class: 'su-app-name' },
@@ -40,7 +52,8 @@ const row = (a) => h('div', { class: 'su-app' },
       : a.self ? h('small', { class: 'faint' }, a.on ? "Off = DeviceHub won't start with Windows." : "DeviceHub won't start with Windows.")
         : a.publisher ? h('small', { class: 'faint' }, a.publisher) : null),
   h('small', { class: `su-app-impact${/High/.test(a.impact) ? ' warn' : ''}`, title: 'Start-up impact' }, a.impact || '—'),
-  toggle({ value: a.on, label: `${a.name} at start-up`, disabled: !!busy && busy !== a.id, onCommit: (on) => flip(a, on) }));
+  a.removable ? h('button', { class: 'su-remove', disabled: !!busy, title: 'Left behind by an app that is gone; backed up first', onclick: () => removeIt(a) }, busy === a.id ? 'Removing…' : 'Remove')
+    : toggle({ value: a.on, label: `${a.name} at start-up`, disabled: !!busy && busy !== a.id, onCommit: (on) => flip(a, on) }));
 
 export function startupApps({ redraw: r } = {}) {
   redraw = r || redraw;

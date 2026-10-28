@@ -171,12 +171,52 @@ check(r.ok === false && r.uac === 'unanswered' && records.at(-1)?.outcome === 'u
 const sc = adminScript('Run', 'x', offHex, { started: 'C:\\s.txt', cancel: 'C:\\c.txt' });
 check(sc.indexOf("Test-Path -LiteralPath 'C:\\c.txt'") < sc.indexOf('New-ItemProperty'), 'a cancelled prompt exits before any write');
 
-// ---- never deletes, never tasks or services ----
+// ---- on and off never delete, never tasks or services ----
 const src = fs.readFileSync(path.join(here, '..', 'helpers', 'startup-apps.js'), 'utf8');
 const ps1 = fs.readFileSync(path.join(here, '..', 'helpers', 'startup-apps-read.ps1'), 'utf8');
-check(calls.every((c) => c[0] === 'reg.exe' && ['export', 'add'].includes(c[1])), 'reg.exe only exports and adds');
-check(scripts.concat(sc).every((x) => !/Remove-Item|Remove-ItemProperty|reg(\.exe)? delete|schtasks|Set-Service|Stop-Service/i.test(x)), 'the admin script never deletes, never touches tasks or services');
-check(!/Remove-ItemProperty|reg\.exe['"]?, \[?['"]delete|schtasks|Register-ScheduledTask|Set-Service|unlinkSync/i.test(src), 'the module never deletes a value, a shortcut or a file');
+check(calls.every((c) => c[0] === 'reg.exe' && ['export', 'add'].includes(c[1])), 'on and off: reg.exe only exports and adds');
+check(scripts.concat(sc).every((x) => !/Remove-Item|Remove-ItemProperty|reg(\.exe)? delete|schtasks|Set-Service|Stop-Service/i.test(x)), 'on and off: the admin script never deletes, never touches tasks or services');
+check(!/schtasks|Register-ScheduledTask|Set-Service|unlinkSync|rmSync\(it|Remove-Item -/i.test(src), 'the module never touches tasks or services and never deletes a file');
+
+// ---- removing a leftover (28 Oct 2026): only one whose program is gone, or the old Teams uninstaller ----
+deps.uacWaitMs = 60000;
+reg.items.push(
+  item({ name: 'Pulsar', target: 'C:\\Program Files\\Pulsar\\Pulsar.exe', found: false, publisher: '', description: '', approved: '03000000a72fa8a57a5fdd01' }),
+  item({ scope: 'HKLM', key: 'Run32', name: 'TeamsMachineUninstallerLocalAppData', command: 'C:\\x\\Teams\\Update.exe --uninstall', target: 'C:\\x\\Teams\\Update.exe', found: true, description: 'Microsoft Teams', approved: '030000000000000000000000' }));
+// the Startup folder is outside DeviceHub (a path inside it would be DeviceHub's own entry)
+const startupDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-startup-folder-'));
+fs.writeFileSync(path.join(startupDir, 'iCUE Launcher - Shortcut.lnk'), 'shortcut');
+reg.items.find((x) => x.name === 'iCUE Launcher - Shortcut.lnk').command = path.join(startupDir, 'iCUE Launcher - Shortcut.lnk');
+l = fromRead(reg, NOW);
+const rm = (n) => l.apps.find((a) => a.name === n)?.removable;
+check(rm('Pulsar') === true && rm('iCUE Launcher - Shortcut') === true && rm('Microsoft Teams') === true, 'a program that is gone, or the Teams uninstaller: removable');
+check(rm('Microsoft OneDrive') === false && rm('DeviceHub') === false && rm('Windows Security notification icon') === false, 'an app that is there, and DeviceHub itself: not removable');
+calls.length = 0;
+deps.run = async (cmd, args) => {
+  calls.push([cmd, ...args]);
+  if (args[0] === 'export') fs.writeFileSync(args[2], 'Windows Registry Editor Version 5.00\r\n');
+  if (args[0] === 'delete' && args[1].endsWith('\\CurrentVersion\\Run')) reg.items = reg.items.filter((x) => !(x.scope === 'HKCU' && x.key === 'Run' && x.name === args[3]));
+  return { code: 0, out: '' };
+};
+r = await sa.remove('HKCU|Run|Pulsar');
+const firstDel = calls.findIndex((c) => c[1] === 'delete'), lastExp = calls.map((c) => c[1]).lastIndexOf('export');
+check(r.ok === true && /removed/.test(r.text) && !r.apps.apps.some((a) => a.name === 'Pulsar'), `Pulsar removed and read back gone (${r.text})`);
+check(lastExp >= 0 && firstDel > lastExp && calls.filter((c) => c[1] === 'export').length === 2, 'both keys (Run and StartupApproved) backed up before any delete');
+check(calls.filter((c) => c[1] === 'delete').every((c) => c[4] === 'Pulsar' && c[5] === '/f') && calls.some((c) => c[1] === 'delete' && /StartupApproved\\Run$/.test(c[2])), 'only the Pulsar values are deleted');
+// a Startup folder shortcut is moved into backups, not deleted
+deps.read = async () => { const j = JSON.parse(JSON.stringify(reg)); j.items = j.items.filter((x) => x.key !== 'StartupFolder' || fs.existsSync(x.command)); return j; };
+r = await sa.remove('HKCU|StartupFolder|iCUE Launcher - Shortcut.lnk');
+check(r.ok === true && !fs.existsSync(path.join(startupDir, 'iCUE Launcher - Shortcut.lnk')) && fs.readdirSync(path.join(root, 'backups')).some((d) => d.startsWith('startup-removed-') && fs.existsSync(path.join(root, 'backups', d, 'iCUE Launcher - Shortcut.lnk'))), 'a leftover shortcut is moved into backups\\, not deleted');
+// an app that is there is refused
+threw = null;
+try { await sa.remove('HKCU|Run|OneDrive'); } catch (e) { threw = e.message; }
+check(/not a leftover/.test(threw || '') && reg.items.some((x) => x.name === 'OneDrive'), 'an app that is there cannot be removed');
+// HKLM: one prompt; the script removes only that value, the name as base64
+scripts.length = 0;
+deps.elevate = async (script) => { scripts.push(script); fs.writeFileSync(/Set-Content -LiteralPath '([^']+)'/.exec(script)[1], 'started'); reg.items = reg.items.filter((x) => x.name !== 'TeamsMachineUninstallerLocalAppData'); return { code: 0 }; };
+r = await sa.remove('HKLM|Run32|TeamsMachineUninstallerLocalAppData');
+check(r.ok === true && scripts.length === 1 && /remove Microsoft Teams from start-up/.test(records.at(-1)?.action), 'Teams uninstaller removed through one Windows prompt, recorded');
+check(scripts[0].includes("'Registry::HKEY_LOCAL_MACHINE\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Run'") && !scripts[0].includes('TeamsMachine') && scripts[0].indexOf('Test-Path') < scripts[0].indexOf('Remove-ItemProperty'), 'the admin script: only that Run32 value, name as base64, cancel checked first');
 check(!/Set-Item|New-Item|Remove-Item|reg\.exe|Set-Content|Out-File/i.test(ps1), 'the read script only reads');
 try {
   const out = execFileSync('powershell.exe', ['-NoProfile', '-Command', `$e = $null; [void][System.Management.Automation.Language.Parser]::ParseFile('${path.join(here, '..', 'helpers', 'startup-apps-read.ps1')}', [ref]$null, [ref]$e); $e.Count`], { windowsHide: true, timeout: 30000 }).toString().trim();
@@ -184,5 +224,6 @@ try {
 } catch (e) { check(false, `PowerShell parse check did not run: ${e.message}`); }
 
 fs.rmSync(root, { recursive: true, force: true });
+fs.rmSync(startupDir, { recursive: true, force: true });
 console.log(fails.length ? `startup-apps: FAILED: ${fails.join('; ')}` : 'startup-apps (Start-up apps on the PC page): all good');
 process.exit(fails.length ? 1 : 0);
