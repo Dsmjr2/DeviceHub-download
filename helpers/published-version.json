@@ -1,7 +1,7 @@
 {
-  "version": "1.7",
-  "commit": "2d9250302dc5",
+  "version": "1.8",
+  "commit": "8705437e08b0",
   "notes": [
-    "Start-up apps: Remove for leftovers whose program is gone"
+    "Profiles: edit, add and take out settings in the card"
   ]
 }

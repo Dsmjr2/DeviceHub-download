@@ -16,6 +16,7 @@ import { EFFECTS } from '../devices/keycodes.js';
 import { modal, toast } from '../ui/overlay.js';
 import { helpHere } from '../ui/get-help.js';
 import { gameModeCard } from './game-mode-card.js';   // (27 Oct 2026) per-game switches put back when the game quits
+import { fieldOf, toEdit, fromEdit, startValue, addable, parseRef, getAt, setAt, removeAt, countSettings } from '../core/profile-edit.js';
 
 let list = null;
 let rerender = () => {};
@@ -38,6 +39,7 @@ const ui = {
   remembered: {},       // name -> named games seen this session (so "any game" and back keeps the list)
   adding: null,         // the new-profile steps: { step: 'name', name, error } | { step: 'pick', name, snap, mons, added, off, error }
   focusNew: false,
+  editing: null,        // { name, draft, raw: { ref: typed text }, errors: { ref: why }, error }: the card being edited
 };
 
 // when the box loses focus: redraw now, unless focus went to a control on the page (its own action redraws)
@@ -293,6 +295,7 @@ function useNote(p, use, s) {
 const labelled = (el, text) => { el.setAttribute('aria-label', text); return el; };
 
 function profileCard(p) {
+  if (ui.editing?.name === p.name) return editCard(p);
   const s = auto.settings;
   const rows = diff(p);
   const readyChanges = rows.filter((r) => !r.blocked);
@@ -320,9 +323,143 @@ function profileCard(p) {
           active ? button('Applied', () => {}, { kind: 'ghost small', disabled: true, ic: 'check' })
             : button('Apply profile', () => { ui.note = {}; return applyWithPreview(p); }, { kind: 'primary small' }),
           h('div', { class: 'actions' },
-            button('Save current', () => ask('save'), { kind: 'ghost small', title: 'Update this profile with your current device settings' }),
+            button('Edit', () => startEdit(p), { kind: 'ghost small', title: 'Change, take out or add settings' }),
+            button('Save current',() => ask('save'), { kind: 'ghost small', title: 'Update this profile with your current device settings' }),
             labelled(button('', () => ask('delete'), { kind: 'ghost small', ic: 'trash' }), `Delete ${p.name}`))),
     note ? h('div', { class: `prof-note${note.kind ? ` ${note.kind}` : ''}`, role: 'status' }, note.text) : null);
+}
+
+// ---------- Edit: change, take out or add a setting (28 Oct 2026) ----------
+// Only the profile is saved (read back after); no device is written until Apply profile.
+const startEdit = (p) => {
+  ui.editing = { name: p.name, draft: structuredClone({ name: p.name, devices: p.devices || {}, monitors: p.monitors, added: p.added }), raw: {}, errors: {}, error: '' };
+  if (!ui.editing.draft.monitors) delete ui.editing.draft.monitors;
+  if (!ui.editing.draft.added) delete ui.editing.draft.added;
+  ui.confirm = null; ui.note = {}; ui.adding = null;
+  if (!monitorList() && !isDemo()) loadMonitors(false).then(() => rerender());
+  rerender();
+};
+const stopEdit = () => { ui.editing = null; rerender(); };
+
+// the field for one place in the draft, with what that place's device calls the setting
+function placeOf(ref, draft) {
+  const { t, id, key } = parseRef(ref);
+  const cur = getAt(draft, ref);
+  if (t === 'a') {
+    const s = addedSetting(id, key) || null;
+    return { label: s?.label || key, field: fieldOf(id, key, { setting: s, current: cur }), setting: s, dev: id, key };
+  }
+  const dev = t === 'm' ? 'monitor' : id;
+  return { label: t === 'd' ? plain(id, key, cur)[0] : keyLabel('monitor', key), field: fieldOf(dev, key, { current: cur }), dev, key };
+}
+
+const editGroups = (d) => {
+  const out = [];   // [{ group, refs }]
+  for (const [id, vals] of Object.entries(d.devices || {})) if (PROFILE_KEYS[id]) out.push({ group: devName(id), refs: Object.keys(vals).filter((k) => Object.hasOwn(PROFILE_KEYS[id], k)).map((k) => `d|${id}|${k}`) });
+  for (const [mid, vals] of Object.entries(d.monitors || {})) out.push({ group: vals?.name || 'Monitor', refs: Object.keys(MONITOR_KEYS).filter((k) => vals?.[k] != null).map((k) => `m|${mid}|${k}`) });
+  for (const [id, e] of Object.entries(d.added || {})) out.push({ group: devices[id]?.adapter?.title || e?.title || id, refs: Object.keys(e?.values || {}).map((k) => `a|${id}|${k}`) });
+  return out.filter((g) => g.refs.length);
+};
+
+function editSet(ref, value) {
+  const e = ui.editing;
+  e.draft = setAt(e.draft, ref, value);
+  delete e.raw[ref]; delete e.errors[ref]; e.error = '';
+}
+
+function editControl(ref, pl, cur) {
+  const e = ui.editing, f = pl.field;
+  const name = `${pl.label} in ${e.name}`;
+  if (!f) return h('span', { class: 'prof-edit-fixed', title: 'Set this on the device page, then Save current' }, pl.setting ? showAdded(pl.setting, cur) : showValue(pl.dev, pl.key, cur));
+  if (f.kind === 'toggle') return toggle({ value: !!cur, label: name, onCommit: (v) => { editSet(ref, v); } });
+  if (f.kind === 'color') return h('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(String(cur || '')) ? String(cur).toLowerCase() : '#ffffff', 'aria-label': name, oninput: (ev) => editSet(ref, ev.target.value.toLowerCase()) });
+  if (f.kind === 'choice') {
+    const idx = f.options.findIndex((o) => JSON.stringify(o.value) === JSON.stringify(cur));
+    return dropdown({ label: name, value: idx < 0 ? null : idx, options: f.options.map((o, i) => ({ value: i, label: o.label })), onChange: (v) => { editSet(ref, f.options[Number(v)].value); rerender(); } });
+  }
+  const shown = Object.hasOwn(e.raw, ref) ? e.raw[ref] : String(toEdit(f, cur) ?? '');
+  return h('input', { class: 'text mono', type: 'text', inputmode: 'numeric', value: shown, 'aria-label': `${name}${f.unit ? ` (${f.unit})` : ''}`, placeholder: `${f.min}-${f.max}`,
+    oninput: (ev) => { e.raw[ref] = ev.target.value; delete e.errors[ref]; },
+    onkeydown: (ev) => { if (ev.key === 'Enter') saveEdit(); if (ev.key === 'Escape') stopEdit(); },
+    onblur: afterTyping });
+}
+
+function editRow(ref) {
+  const e = ui.editing;
+  const pl = placeOf(ref, e.draft);
+  const cur = getAt(e.draft, ref);
+  const unit = pl.field?.kind === 'number' && pl.field.unit ? ` (${pl.field.unit})` : '';
+  return h('div', { class: 'prof-edit-row' },
+    h('span', {}, pl.label + unit),
+    editControl(ref, pl, cur),
+    h('button', { class: 'prof-edit-x', 'aria-label': `Take ${pl.label} out of ${e.name}`, title: 'Take out of this profile', onclick: () => { e.draft = removeAt(e.draft, ref); delete e.raw[ref]; delete e.errors[ref]; rerender(); } }, '×'),
+    e.errors[ref] ? h('div', { class: 'err', role: 'status' }, `${pl.label}: ${e.errors[ref]}.`) : null);
+}
+
+function addPicker() {
+  const e = ui.editing;
+  const more = addable(e.draft, { monitors: monitorList() || [], groupName: devName });
+  if (!more.length) return null;
+  return h('div', { class: 'prof-use' },
+    h('div', { class: 'prof-label' }, 'Add a setting'),
+    dropdown({ label: `Add a setting to ${e.name}`, value: null, placeholder: 'Pick a setting…', options: more.map((m) => ({ value: m.ref, label: `${m.group}: ${m.label}` })),
+      onChange: (ref) => {
+        const { t, id, key } = parseRef(ref);
+        const dev = t === 'm' ? 'monitor' : id;
+        const f = fieldOf(dev, key);
+        const live = t === 'm' ? (monitorList() || []).find((m) => m.id === id)?.[key]?.value : devices[id]?.status === 'connected' ? devices[id].values?.[key] : undefined;
+        const monitorName = t === 'm' ? (monitorList() || []).find((m) => m.id === id)?.name : undefined;
+        e.draft = setAt(e.draft, ref, startValue(f, live), { monitorName });
+        e.error = '';
+        rerender();
+      } }));
+}
+
+async function saveEdit() {
+  const e = ui.editing;
+  if (!e) return;
+  // the boxes being typed in: each one checked; nothing is saved while one is wrong
+  for (const [ref, text] of Object.entries(e.raw)) {
+    const r = fromEdit(placeOf(ref, e.draft).field, text);
+    if (r.ok) { e.draft = setAt(e.draft, ref, r.value); delete e.raw[ref]; delete e.errors[ref]; } else e.errors[ref] = r.error;
+  }
+  const name = String(e.draft.name || '').trim().slice(0, 100);
+  e.error = !name ? 'Type a name.'
+    : name.toLowerCase() !== e.name.toLowerCase() && (list || []).some((x) => x.name.toLowerCase() === name.toLowerCase()) ? `"${name}" exists. Pick another name.`
+      : Object.keys(e.errors).length ? 'Fix the boxes marked in red.'
+        : !countSettings(e.draft) ? 'Keep at least one setting, or delete the profile.' : '';
+  if (e.error) { rerender(); return; }
+  const old = (list || []).find((x) => x.name === e.name);
+  if (!old) { ui.editing = null; await refreshList(); return; }
+  const next = { ...old, name, devices: e.draft.devices || {}, savedAt: new Date().toISOString() };
+  delete next.monitors; delete next.added;
+  if (e.draft.monitors && Object.keys(e.draft.monitors).length) next.monitors = e.draft.monitors;
+  if (e.draft.added && Object.keys(e.draft.added).length) next.added = e.draft.added;
+  await saveProfiles(list.map((x) => (x.name === e.name ? next : x)));
+  if (name !== e.name && auto.settings.defaultProfile === e.name) await saveSettings({ defaultProfile: name });
+  const back = (await loadProfiles()).find((x) => x.name === name);   // read back what was saved
+  ui.editing = null;
+  if (JSON.stringify(back) === JSON.stringify(next)) say(name, 'Saved. Apply profile to use it now.');
+  else say(name, 'The saved profile did not read back the same. Open Edit and check it.', 'bad');
+  await refreshList();
+}
+
+function editCard(p) {
+  const e = ui.editing;
+  const groups = editGroups(e.draft);
+  return h('div', { class: 'profile', style: { '--pc': p.color } },
+    h('h3', {}, `Edit ${p.name}`),
+    h('div', {},
+      h('div', { class: 'prof-label' }, 'Name'),
+      h('input', { class: 'text', value: e.draft.name, maxlength: 100, 'aria-label': `Name of ${e.name}`,
+        oninput: (ev) => { e.draft.name = ev.target.value; }, onkeydown: (ev) => { if (ev.key === 'Enter') saveEdit(); if (ev.key === 'Escape') stopEdit(); }, onblur: afterTyping })),
+    h('div', { class: 'prof-edit' },
+      groups.length ? groups.map((g) => h('div', { class: 'prof-edit-group' }, h('div', { class: 'prof-detail-head' }, g.group), ...g.refs.map(editRow)))
+        : h('div', { class: 'faint' }, 'No settings yet. Add one below.')),
+    addPicker(),
+    h('div', { class: 'prof-when' }, 'Saving changes only the profile. Apply profile sets the devices.'),
+    e.error ? h('div', { class: 'prof-note bad', role: 'status' }, e.error) : null,
+    h('div', { class: 'actions' }, button('Save', () => saveEdit(), { kind: 'primary small' }), button('Cancel', stopEdit, { kind: 'ghost small' })));
 }
 
 // ---------- New profile from my current settings ----------

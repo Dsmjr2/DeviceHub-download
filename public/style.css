@@ -778,6 +778,18 @@ html[data-art] .mic-muted .art.mark .led.mic { fill: #ff4d4d; filter: drop-shado
 .prof-check input { accent-color: var(--accent); width: 16px; height: 16px; flex: none; margin: 0; }
 .prof-check-all { font-size: 14px; }
 .prof-group-items { display: grid; gap: 2px; padding-left: 25px; }
+/* editing a profile in its card (28 Oct 2026) */
+.prof-edit { display: grid; gap: 12px; }
+.prof-edit-group { display: grid; gap: 6px; }
+.prof-edit-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, 170px) auto; gap: 8px; align-items: center; font-size: 13px; }
+.prof-edit-row > span { color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.prof-edit-row .text, .prof-edit-row .dd { width: 100%; min-width: 0; }
+.prof-edit-row input[type="color"] { width: 100%; height: 30px; padding: 2px; border-radius: 8px; border: 1px solid var(--line2); background: var(--sunk); cursor: pointer; }
+.prof-edit-row .switch { justify-self: start; }
+.prof-edit-row .err { grid-column: 1 / -1; color: var(--bad); font-size: 12px; margin-top: -2px; }
+.prof-edit-x { background: none; border: 0; padding: 4px 7px; border-radius: 6px; color: var(--faint); cursor: pointer; font: 600 14px var(--ui); line-height: 1; }
+.prof-edit-x:hover, .prof-edit-x:focus-visible { color: var(--bad); background: var(--raise); }
+.prof-edit-fixed { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .diff { display: grid; gap: 6px; font-size: 13.5px; }
 .diff div { display: grid; grid-template-columns: 110px 1fr auto auto auto; gap: 10px; align-items: center; padding: 6px 10px; border-radius: 7px; background: var(--sunk); }
 .diff .dev { font: 500 12px var(--ui); color: var(--faint); letter-spacing: 0; }
