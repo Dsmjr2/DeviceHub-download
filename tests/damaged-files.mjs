@@ -17,6 +17,8 @@ for (const f of execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' 
 }
 fs.cpSync(path.join(ROOT, 'node_modules'), path.join(T, 'node_modules'), { recursive: true });
 const DAMAGED = ['settings.json', 'profiles.json', 'eq-presets.json', 'seen-devices.json', 'headset-lights.json', 'mouse-level.json', 'settings-sync-state.json', 'updates-cache.json', 'headset-firmware.json'];
+// written beside the app, where a version from before 27 Oct 2026 kept them: the start moves them into data\ first
+// (helpers/data-migrate.js), then finds them damaged there
 for (const f of DAMAGED) fs.writeFileSync(path.join(T, f), '{"half a file, cut off by a power c');
 fs.writeFileSync(path.join(T, 'activity.jsonl'), '{"at":"2026-10-20T01:00:00Z","text":"ok","kind":"good"}\n{"broken\n\u0000\u0000\n');
 fs.writeFileSync(path.join(T, 'battery-history.jsonl'), 'not json at all\n');
@@ -37,8 +39,9 @@ if (up) {
   }
   const s = await post('/api/settings', { lightWindow: false });
   check(s.status === 200, `settings save again (${s.status})`);
-  check(JSON.parse(fs.readFileSync(path.join(T, 'settings.json'), 'utf8')).lightWindow === false, 'the new settings.json holds the saved value');
-  const kept = fs.readdirSync(T).filter((f) => /\.damaged-/.test(f));
+  check(JSON.parse(fs.readFileSync(path.join(T, 'data', 'settings.json'), 'utf8')).lightWindow === false, 'the new data\\settings.json holds the saved value');
+  check([...DAMAGED, 'activity.jsonl', 'battery-history.jsonl'].every((f) => !fs.existsSync(path.join(T, f))) && /\[data\] moved/.test(out), 'the files beside the app were moved into data\\ at the start, with one log line');
+  const kept = fs.readdirSync(path.join(T, 'data')).filter((f) => /\.damaged-/.test(f));
   check(kept.some((f) => f.startsWith('settings.json.damaged-')) && kept.some((f) => f.startsWith('profiles.json.damaged-')), `damaged files kept: ${kept.join(', ') || 'none'}`);
   for (const pg of ['/', '/core/devices.js']) { const r = await get(pg); check(r.status === 200, `page ${pg} loads`); }
   try { await post('/api/quit', {}); } catch {}

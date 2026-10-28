@@ -26,7 +26,8 @@ const readJson = (f, d = null) => { try { return JSON.parse(fs.readFileSync(f, '
 const hex4 = (v) => String(v ?? '').trim().toLowerCase().replace(/^0x/, '').padStart(4, '0');
 
 // settings.json shareDrivers: true (yes), false (no), undefined (not asked yet)
-export const choice = (root = ROOT) => readJson(path.join(root, 'settings.json'), {})?.shareDrivers;
+const settingsOf = (root) => path.join(root, 'data', 'settings.json');   // helpers/data-dir.js dataFile
+export const choice = (root = ROOT) => readJson(settingsOf(root), {})?.shareDrivers;
 
 // the issue for one learned driver folder, or { refused: why }. verified: its verified.json (the self-check's record).
 export function buildShare(folder, { verified = readJson(path.join(folder, 'verified.json')), names = personalNames(), devicehub = 'unknown', now = () => new Date() } = {}) {
@@ -124,7 +125,7 @@ export async function handle(url, req, res, { send, readBody, root = ROOT }) {
   if (req.method !== 'POST') { send(res, 405, { error: 'GET or POST' }); return true; }
   const b = await readBody(req).catch(() => ({}));
   if (typeof b?.on !== 'boolean') { send(res, 400, { error: 'on must be true or false' }); return true; }
-  const f = path.join(root, 'settings.json');
+  const f = settingsOf(root);
   const cur = readJson(f, {}) || {};
   (await import('./safe-write.js')).default.writeAtomic(f, JSON.stringify({ ...cur, shareDrivers: b.on }, null, 2));
   const shared = b.on && !owner ? await shareAll({ root }) : [];

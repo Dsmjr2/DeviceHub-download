@@ -28,7 +28,8 @@ function folder({ config = true, settings = {} } = {}) {
   fs.mkdirSync(path.join(root, 'docs'));
   fs.copyFileSync(path.join(REAL, 'docs', 'brands.json'), path.join(root, 'docs', 'brands.json'));
   if (config) fs.writeFileSync(path.join(root, 'helpers', 'report-config.json'), JSON.stringify({ relayUrl: URL_OK }));
-  fs.writeFileSync(path.join(root, 'settings.json'), JSON.stringify(settings));
+  fs.mkdirSync(path.join(root, 'data'));
+  fs.writeFileSync(path.join(root, 'data', 'settings.json'), JSON.stringify(settings));
   return root;
 }
 
@@ -113,13 +114,13 @@ try {
 
   // ---- the owner's PC never sends
   root = folder(); fresh(root, { owner: null });
-  fs.writeFileSync(path.join(root, 'settings.json'), JSON.stringify({ ownerPc: true }));
+  fs.writeFileSync(path.join(root, 'data', 'settings.json'), JSON.stringify({ ownerPc: true }));
   r = await sr.send(ASK);
   ok(r.fallback && calls.length === 0, `the owner's PC (settings ownerPc) sends nothing (${JSON.stringify(r)})`);
   fresh(REAL, { owner: null });
   r = await sr.send(ASK);
   ok(r.fallback && calls.length === 0, 'this repository (the owner\'s git origin) sends nothing');
-  ok(!fs.existsSync(path.join(REAL, 'auto-report-state.json')) || !JSON.parse(fs.readFileSync(path.join(REAL, 'auto-report-state.json'), 'utf8')).sent?.['support:258a:1007'], 'nothing written to this repository');
+  ok(!fs.existsSync(path.join(REAL, 'data', 'auto-report-state.json')) || !JSON.parse(fs.readFileSync(path.join(REAL, 'data', 'auto-report-state.json'), 'utf8')).sent?.['support:258a:1007'], 'nothing written to this repository');
 
   // ---- reports off, no relay: fall back
   root = folder({ settings: { autoReport: false } }); fresh(root);

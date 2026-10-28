@@ -12,6 +12,9 @@ const { writeAtomic } = require('./safe-write');  // crash-proof saving (helpers
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
+// update-rollback.txt and update-failed.txt are this PC's own, in data\ (27 Oct 2026, helpers/data-dir.js);
+// release.json and release-files.json came with the version and stay beside the app
+const { dataFile } = require('./data-dir');
 const git = (args, timeout = 30000) => new Promise((resolve, reject) => {
   execFile('git', args, { cwd: ROOT, windowsHide: true, timeout, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', GIT_ASKPASS: '', SSH_ASKPASS: '', GIT_SSH_COMMAND: 'ssh -o BatchMode=yes' } }, (e, out, err) => (e ? reject(new Error((err || e.message).trim().split('\n').pop())) : resolve(out.trim())));
 });
@@ -96,7 +99,7 @@ async function zipStatus() {
   if (!own) return { git: false, zip: false };
   try {
     const rel = await releaseInfo();
-    let failed = null; try { failed = fs.readFileSync(path.join(ROOT, 'update-failed.txt'), 'utf8').trim(); } catch {}
+    let failed = null; try { failed = fs.readFileSync(dataFile('update-failed.txt', ROOT), 'utf8').trim(); } catch {}
     const newer = rel.commit && rel.commit !== own.commit && rel.builtAt > own.builtAt && failed !== rel.commit;
     const blocked = newer ? changedFiles() : [];
     // version, versionAt: the signed version's id and date (the update pop-up, helpers/update-notice.mjs); versionName,
@@ -230,7 +233,7 @@ async function statusNow() {
     const at = await git(['log', '-1', '--format=%cI', 'HEAD']);
     // the newest version already crashed on start here once (helpers/keep-running.bat wrote update-failed.txt): not
     // offered again; a newer one (a fix) is
-    let failed = null; try { failed = fs.readFileSync(path.join(ROOT, 'update-failed.txt'), 'utf8').trim(); } catch {}
+    let failed = null; try { failed = fs.readFileSync(dataFile('update-failed.txt', ROOT), 'utf8').trim(); } catch {}
     const versionAt = shared && behind ? await git(['log', '-1', '--format=%cI', target]) : undefined;
     const shownLatest = shared && behind ? `a new version from ${new Date(versionAt).toLocaleDateString()}${changed ? '; your changes are kept' : ''}` : latest;
     if (failed && behind && failed === (await git(['rev-parse', target]))) return { git: true, shared, behind: 0, changed, latest: null, at, skipped: shownLatest };
@@ -289,7 +292,7 @@ async function updateSteps(opts = {}) {
       throw new Error(`the new version failed its checks; kept this one (${why.replace(/^- /, '').slice(0, 160)})`);
     }
   }
-  writeAtomic(path.join(ROOT, 'update-rollback.txt'), old);
+  writeAtomic(dataFile('update-rollback.txt', ROOT), old);
   step('Restarting DeviceHub');
   return { updated: true, count: s.behind, latest: s.latest };
 }
@@ -329,7 +332,7 @@ async function mergeUpdate(s, { overwrite = false } = {}) {
     const r = await runAsync(process.execPath, [check], { cwd: ROOT, timeout: 120000 });
     if (r.status !== 0) { await git(['reset', '-q', '--hard', before]); throw new Error("the new version, with this PC's changes, failed its checks; nothing changed"); }
   }
-  writeAtomic(path.join(ROOT, 'update-rollback.txt'), before);
+  writeAtomic(dataFile('update-rollback.txt', ROOT), before);
   step('Restarting DeviceHub');
   return { updated: true, count: s.behind, latest: s.latest };
 }
@@ -338,8 +341,9 @@ async function mergeUpdate(s, { overwrite = false } = {}) {
 // true when this start is the one right after an update (server.js then skips its update check: 24 Oct 2026, Shawn:
 // "when someone updates it doesnt check for another update right after")
 function confirm(log) {
-  const f = path.join(ROOT, 'update-rollback.txt');
-  if (!fs.existsSync(f)) return false;
+  // in data\, or still beside the app when it could not be moved there yet (helpers/data-migrate.js)
+  const f = [dataFile('update-rollback.txt', ROOT), path.join(ROOT, 'update-rollback.txt')].find((x) => fs.existsSync(x));
+  if (!f) return false;
   setTimeout(() => { try { fs.unlinkSync(f); log && log({ kind: 'good', text: 'DeviceHub update running well' }); } catch {} }, 60000);
   return true;
 }

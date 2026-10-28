@@ -117,7 +117,9 @@ For i = 1 To 19
 Next
 If Not Running() Then
   reason = "It did not start within 20 seconds."
-  logFile = dir & "\server.log"
+  ' logs\server.log (27 Oct 2026); beside the app on a version from before that
+  logFile = dir & "\logs\server.log"
+  If Not fs.FileExists(logFile) Then logFile = dir & "\server.log"
   ' only this start's lines: a log written in the last minute
   If Not fs.FileExists(logFile) Then logFile = ""
   If logFile <> "" Then If DateDiff("s", fs.GetFile(logFile).DateLastModified, Now) > 60 Then logFile = ""
@@ -133,7 +135,7 @@ If Not Running() Then
     Launch "could not start", 0
     WScript.Quit
   End If
-  MsgBox "DeviceHub could not start." & vbCrLf & vbCrLf & reason & vbCrLf & vbCrLf & "Details: " & dir & "\server.log", vbExclamation, "DeviceHub"
+  MsgBox "DeviceHub could not start." & vbCrLf & vbCrLf & reason & vbCrLf & vbCrLf & "Details: " & dir & "\logs\server.log", vbExclamation, "DeviceHub"
   WScript.Quit
 End If
 ' Just updated: the window that was open reloads itself once DeviceHub answers again, and its live stream (counted by
@@ -170,8 +172,11 @@ If Not fs.FileExists(chrome) Then chrome = sh.ExpandEnvironmentStrings("%Program
 ' with a battery did); a saved false keeps DeviceHub's own window. Measured 26 Oct 2026: its own window ~620 MB.
 ' Without Chrome, chrome above is Edge's msedge.exe and the same happens there: an app window in the person's own Edge.
 light = True
-If fs.FileExists(dir & "\settings.json") Then
-  txt = fs.OpenTextFile(dir & "\settings.json", 1).ReadAll
+' data\settings.json (27 Oct 2026, helpers/data-migrate.js); beside the app until the server has moved it there
+settingsFile = dir & "\data\settings.json"
+If Not fs.FileExists(settingsFile) Then settingsFile = dir & "\settings.json"
+If fs.FileExists(settingsFile) Then
+  txt = fs.OpenTextFile(settingsFile, 1).ReadAll
   If InStr(txt, """lightWindow"": false") > 0 Or InStr(txt, """lightWindow"":false") > 0 Then light = False
 End If
 If light Then

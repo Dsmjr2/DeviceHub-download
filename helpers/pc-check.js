@@ -412,7 +412,7 @@ function openApp(id, { start = (p) => spawn(p, [], { cwd: path.dirname(p), detac
 // Fast (27 Oct 2026, Shawn: "how can we make the ... pc check all load faster?"): the last answer is shown at once and
 // read again in the background when it is over a minute old; it is kept on disk, so it is there right after a restart;
 // server.js reads it once 30 s after DeviceHub starts; the NVIDIA latest-driver lookup never holds the check up.
-const DISK = path.join(__dirname, '..', 'pc-check-cache.json');
+const DISK = require('./data-dir').dataFile('pc-check-cache.json');
 try { const d = JSON.parse(fs.readFileSync(DISK, 'utf8')); if (d?.value && Date.now() - d.at < 24 * 3600 * 1000) cache = { at: d.at, facts: null, value: d.value }; if (d?.nvidia?.version) latestNvidiaCache = d.nvidia; } catch {}
 async function check(fresh = false, opts = {}) {
   if (!fresh && cache.value) {

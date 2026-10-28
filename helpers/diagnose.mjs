@@ -317,7 +317,7 @@ async function agentState(port) {
 }
 function logText() {
   try {
-    const f = path.join(ROOT, 'server.log'), size = fs.statSync(f).size, n = Math.min(size, 512 * 1024);
+    const f = require('./data-dir.js').logFile('server.log', ROOT), size = fs.statSync(f).size, n = Math.min(size, 512 * 1024);
     const fd = fs.openSync(f, 'r'), b = Buffer.alloc(n);
     try { fs.readSync(fd, b, 0, n, size - n); } finally { fs.closeSync(fd); }
     return b.toString('utf8');

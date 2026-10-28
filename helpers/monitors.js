@@ -126,7 +126,7 @@ function shape(m) {
 // A change made then is kept (waiting-monitors.json: monitor id -> { setting: value }), shown as made, and written the
 // normal way (backup, write, read back) once the monitor answers again: looked for once a minute while something waits,
 // and whenever the Monitors page reads them.
-const WAIT_FILE = path.join(process.env.DEVICEHUB_DATA_DIR || path.join(__dirname, '..'), 'waiting-monitors.json');  // a test points it elsewhere
+const WAIT_FILE = path.join(process.env.DEVICEHUB_DATA_DIR || require('./data-dir').DATA, 'waiting-monitors.json');  // a test points it elsewhere
 let waiting = {};
 try { waiting = JSON.parse(fs.readFileSync(WAIT_FILE, 'utf8')) || {}; } catch {}
 // monitor id -> its last reading while it answered; kept in last-monitor-values.json, so a monitor that is off when

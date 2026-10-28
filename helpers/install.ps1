@@ -100,9 +100,16 @@ if ($same) { Write-Host '   already in place' } else {
     & $mine | Sort-Object { $_.Name -ne 'cmd.exe' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
     Start-Sleep -Milliseconds 500
   }
-  # this PC's own data in an existing install is never overwritten
-  $keep = 'backups', 'profiles.json', 'settings.json', 'activity.jsonl', 'battery-history.jsonl', 'mouse-battery-study.jsonl',
-    'mouse-level.json', 'headset-lights.json', 'seen-devices.json', 'waiting-changes.json', 'last-device-values.json', 'waiting-monitors.json', 'last-monitor-values.json', 'daily-check.json', 'battery-care.json', 'lights-names.json', 'eq-presets.json', 'window-profile', '.git'
+  # this PC's own data in an existing install is never overwritten: data\ and logs\ (27 Oct 2026), and the same files
+  # by their old names beside the app, where a copy from before that keeps them until its first start moves them
+  # (helpers/data-dir.js DATA_FILES; tests/data-migrate.mjs checks every one is here)
+  $keep = 'backups', 'data', 'logs', 'activity.jsonl', 'auto-report-state.json', 'battery-care.json',
+    'battery-history.jsonl', 'daily-check.json', 'eq-presets.json', 'game-mode.json', 'game-mode-state.json',
+    'headset-firmware.json', 'headset-lights.json', 'health-watch.csv', 'last-device-values.json',
+    'last-monitor-values.json', 'lights-names.json', 'mouse-battery-study.jsonl', 'mouse-level.json',
+    'pc-check-cache.json', 'profiles.json', 'seen-devices.json', 'settings-sync-state.json', 'settings.json',
+    'setup.json', 'update-failed.txt', 'update-rollback.txt', 'updates-cache.json', 'waiting-changes.json',
+    'waiting-monitors.json', 'server.log', 'server.old.log', 'window-profile', '.git'
   if (-not (Test-Path (Join-Path $Source 'node_modules\cue-sdk'))) { $keep += 'node_modules' }
   # Folders are merged with robocopy (21 Oct 2026): Copy-Item onto a folder that already exists puts the new one INSIDE
   # it (public\public), so a reinstall or an update left every folder's old files running. Files are always replaced

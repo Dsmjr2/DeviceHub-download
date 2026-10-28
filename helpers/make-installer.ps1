@@ -165,11 +165,16 @@ try {
   }
   # ---- end LIBRARY BUNDLE ----
 
-  # never this PC's data
-  $private = 'backups', 'profiles.json', 'settings.json', 'activity.jsonl', 'battery-history.jsonl', 'mouse-battery-study.jsonl',
-    'mouse-level.json', 'headset-lights.json', 'headset-firmware.json', 'seen-devices.json', 'updates-cache.json', 'server.log',
-    'server.old.log', 'captures', 'window-profile', 'screenshots', 'waiting-changes.json', 'waiting-monitors.json',
-    'last-device-values.json', 'last-monitor-values.json', 'daily-check.json', 'battery-care.json', 'setup.json', 'openrgb-config', 'bundled-cache', 'wallpaper-previous', 'lights-names.json', 'eq-presets.json', 'read-cache', 'pc-check-cache.json'
+  # never this PC's data: data\ and logs\ (27 Oct 2026), and the same files by their old names beside the app
+  # (helpers/data-dir.js DATA_FILES; tests/data-migrate.mjs checks every one is here)
+  $private = 'backups', 'data', 'logs', 'activity.jsonl', 'auto-report-state.json', 'battery-care.json',
+    'battery-history.jsonl', 'daily-check.json', 'eq-presets.json', 'game-mode.json', 'game-mode-state.json',
+    'headset-firmware.json', 'headset-lights.json', 'health-watch.csv', 'last-device-values.json',
+    'last-monitor-values.json', 'lights-names.json', 'mouse-battery-study.jsonl', 'mouse-level.json',
+    'pc-check-cache.json', 'profiles.json', 'seen-devices.json', 'settings-sync-state.json', 'settings.json',
+    'setup.json', 'update-failed.txt', 'update-rollback.txt', 'updates-cache.json', 'waiting-changes.json',
+    'waiting-monitors.json', 'server.log', 'server.old.log', 'captures', 'window-profile', 'screenshots',
+    'openrgb-config', 'bundled-cache', 'wallpaper-previous', 'read-cache'
   $z = [System.IO.Compression.ZipFile]::OpenRead($zip)
   try {
     $names = $z.Entries | ForEach-Object { ($_.FullName -replace '[\\/]', '/') -replace '^DeviceHub/', '' }

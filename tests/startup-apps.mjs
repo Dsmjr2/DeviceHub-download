@@ -20,6 +20,8 @@ const NOW = new Date('2026-10-27T12:00:00Z');
 deps.now = () => NOW;
 const records = [];
 deps.record = (e) => { records.push(e); };
+let measured = null;
+deps.measured = () => measured;
 
 // ---- the bytes ----
 check(stateOf('020000000000000000000000').on === true, '02 = on');
@@ -54,10 +56,43 @@ const self = by('DeviceHub');
 check(self && self.self === true && self.publisher === '', "DeviceHub's own entry is named and marked, not 'Microsoft'");
 check(by('iCUE Launcher - Shortcut')?.publisher === 'Program not found', 'a shortcut to a removed program says so');
 check(by('Windows Security notification icon')?.admin === true, 'an HKLM app is marked as needing admin');
-check(l.apps.every((a) => a.impact === '—') && /admins only/.test(l.impact.note), 'unreadable sign-in timing: every impact is "—", one line says why');
+check(l.apps.every((a) => a.impact === '—') && /next sign-in/.test(l.impact.note), 'nothing measured yet: every impact is "—", one line says when it will be');
 const readable = fromRead({ ...reg, impact: { readable: true, apps: [{ file: 'OneDrive.exe', degradeMs: 4200 }, { file: 'msedge.exe', degradeMs: 1200 }, { file: 'SecurityHealthSystray.exe', degradeMs: 300 }] } }, NOW);
 const ri = (n) => readable.apps.find((a) => a.name === n).impact;
 check(ri('Microsoft OneDrive') === 'High' && ri('Microsoft Edge') === 'Medium' && ri('Windows Security notification icon') === 'Low' && ri('DeviceHub') === 'Not measured' && readable.impact.note === null, 'readable timing: High / Medium / Low only for an app Windows named, else Not measured');
+
+// ---- DeviceHub's own sign-in measurement (helpers/startup-impact.js) wins over Windows' timing ----
+measured = { signIn: '2026-10-27T11:00:00.000Z', at: '2026-10-27T11:02:30.000Z', procs: [
+  { name: 'OneDrive.exe', path: 'C:\\x\\OneDrive.exe', cmd: '', pid: 40, startS: 12, cpuMs: 200, ioKB: 100 },
+  { name: 'OneDrive.Sync.Service.exe', path: 'C:\\x\\OneDrive.Sync.Service.exe', cmd: '', pid: 41, ppid: 40, startS: 14, cpuMs: 700, ioKB: 3900 },
+  { name: 'older.exe', path: 'C:\\x\\older.exe', cmd: '', pid: 42, ppid: 40, startS: 2, cpuMs: 9000, ioKB: 9000 },
+  { name: 'SecurityHealthSystray.exe', path: '', cmd: '', cpuMs: 20, ioKB: 10 },
+  { name: 'wscript.exe', path: 'C:\\Windows\\System32\\wscript.exe', cmd: `wscript.exe "${root}\\DeviceHub.vbs" /background`, cpuMs: 100, ioKB: 50 },
+  { name: 'node.exe', path: 'C:\\Program Files\\nodejs\\node.exe', cmd: `node "${root}\\server.js"`, cpuMs: 400, ioKB: 200 },
+  { name: 'wscript.exe', path: 'C:\\Windows\\System32\\wscript.exe', cmd: 'wscript.exe "C:\\other\\thing.vbs"', cpuMs: 5000, ioKB: 9000 },
+] };
+const m = fromRead(reg, NOW);
+const mi = (n) => m.apps.find((a) => a.name === n).impact;
+check(mi('Microsoft OneDrive') === 'High', 'measured: with the program it started, 4 MB of disk = High (Task Manager: over 3 MB); an older process with a reused id not counted');
+check(require('../helpers/startup-impact.js').impactFor({ target: 'C:\\x\\OneDrive.exe' }, measured, root).cpuMs === 900, 'measured: the child counted once (200 + 700 ms)');
+check(mi('Windows Security notification icon') === 'Low', 'measured: an admin program with no path is matched by its name');
+check(mi('DeviceHub') === 'Medium', "measured: DeviceHub's own programs summed (500 ms = Medium), another script's wscript not counted");
+check(mi('Microsoft Edge') === 'Not measured', 'measured: an app none of whose programs ran = Not measured');
+check(m.impact.readable === true && m.impact.measuredAt === measured.signIn && m.impact.note === null, 'measured: the sign-in it was measured at is given');
+const si = require('../helpers/startup-impact.js');
+const { level } = si._test;
+check(level(1001, 0) === 'High' && level(0, 3073) === 'High' && level(300, 0) === 'Medium' && level(0, 300) === 'Medium' && level(299, 299) === 'Low', "Microsoft's levels: 1 s / 3 MB High, 300 ms / 300 KB Medium");
+// the measurement file: late starts write nothing; each sign-in is kept once; the last 5 only
+si._test.deps.root = root;
+si._test.deps.read = async () => ({ late: true, signIn: '2026-10-27T08:00:00Z' });
+check(await si.measureAtSignIn() === null && si.latest() === null, 'started long after sign-in: nothing measured or written');
+for (let d = 1; d <= 7; d++) {
+  si._test.deps.read = async () => ({ signIn: `2026-10-0${d}T08:00:00.000Z`, at: `2026-10-0${d}T08:02:30.000Z`, procs: [{ name: 'a.exe', path: 'C:\\a.exe', cmd: '', cpuMs: d, ioKB: 1 }] });
+  await si.measureAtSignIn();
+}
+await si.measureAtSignIn();
+const kept = JSON.parse(fs.readFileSync(path.join(root, 'data', 'startup-impact.json'), 'utf8')).runs;
+check(kept.length === 5 && si.latest().signIn === '2026-10-07T08:00:00.000Z' && kept.filter((r) => r.signIn.startsWith('2026-10-07')).length === 1, 'the newest 5 sign-ins kept, each once');
 
 // ---- the cache: one read for two page opens ----
 let reads = 0;

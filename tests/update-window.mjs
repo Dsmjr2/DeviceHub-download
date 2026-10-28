@@ -48,9 +48,12 @@ if (process.platform === 'win32' && fs.existsSync(path.join(process.env.WINDIR |
   fs.writeFileSync(path.join(dir, 'settings.json'), '{ "lightWindow": false }');
 
   // a fake DeviceHub: down for upMs, then answering; its window count turns 1 at windowMs (null = never)
-  async function scenario(name, { args = [], upMs = 0, windowMs = null, wait = 4, settings = '{ "lightWindow": false }', extraEnv = {} }) {
-    const sf = path.join(dir, 'settings.json');
-    if (settings == null) fs.rmSync(sf, { force: true }); else fs.writeFileSync(sf, settings);
+  async function scenario(name, { args = [], upMs = 0, windowMs = null, wait = 4, settings = '{ "lightWindow": false }', oldRoot = false, extraEnv = {} }) {
+    // data\settings.json (27 Oct 2026); oldRoot: beside the app, where a copy that has not moved it yet keeps it
+    const sf = path.join(dir, 'data', 'settings.json'), old = path.join(dir, 'settings.json');
+    fs.mkdirSync(path.dirname(sf), { recursive: true });
+    for (const f of [sf, old]) fs.rmSync(f, { force: true });
+    if (settings != null) fs.writeFileSync(oldRoot ? old : sf, settings);
     const t0 = Date.now();
     const server = http.createServer((req, res) => {
       const now = Date.now() - t0;
@@ -88,6 +91,9 @@ if (process.platform === 'win32' && fs.existsSync(path.join(process.env.WINDIR |
   // 4. a plain start while DeviceHub runs with its window open: brought to the front, none opened
   const d = await scenario('already-open', { upMs: 0, windowMs: 0 });
   check(d.windows === 0 && d.activated, `a start while the window is open brings it to the front (${d.lines})`);
+  // 4b. (27 Oct 2026) settings.json still beside the app (a copy that has not started since it moved to data\): read there
+  const d2 = await scenario('old-place', { upMs: 1500, windowMs: null, oldRoot: true });
+  check(d2.windows === 1 && d2.own === 1, `settings.json beside the app (not moved to data\\ yet) is still read (${d2.lines})`);
 
   // 5. Low-memory window on by default (26 Oct 2026, Shawn): no setting = an app window in the person's own browser
   const e = await scenario('light-default', { settings: null });

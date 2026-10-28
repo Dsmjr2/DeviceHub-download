@@ -33,9 +33,11 @@ export const SETUP_FILE = 'setup.json';
 export const cache = { at: 0, value: null };  // server.js keeps /api/setup's last answer here for a minute
 const require = createRequire(import.meta.url);
 const readJson = (f, d = null) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
-export const readSetup = (root = ROOT) => readJson(path.join(root, SETUP_FILE), {}) || {};
+const setupPath = (root) => require('./data-dir.js').dataFile(SETUP_FILE, root);   // data\setup.json (27 Oct 2026)
+export const readSetup = (root = ROOT) => readJson(setupPath(root), {}) || {};
 function saveSetup(root, data) {
-  const file = path.join(root, SETUP_FILE), tmp = `${file}.tmp`;
+  const file = setupPath(root), tmp = `${file}.tmp`;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n');
   fs.renameSync(tmp, file);
 }
@@ -44,7 +46,7 @@ const product = (meta) => `${meta.vendor} ${meta.product}`;
 
 export function enabled(root = ROOT) {
   if (process.env.DEVICEHUB_AUTO_SETUP === '0') return false;
-  return readJson(path.join(root, 'settings.json'), {})?.autoSetup !== false;
+  return readJson(require('./data-dir.js').dataFile('settings.json', root), {})?.autoSetup !== false;
 }
 
 // usb: [{ vid, pid, name, runs }] (/api/pc); busy: extra 'vid:pid' DeviceHub already runs (VIA keyboards, built-in slots)

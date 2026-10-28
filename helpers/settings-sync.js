@@ -18,8 +18,10 @@ const power = require('./power');
 
 const ROOT = path.join(__dirname, '..');
 const DIR = path.join(ROOT, 'settings-sync');            // the local copy of the settings repository (not in git)
-const STATE = path.join(ROOT, 'settings-sync-state.json');
-const SETTINGS = path.join(ROOT, 'settings.json'), PROFILES = path.join(ROOT, 'profiles.json');
+// this PC's own copies are in data\ (27 Oct 2026, helpers/data-dir.js); the repository's file in DIR keeps its name
+const { dataFile } = require('./data-dir');
+const STATE = dataFile('settings-sync-state.json', ROOT);
+const SETTINGS = dataFile('settings.json', ROOT), PROFILES = dataFile('profiles.json', ROOT);
 const OPTIONS = ['autoSwitch', 'defaultProfile', 'hotkeys', 'artStyle', 'themeBg', 'themeAccent', 'ankerGuard', 'batterySaver'];
 
 const git = (args, cwd = DIR, timeout = 45000) => new Promise((resolve, reject) => {

@@ -79,8 +79,10 @@ keep their settings.
   while iCUE runs, and Windows Core Audio for volume, mic and sidetone.
 - `server.js` local server (127.0.0.1:5577 only) · `helpers/agent.mjs` background agent · `helpers/native/` the
   Windows helper (built on first start with Windows' own C# compiler) · `public/` the app.
-- Your data stays on your PC and out of git and the installer: `backups\`, `profiles.json`, `settings.json`,
-  `activity.jsonl`, battery history, light settings.
+- Your data stays on your PC and out of git and the installer: `backups\`, and in `data\` your settings, profiles,
+  activity, battery history and light settings (`data\settings.json`, `data\profiles.json`, ...); the server's log is
+  `logs\server.log`. A copy from before 27 Oct 2026 kept those files beside the app; its first start moves them
+  into `data\` by itself (`helpers/data-migrate.js`).
 - **Monitors**: DDC/CI through Windows' monitor API (`helpers/monitors.cs`): brightness, contrast, speaker volume.
 - Checks: `npm test` (every script parses, no stray control characters, JSON valid, then every page opened live and
   in demo without a script error; the page part is skipped when DeviceHub is not running), `npm run test:offline`

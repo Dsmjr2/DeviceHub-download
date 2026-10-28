@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DIR = path.join(ROOT, 'setups'), BACKUPS = path.join(ROOT, 'backups'), PROFILES = path.join(ROOT, 'profiles.json');
+const DIR = path.join(ROOT, 'setups'), BACKUPS = path.join(ROOT, 'backups'), PROFILES = path.join(ROOT, 'data', 'profiles.json');   // helpers/data-dir.js
 const WEEK = 7 * 24 * 3600 * 1000, KEEP = 6, IDS = ['mouse', 'headset', 'keyboard'];
 
 export function list() {
@@ -48,8 +48,8 @@ export async function saveIfDue(core, log, { force = false } = {}) {
   try { out.profiles = JSON.parse(fs.readFileSync(PROFILES, 'utf8')); } catch {}
   // sound: DeviceHub's EQ store and its options, as the setup file has them (public/core/setup.js)
   out.sound = {};
-  try { out.sound.eq = JSON.parse(fs.readFileSync(path.join(ROOT, 'eq-presets.json'), 'utf8')); } catch {}
-  try { out.sound.settings = JSON.parse(fs.readFileSync(path.join(ROOT, 'settings.json'), 'utf8')); } catch {}
+  try { out.sound.eq = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'eq-presets.json'), 'utf8')); } catch {}
+  try { out.sound.settings = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'settings.json'), 'utf8')); } catch {}
   if (!Object.keys(out.devices).length) return null;
   fs.mkdirSync(DIR, { recursive: true });
   let name = `DeviceHub setup ${out.savedAt.slice(0, 10)}.json`;

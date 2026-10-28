@@ -52,7 +52,8 @@ fs.writeFileSync(path.join(folder, 'library.json'), JSON.stringify({ learned: tr
 const sent = [];
 const report = (owner = false) => async () => ({ isOwnerPc: async () => owner, sendNow: async (p) => { sent.push(p); return { sent: true }; } });
 check((await shareFolder(folder, { root, report: report(), names })).why === 'not switched on' && !sent.length, 'not sent without the yes');
-fs.writeFileSync(path.join(root, 'settings.json'), JSON.stringify({ shareDrivers: true }));
+fs.mkdirSync(path.join(root, 'data'), { recursive: true });
+fs.writeFileSync(path.join(root, 'data', 'settings.json'), JSON.stringify({ shareDrivers: true }));
 check((await shareFolder(folder, { root, report: report(true), names })).why === "the owner's own PC" && !sent.length, "never from the owner's PC");
 check((await shareFolder(folder, { root, report: report(), names })).sent && sent.length === 1 && sent[0].channel === 'driver', 'sent once with the yes');
 check((await shareFolder(folder, { root, report: report(), names })).why === 'already shared' && sent.length === 1, 'the same driver text is not sent twice');

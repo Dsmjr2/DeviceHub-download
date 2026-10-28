@@ -1,11 +1,13 @@
-# Health recording (20 Oct 2026), read-only: DeviceHub's health every 30 minutes for 12 hours into health-watch.csv in
+# Health recording (20 Oct 2026), read-only: DeviceHub's health every 30 minutes for 12 hours into data\health-watch.csv in
 # the DeviceHub folder (not in git). Runs as its own hidden process, so it keeps going whatever else closes:
 #   Start-Process powershell -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','helpers\health-watch.ps1'
 # Columns: time, server and helper memory (MB), the helper's handles, minutes running, crash restarts in 24 h, each
 # device's state, how many monitors answered and how long that took. Nothing is changed.
 param([int]$hours = 12, [int]$everyMin = 30)
 $root = Split-Path $PSScriptRoot -Parent
-$out = Join-Path $root 'health-watch.csv'
+# in data\ with this PC's other files (27 Oct 2026, helpers/data-dir.js)
+New-Item -ItemType Directory -Force (Join-Path $root 'data') | Out-Null
+$out = Join-Path $root 'data\health-watch.csv'
 'time,server_mb,helper_mb,helper_handles,uptime_min,crashes_24h,mouse,headset,keyboard,monitors,monitor_read_s' | Set-Content $out
 $rounds = [int]($hours * 60 / $everyMin)
 for ($i = 0; $i -le $rounds; $i++) {

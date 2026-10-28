@@ -150,7 +150,7 @@ export const deps = {
   elevate: async (script, action, next, opts) => (await import('./board-lights.mjs')).elevateWatched(script, action, next, opts),
   readResult: (f) => { try { return fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, '').trim(); } catch { return ''; } },
   clearResult: (f) => { try { fs.rmSync(f, { force: true }); } catch {} },
-  gamingOn: () => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'settings.json'), 'utf8')).wifiPauseGaming === true; } catch { return false; } },
+  gamingOn: () => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'settings.json'), 'utf8')).wifiPauseGaming === true; } catch { return false; } },
   now: () => Date.now(),
   setTimer: (fn, ms) => { const t = setInterval(fn, ms); t.unref?.(); return t; },
   clearTimer: (t) => clearInterval(t),

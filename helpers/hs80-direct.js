@@ -8,7 +8,7 @@ const native = require('./native');
 // The two ways to reach the headset. The cable one wins when it is live (a dead headset plugged in starts there).
 const CONNS = { wired: { pid: '0A69', ep: 8 }, receiver: { pid: '0A6B', ep: 9 } };
 let onEvent = () => {};
-const FW_FILE = path.join(__dirname, '..', 'headset-firmware.json');
+const FW_FILE = require('./data-dir').dataFile('headset-firmware.json');
 // the firmware last read from the headset, shown while it is off (21 Oct 2026: it read "—" then)
 function lastFirmware() { try { return JSON.parse(require('fs').readFileSync(FW_FILE, 'utf8')).firmware; } catch { return null; } }
 
@@ -132,7 +132,7 @@ async function read() {
 // Light positions (measured 19 Oct 2026 by lighting each one blue): 0 = logo on the left cup, 1 = the other logo,
 // 2 = mic. Shawn's settings, kept in headset-lights.json: logo color and brightness (0 = off, his usual), and
 // whether the mic light shows at all (on = red at half brightness only while muted).
-const LIGHTS_FILE = path.join(__dirname, '..', 'headset-lights.json');
+const LIGHTS_FILE = require('./data-dir').dataFile('headset-lights.json');
 // a new PC starts with the logos on, as the headset comes (Shawn's own choice is in his headset-lights.json)
 const DEFAULTS = { logoColor: '#ffffff', logoBrightness: 100, micLight: true };
 function loadSettings() { try { return { ...DEFAULTS, ...JSON.parse(require('fs').readFileSync(LIGHTS_FILE, 'utf8')) }; } catch { return { ...DEFAULTS }; } }

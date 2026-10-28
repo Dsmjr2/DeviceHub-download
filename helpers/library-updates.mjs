@@ -125,7 +125,7 @@ async function writeState(root, s) {
 }
 export function enabled(root = ROOT) {
   if (process.env.DEVICEHUB_LIBRARY_UPDATES === '0') return false;
-  return readJson(path.join(root, 'settings.json'), {})?.libraryUpdates !== false;
+  return readJson(path.join(root, 'data', 'settings.json'), {})?.libraryUpdates !== false;   // helpers/data-dir.js
 }
 
 // the entries now in the cache (folders with our marker)

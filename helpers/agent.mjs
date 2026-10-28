@@ -33,11 +33,14 @@ const send = (type, data) => { for (const fn of listeners) { try { fn(type, data
 
 let corsair = null;
 
-// Devices this PC has ever had (seen-devices.json beside DeviceHub, 19 Oct 2026): on someone else's PC the app shows
+// Devices this PC has ever had (data\seen-devices.json, 19 Oct 2026): on someone else's PC the app shows
 // only the devices they own; until one is seen, all three are shown with what is supported.
 const fsSeen = createRequire(import.meta.url)('fs'), pathSeen = createRequire(import.meta.url)('path');
 const { writeAtomic } = createRequire(import.meta.url)('./safe-write.js');
-const SEEN_FILE = pathSeen.join(pathSeen.dirname(fileURLToPath(import.meta.url)), '..', 'seen-devices.json');
+// (27 Oct 2026) this PC's files are in data\ (helpers/data-dir.js); APP_ROOT is DeviceHub's own folder
+const APP_ROOT = pathSeen.join(pathSeen.dirname(fileURLToPath(import.meta.url)), '..');
+const { dataFile } = createRequire(import.meta.url)('./data-dir.js');
+const SEEN_FILE = dataFile('seen-devices.json', APP_ROOT);
 let seen = new Set();
 try { seen = new Set(JSON.parse(fsSeen.readFileSync(SEEN_FILE, 'utf8'))); } catch {}
 // The headset slot is the Corsair HS80's; with no HS80 it runs another USB headset in sound-only mode (generic). That
@@ -47,7 +50,7 @@ try { seen = new Set(JSON.parse(fsSeen.readFileSync(SEEN_FILE, 'utf8'))); } catc
 export const sawOwnHeadset = (info) => !info?.Model || /HS80/i.test(String(info.Model));
 {
   let last = null;
-  try { last = JSON.parse(fsSeen.readFileSync(pathSeen.join(pathSeen.dirname(SEEN_FILE), 'last-device-values.json'), 'utf8')); } catch {}
+  try { last = JSON.parse(fsSeen.readFileSync(dataFile('last-device-values.json', APP_ROOT), 'utf8')); } catch {}
   if (seen.has('headset') && last?.headset?.info && !sawOwnHeadset(last.headset.info)) {
     seen.delete('headset');
     try { writeAtomic(SEEN_FILE, JSON.stringify([...seen])); } catch {}
@@ -62,11 +65,11 @@ function markSeen(id) {
 
 // Changes waiting for a device that is asleep, off or unplugged (public/core/devices.js), and each device's last known
 // settings, so its page can show them and take changes while it is away, also after a restart (21 Oct 2026).
-const WAIT_FILE = pathSeen.join(pathSeen.dirname(SEEN_FILE), 'waiting-changes.json');
-const LAST_FILE = pathSeen.join(pathSeen.dirname(SEEN_FILE), 'last-device-values.json');
+const WAIT_FILE = dataFile('waiting-changes.json', APP_ROOT);
+const LAST_FILE = dataFile('last-device-values.json', APP_ROOT);
 const readJson = (f) => { try { return JSON.parse(fsSeen.readFileSync(f, 'utf8')); } catch { return {}; } };
 // The headset the Headset page controls when two or more are plugged in (22 Oct 2026): settings.json "headsetPick"
-const SETTINGS_FILE = pathSeen.join(pathSeen.dirname(SEEN_FILE), 'settings.json');
+const SETTINGS_FILE = dataFile('settings.json', APP_ROOT);
 async function pickHeadset(key) {
   const k = cleanPick(key);
   const a = core.devices.headset.adapter;
@@ -74,7 +77,7 @@ async function pickHeadset(key) {
   const cur = readJson(SETTINGS_FILE);
   if (cur.headsetPick !== k) {
     // settings.json backed up first, then only this one key changed
-    if (fsSeen.existsSync(SETTINGS_FILE)) fsSeen.copyFileSync(SETTINGS_FILE, pathSeen.join(pathSeen.dirname(SEEN_FILE), 'backups', `settings-${new Date().toISOString().replace(/[:.]/g, '-')}.json`));
+    if (fsSeen.existsSync(SETTINGS_FILE)) fsSeen.copyFileSync(SETTINGS_FILE, pathSeen.join(APP_ROOT, 'backups', `settings-${new Date().toISOString().replace(/[:.]/g, '-')}.json`));
     writeAtomic(SETTINGS_FILE, JSON.stringify({ ...cur, headsetPick: k }, null, 2));
   }
   setHeadsetPick(k);
@@ -180,7 +183,7 @@ export async function start({ port, corsairHelper }) {
   } catch (e) { console.log(`[keyboard] looking for VIA keyboards failed: ${e.message}`); }
   for (const a of [mouse, headset, keyboard]) core.register(a);
   // devices added on this PC (my-devices/<name>/device.mjs; helpers/my-devices.mjs): an update never touches them
-  for (const r of await myDevices.load(pathSeen.dirname(SEEN_FILE), { register: core.register, addSpec, taken: (id) => !!core.devices[id] })) {
+  for (const r of await myDevices.load(APP_ROOT, { register: core.register, addSpec, taken: (id) => !!core.devices[id] })) {
     console.log(r.error ? `[my-devices] ${r.name}: not loaded: ${r.error}` : `[my-devices] ${r.name}: ${core.devices[r.id].adapter.title} added`);
   }
   // a library or learned driver's error that reached no caller (helpers/driver-guard.js, installed by server.js): its
@@ -216,14 +219,14 @@ export async function start({ port, corsairHelper }) {
   setHeadsetPick(readJson(SETTINGS_FILE).headsetPick);  // the headset picked on the Headset page, if any
   for (const id of Object.keys(core.devices)) core.connect(id, false);
   core.startPolling();
-  daily.start(pathSeen.dirname(SEEN_FILE), core);  // the quiet daily self-check (helpers/daily-check.mjs)
-  batteryCare.start(pathSeen.dirname(SEEN_FILE), core);  // lights down on a low battery, back once it charges
+  daily.start(APP_ROOT, core);  // the quiet daily self-check (helpers/daily-check.mjs)
+  batteryCare.start(APP_ROOT, core);  // lights down on a low battery, back once it charges
   startAutoSwitch();
   // Game mode (27 Oct 2026, helpers/game-mode-live.mjs): a set-up game's switches while it runs, then everything put
   // back; the program list from the native helper only (no tasklist); not in a test install (DEVICEHUB_TEST)
   if (corsair && process.env.DEVICEHUB_TEST !== '1') {
     gameMode = startGameMode({
-      core, api: env.api, root: pathSeen.dirname(SEEN_FILE), every: env.every, log: (text, kind) => core.log(text, kind),
+      core, api: env.api, root: APP_ROOT, every: env.every, log: (text, kind) => core.log(text, kind),
       procs: async () => { const r = await corsair.handle('procs', {}); if (!Array.isArray(r.names)) throw new Error('no names'); return r.names; },
       profileBusy: () => auto.busy, onChange: () => send('auto', autoState()),
     });
@@ -243,7 +246,7 @@ export async function start({ port, corsairHelper }) {
   // a device plugged in while DeviceHub runs (helpers/plug-watch.mjs): its library driver installed at once, or the
   // window offers Learn it for me. Not in tests (DEVICEHUB_TEST), as auto setup at start.
   const plug = process.env.DEVICEHUB_TEST === '1' ? null : (await import('./plug-watch.mjs')).watcher({
-    root: pathSeen.dirname(SEEN_FILE), pcMap: require('./pc-map.js'), send,
+    root: APP_ROOT, pcMap: require('./pc-map.js'), send,
     log: (e) => core.log(e.text, e.kind || 'info'),
   });
   if (plug) setTimeout(() => plug.start().catch(() => {}), 5000);

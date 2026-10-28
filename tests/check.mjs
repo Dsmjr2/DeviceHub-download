@@ -13,7 +13,8 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 // bundled runtime, packages and this PC's data
 function appFiles() {
   try { return execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\n').filter(Boolean); } catch {}
-  const skip = /^(node_modules|runtime|backups|setups|learn|captures|dist|icons-cache|window-profile|settings-sync|read-cache|helpers\/bin|\.git)(\/|$)/;
+  // (27 Oct 2026) data\ and logs\: this PC's own files (helpers/data-dir.js)
+  const skip = /^(node_modules|runtime|backups|setups|learn|captures|dist|icons-cache|window-profile|settings-sync|read-cache|data|logs|helpers\/bin|\.git)(\/|$)/;
   const out = [];
   const walk = (rel) => {
     for (const e of fs.readdirSync(path.join(ROOT, rel), { withFileTypes: true })) {

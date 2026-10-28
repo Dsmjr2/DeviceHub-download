@@ -16,9 +16,9 @@ try {
   const { create } = require('../helpers/setup-extras.js');
   // PC A: names, a pick, a picture, one added driver (with a capture folder that must stay behind)
   const a = path.join(tmp, 'a'), b = path.join(tmp, 'b');
-  for (const r of [a, b]) fs.mkdirSync(path.join(r, 'my-devices'), { recursive: true });
-  fs.writeFileSync(path.join(a, 'settings.json'), JSON.stringify({ headsetNames: { JACK_0000ABCD: 'ATH-M50x' }, headsetPick: 'JACK_0000ABCD', themeBg: 'ocean' }));
-  fs.writeFileSync(path.join(a, 'background-picture.png'), PNG);
+  for (const r of [a, b]) { fs.mkdirSync(path.join(r, 'my-devices'), { recursive: true }); fs.mkdirSync(path.join(r, 'data')); }
+  fs.writeFileSync(path.join(a, 'data', 'settings.json'), JSON.stringify({ headsetNames: { JACK_0000ABCD: 'ATH-M50x' }, headsetPick: 'JACK_0000ABCD', themeBg: 'ocean' }));
+  fs.writeFileSync(path.join(a, 'data', 'background-picture.png'), PNG);
   fs.mkdirSync(path.join(a, 'my-devices', 'my-mouse', 'captures'), { recursive: true });
   fs.writeFileSync(path.join(a, 'my-devices', 'my-mouse', 'driver.json'), '{"name":"my mouse"}');
   fs.writeFileSync(path.join(a, 'my-devices', 'my-mouse', 'captures', 'x.json'), '{}');
@@ -46,12 +46,12 @@ try {
   fs.mkdirSync(path.join(b, 'my-devices', 'my-mouse'));
   fs.writeFileSync(path.join(b, 'my-devices', 'my-mouse', 'driver.json'), '{"name":"b own"}');
   check(B.plan(B.summarize(x)).lines.some((l) => l.what === 'drivers-kept'), 'a driver already here is listed as kept');
-  fs.writeFileSync(path.join(b, 'settings.json'), JSON.stringify({ themeBg: 'black' }));
+  fs.writeFileSync(path.join(b, 'data', 'settings.json'), JSON.stringify({ themeBg: 'black' }));
   const r = B.apply({ ...x, myDevices: [...x.myDevices, { name: 'evil', files: { '../../x.js': 'AA==' } }, { name: 'kbd', files: { 'driver.json': Buffer.from('{}').toString('base64') } }] });
-  const sb = JSON.parse(fs.readFileSync(path.join(b, 'settings.json'), 'utf8'));
+  const sb = JSON.parse(fs.readFileSync(path.join(b, 'data', 'settings.json'), 'utf8'));
   check(sb.headsetNames.JACK_0000ABCD === 'ATH-M50x' && sb.headsetPick === 'JACK_0000ABCD' && sb.themeBg === 'black', 'names and pick added, other options kept');
   check(fs.readdirSync(path.join(b, 'backups')).some((f) => f.startsWith('settings-')), 'settings.json backed up first');
-  check(fs.readFileSync(path.join(b, 'background-picture.png')).equals(PNG), 'background put here');
+  check(fs.readFileSync(path.join(b, 'data', 'background-picture.png')).equals(PNG), 'background put here');
   check(fs.readFileSync(path.join(b, 'my-devices', 'my-mouse', 'driver.json'), 'utf8') === '{"name":"b own"}', 'a driver already here is never replaced');
   check(fs.existsSync(path.join(b, 'my-devices', 'kbd', 'driver.json')) && r.restart, 'a new driver added, restart asked');
   check(!fs.existsSync(path.join(b, 'my-devices', 'evil')) && !fs.existsSync(path.join(tmp, 'x.js')), 'a path outside its folder is refused');
@@ -70,7 +70,7 @@ try {
   check(od.folder({ OneDrive: odDir }) === path.join(odDir, 'DeviceHub'), 'OneDrive found from Windows\' variable');
   process.env.DEVICEHUB_ONEDRIVE_DIR = path.join(odDir, 'DeviceHub');
   od.useRoot(a);
-  fs.writeFileSync(path.join(a, 'profiles.json'), '[{"name":"Games"}]');
+  fs.writeFileSync(path.join(a, 'data', 'profiles.json'), '[{"name":"Games"}]');
   let reads = 0;
   const core = { devices: { mouse: {}, headset: {} }, copyFor: async (id) => { reads++; return id === 'mouse' ? { device: 'mouse', takenAt: new Date().toISOString(), data: { settings: { dpi0: 800 } } } : null; } };
   const s1 = await od.save(core, A);

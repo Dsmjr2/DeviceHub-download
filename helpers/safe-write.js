@@ -8,7 +8,9 @@ const path = require('path');
 let seq = 0;
 function writeAtomic(file, data) {
   const tmp = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.${++seq}.tmp`);
-  const fd = fs.openSync(tmp, 'w');
+  let fd;
+  // its folder (data\ on a copy that has not started yet, 27 Oct 2026) is made when it is missing
+  try { fd = fs.openSync(tmp, 'w'); } catch (e) { if (e.code !== 'ENOENT') throw e; fs.mkdirSync(path.dirname(file), { recursive: true }); fd = fs.openSync(tmp, 'w'); }
   try { fs.writeSync(fd, typeof data === 'string' || Buffer.isBuffer(data) ? data : String(data)); fs.fsyncSync(fd); }
   finally { fs.closeSync(fd); }
   for (let i = 0; ; i++) {

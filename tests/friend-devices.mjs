@@ -51,7 +51,7 @@ for (const [name, id] of [['logitech-hidpp-mouse', 'logitech-hidpp-mouse'], ['lo
   put(`my-devices/${name}/library.json`, JSON.stringify({ source: `device-library/${name}`, name, id, status: 'untested', installedAt: '2026-10-23T00:00:00.000Z' }));
   fs.copyFileSync(path.join(ROOT, 'device-library', name, 'device.json'), path.join(root, 'my-devices', name, 'device.json'));
 }
-put('setup.json', JSON.stringify({ version: 1, installed: [
+put('data/setup.json', JSON.stringify({ version: 1, installed: [
   { name: 'logitech-hidpp-mouse', product: 'Logitech mouse', status: 'untested', usb: ['046d:c54d'], id: 'logitech-hidpp-mouse', at: '2026-10-23T00:00:00Z' },
   { name: 'logitech-hidpp-keyboard', product: 'Logitech G keyboards', status: 'untested', usb: ['046d:c54d'], id: 'logitech-hidpp-keyboard', at: '2026-10-23T00:00:00Z' },
 ] }));

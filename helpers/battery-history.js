@@ -76,7 +76,7 @@ function estimates() {
 }
 
 function start(root, stateFn) {
-  file = path.join(root, 'battery-history.jsonl');
+  file = require('./data-dir').dataFile('battery-history.jsonl', root);
   getState = stateFn;
   // start from the last recorded plug state, so a plug or unplug while DeviceHub was closed is caught at once
   for (const r of read()) lastCharging[r.id] = r.charging;

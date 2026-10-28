@@ -1,5 +1,8 @@
 node_modules/
 backups/
+# this PC's own files (27 Oct 2026, helpers/data-dir.js); the names below stay, so a copy that has not moved them yet
+# never commits them either
+/data/
 profiles.json
 *.log
 activity.jsonl

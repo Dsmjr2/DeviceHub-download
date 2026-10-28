@@ -14,9 +14,11 @@ import { fileURLToPath } from 'node:url';
 const { writeAtomic } = createRequire(import.meta.url)('./safe-write.js');
 
 let ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-let BACKUPS = path.join(ROOT, 'backups'), SETTINGS = path.join(ROOT, 'settings.json');
+// this PC's files are in data\ (27 Oct 2026, helpers/data-dir.js)
+const data = (name) => path.join(ROOT, 'data', name);
+let BACKUPS = path.join(ROOT, 'backups'), SETTINGS = data('settings.json');
 // tests/setup-extras.mjs: a copy's folder instead of this one
-export function useRoot(root) { ROOT = root; BACKUPS = path.join(root, 'backups'); SETTINGS = path.join(root, 'settings.json'); }
+export function useRoot(root) { ROOT = root; BACKUPS = path.join(root, 'backups'); SETTINGS = data('settings.json'); }
 const SUFFIX = '.devicehub-setup.json';
 const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
 
@@ -38,7 +40,7 @@ const newestBackup = (id) => {
 
 // the setup file for this PC; core: public/core/devices.js as the agent runs it; extras: helpers/setup-extras.js
 export async function compose(core, extras) {
-  const out = { kind: 'devicehub-setup', version: 1, savedAt: new Date().toISOString(), from: pcName(), devices: {}, profiles: readJson(path.join(ROOT, 'profiles.json'), []) };
+  const out = { kind: 'devicehub-setup', version: 1, savedAt: new Date().toISOString(), from: pcName(), devices: {}, profiles: readJson(data('profiles.json'), []) };
   for (const id of Object.keys(core.devices)) {
     let b = null;
     try { b = await core.copyFor(id); } catch {}
@@ -46,7 +48,7 @@ export async function compose(core, extras) {
     if (b?.device === id) out.devices[id] = b;
   }
   out.sound = {};
-  const eq = readJson(path.join(ROOT, 'eq-presets.json'), null); if (eq) out.sound.eq = eq;
+  const eq = readJson(data('eq-presets.json'), null); if (eq) out.sound.eq = eq;
   const { oneDriveSeen, setupSeen, ...settings } = readJson(SETTINGS, {});   // which offers were put away, and Setup's first start, stay on each PC
   out.sound.settings = settings;
   out.extras = extras.gather({ withWallpapers: false });

@@ -145,9 +145,10 @@ const emptyWp = create({ ...dirs, dir: path.join(tmp, 'empty'), startersDir: pat
 check(emptyWp.backup().count === 0 && emptyWp.list().items.length === 0, 'an empty folder (no starters) has nothing to back up');
 
 // ---- use as DeviceHub's background ----
-fs.writeFileSync(path.join(dirs.root, 'background-picture.webp'), 'old');
-check(wp.useAsBackground('Sunset.png').ok && fs.readFileSync(path.join(dirs.root, 'background-picture.png')).equals(fs.readFileSync(path.join(dirs.dir, 'Sunset.png'))), "use as background writes background-picture.png in DeviceHub's folder");
-check(!fs.existsSync(path.join(dirs.root, 'background-picture.webp')), 'the old background picture is replaced');
+fs.mkdirSync(path.join(dirs.root, 'data'), { recursive: true });
+fs.writeFileSync(path.join(dirs.root, 'data', 'background-picture.webp'), 'old');
+check(wp.useAsBackground('Sunset.png').ok && fs.readFileSync(path.join(dirs.root, 'data', 'background-picture.png')).equals(fs.readFileSync(path.join(dirs.dir, 'Sunset.png'))), "use as background writes background-picture.png in DeviceHub's folder");
+check(!fs.existsSync(path.join(dirs.root, 'data', 'background-picture.webp')), 'the old background picture is replaced');
 fs.writeFileSync(path.join(dirs.dir, 'Old.bmp'), Buffer.concat([Buffer.from('BM'), Buffer.alloc(60)]));
 let bmpRefused = false; try { wp.useAsBackground('Old.bmp'); } catch { bmpRefused = true; }
 check(bmpRefused, "a BMP is refused as DeviceHub's background (it takes PNG, JPEG or WebP)");

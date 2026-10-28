@@ -18,7 +18,7 @@ const fs = require('fs');
 const { writeAtomic } = require('./safe-write');  // crash-proof saving (helpers/safe-write.js)
 const path = require('path');
 
-const FILE = path.join(__dirname, '..', 'mouse-level.json');
+const FILE = require('./data-dir').dataFile('mouse-level.json');
 const DEFAULT_RATE = 1.2;          // % per minute until a charge is measured (19 Oct 2026: 30% -> 65% in ~31 min = 1.13-1.26)
 const SETTLE_MAX_MS = 30 * 60000;
 
@@ -81,7 +81,7 @@ function filter(b) {
 // From whole discharges (full to low, at a steady drain) and whole charges it gives this battery's real
 // voltage-to-level curve, which can then replace the mouse's 5% steps. No extra device reads: it logs the readings
 // DeviceHub already takes.
-const STUDY = path.join(__dirname, '..', 'mouse-battery-study.jsonl');
+const STUDY = require('./data-dir').dataFile('mouse-battery-study.jsonl');
 let studyAt = 0, studyTrimAt = 0;
 function study(now, b, raw) {
   if (now - studyAt < 30000) return;

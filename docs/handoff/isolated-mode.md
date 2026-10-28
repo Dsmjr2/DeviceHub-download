@@ -10,8 +10,8 @@ node server.js
 ```
 
 `DEVICEHUB_ISOLATED=1` needs `DEVICEHUB_PORT` set to a port other than 5577; without it the server says so and stops
-with exit code 5, before loading anything else. Run it from its own folder: everything it writes (settings.json,
-profiles.json, activity.jsonl, backups\) stays in that folder.
+with exit code 5, before loading anything else. Run it from its own folder: everything it writes (data\settings.json,
+data\profiles.json, data\activity.jsonl, backups\) stays in that folder.
 
 ## What it does not do
 

@@ -30,7 +30,7 @@ function freshPc(tag) {
 
 async function installOn(tag, usb, { busy = [], via = [] } = {}) {
   const root = freshPc(tag);
-  check(!fs.existsSync(path.join(root, 'my-devices')) && !fs.existsSync(path.join(root, 'setup.json')) && !fs.existsSync(path.join(root, 'eq-presets.json')), `${tag}: the fresh copy carries no PC data`);
+  check(!fs.existsSync(path.join(root, 'my-devices')) && !fs.existsSync(path.join(root, 'data', 'setup.json')) && !fs.existsSync(path.join(root, 'data', 'eq-presets.json')), `${tag}: the fresh copy carries no PC data`);
   const logs = [];
   const r = await run({ root, usb, busy, log: (e) => logs.push(e.text), load: async () => [] });
   const reg = {};

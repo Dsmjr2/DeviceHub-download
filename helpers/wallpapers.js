@@ -8,7 +8,7 @@
 // - a name from the page is only ever a plain file name in that folder (no folders, no "..", must exist).
 // - back up: the whole folder copied to Documents\DeviceHub backups\Wallpapers <date time>\ (where the uninstaller
 //   keeps DeviceHub's backups; DEVICEHUB_WALLPAPER_BACKUPS_DIR for tests).
-// - use as DeviceHub's background: copied to background-picture.<ext> in DeviceHub's folder (server.js /api/background).
+// - use as DeviceHub's background: copied to data\background-picture.<ext> in DeviceHub's folder (server.js /api/background).
 // - set as the Windows wallpaper, only on the person's click: the wallpaper Windows had is kept first (its path, and a
 //   copy of the file, since Windows overwrites its own TranscodedWallpaper), so Put back can restore it.
 const fs = require('fs');
@@ -259,8 +259,8 @@ function create(opts = {}) {
     const { full } = resolveName(name);
     const buf = fs.readFileSync(full), kind = kindOf(buf);
     if (!kind || !BACKGROUND_OK.has(kind[0])) throw Object.assign(new Error("DeviceHub's background takes PNG, JPEG or WebP pictures."), { code: 400 });
-    for (const ext of BACKGROUND_OK) { const old = path.join(ROOT, `background-picture.${ext}`); if (fs.existsSync(old)) fs.unlinkSync(old); }
-    const dest = path.join(ROOT, `background-picture.${kind[0]}`);
+    for (const ext of BACKGROUND_OK) { const old = require('./data-dir').dataFile(`background-picture.${ext}`, ROOT); if (fs.existsSync(old)) fs.unlinkSync(old); }
+    const dest = require('./data-dir').dataFile(`background-picture.${kind[0]}`, ROOT);
     writeAtomic(dest, buf);
     return { ok: true, type: kind[1], bytes: buf.length };
   }

@@ -10,10 +10,12 @@
 //                      the value is read back. HKCU needs nothing; HKLM asks Windows once (powershell.exe -Verb RunAs,
 //                      hidden, only for that click), recorded like every prompt (helpers/uac.mjs). Never deletes a Run
 //                      value, a shortcut or a file, and never touches scheduled tasks or services.
-// Impact: Task Manager's "Startup impact" has no public API. Windows' own sign-in timing (Diagnostics-Performance
-// event 101: an app that made start-up slower than usual, and by how much) is readable by administrators only, so on
-// an ordinary account every row says "—" and one line says why. Where it is readable, an app it names gets High
-// (3 s or more slower), Medium (1 s or more) or Low; one it does not name says "Not measured". Nothing is guessed.
+// Impact: Task Manager's "Startup impact" has no public API. DeviceHub measures it at sign-in the way Task Manager does
+// (CPU and disk in the first minutes, helpers/startup-impact.js, no admin): a row gets High, Medium or Low from the
+// last sign-in DeviceHub watched, and "Not measured" when none of its programs ran then. Before the first one, Windows'
+// own sign-in timing (Diagnostics-Performance event 101, administrators only) is used where it can be read (High =
+// 3 s or more slower, Medium = 1 s, else Low); otherwise every row says "—" and one line says when it will be measured.
+// Nothing is guessed.
 const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -46,6 +48,8 @@ const deps = {
     if (kind === 'exit') resolve({ code: Number(msg) });
     else resolve({ error: msg || err?.message || 'Windows did not start it', declined: /cancel/i.test(msg) });
   })),
+  // the last sign-in DeviceHub measured (helpers/startup-impact.js), or null
+  measured: () => require('./startup-impact').latest(),
   record: (e) => import('./uac.mjs').then((u) => u.record({ area: 'startup', ...e })).catch(() => {}),
   uacWaitMs: UAC_WAIT_MS,
 };
@@ -88,7 +92,8 @@ function publisherOf(it) {
   return HOSTS.test(base(it.target)) ? '' : String(it.publisher || '').trim();
 }
 const LEVELS = [[3000, 'High'], [1000, 'Medium'], [0, 'Low']];
-function impactOf(it, impact) {
+function impactOf(it, impact, run) {
+  if (run) { const m = require('./startup-impact').impactFor({ ...it, self: isSelf(it) }, run, deps.root); return m ? m.level : 'Not measured'; }
   if (!impact || !impact.readable) return '—';
   const exe = base(it.target).toLowerCase();
   const hits = (impact.apps || []).filter((a) => exe && base(a.file).toLowerCase() === exe);
@@ -98,16 +103,16 @@ function impactOf(it, impact) {
 }
 const idOf = (it) => `${it.scope}|${it.key}|${it.name}`;
 // the read script's JSON -> what the page shows
-function fromRead(j, at = deps.now()) {
+function fromRead(j, at = deps.now(), run = deps.measured()) {
   const items = (j && Array.isArray(j.items) ? j.items : []).filter((it) => it && SCOPES.includes(it.scope) && KEYS.includes(it.key) && it.name);
   const apps = items.map((it) => {
     const s = stateOf(it.approved);
-    return { id: idOf(it), name: nameOf(it), publisher: publisherOf(it), on: s.on, offSince: s.offSince, impact: impactOf(it, j.impact), self: isSelf(it), scope: it.scope, admin: it.scope === 'HKLM' };
+    return { id: idOf(it), name: nameOf(it), publisher: publisherOf(it), on: s.on, offSince: s.offSince, impact: impactOf(it, j.impact, run), self: isSelf(it), scope: it.scope, admin: it.scope === 'HKLM' };
   }).sort((a, b) => (a.on === b.on ? a.name.localeCompare(b.name) : a.on ? -1 : 1));
-  const im = j && j.impact;
+  const im = j && j.impact, readable = !!(run || (im && im.readable));
   return {
     at: at.toISOString(), apps, on: apps.filter((a) => a.on).length, total: apps.length,
-    impact: { readable: !!(im && im.readable), note: im && im.readable ? null : 'Impact not measured: Windows shows sign-in timing to admins only.' },
+    impact: { readable, measuredAt: run ? run.signIn : null, note: readable ? null : 'Impact is measured at your next sign-in.' },
   };
 }
 

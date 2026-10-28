@@ -2,16 +2,16 @@
 // sign-in, and a one-click Off and On again; helpers/startup-apps.js). One line, "Start-up apps: 6 of 10 on", that
 // opens to the list, so the page still fits the window. Read when the page opens (the last answer at once; read again
 // when over a minute old), never in the background. An HKLM app asks Windows once; the result shows on its row. No pop-ups.
-import { h } from './dom.js';
+import { h, dateTime } from './dom.js';
 import { toggle } from './controls.js';
 import { env } from '../core/env.js';
 import { isDemo } from '../core/devices.js';
 
-const DEMO = () => ({ at: new Date().toISOString(), on: 3, total: 4, impact: { readable: false, note: 'Impact not measured: Windows shows sign-in timing to admins only.' }, apps: [
-  { id: 'HKCU|StartupFolder|DeviceHub.lnk', name: 'DeviceHub', publisher: '', on: true, impact: '—', self: true },
-  { id: 'HKCU|Run|OneDrive', name: 'Microsoft OneDrive', publisher: 'Microsoft Corporation', on: true, impact: '—' },
-  { id: 'HKLM|Run|SecurityHealth', name: 'Windows Security notification icon', publisher: 'Microsoft Corporation', on: true, impact: '—', admin: true },
-  { id: 'HKCU|Run|Edge', name: 'Microsoft Edge', publisher: 'Microsoft Corporation', on: false, impact: '—' }] });
+const DEMO = () => ({ at: new Date().toISOString(), on: 3, total: 4, impact: { readable: true, measuredAt: new Date(Date.now() - 3 * 3600e3).toISOString(), note: null }, apps: [
+  { id: 'HKCU|StartupFolder|DeviceHub.lnk', name: 'DeviceHub', publisher: '', on: true, impact: 'Medium', self: true },
+  { id: 'HKCU|Run|OneDrive', name: 'Microsoft OneDrive', publisher: 'Microsoft Corporation', on: true, impact: 'High' },
+  { id: 'HKLM|Run|SecurityHealth', name: 'Windows Security notification icon', publisher: 'Microsoft Corporation', on: true, impact: 'Low', admin: true },
+  { id: 'HKCU|Run|Edge', name: 'Microsoft Edge', publisher: 'Microsoft Corporation', on: false, impact: 'Not measured' }] });
 let data = null, err = null, loading = false, at = 0, lastDrawn = 0, open = false, busy = null, note = null, redraw = () => {};
 
 async function load(fresh) {
@@ -51,5 +51,6 @@ export function startupApps({ redraw: r } = {}) {
     h('summary', {}, h('span', { class: 'pcc-dot info' }), h('span', {}, sum)),
     err ? h('p', { class: 'faint' }, `Not read: ${err}`) : null,
     data ? h('div', { class: 'su-list' }, ...data.apps.map(row)) : null,
-    data?.impact?.note ? h('p', { class: 'faint su-foot' }, data.impact.note) : null);
+    data?.impact?.note ? h('p', { class: 'faint su-foot' }, data.impact.note)
+      : data?.impact?.measuredAt ? h('p', { class: 'faint su-foot' }, `Impact measured at sign-in, ${dateTime(data.impact.measuredAt)}.`) : null);
 }

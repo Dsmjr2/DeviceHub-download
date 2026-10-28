@@ -1,7 +1,9 @@
 {
-  "version": "1.5",
-  "commit": "a94cf427730f",
+  "version": "1.6",
+  "commit": "1fd84d45c124",
   "notes": [
-    "Product photos stay on this PC only"
+    "Isolated copies never move files",
+    "Move this PC's files into data and the server log into logs",
+    "Start-up apps: impact measured at sign-in, no admin needed"
   ]
 }

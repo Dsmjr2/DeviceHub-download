@@ -24,10 +24,11 @@ function folder({ config = true, origin = null, settings = {} } = {}) {
   fs.mkdirSync(path.join(root, 'helpers'));
   if (config) fs.writeFileSync(path.join(root, 'helpers', 'report-config.json'), JSON.stringify(typeof config === 'string' ? { relayUrl: config } : { relayUrl: URL_OK }));
   if (origin) { fs.mkdirSync(path.join(root, '.git')); fs.writeFileSync(path.join(root, '.git', 'config'), `[core]\n\tbare = false\n[remote "origin"]\n\turl = ${origin}\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n`); }
-  fs.writeFileSync(path.join(root, 'settings.json'), JSON.stringify(settings));
+  fs.mkdirSync(path.join(root, 'data'));
+  fs.writeFileSync(path.join(root, 'data', 'settings.json'), JSON.stringify(settings));
   return root;
 }
-const readSettings = (root) => JSON.parse(fs.readFileSync(path.join(root, 'settings.json'), 'utf8'));
+const readSettings = (root) => JSON.parse(fs.readFileSync(path.join(root, 'data', 'settings.json'), 'utf8'));
 
 // the pretend DeviceHub: two devices, a log with personal bits in it
 const STATE = { devices: [
@@ -84,7 +85,7 @@ try {
   ar.helperProblem('helper-start', 'could not start: spawn EACCES');
   await ar.settle();
   ok(calls.length === 2 && calls[1].payload.fingerprint === 'helper-start:helper', 'another problem the same day: sent');
-  const st = JSON.parse(fs.readFileSync(path.join(root, 'auto-report-state.json'), 'utf8'));
+  const st = JSON.parse(fs.readFileSync(path.join(root, 'data', 'auto-report-state.json'), 'utf8'));
   ok(Object.keys(st.sent).length === 2, 'the sends of today are remembered on disk');
   ok(ar.helperProblem('not-a-problem', 'x') === null, 'an unknown helper code is ignored');
 
@@ -230,10 +231,10 @@ try {
     fresh(REAL, { owner: null, gatherDeps: deps });
     ok(await ar.isOwnerPc(REAL), `this repository (${realOrigin}) is detected as the owner's PC`);
     ok((await ar.status()).active === false, 'status: not active here');
-    const before = fs.existsSync(path.join(REAL, 'auto-report-state.json')) ? fs.readFileSync(path.join(REAL, 'auto-report-state.json'), 'utf8') : null;
+    const before = fs.existsSync(path.join(REAL, 'data', 'auto-report-state.json')) ? fs.readFileSync(path.join(REAL, 'data', 'auto-report-state.json'), 'utf8') : null;
     const sr = await ar.report({ code: 'helper-build', where: 'helper', area: 'Device helper', problem: 'could not be built', detail: 'x' });
     ok(sr.sent === false && calls.length === 0 && /owner/.test(sr.why), `this repository sends nothing (${sr.why})`);
-    const after = fs.existsSync(path.join(REAL, 'auto-report-state.json')) ? fs.readFileSync(path.join(REAL, 'auto-report-state.json'), 'utf8') : null;
+    const after = fs.existsSync(path.join(REAL, 'data', 'auto-report-state.json')) ? fs.readFileSync(path.join(REAL, 'data', 'auto-report-state.json'), 'utf8') : null;
     ok(before === after, 'and writes nothing here');
   } else console.log(`auto-report: this copy's origin is ${realOrigin || 'none'}, not the owner's repository; the owner check on it is skipped`);
 

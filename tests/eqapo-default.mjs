@@ -10,7 +10,7 @@ const fails = [];
 const check = (ok, what) => { if (!ok) fails.push(what); };
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-eqapo-'));
 const cfgDir = path.join(root, 'EqualizerAPO', 'config'), cfg = path.join(cfgDir, 'config.txt'), backups = path.join(root, 'backups');
-const storePath = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..', 'eq-presets.json');
+const storePath = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..', 'data', 'eq-presets.json');
 const origStore = fs.existsSync(storePath) ? fs.readFileSync(storePath, 'utf8') : null;
 fs.mkdirSync(cfgDir, { recursive: true }); fs.mkdirSync(backups);
 process.env.ProgramFiles = root;

@@ -62,7 +62,8 @@ export function start(o = {}) { Object.assign(options, o); started = true; owner
 export function stop() { started = false; }
 export const isStarted = () => started;   // Get help offers Send to Shawn only then (helpers/get-help.mjs canSend)
 
-const file = (n) => path.join(options.root, n);
+// this PC's files in data\, the log in logs\ (27 Oct 2026, helpers/data-dir.js)
+const file = (n) => (/\.log$/.test(n) ? require('./data-dir.js').logFile(n, options.root) : require('./data-dir.js').dataFile(n, options.root));
 const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8').replace(/^﻿/, '')); } catch { return d; } };
 const writeJson = (f, o) => require('./safe-write.js').writeAtomic(f, JSON.stringify(o, null, 2));
 const settings = () => readJson(file('settings.json'), {});
@@ -100,7 +101,7 @@ async function originOf(root) {
 let ownerCache = null;
 export async function isOwnerPc(root = options.root) {
   if (typeof options.owner === 'boolean') return options.owner;
-  if (readJson(path.join(root, 'settings.json'), {}).ownerPc === true) return true;
+  if (readJson(require('./data-dir.js').dataFile('settings.json', root), {}).ownerPc === true) return true;
   if (ownerCache && ownerCache.root === root) return ownerCache.yes;
   const o = await originOf(root);
   const yes = o === UNKNOWN || (typeof o === 'string' && OWNER_ORIGIN.test(o));

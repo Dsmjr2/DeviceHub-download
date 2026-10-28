@@ -174,8 +174,8 @@ async function addedTick() {
 
 export function start(root, coreModule) {
   core = coreModule;
-  file = path.join(root, 'battery-care.json');
-  settingsFile = path.join(root, 'settings.json');
+  file = require('./data-dir.js').dataFile('battery-care.json', root);
+  settingsFile = require('./data-dir.js').dataFile('settings.json', root);
   try { saved = JSON.parse(fs.readFileSync(file, 'utf8')) || {}; } catch { saved = {}; }
   setInterval(() => tick().catch(() => {}), 20000).unref?.();  // every 20 s: a plugged-in headset goes dark soon after (it reads only DeviceHub's own state)
   setTimeout(() => tick().catch(() => {}), 30000).unref?.();

@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 
 const guidOf = (id) => String(id).slice(String(id).indexOf('}.') + 2);
-const SETTINGS = path.join(__dirname, '..', 'settings.json');
+const SETTINGS = require('./data-dir').dataFile('settings.json');
 const readPick = () => { try { return JSON.parse(fs.readFileSync(SETTINGS, 'utf8')).headsetPick || null; } catch { return null; } };
 // the native helper's USB headset list, through the Corsair helper server.js already loaded (loaded here only when used)
 const listHeadsets = async () => (await require('./corsair').handle('usb-headsets', {})).headsets || [];

@@ -305,10 +305,10 @@ check(sj.firstRunAt && sj.installed.length === 2 && !JSON.stringify(sj).includes
 fs.rmSync(path.join(root, 'my-devices/acme-tested'), { recursive: true, force: true });
 r = await run({ root, usb, load: async () => [] });
 check(r.lastRun.installed.length === 0 && r.lastRun.skipped.some((x) => x.name === 'acme-tested' && /removed since/.test(x.why)), 'a driver the person removed is not installed again');
-put('settings.json', JSON.stringify({ autoSetup: false }));
+put('data/settings.json', JSON.stringify({ autoSetup: false }));
 r = await run({ root, usb: [{ vid: '1234', pid: 'aa09' }] });
 check(r.lastRun.off === true, 'settings.json "autoSetup": false turns it off');
-fs.rmSync(path.join(root, 'settings.json'));
+fs.rmSync(path.join(root, 'data', 'settings.json'));
 
 // ---------- the summary ----------
 const agent = { devices: [{ id: 'mouse', status: 'asleep', seen: true, info: { Model: 'Pulsar X-Lite CrazyLight' }, adapter: { title: 'Pulsar X-Lite CrazyLight', kind: 'Mouse' } }, { id: 'keyboard', status: 'missing', seen: false, adapter: { title: 'Epomaker P75', kind: 'Keyboard' } },

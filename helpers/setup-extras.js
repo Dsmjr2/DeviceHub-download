@@ -21,9 +21,10 @@ const DRIVER_MAX = 1024 * 1024;             // a driver file over 1 MB is not a 
 const safePart = (s) => /^[\w .()+-]{1,80}$/.test(s) && !/^\.+$/.test(s);
 
 function create({ root = path.join(__dirname, '..'), wallpapers = null } = {}) {
-  const SETTINGS = path.join(root, 'settings.json'), MY = path.join(root, 'my-devices'), BACKUPS = path.join(root, 'backups');
+  const { dataFile } = require('./data-dir');
+  const SETTINGS = dataFile('settings.json', root), MY = path.join(root, 'my-devices'), BACKUPS = path.join(root, 'backups');
   const readSettings = () => { try { return JSON.parse(fs.readFileSync(SETTINGS, 'utf8')); } catch { return {}; } };
-  const picture = () => { for (const ext of Object.keys(PICTURE)) { const f = path.join(root, `background-picture.${ext}`); if (fs.existsSync(f)) return { ext, file: f }; } return null; };
+  const picture = () => { for (const ext of Object.keys(PICTURE)) { const f = dataFile(`background-picture.${ext}`, root); if (fs.existsSync(f)) return { ext, file: f }; } return null; };
 
   // every driver folder added on this PC (not the worked example), its plain-text files only, two folders deep at most
   function drivers() {
@@ -116,7 +117,7 @@ function create({ root = path.join(__dirname, '..'), wallpapers = null } = {}) {
       const ok = { png: (b) => b.readUInt32BE(0) === 0x89504e47, jpg: (b) => b[0] === 0xff && b[1] === 0xd8, webp: (b) => b.toString('latin1', 8, 12) === 'WEBP' }[x.background.ext];
       if (buf.length > 12 && buf.length <= 8 * 1024 * 1024 && ok(buf)) {
         const old = picture(); if (old) fs.unlinkSync(old.file);
-        writeAtomic(path.join(root, `background-picture.${x.background.ext}`), buf);
+        writeAtomic(dataFile(`background-picture.${x.background.ext}`, root), buf);
         done.push('background picture');
       }
     }

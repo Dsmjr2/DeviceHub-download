@@ -95,7 +95,7 @@ export async function run() {
 
   // ---- 6. the real files, read only
   const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-  const pf = path.join(root, 'profiles.json'), sf = path.join(root, 'settings.json');
+  const pf = path.join(root, 'data', 'profiles.json'), sf = path.join(root, 'data', 'settings.json');   // data\ since 27 Oct 2026
   if (fs.existsSync(pf) && fs.existsSync(sf)) {
     const hash = (f) => crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
     const before = [hash(pf), hash(sf)];

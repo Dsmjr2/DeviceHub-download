@@ -5,6 +5,11 @@ const http = require('http');
 const fs = require('fs');
 const { writeAtomic } = require('./helpers/safe-write');  // crash-proof saving (helpers/safe-write.js)
 const path = require('path');
+// first, before any module reads one: this PC's files from beside the app into data\ and the log into logs\, once
+// (27 Oct 2026, helpers/data-migrate.js; a start with nothing to move does nothing). Never in an isolated copy: one
+// started from the real folder (tests/regressions.mjs) moved the running app's files from under it on 27 Oct.
+if (process.env.DEVICEHUB_ISOLATED !== '1') require('./helpers/data-migrate').migrate();
+const { dataFile, logFile } = require('./helpers/data-dir');
 const { spawn, execFile } = require('child_process');
 // a library or learned driver's stray error (an unhandled rejection, a throw from its timer) is logged and its device
 // marked failed instead of ending the server; DeviceHub's own errors still exit with code 1 (helpers/driver-guard.js)
@@ -20,9 +25,9 @@ if (ISOLATED && (!process.env.DEVICEHUB_PORT || PORT === 5577)) { console.log('[
 const ROOT = __dirname;
 const PUBLIC = path.join(ROOT, 'public');
 const BACKUPS = path.join(ROOT, 'backups');
-const PROFILES = path.join(ROOT, 'profiles.json');
-const ACTIVITY = path.join(ROOT, 'activity.jsonl');
-const SETTINGS = path.join(ROOT, 'settings.json');
+const PROFILES = dataFile('profiles.json', ROOT);
+const ACTIVITY = dataFile('activity.jsonl', ROOT);
+const SETTINGS = dataFile('settings.json', ROOT);
 // A data file that does not parse (a power cut mid-save, a disk hiccup) is moved aside, kept, and DeviceHub carries on
 // with an empty one, instead of failing on every request until someone repairs it by hand (20 Oct 2026)
 function readJsonFile(file, fallback) {
@@ -99,7 +104,7 @@ if (!ISOLATED && process.env.DEVICEHUB_TEST !== '1') require('./helpers/last-ans
 const pcMap = require('./helpers/pc-map');
 const openrgb = require('./helpers/openrgb');
 // DeviceHub's own devices are never written through OpenRGB as well (its location names their vendor:product)
-if (!ISOLATED) openrgb.start(BACKUPS, { ownDevice: new RegExp(Object.keys(pcMap.RUNS).map((id) => { const [v, p] = id.split(':'); return `vid_${v}&pid_${p}`; }).join('|'), 'i'), namesFile: path.join(ROOT, 'lights-names.json') });
+if (!ISOLATED) openrgb.start(BACKUPS, { ownDevice: new RegExp(Object.keys(pcMap.RUNS).map((id) => { const [v, p] = id.split(':'); return `vid_${v}&pid_${p}`; }).join('|'), 'i'), namesFile: dataFile('lights-names.json', ROOT) });
 const eqapo = require('./helpers/eqapo')(icueEq, eqDevices, path.join(__dirname, 'backups'));
 let eqBusy = false;
 const updates = require('./helpers/updates');
@@ -335,7 +340,7 @@ async function api(req, res, url) {
     try {
       const since = Date.now() - 24 * 3600 * 1000;
       for (const f of ['server.log', 'server.old.log']) {
-        const p = path.join(ROOT, f);
+        const p = logFile(f, ROOT);
         if (!fs.existsSync(p)) continue;
         let crashLine = false;
         for (const l of fs.readFileSync(p, 'utf8').split('\n')) {
@@ -378,7 +383,9 @@ async function api(req, res, url) {
       if (other.length) lines.push(`other USB: ${other.join('; ')}`); } catch (e) { lines.push(`PC: not read (${e.message})`); }
     try { if (eqapo.installed()) { const d = await eqapo.devices(); const off = (await require('./helpers/eqapo-devices').status({ render: d.headset, capture: d.mic })).off; lines.push(`Equalizer APO: installed${off.length ? ` · not on for ${off.map((x) => x.name).join(', ')}` : ''}`); } else lines.push('Equalizer APO: not installed'); } catch {}
     try { const m = await monitors.list(); lines.push(`monitors: ${m.map((x) => `${x.name}${x.ddc ? '' : ' (no DDC/CI)'}`).join(', ') || 'none'}`); } catch {}
-    const tail = (f, n) => { try { return fs.readFileSync(path.join(ROOT, f), 'utf8').trim().split('\n').slice(-n); } catch { return []; } };
+    // (27 Oct 2026) the log in logs\, this PC's files in data\
+    const at = (f) => (/\.log$/.test(f) ? logFile(f, ROOT) : dataFile(f, ROOT));
+    const tail = (f, n) => { try { return fs.readFileSync(at(f), 'utf8').trim().split('\n').slice(-n); } catch { return []; } };
     const bad = tail('activity.jsonl', 400).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter((a) => a && a.kind === 'bad').slice(-8);
     if (bad.length) lines.push('', 'recent problems:', ...bad.map((a) => `  ${a.at.slice(5, 16).replace('T', ' ')} ${a.device ? a.device + ': ' : ''}${a.text}`));
     const errs = tail('server.log', 400).filter((l) => /error|fail|cannot|\[start\]/i.test(l)).slice(-8);
@@ -387,8 +394,9 @@ async function api(req, res, url) {
     return res.end(lines.join('\n'));
   }
   if (url.pathname === '/api/report') {
-    const tail =(f, n) => { try { return fs.readFileSync(path.join(ROOT, f), 'utf8').trim().split('\n').slice(-n).join('\n'); } catch { return '(none)'; } };
-    const json = (f) => { try { return fs.readFileSync(path.join(ROOT, f), 'utf8').trim(); } catch { return '(none)'; } };
+    const at = (f) => (/\.log$/.test(f) ? logFile(f, ROOT) : dataFile(f, ROOT));
+    const tail =(f, n) => { try { return fs.readFileSync(at(f), 'utf8').trim().split('\n').slice(-n).join('\n'); } catch { return '(none)'; } };
+    const json = (f) => { try { return fs.readFileSync(at(f), 'utf8').trim(); } catch { return '(none)'; } };
     let health = {};
     try { health = await (await fetch(`http://127.0.0.1:${PORT}/api/health`)).json(); } catch (e) { health = { error: e.message }; }
     const devs = agent ? agent.state().devices.map((d) => ({ id: d.id, status: d.status, error: d.error, info: d.info, battery: d.battery })) : '(no background agent)';
@@ -448,7 +456,7 @@ async function api(req, res, url) {
   // Game mode (27 Oct 2026, helpers/game-mode.mjs): the games set up (game-mode.json), the installed games to pick from
   // (helpers/games.js installed, read-only), the switches now ("Use now's settings"), and what is on now
   if (url.pathname.startsWith('/api/game-mode')) {
-    const file = path.join(ROOT, 'game-mode.json');
+    const file = dataFile('game-mode.json', ROOT);
     const status = async () => (agent ? (await agent.op('game-mode-reload', {})).status : null);
     try {
       if (url.pathname === '/api/game-mode' && req.method === 'GET') return send(res, 200, { games: readJsonFile(file, {}).games || [], status: agent ? agent.state().auto.game : null });
@@ -746,14 +754,14 @@ async function api(req, res, url) {
   // the graphics card's temperature, fan, load and power, read-only (helpers/gpu.js; the PC page)
   if (url.pathname === '/api/gpu') return send(res, 200, await require('./helpers/gpu').read());
   // A background picture of the person's own (22 Oct 2026, Shawn: the OSRS map behind the Old School theme): one image
-  // they pick, kept in this folder only (background-picture.*, in .gitignore, so never in git, the installer or sync).
+  // they pick, kept in this folder only (data\background-picture.*, in .gitignore, so never in git, the installer or sync).
   // PNG, JPEG or WebP, checked by its first bytes, at most 8 MB. GET serves it (?check: whether there is one), POST
   // (the raw image) replaces it, POST /api/background/remove removes it (changes are POSTs, as for every route here).
   if (url.pathname === '/api/background' || url.pathname === '/api/background/remove') {
     const KINDS = [['png', 'image/png', (b) => b.length > 8 && b.readUInt32BE(0) === 0x89504e47],
       ['jpg', 'image/jpeg', (b) => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff],
       ['webp', 'image/webp', (b) => b.length > 12 && b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP']];
-    const saved = () => KINDS.map(([ext, type]) => ({ file: path.join(ROOT, `background-picture.${ext}`), type })).find((x) => fs.existsSync(x.file));
+    const saved = () => KINDS.map(([ext, type]) => ({ file: dataFile(`background-picture.${ext}`, ROOT), type })).find((x) => fs.existsSync(x.file));
     if (url.pathname === '/api/background/remove') {
       if (req.method !== 'POST') return send(res, 405, { error: 'POST' });
       const cur = saved(); if (cur) fs.unlinkSync(cur.file); return send(res, 200, { ok: true });
@@ -773,7 +781,7 @@ async function api(req, res, url) {
       const kind = KINDS.find(([, , is]) => is(buf));
       if (!kind) return send(res, 400, { error: 'Pick a PNG, JPEG or WebP picture.' });
       const old = saved(); if (old) fs.unlinkSync(old.file);
-      writeAtomic(path.join(ROOT, `background-picture.${kind[0]}`), buf);
+      writeAtomic(dataFile(`background-picture.${kind[0]}`, ROOT), buf);
       return send(res, 200, { ok: true, type: kind[1], bytes: buf.length });
     }
     return send(res, 405, { error: 'GET or POST' });
@@ -1094,7 +1102,7 @@ http.createServer(async (req, res) => {
 }).listen(PORT, '127.0.0.1', async () => {
   console.log(`DeviceHub on http://localhost:${PORT}`);
   // a save cut off by a crash leaves a temporary file beside the whole old one: tidy those away
-  for (const d of [ROOT, BACKUPS, path.join(ROOT, 'setups')]) require('./helpers/safe-write').cleanLeftovers(d);
+  for (const d of [ROOT, path.join(ROOT, 'data'), BACKUPS, path.join(ROOT, 'setups')]) require('./helpers/safe-write').cleanLeftovers(d);
   // isolated test mode: none of the background parts below (self-update, agent, auto setup, library updates, audio,
   // battery saver, Anker guard, settings sync, receiver light, backup tidy, battery history, tray)
   if (ISOLATED) { console.log('[isolated] test mode: no devices, helper, iCUE, OpenRGB, tray, sync or updates'); return; }
@@ -1168,6 +1176,8 @@ http.createServer(async (req, res) => {
   if (!TEST) require('./helpers/backup-tidy').start(BACKUPS, serverLog);
   // the PC check read once in the background, so the PC page opens with it (helpers/pc-check.js)
   if (!TEST) setTimeout(() => { require('./helpers/pc-check').check(true).catch(() => {}); }, 30000).unref();
+  // start-up impact: watched for the first minutes after sign-in when DeviceHub started with Windows (helpers/startup-impact.js)
+  if (!TEST && !ISOLATED) setTimeout(() => { const s = require('./helpers/startup-impact'); s._test.deps.log = (text) => serverLog({ kind: 'info', text }); s.measureAtSignIn(); }, 5000).unref();
   // Wi-Fi pause: a pause left from before this start (a crash, a restart) is ended; only when it was set up (helpers/wifi-pause.mjs)
   if (!TEST) setTimeout(() => import('./helpers/wifi-pause.mjs').then((w) => { w.deps.log = (text) => serverLog({ kind: 'info', text }); return w.onStart(); }).catch(() => {}), 20000).unref?.();
   require('./helpers/hs80-direct').setLog(serverLog);

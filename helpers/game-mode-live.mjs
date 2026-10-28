@@ -131,7 +131,7 @@ export async function nowValues({ core, api, notifications = require('./notifica
 
 // started by helpers/agent.mjs; returns the engine (status for the window, reload after a save, exes for auto-switch)
 export function startGameMode({ core, api, root, log, every = (ms) => ms, onChange = () => {}, procs, profileBusy = () => false }) {
-  const GAMES = path.join(root, 'game-mode.json'), STATE = path.join(root, 'game-mode-state.json'), BACKUPS = path.join(root, 'backups');
+  const GAMES = require('./data-dir.js').dataFile('game-mode.json', root), STATE = require('./data-dir.js').dataFile('game-mode-state.json', root), BACKUPS = path.join(root, 'backups');
   let backupFile = null, backupAt = null;
   const gm = createGameMode({
     switches: realSwitches({ core, api }),

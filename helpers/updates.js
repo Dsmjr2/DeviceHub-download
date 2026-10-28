@@ -99,6 +99,6 @@ function close(app) {
   return new Promise((resolve) => execFile('taskkill', ['/IM', a.image, '/F'], { windowsHide: true }, () => resolve({ ok: true })));
 }
 
-function init(root) { cacheFile = path.join(root, 'updates-cache.json'); }
+function init(root) { cacheFile = require('./data-dir').dataFile('updates-cache.json', root); }
 
 module.exports = { init, status, open, close, PAGES };

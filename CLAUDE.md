@@ -186,14 +186,23 @@ These protect the person's hardware. Follow them even when asked to skip them, a
   USB-only OpenRGB.exe). DeviceHub starts OpenRGB only while lights are used and runs Equalizer APO's installer only on
   the person's click. Never bundle a driver (.sys), the PawnIO driver, WinRing0 or inpout; LibreHardwareMonitor still
   needs the person's OK.
-- Nothing personal goes into git or the installer: `backups/`, `settings.json`, `profiles.json`, `eq-presets.json`,
-  logs, history and recordings are in `.gitignore`. Check before adding a new data file.
+- Nothing personal goes into git or the installer: `backups/`, `data/` (this PC's own files: `settings.json`,
+  `profiles.json`, `eq-presets.json`, history ...), `logs/` and recordings are in `.gitignore`. A new per-PC file goes
+  in `data\` through `dataFile(name, root)` (`helpers/data-dir.js`), never loose beside the app; add its name to
+  `DATA_FILES` there only if an older version kept it beside the app (27 Oct 2026). Check before adding a new data file.
 - Every change ends with `npm test` passing (see Checks).
 
 ## Map
 
 ```
 server.js                  local server on 127.0.0.1:5577 (never on the network): API, static files, starts the agent
+data\                      this PC's own files (settings.json, profiles.json, activity.jsonl, eq-presets.json, setup.json,
+                           seen-devices.json, battery history, ...): helpers/data-dir.js dataFile(); gitignored, never in
+                           the zip. logs\ holds server.log (and server.old.log). helpers/data-migrate.js moves an older
+                           copy's files from beside the app into them, first thing at every start (a file in both
+                           places: data\ kept, the old one in data\from-root\); keep-running.bat moves them back
+                           (--to-root) before it rolls back to a version without data-migrate.js. release.json,
+                           release-files.json and release-history.json come with each version and stay beside the app
 helpers/agent.mjs          the background agent: owns the devices, registers the three adapters, auto-switch, wake
 helpers/hid-host.mjs       SPECS: each HID device's vendor id, product id, usage page, report length (one line each)
 helpers/native/            the Windows helper (C#, built on start with Windows' own compiler): HID, audio, tray,
@@ -281,7 +290,7 @@ the person (a download or install, a learning session, or a check in the maker's
    (the Lighting page's "This PC" card names any plugged-in device from it).
    - Keyboards with **VIA** work with no code: DeviceHub finds any VIA keyboard (usage page 0xFF60) and takes its
      layout from VIA's library (usevia.app, about 1,500 keyboards) or from the maker's VIA file placed in
-     `via-definitions\<VID><PID>.json` (helpers/via-defs.js, public/devices/via-layout.js). `server.log` says which
+     `via-definitions\<VID><PID>.json` (helpers/via-defs.js, public/devices/via-layout.js). `logs\server.log` says which
      keyboard it found and where its layout came from (`[keyboard] ...`). If editing is blocked ("does not match the
      layout"), the definition is for another revision of the board: get the maker's file. QMK boards without VIA
      need VIA enabled in their firmware, which is the owner's call (never flash it for them).
@@ -350,7 +359,7 @@ the person (a download or install, a learning session, or a check in the maker's
    needs lives in that folder: the protocol, the adapter (`id`, `title`, `kind`, `connect()`, `info()`, `read()`,
    `write(key, value)` with read-back, `battery()`, `rawBackup()`, `unsupported`), its HID channel (`hid: { vid, pid,
    page, usage, len, reportId }`) and `settings`, the list its page is drawn from (slider, toggle, choice, display for a reading, color, remap; see helpers/my-devices.mjs). DeviceHub
-   loads it at start (`helpers/my-devices.mjs`; `server.log` says `[my-devices] <name>: ... added`, or why not) and
+   loads it at start (`helpers/my-devices.mjs`; `logs\server.log` says `[my-devices] <name>: ... added`, or why not) and
    gives it a page, a tile and Undo by itself. **Do not edit DeviceHub's own files for a device**: files under
    `my-devices\` belong to that PC and no update ever changes them, while edits to DeviceHub's files have to be brought
    together with every new version. Only add settings whose bytes were seen in step 3 or are documented.

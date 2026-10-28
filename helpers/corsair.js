@@ -21,7 +21,7 @@ const native = require('./native');
 const CUE_OPS = new Set(['props', 'write']);
 // the names given to headsets on the Headset page (settings.json "headsetNames": { "VID_..&PID_.." or "JACK_..": name })
 function headsetNames() {
-  try { const n = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', 'settings.json'), 'utf8')).headsetNames; return n && typeof n === 'object' ? n : {}; } catch { return {}; }
+  try { const n = JSON.parse(require('fs').readFileSync(require('./data-dir').dataFile('settings.json'), 'utf8')).headsetNames; return n && typeof n === 'object' ? n : {}; } catch { return {}; }
 }
 async function ask(q) {
   const r = await native.request(CUE_OPS.has(q.op) ? 'cue' : 'audio', JSON.stringify(q), 15000);

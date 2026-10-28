@@ -88,7 +88,7 @@ export async function run({ all = false } = {}) {
 }
 
 export function start(root, coreModule) {
-  file = path.join(root, 'daily-check.json');
+  file = require('./data-dir.js').dataFile('daily-check.json', root);
   core = coreModule;
   // due: the first check 2 minutes after start when none ran in the last day, then each day
   const tick = () => {

@@ -199,7 +199,7 @@ function logTail(root) {
   const lines = [];
   for (const f of ['server.old.log', 'server.log']) {
     try {
-      const file = path.join(root, f), size = fs.statSync(file).size, n = Math.min(size, 256 * 1024);
+      const file = require('./data-dir.js').logFile(f, root), size = fs.statSync(file).size, n = Math.min(size, 256 * 1024);
       const fd = fs.openSync(file, 'r'), b = Buffer.alloc(n);
       try { fs.readSync(fd, b, 0, n, size - n); } finally { fs.closeSync(fd); }
       lines.push(...b.toString('utf8').split(/\r?\n/).slice(n < size ? 1 : 0));
