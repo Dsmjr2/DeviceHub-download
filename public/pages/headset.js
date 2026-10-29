@@ -129,8 +129,10 @@ export default {
           h('div', { class: 'hero-stats' },
             bat != null ? batteryCell({ id: batSrc.id || 'headset', percent: bat, charging: !!batSrc.battery?.charging || /cable/i.test(batSrc.info?.Control || ''), big: true }) : null,
             meter({ ic: 'volume', pct: v['vol:playback'], value: v['vol:playback'] != null ? `${v['vol:playback']}%` : '—', label: 'volume', big: true }),
-            micState({ on: v['prop:micEnabled'], big: true }),
-            meter({ ic: 'ear', pct: v.sidetoneOn === false ? 0 : v.sidetone, value: v.sidetone == null ? '—' : v.sidetoneOn === false ? 'Off' : `${v.sidetone}%`, label: 'sidetone', big: true })))
+            // another headset: the mic as Windows has it (muted or not), and no sidetone bar when it has none (29 Oct 2026,
+            // a friend's Arctis Nova 3 showed mic "—" and an empty sidetone bar)
+            micState({ on: v['prop:micEnabled'] ?? (generic && typeof v['mute:recording'] === 'boolean' ? !v['mute:recording'] : undefined), big: true }),
+            generic && v.sidetone == null ? null : meter({ ic: 'ear', pct: v.sidetoneOn === false ? 0 : v.sidetone, value: v.sidetone == null ? '—' : v.sidetoneOn === false ? 'Off' : `${v.sidetone}%`, label: 'sidetone', big: true })))
         : h('div', { class: 'hero-off' }, icon('sleep'), h('div', {}, h('b', {}, 'Headset off'))),
         // another headset: a plain headset outline in its color, not the HS80's picture
         generic ? h('div', { class: 'hero-art generic-art' }, genericArtFor.headset('headset')) : h('div', { class: `hero-art${v['prop:micEnabled'] === false ? ' mic-muted' : ''}`, style: v.led ? { '--glowc': v.led } : null }, headsetArt())),

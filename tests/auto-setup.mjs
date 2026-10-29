@@ -152,7 +152,7 @@ backupFails = false;
   const r1 = await turnOn('sim-mouse');
   const mk = json('my-devices/sim-mouse/library.json');
   check(r1.ran && r1.on && mk.settingsOn?.at && mk.status === 'read-only', `Turn on settings is kept in library.json and runs the check (${JSON.stringify(r1.why || mk)})`);
-  check(r1.counts?.checked === 4 && r1.counts.passed === 3, `the answer says how many passed (${JSON.stringify(r1.counts)})`);
+  check(r1.counts?.checked === 3 && r1.counts.passed === 3 && r1.counts.failed === 0, `the answer says how many passed (a setting its driver says not to check is not a failure) (${JSON.stringify(r1.counts)})`);
   check(s0.writes.length > 0 && s0.writes.every((w) => w.v === w.before) && s0.values.dpi === 1300, 'each Turn on settings write is the value read just before; nothing changes');
   check((await reg['sim-mouse'].write('dpi', 1400)) === 1400 && !reg['sim-mouse'].library.turnOn, 'after it a passed setting writes, and the button goes');
   // a tested entry with only a simulation record: after the click it is treated like read-only (only what passed writes)

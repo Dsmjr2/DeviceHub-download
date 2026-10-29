@@ -321,6 +321,9 @@ export async function selfCheck(a, write, { folder, mark = {}, backup, log = () 
     if (stopped) { keys[s.key] = { ok: false, why: `not checked: ${stopped}`, at }; continue; }
     if (!writable(s)) continue;   // a display is a reading: never written, so nothing to check
     if (s.selfCheck === false) { keys[s.key] = { ok: false, skip: true, why: 'its driver says it is not to be self-checked', at }; continue; }
+    // a setting this model does not have (29 Oct 2026: the Arctis driver knows sidetone, the Nova 3 reports none, and a
+    // friend's copy filed "self-check failed"): not in the first read, so not on its page and nothing to check
+    if (values?.[s.key] === undefined) { keys[s.key] = { ok: false, skip: true, why: 'this model does not report it', at }; continue; }
     let before;
     try { before = (await inTime(a.read(), 'reading it'))?.[s.key]; } catch (e) { keys[s.key] = { ok: false, why: `reading it failed: ${e.message}`, at }; stopped = 'a read failed'; continue; }
     if (before === undefined) { keys[s.key] = { ok: false, why: 'the device did not report its value', at }; continue; }
@@ -342,7 +345,8 @@ export async function selfCheck(a, write, { folder, mark = {}, backup, log = () 
   }
   const result = { checkedAt: at, firmware, driver: a.id, status: mark.status || null, source: mark.source || null, devicehub: version || previous?.devicehub || null, keys };
   try { if (folder) saveVerified(folder, result); } catch (e) { result.saveError = e.message; }
-  const checked = todo.filter(writable);
+  // a skipped setting (not to be checked, or one this model does not have) is neither a pass nor a failure
+  const checked = todo.filter(writable).filter((s) => !keys[s.key]?.skip);
   const ok = checked.filter((s) => keys[s.key]?.ok).map((s) => s.label);
   const waits = checked.filter((s) => keys[s.key]?.waiting);
   const no = checked.filter((s) => !keys[s.key]?.ok && !keys[s.key]?.waiting);

@@ -41,5 +41,13 @@ check(w[0].device === 'PC speakers or jack' && w[1].device === 'Headphones (Real
 const named = wiredHeadsets([{ flow: 'playback', id: 'a', name: 'Speakers (Realtek(R) Audio)' }], [], { [w[0].usb]: 'Audio-Technica' });
 check(named[0].device === 'Audio-Technica', 'a name the person gave still wins');
 
+// ---- a setting the model does not have is not a self-check failure (the Nova 3 has no sidetone; his copy filed
+// "SteelSeries Arctis: its driver self-check failed" by itself)
+const MD = await import('../helpers/my-devices.mjs');
+const nova3 = { id: 'steelseries-arctis-test', title: 'SteelSeries Arctis', kind: 'Headset', settings: [{ key: 'sidetone', label: 'Sidetone', type: 'slider', min: 0, max: 3 }],
+  async info() { return { Model: 'Arctis Nova 3' }; }, async read() { return {}; }, async write() { throw new Error('nothing should be written'); } };
+const sc = await MD.selfCheck(nova3, nova3.write, { backup: async () => {}, makerApp: async () => ({}) });
+check(sc.ran && sc.counts.failed === 0 && sc.counts.checked === 0 && sc.keys.sidetone?.skip === true, `a setting the model does not report is skipped (${JSON.stringify(sc.counts)})`);
+
 if (fails.length) { console.log(`same-headset: ${fails.length} FAILED\n - ${fails.join('\n - ')}`); process.exit(1); }
 console.log('same-headset (other Pulsar dongle, one headset shown once, speakers named plainly): all good');

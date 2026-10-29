@@ -1,7 +1,7 @@
 {
-  "version": "1.10",
-  "commit": "843f398a416d",
+  "version": "1.11",
+  "commit": "b25a161538c0",
   "notes": [
-    "Pulsar's other dongle, one headset shown once, speakers named plainly"
+    "Self-check skips settings a model lacks"
   ]
 }
