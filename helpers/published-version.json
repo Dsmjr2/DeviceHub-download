@@ -1,7 +1,7 @@
 {
-  "version": "1.12",
-  "commit": "615b65791124",
+  "version": "1.13",
+  "commit": "d41834b1f0b0",
   "notes": [
-    "Headsets name and open their own brand's app"
+    "Legion Gen 10 keyboard lights driver (untested, install on a click)"
   ]
 }

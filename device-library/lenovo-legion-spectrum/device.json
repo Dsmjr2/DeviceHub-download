@@ -1,0 +1,31 @@
+{
+  "id": "lenovo-legion-spectrum",
+  "vendor": "Lenovo",
+  "product": "Legion Gen 10 keyboard lights",
+  "kind": "Keyboard",
+  "vid": "048d",
+  "pids": [
+    "c197"
+  ],
+  "models": [
+    "Lenovo Legion Pro 7 Gen 10",
+    "Lenovo Legion 7 Gen 10",
+    "Lenovo Legion Gen 10 laptops with Spectrum RGB (ITE 8258, 048D:C197)"
+  ],
+  "works": [
+    "keyboard brightness 0-9 (read; written and read back after Turn on settings)",
+    "the lid logo light on / off (read; written and read back after Turn on settings)",
+    "the lighting profile 1-6, the ones Fn + Space cycles (read; written and read back after Turn on settings)",
+    "nothing is sent until the controller answers Lenovo's compatibility check (D1); nothing is written while Lenovo Vantage or Legion Zone runs",
+    "from Lenovo Legion Toolkit (Native.cs LENOVO_SPECTRUM_*, SpectrumKeyboardBacklightController.cs) and legion-spectrum-control (Gen 10 on 048D:C197), with a simulated controller (tests/sim-legion.mjs); not yet run on a real laptop"
+  ],
+  "doesNotWork": [
+    "effects, colors and per-key lighting (Lenovo Vantage or Legion Zone)",
+    "putting a profile back to its default (never sent: it loses the person's effects)",
+    "048D:C193 on the same laptops (no source documents it)",
+    "the older Legions' controllers (048D:C9xx): not listed until someone with one checks it"
+  ],
+  "status": "untested",
+  "tested": [],
+  "source": "Lenovo Legion Toolkit (BartoszCichecki/LenovoLegionToolkit) and legion-spectrum-control (LisaDaVinchie, MIT)"
+}

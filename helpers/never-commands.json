@@ -5,6 +5,7 @@
     { "vid": "046D", "brand": "Logitech", "why": "HID++ 2.0 reaches each feature through an index the mouse hands out at run time, so a fixed byte template cannot prove it never reaches DFU (feature 0x00C0-0x00C3, 0x00D0, Centurion 0x010A), device reset (0x1802), OOB state (0x1805) or force pairing (0x1500). Logitech drivers stay device.mjs (device-library/logitech-hidpp-mouse filters those ids in code).", "source": "docs/brands/logitech.md section 4 'Never touch' (Solaar, libratbag)" }
   ],
   "commands": [
+    { "brand": "Lenovo Legion (ITE Spectrum)", "vid": "048D", "pids": ["C197"], "reportId": 7, "bytes": "C9", "what": "ProfileDefault: puts a lighting profile back to Lenovo's default, losing the person's effects", "source": "Lenovo Legion Toolkit Native.cs LENOVO_SPECTRUM_OPERATION_TYPE.ProfileDefault (device-library/lenovo-legion-spectrum)" },
     { "brand": "ASUS ROG", "vid": "0B05", "bytes": "50 40", "what": "reset (headset)", "source": "docs/brands/asus-rog.md section 2 command table, verb 50 (G-Helper, libratbag, OpenRGB)" },
     { "brand": "ASUS ROG", "vid": "0B05", "bytes": null, "what": "firmware updates and Omni receiver pairing / unpairing: no open project maps their bytes", "source": "docs/brands/asus-rog.md section 4 'Never'" },
 
