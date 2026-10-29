@@ -1,7 +1,7 @@
 {
-  "version": "1.14",
-  "commit": "8cad2a442f4a",
+  "version": "1.15",
+  "commit": "2e13927082f6",
   "notes": [
-    "Close the window when the PC goes to sleep"
+    "Monitors Sleep closes the window once the screens are off"
   ]
 }

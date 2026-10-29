@@ -266,6 +266,17 @@ const procs = [
   const agent = fs.readFileSync(path.join(ROOT, 'helpers/agent.mjs'), 'utf8'), app = fs.readFileSync(path.join(ROOT, 'public/app.js'), 'utf8');
   check(/send\('sleep', \{ at: Date\.now\(\) \}\)/.test(agent) && /send\('woke', \{ at: wokeAt \}\)/.test(agent), 'the agent passes Windows\' sleep and wake on to the window');
   check(/onEvent\('sleep', \(\) => \{ idle\.tick\('sleep'\); \}\)/.test(app) && /onEvent\('woke'/.test(app), 'the window acts on them');
+  // DeviceHub's own Sleep button turns only the screens off (Windows says nothing): it closes the window itself
+  check(decide({ hiddenSince: null, now: 0, focused: true, sleep: 'screens' }).close, 'screens put to sleep: closes, though still shown and focused');
+  check(!decide({ hiddenSince: null, now: 0, focused: true, sleep: 'screens', reasons: ['a form has unsaved text'] }).close, 'screens put to sleep with unsaved text: kept');
+  let later = null;
+  ic.closeAfterScreensOff((fn, ms) => { later = { fn, ms }; });
+  check(later?.ms === ic.SCREENS_CLOSE_MS && ic.SCREENS_CLOSE_MS > 2000, 'it waits until the screens are off (they go off 2 s after the click)');
+  const t2 = startIdleClose({ page: () => '#/monitors', doc, win: { addEventListener() {}, removeEventListener() {}, matchMedia: () => ({ matches: false }) }, setI: () => 0, clearI() {}, api: async (b) => { asked.push(b); return { closing: true }; } });
+  await later.fn(); await new Promise((r) => setTimeout(r, 0));
+  check(asked.at(-1)?.sleep === 'screens' && t2, 'then asks the server to close the window');
+  const mon = fs.readFileSync(path.join(ROOT, 'public/pages/monitors.js'), 'utf8'), cmd = fs.readFileSync(path.join(ROOT, 'public/core/commands.js'), 'utf8');
+  check(/else closeAfterScreensOff\(\)/.test(mon) && /\/api\/monitors\/sleep', \{\}\); closeAfterScreensOff\(\)/.test(cmd), 'the Monitors Sleep button and the search\'s Sleep monitors both close it');
 }
 
 if (fails.length) { console.log(`idle-close: ${fails.length} failed`); for (const f of fails) console.log(`  FAIL ${f}`); process.exit(1); }

@@ -4,6 +4,7 @@ import { loadProfiles } from './profiles.js';
 import { POLLING, snapDpi } from '../devices/mouse-adapter.js';
 import { toast } from '../ui/overlay.js';
 import { env } from './env.js';
+import { closeAfterScreensOff } from './idle-close.js';
 import { copyDownloadLink, copyShortReport } from './share.js';
 import { loadIndex, findSettings, showSetting } from '../ui/find-settings.js';
 // the Profiles and Lighting pages' code loads only when one of their commands is run (27 Oct 2026: Search loaded both
@@ -96,7 +97,7 @@ export function commands(q, { go, pages }) {
     out.push({ dynamic: true, group: 'Monitors', icon: 'sleep', label: 'Sleep monitors',
       run: async () => {
         toast('Putting monitors to sleep in 1s...', 'info');
-        try { await env.api('/api/monitors/sleep', {}); } catch (e) { toast('Sleep failed', 'bad', { detail: e.message }); }
+        try { await env.api('/api/monitors/sleep', {}); closeAfterScreensOff(); } catch (e) { toast('Sleep failed', 'bad', { detail: e.message }); }
       } });
   }
   // monitors: "brightness 40" (every monitor) or "brightness 40 oled" / "ips" / part of a name; contrast the same

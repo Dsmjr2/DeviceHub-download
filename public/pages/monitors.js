@@ -6,6 +6,7 @@ import { env } from '../core/env.js';
 import { isDemo } from '../core/devices.js';
 import { topbar } from './common.js';
 import { toast } from '../ui/overlay.js';
+import { closeAfterScreensOff } from '../core/idle-close.js';
 import { cameraCards } from './camera-card.js';
 import { helpHere } from '../ui/get-help.js';
 // resolution, refresh rate, HDR, main screen and Night light per screen (24 Oct 2026, ui/display-settings.js)
@@ -127,6 +128,7 @@ async function sleepMonitors() {
   try {
     const r = await env.api('/api/monitors/sleep', {});
     if (!r?.ok && r?.error) toast(`Sleep failed: ${r.error}`, 'bad');
+    else closeAfterScreensOff();   // the window closes once the screens are off (DeviceHub stays in the tray)
   } catch (e) {
     toast(`Sleep failed: ${e.message}`, 'bad');
   }

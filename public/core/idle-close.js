@@ -32,11 +32,12 @@ export function blockers(state = {}, doc = globalThis.document) {
 // The one decision: close now?
 //   hiddenSince  when the window last went hidden (null = shown now); now the clock; focused document.hasFocus()
 //   enabled      the Settings switch; reasons blockers()
-//   sleep        the PC is going to sleep (or just woke from it): no 5 minutes and no need to be hidden; a window in use
-//                on waking (focused) stays
+//   sleep        the PC is going to sleep (or just woke from it), or 'screens': DeviceHub's own Sleep button turned the
+//                screens off (the PC keeps running, so Windows says nothing). No 5 minutes and no need to be hidden; a
+//                window in use on waking (focused) stays
 export function decide({ hiddenSince, now, focused, enabled = true, reasons = [], sleep = null }) {
   if (!enabled) return { close: false, why: 'switched off' };
-  if (sleep === 'sleep' || (sleep === 'woke' && !focused)) return reasons.length ? { close: false, why: reasons.join(', ') } : { close: true, why: sleep === 'sleep' ? 'the PC is going to sleep' : 'woke from sleep, not in use' };
+  if (sleep === 'sleep' || sleep === 'screens' || (sleep === 'woke' && !focused)) return reasons.length ? { close: false, why: reasons.join(', ') } : { close: true, why: sleep === 'sleep' ? 'the PC is going to sleep' : sleep === 'screens' ? 'the screens were put to sleep' : 'woke from sleep, not in use' };
   if (hiddenSince == null) return { close: false, why: 'shown' };
   if (focused) return { close: false, why: 'focused' };
   if (now - hiddenSince < IDLE_MS) return { close: false, why: 'not long enough' };
@@ -65,6 +66,13 @@ export function unsavedWatcher(doc = globalThis.document) {
 export const isAppWindow = (win = globalThis.window) => {
   try { return !!win?.matchMedia?.('(display-mode: standalone)').matches || !!win?.matchMedia?.('(display-mode: minimal-ui)').matches; } catch { return false; }
 };
+
+// the running timer (startIdleClose), for closeAfterScreensOff
+let running = null;
+// Monitors > Sleep and the search's "Sleep monitors" (29 Oct 2026, Shawn: "app was not minimized when I just did it"):
+// the screens go off about 2 s after the click (helpers/sleep-monitors.ps1), then the window closes, by the same rules
+export const SCREENS_CLOSE_MS = 4000;
+export function closeAfterScreensOff(set = setTimeout) { return set(() => { running?.tick('screens'); }, SCREENS_CLOSE_MS); }
 
 // The timer: started once by the app. state() returns the app's part of blockers(); page() the page to come back to.
 export function startIdleClose({ state = () => ({}), page = () => location.hash, enabled = () => true,
@@ -98,5 +106,5 @@ export function startIdleClose({ state = () => ({}), page = () => location.hash,
     finally { asking = false; }
   };
   const timer = setI(tick, CHECK_MS);
-  return { tick, stop: () => { clearI(timer); doc?.removeEventListener?.('visibilitychange', onVis); win?.removeEventListener?.('focus', onFocus); }, get hiddenSince() { return hiddenSince; } };
+  return running = { tick, stop: () => { clearI(timer); doc?.removeEventListener?.('visibilitychange', onVis); win?.removeEventListener?.('focus', onFocus); }, get hiddenSince() { return hiddenSince; } };
 }
