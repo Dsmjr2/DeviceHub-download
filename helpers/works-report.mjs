@@ -21,6 +21,7 @@ import { findPersonal, rememberLink, ISSUES } from './get-help.mjs';
 import { MAX_URL } from './share-route.mjs';
 import { libraryMark, readVerified, driverShaOf, needsTurnOn, provenCopy, writable, worksRecordProblem } from './my-devices.mjs';
 import { list, devicehubVersion } from './device-library.mjs';
+import { readTried, summary } from './guided-test.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.DEVICEHUB_PORT) || 5577;
@@ -29,7 +30,9 @@ export const REPO = 'Dsmjr2/DeviceHub-download';
 export const KIND = 'devicehub-works-report';
 export const FORMAT = 1;
 export const TITLE_START = 'Works on my device:';
-export const ISSUE_FIELDS = ['kind', 'format', 'driver', 'driverSha', 'date', 'devicehub', 'model', 'firmware', 'settings', 'checked'];
+export const ISSUE_FIELDS = ['kind', 'format', 'driver', 'driverSha', 'date', 'devicehub', 'model', 'firmware', 'settings', 'checked', 'seen'];
+// seen (29 Oct 2026, Test it with me): the settings the person saw change. Reports from before it have none.
+export const OPTIONAL_FIELDS = ['seen'];
 export const HOW = "Works on my device: each listed setting passed DeviceHub's self-check on a real device (its own value written once and read back)";
 // root: the DeviceHub folder; names: extra personal names (tests)
 export const options = { root: ROOT, names: [] };
@@ -59,11 +62,17 @@ export function buildRecord(snap, { root = options.root } = {}) {
   if (v.driver && v.driver !== a.id) return no('Its check on this PC was for another driver.');
   const passed = settings.filter((s) => v.keys?.[s.key]?.ok === true);
   if (!passed.length) return no('No setting has passed its check on this PC yet.');
+  // Test it with me (helpers/guided-test.mjs): every testable setting tried, none that did nothing, one seen at least
+  const t = summary(passed, snap.values, readTried(folder));
+  const name = (k) => clip(passed.find((s) => s.key === k)?.label || k, 60);
+  if (t.no.length) return no(`${t.no.map(name).join(', ')} did not change for you, so it cannot be reported as working. Use Get help instead.`);
+  if (t.untried.length) return no(`Press Test it with me first (${t.untried.length} setting${t.untried.length === 1 ? '' : 's'} not tried yet).`);
+  if (!t.yes.length) return no('You did not see any of its settings change, so it cannot be reported as working yet.');
   const model = clip(snap.info?.Model, 80) || clip(a.title, 80) || mark.name;
   const record = {
     kind: KIND, format: FORMAT, driver: mark.name, driverSha: sha, date: String(v.checkedAt).slice(0, 10),
     devicehub: clip(v.devicehub || devicehubVersion(root), 60), model, firmware: v.firmware ? clip(v.firmware, 160) : null,
-    settings: passed.map((s) => s.key), checked: settings.length,
+    settings: passed.map((s) => s.key), checked: settings.length, seen: t.yes,
   };
   // the same shape the accept script checks; refused here too, so nothing malformed is ever offered
   const bad = issueRecordProblem(record);
@@ -77,7 +86,7 @@ export function issueRecordProblem(r) {
   if (!r || typeof r !== 'object' || Array.isArray(r)) return 'it is not an object';
   const extra = Object.keys(r).filter((k) => !ISSUE_FIELDS.includes(k));
   if (extra.length) return `it has fields a works report never has (${extra.join(', ')})`;
-  const missing = ISSUE_FIELDS.filter((k) => !(k in r));
+  const missing = ISSUE_FIELDS.filter((k) => !(k in r) && !OPTIONAL_FIELDS.includes(k));
   if (missing.length) return `it is missing ${missing.join(', ')}`;
   if (r.kind !== KIND || r.format !== FORMAT) return 'it is not a DeviceHub works report';
   return worksRecordProblem(toTested(r, 1));
@@ -85,7 +94,7 @@ export function issueRecordProblem(r) {
 
 // the device.json `tested` record a valid issue record becomes (helpers/accept-works-reports.mjs)
 export function toTested(r, issue) {
-  return { status: 'tested', real: true, by: 'works report', how: HOW, date: r.date, devicehub: r.devicehub, driver: r.driver, driverSha: r.driverSha, model: r.model, firmware: r.firmware, settings: r.settings, checked: r.checked, issue };
+  return { status: 'tested', real: true, by: 'works report', how: HOW, date: r.date, devicehub: r.devicehub, driver: r.driver, driverSha: r.driverSha, model: r.model, firmware: r.firmware, settings: r.settings, checked: r.checked, ...('seen' in r ? { seen: r.seen } : {}), issue };
 }
 
 // ---------- the issue ----------
@@ -98,6 +107,7 @@ export function makeIssue(record, labels = []) {
     `DeviceHub's library driver **${record.driver}** works on my device.`,
     '',
     `These settings passed DeviceHub's self-check (each one's own value written once and read back): ${labels.length ? labels.join(', ') : record.settings.join(', ')}. ${record.settings.length} of ${record.checked} checked.`,
+    ...(record.seen?.length ? ['', `With Test it with me, I saw these change on the device: ${record.seen.join(', ')}.`] : []),
     '',
     '### Record',
     `${fn}json`, json, fn,

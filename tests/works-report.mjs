@@ -45,8 +45,10 @@ put(`${copy}/device.json`, JSON.stringify(META, null, 2));
 const MARK = { source: 'device-library/acme-glide', name: 'acme-glide', id: 'acme-glide', status: 'untested', installedAt: '2026-10-22T10:00:00Z', devicehub: '0.1.0' };
 const setMark = (m) => put(`${copy}/library.json`, JSON.stringify(m));
 const setVerified = (keys, extra = {}) => put(`${copy}/verified.json`, JSON.stringify({ checkedAt: '2026-10-22T11:00:00.000Z', firmware: 'Mouse firmware 1.0.2.15', driver: 'acme-glide', devicehub: '0.1.0', keys, ...extra }));
-const SETTINGS = [{ key: 'dpi', label: 'DPI', type: 'slider' }, { key: 'sleep', label: 'Sleep after', type: 'choice' }, { key: 'batt', label: 'Battery', type: 'display' }];
-const snap = (over = {}) => ({ id: 'acme-glide', status: 'connected', info: { Model: 'Glide Pro', Serial: 'AB12CD34' }, adapter: { id: 'acme-glide', title: 'Acme Glide', kind: 'Mouse', plugin: 'acme-glide', settings: SETTINGS, library: { turnOn: false, learned: false } }, ...over });
+const SETTINGS = [{ key: 'dpi', label: 'DPI', type: 'slider', min: 100, max: 3200 }, { key: 'sleep', label: 'Sleep after', type: 'choice', options: [{ value: 1, label: '1 min' }, { value: 5, label: '5 min' }] }, { key: 'batt', label: 'Battery', type: 'display' }];
+// Test it with me (helpers/guided-test.mjs): the person's answers, tied to the copy's driver text
+const setTried = (keys) => put(`${copy}/tried.json`, JSON.stringify({ driverSha: SHA, keys: Object.fromEntries(Object.entries(keys).map(([k, answer]) => [k, { answer, from: null, to: null, at: '2026-10-22T11:05:00.000Z' }])) }));
+const snap = (over = {}) => ({ id: 'acme-glide', status: 'connected', info: { Model: 'Glide Pro', Serial: 'AB12CD34' }, adapter: { id: 'acme-glide', title: 'Acme Glide', kind: 'Mouse', plugin: 'acme-glide', settings: SETTINGS, library: { turnOn: false, learned: false } }, values: { dpi: 800, sleep: 1, batt: 50 }, ...over });
 
 try {
   // ---- 1. realRecord: exactly the works shape, nothing weaker
@@ -69,8 +71,18 @@ try {
   setMark({ ...MARK }); setVerified({ dpi: { ok: true, value: 800, readBack: 800 }, sleep: { ok: true, value: 1, readBack: 1 } });
   ok(/Turn on settings first/.test(buildRecord(snap(), { root }).why || ''), 'before Turn on settings: no record');
   setMark({ ...MARK, settingsOn: { at: '2026-10-22T10:30:00Z' } });
+  ok(/Test it with me first \(2 settings/.test(buildRecord(snap(), { root }).why || ''), 'before Test it with me: no record');
+  setTried({ dpi: 'yes' });
+  ok(/1 setting not tried/.test(buildRecord(snap(), { root }).why || ''), 'one setting left untried: no record');
+  setTried({ dpi: 'no', sleep: 'yes' });
+  ok(/DPI did not change for you.*Get help/.test(buildRecord(snap(), { root }).why || ''), 'a setting the person saw do nothing: no record, Get help instead');
+  setTried({ dpi: 'unsure', sleep: 'unsure' });
+  ok(/did not see any/.test(buildRecord(snap(), { root }).why || ''), 'nothing seen: no record');
+  put(`${copy}/tried.json`, JSON.stringify({ driverSha: 'f'.repeat(64), keys: { dpi: { answer: 'yes' }, sleep: { answer: 'yes' } } }));
+  ok(/Test it with me first/.test(buildRecord(snap(), { root }).why || ''), 'answers for another driver text do not count');
+  setTried({ dpi: 'yes', sleep: 'unsure' });
   let b = buildRecord(snap(), { root });
-  ok(b.ok && b.record.driver === 'acme-glide' && b.record.driverSha === SHA && b.record.model === 'Glide Pro' && b.record.date === '2026-10-22' && b.record.firmware === 'Mouse firmware 1.0.2.15' && b.record.checked === 2 && b.record.settings.join() === 'dpi,sleep', `the record (${JSON.stringify(b)})`);
+  ok(b.ok && b.record.seen.join() === 'dpi' && b.record.driver === 'acme-glide' && b.record.driverSha === SHA && b.record.model === 'Glide Pro' && b.record.date === '2026-10-22' && b.record.firmware === 'Mouse firmware 1.0.2.15' && b.record.checked === 2 && b.record.settings.join() === 'dpi,sleep', `the record (${JSON.stringify(b)})`);
   ok(b.ok && !JSON.stringify(b.record).includes('AB12CD34') && issueRecordProblem(b.record) === null, 'the record carries only its own fields (no serial from info)');
   ok(/Turn on settings first/.test(buildRecord(snap({ adapter: { ...snap().adapter, library: { turnOn: true } } }), { root }).why || ''), 'a page still showing Turn on settings: no record');
   setVerified({ dpi: { ok: true, value: 800, readBack: 800 }, sleep: { ok: false, why: 'x' } });
@@ -95,7 +107,10 @@ try {
   b = buildRecord(snap(), { root });
   const issue = makeIssue(b.record, b.labels);
   ok(issue.url.startsWith(`${ISSUES}?`) && issue.url.includes(`labels=${LABEL}`) && SAFE_URL.test(issue.url), `a GitHub new-issue link with the label (${issue.url.slice(0, 120)})`);
-  ok(JSON.stringify(parseRecord(issue.body)) === JSON.stringify(b.record) && /DPI, Sleep after/.test(issue.body), 'the record reads back out of the issue body');
+  ok(JSON.stringify(parseRecord(issue.body)) === JSON.stringify(b.record) && /DPI, Sleep after/.test(issue.body) && /I saw these change on the device: dpi/.test(issue.body), 'the record reads back out of the issue body, with what the person saw');
+  const { seen: _seen, ...older } = b.record;
+  ok(issueRecordProblem(older) === null && worksRecordProblem(toTested(older, 3)) === null, 'a report from before Test it with me (no seen) is still valid');
+  ok(/seen must list/.test(issueRecordProblem({ ...b.record, seen: ['batt'] }) || '') && /seen must list/.test(issueRecordProblem({ ...b.record, seen: [] }) || ''), 'seen must be settings that passed');
   const r = await report('acme-glide', { root, state: async () => ({ devices: [snap()] }) });
   ok(r.ok && r.token && r.url === issue.url, `report() makes it and a token (${r.why || ''})`);
   ok(opened.length === 0, 'nothing opens before the click');
@@ -115,13 +130,13 @@ try {
     { number: 9, title: 'Works on my device: x', body: body({ ...b.record, driver: 'acme-nothing' }) },
     { number: 10, title: 'Works on my device: x', body: body({ ...b.record, serial: 'AB12CD34' }) },
     { number: 11, title: 'Works on my device: x', body: body({ ...b.record, model: 'QUUXPC-7 mouse' }) },
-    { number: 12, title: 'Works on my device: x', body: body({ ...b.record, settings: ['dpi', 'rgb'], checked: 2 }) },
+    { number: 12, title: 'Works on my device: x', body: body({ ...b.record, settings: ['dpi', 'rgb'], checked: 2, seen: ['dpi'] }) },
     { number: 13, title: 'Works on my device: x', body: 'it works!' },
-    { number: 14, title: 'Works on my device: x', body: body({ ...b.record, settings: ['batt'], checked: 1 }) },
+    { number: 14, title: 'Works on my device: x', body: body({ ...b.record, settings: ['batt'], checked: 1, seen: ['batt'] }) },
   ];
   let ev = await evaluate(issues, { root, names: NAMES });
   const at = (n) => ev.find((x) => x.number === n);
-  ok(at(7)?.ok && at(7).record.real === true && at(7).record.issue === 7 && at(7).record.status === 'tested', `a valid report is accepted (${JSON.stringify(at(7))})`);
+  ok(at(7)?.ok && at(7).record.seen?.join() === 'dpi' && at(7).record.real === true && at(7).record.issue === 7 && at(7).record.status === 'tested', `a valid report is accepted (${JSON.stringify(at(7))})`);
   ok(/current driver/.test(at(8)?.why || ''), `another driver text is refused (${at(8)?.why})`);
   ok(/no device-library\/acme-nothing/.test(at(9)?.why || ''), `an unknown driver is refused (${at(9)?.why})`);
   ok(/never has \(serial\)/.test(at(10)?.why || ''), `an extra field is refused (${at(10)?.why})`);
@@ -202,7 +217,7 @@ try {
   ok(!/toast\(|modal\(|\btitle:|alert\(|confirm\(|Notification/.test(ui), 'the Works on my device panel has no pop-ups, notifications or tooltips');
   ok(/\/api\/help\/works/.test(ui) && /\/api\/help\/open/.test(ui), 'it uses the works route and Get help\'s open route');
   const page = fs.readFileSync(path.join(REAL, 'public/pages/my-device.js'), 'utf8');
-  ok(/offersWorks\(d\) \? worksReport\(d[,)]/.test(page), 'the device page offers it');
+  ok(/offersWorks\(d\) \? guidedTest\(d, \{ after: \(\) => worksReport\(d[,)]/.test(page), 'the device page offers Test it with me, then Works on my device');
   // Turn on settings for all moved from the Overview's Set up card to the Setup page's Do all (22 Oct 2026)
   const sp = fs.readFileSync(path.join(REAL, 'public/pages/setup.js'), 'utf8');
   ok(/Turn on settings for all/.test(sp) && /kind: 'turn-on-all'/.test(sp), 'the Setup page has Turn on settings for all');

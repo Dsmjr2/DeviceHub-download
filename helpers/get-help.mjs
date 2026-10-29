@@ -666,6 +666,9 @@ export async function handle(url, req, res, send, readBody) {
     if (url.pathname === '/api/help/send' && req.method === 'POST') { const b = (await readBody(req)) || {}; send(res, 200, await (await import('./support-request.mjs')).sendHelp(b.token)); return true; }
     // "Works on my device" (helpers/works-report.mjs): the record to show; it opens through /api/help/open like a report
     if (url.pathname === '/api/help/works' && req.method === 'GET') { const r = await (await import('./works-report.mjs')).report(url.searchParams.get('id'), { port }); send(res, 200, r); return true; }
+    // "Test it with me" (helpers/guided-test.mjs): the person's answers, kept on this PC for the works record
+    if (url.pathname === '/api/help/tried' && req.method === 'GET') { send(res, 200, await (await import('./guided-test.mjs')).getTried(url.searchParams.get('id'), { port })); return true; }
+    if (url.pathname === '/api/help/tried' && req.method === 'POST') { send(res, 200, await (await import('./guided-test.mjs')).postTried((await readBody(req)) || {}, { port })); return true; }
     if (url.pathname === '/api/help/request' && req.method === 'GET') { send(res, 200, await requestSupport({ vid: url.searchParams.get('vid'), pid: url.searchParams.get('pid'), name: url.searchParams.get('name') })); return true; }
     // Request support in one click through the relay (helpers/support-request.mjs); fallback: true = use the request above
     if (url.pathname === '/api/help/request/send' && req.method === 'POST') { const b = (await readBody(req)) || {}; const r = await (await import('./support-request.mjs')).send({ vid: b.vid, pid: b.pid, name: b.name }); send(res, r.bad ? 400 : 200, r); return true; }

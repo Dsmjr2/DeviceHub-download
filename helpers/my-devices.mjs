@@ -212,7 +212,7 @@ const READ_ONLY_HOW = /nothing written|settings read|read[- ]only/i;
 // record itself, real: true, the date, DeviceHub's version, the SHA-256 of the driver it was checked with, the model, the
 // firmware (text or null) and the settings that passed (at least one). No other field. When the driver's own SHA-256 is
 // known (provenCopy), the record counts only for that exact driver text: a changed driver needs a new report.
-export const WORKS_RECORD_FIELDS = ['status', 'real', 'by', 'how', 'date', 'devicehub', 'driver', 'driverSha', 'model', 'firmware', 'settings', 'checked', 'issue'];
+export const WORKS_RECORD_FIELDS = ['status', 'real', 'by', 'how', 'date', 'devicehub', 'driver', 'driverSha', 'model', 'firmware', 'settings', 'checked', 'seen', 'issue'];
 const SETTING_KEY = /^[A-Za-z0-9_:.-]{1,40}$/;
 export function worksRecordProblem(t) {
   if (!plain(t)) return 'it is not an object';
@@ -230,6 +230,8 @@ export function worksRecordProblem(t) {
   if (!(t.firmware === null || (typeof t.firmware === 'string' && t.firmware.trim() && t.firmware.length <= 160))) return 'firmware must be text or null';
   if (!Array.isArray(t.settings) || !t.settings.length || t.settings.length > 60 || !t.settings.every((k) => typeof k === 'string' && SETTING_KEY.test(k)) || new Set(t.settings).size !== t.settings.length) return 'settings must list the settings that passed (at least one)';
   if (!Number.isInteger(t.checked) || t.checked < t.settings.length || t.checked > 60) return 'checked must be how many settings were checked';
+  // seen (29 Oct 2026, Test it with me; optional, older reports have none): settings the person saw change, all of them in settings
+  if ('seen' in t && (!Array.isArray(t.seen) || !t.seen.length || !t.seen.every((k) => t.settings.includes(k)) || new Set(t.seen).size !== t.seen.length)) return 'seen must list settings that passed (at least one)';
   if (!Number.isInteger(t.issue) || t.issue < 1) return 'issue must be the GitHub issue number';
   return null;
 }

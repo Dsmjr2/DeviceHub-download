@@ -119,3 +119,19 @@ Under Checks:
 - After `--apply`: look over `git diff`, commit, then `node helpers/make-library-bundle.mjs` and upload the bundle. Only
   new installs get the record. An existing copy keeps the `device.json` it was installed with, and has already pressed
   Turn on settings or still can.
+
+## Test it with me (29 Oct 2026)
+
+The self-check only proves a device takes its own value back. Before Works on my device, the page now runs Test it
+with me (`helpers/guided-test.mjs`, `public/core/guided-values.js`, `public/ui/guided-test.js`):
+
+- One setting at a time, on the person's click, DeviceHub sets a second value for a moment. That value is inside the
+  setting's range, and lower for a slider, so a headset is never turned up. It then asks whether they noticed
+  (Yes / No / Can't tell) and puts the old value back. An unanswered question puts it back after a minute.
+- The answers stay in the copy's `tried.json`, tied to the driver's SHA-256.
+- The record needs:
+  - every testable setting tried,
+  - no "No" (a No points to Get help instead),
+  - at least one "Yes".
+- It carries `seen`: the settings the person saw change.
+- Reports from before this have no `seen` and are still valid.

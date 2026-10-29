@@ -11,6 +11,7 @@ import { topbar, connectState, deviceActions, kv, statusPill, isAway, awayBanner
 import { POLLING, LIFT_OFF, DPI_SLOTS, DPI_MAX, snapDpi, BUTTONS, ACTIONS } from '../devices/mouse-adapter.js';
 import { parseKeys, MAX_COMBO_KEYS } from '../devices/pulsar.js';
 import { batteryChart } from '../ui/battery-chart.js';
+import { pollingTest } from '../ui/polling-test.js';
 
 const d = () => devices.mouse;
 
@@ -216,6 +217,7 @@ export default {
         // shown open, no "More" row to click first (22 Oct 2026, Shawn)
         h('div', { class: 'more-body' },
           batteryChart('mouse', redraw),
+          pollingTest(v.pollingRate, card),
           pointerCard(redraw),
           card([h('h2', {}, 'Device'), h('span', { class: 'spacer' }), deviceActions(dev)], kv(dev.info)))));
   },

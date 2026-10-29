@@ -1,7 +1,7 @@
 {
-  "version": "1.16",
-  "commit": "8dec68bb7ada",
+  "version": "1.17",
+  "commit": "37d6ff9b7d77",
   "notes": [
-    "Close the low-memory window as its X button does"
+    "Small fixes and improvements"
   ]
 }
