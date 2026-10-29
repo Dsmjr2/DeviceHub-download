@@ -1,4 +1,5 @@
 // The app's ambient glow follows the last lighting color applied to the devices.
+import { koiPond } from './koi-pond.js';
 const KEY = 'devicehub.glow';
 
 export function getGlow() {
@@ -117,12 +118,16 @@ export const THEME_BGS = [['graphite', 'Graphite', '#050507', '110, 120, 145'], 
   // blossom & rose-quartz glass), and Terminal (retro CRT phosphor green screen).
   ['cyberpunk', 'Cyberpunk', '#07040e', '0, 240, 255', 'cyberpunk'],
   ['sakura', 'Sakura', '#110a14', '255, 175, 195', 'sakura'],
-  ['terminal', 'Terminal', '#030804', '74, 246, 38', 'terminal']];
+  ['terminal', 'Terminal', '#030804', '74, 246, 38', 'terminal'],
+  // a live look (28 Oct 2026, Shawn: "can you make the fish theme for me on devicehub", from a fan concept of live
+  // text-drawn wallpapers): koi and lily pads painted in characters on a teal-green pond, the koi swimming slowly
+  // (core/koi-pond.js draws them; html[data-skin="koi-pond"], style.css end, colors the rest)
+  ['koi-pond', 'Koi Pond', '#0d3533', '60, 170, 140', 'koi-pond']];
 const OLD_BGS = { plum: 'graphite', ocean: 'graphite', midnight: 'graphite', forest: 'graphite', cream: 'espresso', paper: 'graphite', slate: 'graphite', 'taco-night': 'verde' };
 const theme = { accent: SILVER, bg: 'graphite' };
 // what the silver accent becomes on each whole look, and its name in Settings
-export const SKIN_SILVER = { black: '#ffffff', espresso: '#dca878', 'old-school': '#ffb83f', verde: '#8cc63f', milk: '#8cc4ec', 'coral-reef': '#ff7f6a', cyberpunk: '#00f0ff', sakura: '#ffb7c5', terminal: '#4af626' };
-export const SKIN_SILVER_NAME = { black: 'Pure white', espresso: 'Crema', 'old-school': 'Gold', verde: 'Verde', milk: 'Sky blue', 'coral-reef': 'Coral', cyberpunk: 'Neon cyan', sakura: 'Blossom', terminal: 'Phosphor' };
+export const SKIN_SILVER = { black: '#ffffff', espresso: '#dca878', 'old-school': '#ffb83f', verde: '#8cc63f', milk: '#8cc4ec', 'coral-reef': '#ff7f6a', cyberpunk: '#00f0ff', sakura: '#ffb7c5', terminal: '#4af626', 'koi-pond': '#f08a4b' };
+export const SKIN_SILVER_NAME = { black: 'Pure white', espresso: 'Crema', 'old-school': 'Gold', verde: 'Verde', milk: 'Sky blue', 'coral-reef': 'Coral', cyberpunk: 'Neon cyan', sakura: 'Blossom', terminal: 'Phosphor', 'koi-pond': 'Koi orange' };
 export const currentTheme = () => ({ ...theme });
 export function applyTheme(s = {}) {
   if (/^#[0-9a-f]{6}$/i.test(s.themeAccent || '')) theme.accent = s.themeAccent.toLowerCase();
@@ -130,6 +135,7 @@ export function applyTheme(s = {}) {
   if (THEME_BGS.some(([k]) => k === bgKey)) theme.bg = bgKey;
   const bg = THEME_BGS.find(([k]) => k === theme.bg);
   if (bg[4]) document.documentElement.dataset.skin = bg[4]; else delete document.documentElement.dataset.skin;
+  koiPond(bg[4] === 'koi-pond');
   // on Old School the silver accent is the game's gold, on Verde the verde green, on Milk a milk-carton sky blue, on
   // Coral Reef coral
   const r = document.documentElement.style, a = (theme.accent === SILVER && SKIN_SILVER[bg[4]]) || theme.accent, silver = a === SILVER;

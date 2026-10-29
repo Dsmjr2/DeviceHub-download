@@ -3169,3 +3169,64 @@ html[data-skin="terminal"]:not([data-art="live"]) .art.mark { filter: sepia(1) h
 html[data-skin="milk"][data-art="aero"] :not(.art-preview) > .art.mark, html[data-skin="milk"] .art-preview[data-art-preview="aero"] .art.mark.art { filter: drop-shadow(0 10px 14px rgba(20, 80, 150, .3)) drop-shadow(0 0 8px rgba(70, 190, 255, .35)); }
 html[data-skin="milk"][data-art="aero"] :not(.art-preview) > .art, html[data-skin="milk"] .art-preview[data-art-preview="aero"] .art { --gr1: #9fe6ff; --gr2: rgba(40, 160, 235, .85); --gr3: #0a6fc8; --soft-rim: rgba(25, 120, 205, .55); --seam: rgba(20, 105, 190, .5); --line: rgba(20, 105, 190, .5); --hi-line: rgba(25, 125, 210, .6); --cut-rim: rgba(20, 110, 195, .5); }
 html[data-skin="milk"] .art-style[data-look="aero"] { background-color: rgba(60, 140, 220, .1); }
+
+/* ---------- 9. Koi Pond: live text-drawn koi and lily pads (html[data-skin="koi-pond"], 28 Oct 2026) ----------
+   Teal-green pond water with soft light shafts, koi and lily pads painted in characters and swimming (core/koi-pond.js
+   draws them on canvas.koi-pond), clear pond-glass panes, koi-orange headings and controls, lily-green values. */
+html[data-skin="koi-pond"] {
+  --koi: #f08a4b; --koi-hi: #ffb07f; --koi-ink: #2a1206; --lily: #8fd477; --lily-deep: #5fae4f;
+  --panel: rgba(200, 255, 240, .06); --panel-2: rgba(200, 255, 240, .1); --panel-solid: #0f3532;
+  --raise: rgba(200, 255, 240, .09); --sunk: rgba(3, 22, 20, .42);
+  --line: rgba(190, 245, 228, .16); --line2: rgba(190, 245, 228, .3);
+  --text: #eefaf4; --muted: rgba(222, 244, 236, .82); --faint: rgba(200, 232, 222, .66);
+  --good: #8fd477; --warn: #ffd27a; --bad: #ff7a6a;
+  --glass: linear-gradient(160deg, rgba(210, 255, 240, .1), rgba(20, 90, 80, .05) 50%, rgba(210, 255, 240, .05));
+  --rim: inset 0 1px 0 rgba(220, 255, 245, .2), inset 0 -1px 0 rgba(0, 0, 0, .22);
+  --lift: 0 18px 40px -18px rgba(0, 14, 12, .85);
+  --card: linear-gradient(168deg, rgba(14, 58, 54, .68), rgba(8, 40, 38, .76));
+  --card-solid-a: #114340; --card-solid-b: #0a2f2c;
+  --dialog-a: rgba(14, 58, 54, .97); --dialog-b: rgba(8, 40, 38, .97);
+  --koi-fill: linear-gradient(90deg, #e2632f, var(--koi) 60%, var(--koi-hi));
+}
+html[data-skin="koi-pond"] body::before {
+  background:
+    radial-gradient(circle 1px at 50% 50%, rgba(200, 245, 230, .1), transparent) 0 0 / 26px 26px,
+    linear-gradient(90deg, transparent 12%, rgba(190, 255, 235, .07) 22%, transparent 30%, transparent 62%, rgba(190, 255, 235, .05) 70%, transparent 78%),
+    radial-gradient(70% 60% at 30% 10%, rgba(120, 220, 200, .2), transparent 72%),
+    radial-gradient(80% 60% at 70% 110%, rgba(10, 60, 50, .5), transparent 75%),
+    linear-gradient(180deg, #1d5e58, #15504b 45%, #0d3533); }
+canvas.koi-pond { position: fixed; left: 0; top: 0; z-index: -1; pointer-events: none; opacity: .92; }
+/* the koi show through the panes, a little softened */
+html[data-skin="koi-pond"] :is(.rail, .panel, .bay, .hero, .profile) { -webkit-backdrop-filter: blur(1.5px) saturate(1.1); backdrop-filter: blur(1.5px) saturate(1.1); }
+html[data-skin="koi-pond"][data-picture] canvas.koi-pond { opacity: .55; }
+html[data-skin="koi-pond"] :is(.rail, .panel, .bay, .hero, .profile, .toast, .modal, .palette),
+html[data-skin="koi-pond"] #main :is(.panel, .bay, .hero, .profile) {
+  background: var(--glass), var(--card); border-color: rgba(190, 245, 228, .22); box-shadow: var(--rim), var(--lift); }
+html[data-skin="koi-pond"] :is(.bay:hover, .profile:hover) { border-color: rgba(240, 138, 75, .55); }
+html[data-skin="koi-pond"] :is(h1, h2, .panel-head h2, .modal h2) { color: var(--koi-hi); }
+html[data-skin="koi-pond"] :is(.theme-label, .prof-label, .nav-label, .bay-kind) { color: var(--koi); }
+html[data-skin="koi-pond"] :is(.gauge-text b, .slider output, .bcell-text b, .ov-bat b, .prof-line b, .kv b, .page.ov .bay .readout b) { color: var(--lily); }
+html[data-skin="koi-pond"] .nav:hover { background: rgba(200, 255, 240, .1); color: #fff; }
+html[data-skin="koi-pond"] .nav.active { color: #ffffff; font-weight: 600; background: linear-gradient(90deg, rgba(240, 138, 75, .3), rgba(143, 212, 119, .08));
+  box-shadow: inset 3px 0 0 var(--koi); }
+html[data-skin="koi-pond"] .nav.active .ic { color: var(--koi-hi); }
+html[data-skin="koi-pond"] .btn { background: linear-gradient(180deg, rgba(200, 255, 240, .12), rgba(200, 255, 240, .05)); border-color: rgba(190, 245, 228, .3); color: #f2fbf7; }
+html[data-skin="koi-pond"] .btn:hover { background: linear-gradient(180deg, rgba(200, 255, 240, .2), rgba(200, 255, 240, .1)); border-color: var(--koi); }
+html[data-skin="koi-pond"] :is(.btn.primary, button.primary) { background: linear-gradient(180deg, #ffa36b, #e8743a); border-color: #c4592a; color: var(--koi-ink); font-weight: 600; }
+html[data-skin="koi-pond"] :is(.btn.primary, button.primary):hover { background: linear-gradient(180deg, #ffb685, #f0834a); color: var(--koi-ink); }
+html[data-skin="koi-pond"] .btn.primary .ic { color: var(--koi-ink); }
+html[data-skin="koi-pond"] .btn.ghost { background: none; border-color: transparent; box-shadow: none; }
+html[data-skin="koi-pond"] .switch.on { background: var(--koi-fill); }
+html[data-skin="koi-pond"] .slider input { background: linear-gradient(90deg, #e2632f, var(--koi) var(--p), rgba(200, 255, 240, .14) var(--p)); }
+html[data-skin="koi-pond"] :is(.gauge-bar i, .gauge-dots i.on, .gauge-signal i.on, .loadbar span, .loadbar-fill, .mt-fill) { background: var(--koi-fill); }
+html[data-skin="koi-pond"] .text.dd { background: rgba(3, 26, 24, .55); border: 1px solid rgba(190, 245, 228, .3); color: var(--text); }
+html[data-skin="koi-pond"] .text.dd:hover:not(:disabled), html[data-skin="koi-pond"] .text.dd.open { border-color: var(--koi); }
+html[data-skin="koi-pond"] .dd .dd-chev { color: var(--koi); }
+html[data-skin="koi-pond"] .dd-list { background: var(--glass), linear-gradient(168deg, var(--dialog-a), var(--dialog-b)); border-color: rgba(190, 245, 228, .3); }
+html[data-skin="koi-pond"] .dd-opt.active { background: rgba(240, 138, 75, .2); color: #fff; }
+.theme-tile[data-bg="koi-pond"] .theme-mini { background:
+  radial-gradient(circle 4px at 28% 32%, #6fbf5a 90%, transparent), radial-gradient(circle 3px at 76% 70%, #5fae4f 90%, transparent),
+  radial-gradient(ellipse 7px 3px at 62% 36%, #ef8a45 85%, transparent), radial-gradient(ellipse 6px 2.5px at 36% 72%, #f3eee2 85%, transparent),
+  linear-gradient(180deg, #1d5e58, #0d3533); box-shadow: inset 0 0 0 1px rgba(190, 245, 228, .3); }
+.theme-tile[data-bg="koi-pond"] .mini-card { background: linear-gradient(160deg, rgba(210, 255, 240, .16), rgba(10, 50, 46, .75)); border-color: rgba(190, 245, 228, .34); }
+.theme-tile[data-bg="koi-pond"] .mini-dot { background: #f08a4b; }
