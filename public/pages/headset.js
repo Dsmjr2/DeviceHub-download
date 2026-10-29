@@ -3,7 +3,8 @@ import { h, icon } from '../ui/dom.js';
 import { more, card, row, toggle, slider, button, pill, segmented, offSwatch, isOff, OFF } from '../ui/controls.js';
 import { batteryCell, loadBatteryEstimates } from '../ui/controls.js';
 import { batteryChart } from '../ui/battery-chart.js';
-import { devices, write, prepare, isDemo, isRemote, connect, markMissing } from '../core/devices.js';
+import { devices, write, prepare, isDemo, isRemote, connect, markMissing, headsetTwin } from '../core/devices.js';
+import { twinSettingsCard } from './my-device.js';
 import { env } from '../core/env.js';
 import { showPicker, isJack } from '../core/headset-pick.js';
 import { headsetArt, genericArtFor } from '../ui/art.js';
@@ -31,6 +32,8 @@ const ICUE_ROWS = [
 
 // a library or learned driver that runs this same USB headset (a my-devices page of kind Headset, same maker)
 function ownHeadset(a) {
+  const twin = headsetTwin();   // the same USB headset, by its USB id (29 Oct 2026)
+  if (twin) return twin;
   const g = a.generic || {};
   const vid = /VID_([0-9A-F]{4})/i.exec(g.usb || '')?.[1]?.toLowerCase();
   const brand = brandForUsb(vid);
@@ -39,7 +42,7 @@ function ownHeadset(a) {
 }
 
 // any other headset: what works now, plus its driver page (if installed) or Learn a device for USB models
-function genericCard(a) {
+function genericCard(a, redraw) {
   const g = a.generic || {};
   if (isJack(g.usb)) {
     return card([h('h2', {}, 'Wired headset')],
@@ -48,6 +51,7 @@ function genericCard(a) {
   const vid = /VID_([0-9A-F]{4})/i.exec(g.usb || '')?.[1]?.toLowerCase(), pid = /PID_([0-9A-F]{4})/i.exec(g.usb || '')?.[1]?.toLowerCase();
   const u = { id: `${vid}:${pid}`, vid, name: g.device, brand: brandForUsb(vid) };
   const own = ownHeadset(a);
+  if (own && own === headsetTwin()) return twinSettingsCard(own, redraw);
   return card([h('h2', {}, 'Lights & battery')],
     own
       ? h('p', { style: { margin: '0 0 10px' } }, `Battery${own.battery?.percent != null ? ` (${own.battery.percent}%)` : ''} and headset settings are on the ${own.adapter.title} page.`)
@@ -95,7 +99,9 @@ function headsetPicker(a, redraw) {
 }
 
 export default {
-  id: 'headset', title: 'Headset', icon: 'headset', device: 'headset', accent: 'var(--c-headset)', grab: () => prepare('headset'), watches: ['headset'],
+  id: 'headset', title: 'Headset', icon: 'headset', device: 'headset', accent: 'var(--c-headset)', grab: () => prepare('headset'),
+  // the headset's own driver too, when it is the same headset (its battery and settings are on this page)
+  get watches() { const t = headsetTwin(); return t ? ['headset', t.id] : ['headset']; },
   render() {
     const redraw = () => { const el = document.querySelector('#main .page'); if (el && location.hash === '#/headset') el.replaceWith(Object.assign(this.render(), { className: 'page no-anim' })); };
     loadBatteryEstimates(() => redraw());
@@ -141,7 +147,7 @@ export default {
           // while iCUE runs, what it reports that DeviceHub cannot change
           ...(direct ? [] : ICUE_ROWS.filter(([k]) => props[k] && !props[k].canWrite && k !== 'micEnabled').map(([k, label, show]) => row(label, 'Reported by iCUE.', pill(show(v[`prop:${k}`]), v[`prop:${k}`] ? 'good' : ''))))),
         // Lights & power, with Mic check under it (the two columns balance)
-        h('div', { class: 'stack' }, generic ? genericCard(a) : card([h('h2', {}, 'Lights & power'), h('span', { class: 'sub' }, direct ? null : 'iCUE controls these while open')],
+        h('div', { class: 'stack' }, generic ? genericCard(a, redraw) : card([h('h2', {}, 'Lights & power'), h('span', { class: 'sub' }, direct ? null : 'iCUE controls these while open')],
           row('Headset color', null, h('div', { class: 'swatches compact' },
             ...SWATCHES.map((c) => h('button', { class: 'swatch', style: { '--s': c }, title: c, 'aria-label': `color ${c}`, onclick: () => set('led', c, 'Headset Color', c).then(() => setGlow(c)) })),
             h('input', { type: 'color', class: 'swatch-custom', title: 'Any color', value: v.led && !isOff(v.led) ? v.led : '#ff6a1a', 'aria-label': 'custom color', onchange: (e) => set('led', e.target.value, 'Headset Color', e.target.value) }),

@@ -328,6 +328,9 @@ function adapterMeta(d) {
   // a library driver that found a device on its channel that is not its own (helpers/my-devices.mjs stepAside), and the
   // USB id it is connected through (the Logitech drivers: one of many receiver and cable ids)
   if (a.plugin) Object.assign(meta, { notMine: a.notMine?.why || null, usbId: a.usbId || null });
+  // the USB ids its driver declares (29 Oct 2026): the window uses them to tell that an added headset driver and the
+  // Headset page's Windows sound side are one headset, and shows it once (core/devices.js headsetTwin)
+  if (a.plugin) { const hx = (x) => String(x).toLowerCase().replace(/^0x/, '').padStart(4, '0'); meta.usbIds = [...new Set(myDevices.declaredIds(a).flatMap((d) => (d.pids || []).filter((p) => p != null && p !== '').map((p) => `${hx(d.vid)}:${hx(p)}`)))]; }
   if (a.plugin) Object.assign(meta, { plugin: a.plugin, settings: a.settings, battery: typeof a.battery === 'function', ...(a.library ? { library: a.library } : {}), ...(a.batteryCare ? { batteryCare: a.batteryCare } : {}) });
   // while the mouse is away its flash is not read: which settings read back cleanly is taken from its last visit
   if (a.id === 'mouse') meta.trusted = Object.fromEntries(Object.keys(d.values || {}).map((k) => [k, d.status !== 'connected' && d.savedTrusted ? !!d.savedTrusted[k] : !!a.trusted?.(k)]));

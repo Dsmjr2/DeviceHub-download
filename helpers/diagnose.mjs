@@ -107,7 +107,7 @@ export function parseLog(text, now = Date.now()) {
 // The built-in three, by the USB ids DeviceHub drives them on (helpers/hid-host.mjs SPECS, helpers/hs80-direct.js);
 // in the server the live SPECS are used (another VIA keyboard, my-devices drivers).
 const BUILT_IN = {
-  mouse: { usb: [['3710:5406', 'the Pulsar 8K dongle'], ['3710:3506', "the mouse's USB cable"]], wireless: true, receiver: 'The Pulsar 8K dongle' },
+  mouse: { usb: [['3710:5406', 'the Pulsar 8K dongle'], ['3710:5403', 'the Pulsar dongle'], ['3710:3506', "the mouse's USB cable"]], wireless: true, receiver: 'The Pulsar 8K dongle' },
   headset: { usb: [['1b1c:0a6b', 'the HS80 receiver'], ['1b1c:0a69', "the headset's USB cable"]], wireless: true, receiver: 'The HS80 receiver' },
   keyboard: { usb: [['342d:e479', 'the P75 on its USB cable']], wireless: false },
 };

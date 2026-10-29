@@ -64,7 +64,7 @@ const adapter = {
     const cable = !!mouse.device.onCable;
     // on the cable the dongle is not in the path (it reads 0.00), so only the mouse is shown
     return cable ? { Model: 'Pulsar X-Lite CrazyLight', Connection: 'USB cable (charging)', 'Mouse firmware': v.mouse || '—' }
-      : { Model: 'Pulsar X-Lite CrazyLight', Connection: 'Dongle', Receiver: `Pulsar 8K Dongle (${mouse.device.productId.toString(16)})`, 'Mouse firmware': v.mouse || '—', 'Dongle firmware': v.dongle || '—' };
+      : { Model: 'Pulsar X-Lite CrazyLight', Connection: 'Dongle', Receiver: mouse.device.productId === 0x5406 ? 'Pulsar 8K Dongle (5406)' : `Pulsar dongle (${mouse.device.productId.toString(16)})`, 'Mouse firmware': v.mouse || '—', 'Dongle firmware': v.dongle || '—' };
   },
 
   // In DeviceHub's background agent the reading goes through helpers/mouse-level.js (levelFilter): the mouse's own

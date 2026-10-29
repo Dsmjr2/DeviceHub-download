@@ -29,7 +29,10 @@ function wiredHeadsets(endpoints, usbIds = [], names = {}) {
   return outs.map((o) => {
     const key = keyOf(o.id), card = cardOf(o.name);
     const own = typeof names?.[key] === 'string' && names[key].trim() ? names[key].trim().slice(0, 40) : null;
-    return { usb: key, device: own || o.name, wired: true, headphones: true,
+    // an output Windows calls "Speakers (...)" is the PC's or laptop's own speakers, or headphones on a jack Windows does
+    // not tell apart (29 Oct 2026: a laptop's "Speakers (Realtek(R) Audio)" beside an Arctis read as a second headset)
+    const plainName = /^speakers\b/i.test(o.name) ? 'PC speakers or jack' : o.name;
+    return { usb: key, device: own || plainName, wired: true, headphones: true,
       playback: [{ id: o.id, name: o.name }],
       recording: card ? mics.filter((m) => cardOf(m.name) === card).map((m) => ({ id: m.id, name: m.name })) : [] };
   });

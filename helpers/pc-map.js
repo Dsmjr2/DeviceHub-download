@@ -39,7 +39,7 @@ const RAM = [
 // which page runs a device is decided by its own driver, so the Headset page is unchanged. The HS80 RGB USB (0a88) is
 // another model DeviceHub's HS80 code does not open, so it is not listed.
 const VIRTUAL = new Set(['046d:c231', '046d:c232']);
-const RUNS = { '3710:5406': 'Mouse page', '3710:3506': 'Mouse page (its USB cable)', '1b1c:0a6b': 'Headset page', '1b1c:0a69': 'Headset page (its USB cable)', '1b1c:0a6a': 'Headset page (its USB cable, charging)', '1b1c:0a71': 'Headset page (behind its receiver)', '342d:e479': 'Keyboard page', '291a:3369': 'camera mic (Sound)' };
+const RUNS = { '3710:5406': 'Mouse page', '3710:5403': 'Mouse page (Pulsar dongle)', '3710:3506': 'Mouse page (its USB cable)', '1b1c:0a6b': 'Headset page', '1b1c:0a69': 'Headset page (its USB cable)', '1b1c:0a6a': 'Headset page (its USB cable, charging)', '1b1c:0a71': 'Headset page (behind its receiver)', '342d:e479': 'Keyboard page', '291a:3369': 'camera mic (Sound)' };
 
 let cache = { at: 0, value: null }, pending = null;
 // through the native helper first (helpers/pc-reads.cs op pc-map, the same JSON), PowerShell when it cannot answer

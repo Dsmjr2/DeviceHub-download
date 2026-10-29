@@ -544,8 +544,22 @@ export function markMissing(id) { delete rawCache[id]; if (!remote && devices[id
 // demo mode or without the agent. A PC that has none of them shows none (20 Oct 2026: the Overview then shows the
 // first-run screen instead of tiles for devices the person does not own).
 const openedAt = Date.now();
+// One headset shown once (29 Oct 2026, Shawn: a copy "saying he has two headsets when he doesnt"): the Headset page
+// runs any USB headset's Windows sound side (headset-adapter.js generic), and a library or learned driver can run the
+// same headset's battery and settings. The driver whose declared USB ids (or connected USB id) include the Headset
+// page's headset is its twin: it has no sidebar entry or Overview tile of its own; the Headset page shows its battery
+// and settings, and its own page is still there (Open on the Headset page).
+const usbOf = (s) => { const m = /VID_([0-9A-F]{4}).*PID_([0-9A-F]{4})/i.exec(s || ''); return m ? `${m[1]}:${m[2]}`.toLowerCase() : null; };
+export function headsetTwin() {
+  const hs = devices.headset;
+  const id = hs?.adapter?.mode === 'generic' ? usbOf(hs.adapter.generic?.usb) : null;
+  if (!id) return null;
+  return Object.values(devices).find((d) => d.adapter?.plugin && /headset/i.test(d.adapter.kind || '')
+    && ((d.adapter.usbIds || []).includes(id) || String(d.adapter.usbId || '').toLowerCase() === id)) || null;
+}
 export function shownDevices() {
-  const all = Object.values(devices);
+  const twin = headsetTwin();
+  const all = Object.values(devices).filter((d) => d !== twin);
   if (demo || !remote) return all;
   // absent: an added driver that found nothing of its own here (helpers/my-devices.mjs isAbsent): never shown
   return all.filter((d) => !d.absent && (d.seen || ['connected', 'asleep'].includes(d.status)));

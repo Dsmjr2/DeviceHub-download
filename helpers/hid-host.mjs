@@ -15,7 +15,11 @@ export const SPECS = [
     watch: '0a',
     // on its USB cable (charging) the mouse is its own device, 3710:3506, with the same config collection; the dongle
     // then reports it offline. The cable is used whenever it is plugged in (measured 19 Oct 2026).
-    cablePid: '3506' },
+    cablePid: '3506',
+    // other Pulsar dongles the same mouse can be paired with (29 Oct 2026: a copy with the same mouse on 3710:5403 was
+    // never opened). Tried after the 8K dongle. pulsar.js reads every value with its checksum and writes only a value
+    // that read back cleanly, so a dongle that talks differently stays read-only and nothing is written to it.
+    dongles: ['5403'] },
   { id: 'keyboard', vendorId: 0x342d, productId: 0xe479, usagePage: 0xff60, vid: '342D', pid: 'E479', page: 'FF60', usage: '0061', len: 32, reportId: 0, replyMs: 750, productName: 'EPOMAKER P75', echo: (b) => ECHO[b[0]] ?? 1 },
 ];
 
@@ -55,8 +59,8 @@ class HostDevice {
   // Opens the device if it is plugged in. Resolves true / false.
   async tryOpen() {
     if (this.opened) return true;
-    for (const pid of [this.spec.cablePid, this.spec.pid].filter(Boolean)) {
-      if ((await native.request(this.chanFor(pid), 'OPEN', 15000)) === 'OK') { this.pid = pid; this.opened = true; this.cableCheckAt = Date.now(); this.watchCable(); this.listen(); return true; }
+    for (const pid of [this.spec.cablePid, this.spec.pid, ...(this.spec.dongles || [])].filter(Boolean)) {
+      if ((await native.request(this.chanFor(pid), 'OPEN', 15000)) === 'OK') { this.pid = pid; if (pid !== this.spec.cablePid) this.dongle = pid; if (pid !== this.spec.pid && pid !== this.spec.cablePid) { this.productId = parseInt(pid, 16); this.productName = `Pulsar dongle (${pid})`; } this.opened = true; this.cableCheckAt = Date.now(); this.watchCable(); this.listen(); return true; }
     }
     return false;
   }
@@ -77,7 +81,7 @@ class HostDevice {
     if (!s.cablePid || this.onCable || Date.now() - (this.cableCheckAt || 0) < (windowsEvents ? 60000 : 10000)) return false;
     this.cableCheckAt = Date.now();
     if ((await native.request(this.chanFor(s.cablePid), 'OPEN', 5000)) !== 'OK') return false;
-    native.request(this.chanFor(s.pid), 'CLOSE', 3000);
+    native.request(this.chanFor(this.dongle || s.pid), 'CLOSE', 3000);
     this.pid = s.cablePid;
     return true;
   }
@@ -85,9 +89,13 @@ class HostDevice {
     const s = this.spec;
     if (!this.onCable) return false;
     native.request(this.chanFor(s.cablePid), 'CLOSE', 3000);
-    this.pid = s.pid;
     this.cableCheckAt = Date.now();
-    return (await native.request(this.chanFor(s.pid), 'OPEN', 5000)) === 'OK';
+    // back to the dongle it was found on; started on the cable, any of the dongles
+    for (const pid of [this.dongle, s.pid, ...(s.dongles || [])].filter((p, i, a) => p && a.indexOf(p) === i)) {
+      if ((await native.request(this.chanFor(pid), 'OPEN', 5000)) === 'OK') { this.pid = pid; this.dongle = pid; return true; }
+    }
+    this.pid = this.dongle || s.pid;
+    return false;
   }
 
   async open() { if (!(await this.tryOpen())) throw Object.assign(new Error(`${this.productName} is not plugged in`), { gone: true }); }

@@ -204,6 +204,18 @@ function control(d, s, off = false) {
     grab: () => (off ? undefined : prepare(d.id)), live: s.live && !off ? (x) => write(d.id, s.key, x, { live: true }).catch(() => {}) : null, onCommit: set });
 }
 
+// The headset driver's settings on the Headset page (29 Oct 2026): the same rows as its own page, for the headset
+// whose Windows sound side the Headset page runs (core/devices.js headsetTwin), so one headset is one page.
+export function twinSettingsCard(d, redraw) {
+  const a = d.adapter;
+  const shown = (a.settings || []).filter((s) => d.values?.[s.key] !== undefined);
+  return card([h('h2', {}, 'Battery & headset settings'), batteryPill(d)],
+    turnOnBanner(d, redraw),
+    shown.length ? shown.map((s) => settingRow(d, s)) : h('p', { class: 'faint', style: { margin: 0 } }, d.status === 'connected' ? 'No settings reported yet.' : `The ${a.title} is not connected.`),
+    careLine(d),
+    h('div', { class: 'actions', style: { marginTop: '10px' } }, button('More', () => { location.hash = `#/${d.id}`; }, { kind: 'ghost small', title: `Everything about the ${a.title}` })));
+}
+
 export function devicePage(id) {
   const d0 = devices[id];
   const kindKey = String(d0.adapter.kind || '').toLowerCase();
