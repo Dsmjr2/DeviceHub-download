@@ -21,6 +21,8 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.DEVICEHUB_PORT) || 5577;
 export const TRIED_FILE = 'tried.json';
 export const ANSWERS = ['yes', 'no', 'unsure'];
+// root: the DeviceHub folder (tests use their own)
+export const options = { root: ROOT };
 export { TESTABLE_TYPES, testable, testValue } from '../public/core/guided-values.js';
 // the answers kept for this driver's exact text, or {} (a changed driver starts over)
 export function readTried(folder) {

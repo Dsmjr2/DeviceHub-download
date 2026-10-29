@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { testable, testValue, readTried, saveAnswer, summary, getTried, postTried, TRIED_FILE } from '../helpers/guided-test.mjs';
+import { testable, testValue, readTried, saveAnswer, summary, getTried, postTried, TRIED_FILE, options as guidedOptions } from '../helpers/guided-test.mjs';
 import { driverSha } from '../helpers/my-devices.mjs';
 
 const REAL = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -57,6 +57,9 @@ try {
   const state = async () => ({ devices: [{ id: 'acme', adapter: { plugin: 'acme', settings } }, { id: 'mouse', adapter: { id: 'mouse' } }] });
   const p = await postTried({ id: 'acme', key: 'logo', answer: 'unsure' }, { root, state });
   ok(p.ok && p.keys.logo.answer === 'unsure' && (await getTried('acme', { root, state })).keys.logo.answer === 'unsure', 'POST saves, GET reads it back');
+  const was = guidedOptions.root; guidedOptions.root = root;
+  ok((await getTried('acme', { state })).keys.logo.answer === 'unsure', 'the route works with its own default folder (no root passed, as the server calls it)');
+  guidedOptions.root = was;
   const builtIn = await attempt(() => getTried('mouse', { root, state }));
   ok(!builtIn.ok && builtIn.code === 404, "a built-in device has no test (DeviceHub's own drivers are already tested)");
   const down = await attempt(() => getTried('acme', { root, state: async () => null }));
