@@ -266,9 +266,12 @@ export async function start({ port, corsairHelper }) {
   // device came back. Waking can be reported twice (automatic, then by the user); one round per wake.
   let wokeAt = 0;
   require('./native').onEvent('power', (id) => {
-    if (id === 0) { console.log(`[power] ${new Date().toLocaleString()} going to sleep`); return; }
+    // the window is told too (29 Oct 2026, Shawn: close it when the PC goes to sleep): public/core/idle-close.js closes
+    // it at once, and again on waking in case sleep came before the close finished
+    if (id === 0) { console.log(`[power] ${new Date().toLocaleString()} going to sleep`); send('sleep', { at: Date.now() }); return; }
     if (Date.now() - wokeAt < 30000) return;
     wokeAt = Date.now();
+    send('woke', { at: wokeAt });
     console.log(`[power] ${new Date().toLocaleString()} woke up; reconnecting`);
     const round = async (label) => {
       await devicesChanged().catch(() => {});

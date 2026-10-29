@@ -316,7 +316,7 @@ async function api(req, res, url) {
     if (held.length) return send(res, 200, { closing: false, why: held.join(', ') });
     try {
       const r = await require('./helpers/window-close').closeAsking({ clientPort: req.socket.remotePort, serverPort: PORT, root: ROOT, page: b?.page, appWindow: b?.appWindow === true });
-      if (r.closing) serverLog({ kind: 'info', text: 'Window closed after 5 minutes minimized (DeviceHub is still in the tray)' });
+      if (r.closing) serverLog({ kind: 'info', text: b?.sleep === 'sleep' ? 'Window closed as the PC went to sleep (DeviceHub is still in the tray)' : b?.sleep === 'woke' ? 'Window closed after the PC woke, not in use (DeviceHub is still in the tray)' : 'Window closed after 5 minutes minimized (DeviceHub is still in the tray)' });
       return send(res, 200, r);
     } catch (e) { return send(res, 200, { closing: false, why: e.message }); }
   }

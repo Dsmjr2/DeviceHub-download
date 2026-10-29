@@ -1,7 +1,7 @@
 {
-  "version": "1.13",
-  "commit": "d41834b1f0b0",
+  "version": "1.14",
+  "commit": "8cad2a442f4a",
   "notes": [
-    "Legion Gen 10 keyboard lights driver (untested, install on a click)"
+    "Close the window when the PC goes to sleep"
   ]
 }

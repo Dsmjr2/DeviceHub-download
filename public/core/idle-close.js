@@ -32,8 +32,11 @@ export function blockers(state = {}, doc = globalThis.document) {
 // The one decision: close now?
 //   hiddenSince  when the window last went hidden (null = shown now); now the clock; focused document.hasFocus()
 //   enabled      the Settings switch; reasons blockers()
-export function decide({ hiddenSince, now, focused, enabled = true, reasons = [] }) {
+//   sleep        the PC is going to sleep (or just woke from it): no 5 minutes and no need to be hidden; a window in use
+//                on waking (focused) stays
+export function decide({ hiddenSince, now, focused, enabled = true, reasons = [], sleep = null }) {
   if (!enabled) return { close: false, why: 'switched off' };
+  if (sleep === 'sleep' || (sleep === 'woke' && !focused)) return reasons.length ? { close: false, why: reasons.join(', ') } : { close: true, why: sleep === 'sleep' ? 'the PC is going to sleep' : 'woke from sleep, not in use' };
   if (hiddenSince == null) return { close: false, why: 'shown' };
   if (focused) return { close: false, why: 'focused' };
   if (now - hiddenSince < IDLE_MS) return { close: false, why: 'not long enough' };
@@ -75,15 +78,15 @@ export function startIdleClose({ state = () => ({}), page = () => location.hash,
   const onFocus = () => { hiddenSince = hiddenNow() ? now() : null; };
   doc?.addEventListener?.('visibilitychange', onVis);
   win?.addEventListener?.('focus', onFocus);
-  const tick = async () => {
+  const tick = async (sleep = null) => {
     if (asking || done) return null;
     // focus: a hidden page normally has none; one that has it is in use
     const focused = (() => { try { return !!doc?.hasFocus?.(); } catch { return false; } })();
-    const d = decide({ hiddenSince, now: now(), focused, enabled: enabled() !== false, reasons: blockers(state(), doc) });
+    const d = decide({ hiddenSince, now: now(), focused, enabled: enabled() !== false, reasons: blockers(state(), doc), sleep });
     if (!d.close) return d;
     asking = true;
     try {
-      const r = await api({ page: page(), hiddenFor: now() - hiddenSince, appWindow: isAppWindow(win) });
+      const r = await api({ page: page(), hiddenFor: hiddenSince == null ? 0 : now() - hiddenSince, appWindow: isAppWindow(win), ...(sleep ? { sleep } : {}) });
       log(r);
       // the server closed DeviceHub's own window (this page ends with it), or says this is the low-memory window:
       // then only this app window closes itself, never a browser tab

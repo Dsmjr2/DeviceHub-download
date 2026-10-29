@@ -347,7 +347,11 @@ render(true);
 // Close the window after 5 minutes minimized or hidden, when nothing is running (core/idle-close.js; Settings > Startup)
 if (!DEMO) {
   const unsaved = unsavedWatcher();
-  startIdleClose({ state: () => ({ busy: isBusy(), dropdown: dropdownOpen(), learn: learnBusy(), displayKeep: displayWaiting(), unsaved: unsaved() }) });
+  const idle = startIdleClose({ state: () => ({ busy: isBusy(), dropdown: dropdownOpen(), learn: learnBusy(), displayKeep: displayWaiting(), unsaved: unsaved() }) });
+  // the PC going to sleep closes the window at once (29 Oct 2026, Shawn: "so it doesnt use more resources when my pc is
+  // asleep"); on waking, a window nobody is using closes too, in case sleep came before the close finished
+  onEvent('sleep', () => { idle.tick('sleep'); });
+  onEvent('woke', () => { setTimeout(() => idle.tick('woke'), 5000); });
 }
 
 if (REMOTE) {

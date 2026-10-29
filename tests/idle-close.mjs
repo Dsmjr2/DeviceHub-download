@@ -250,5 +250,23 @@ const procs = [
   check(/DoubleClick \+= \(a, b\) => OpenApp\(\)/.test(tray) && /"Open DeviceHub"[^\n]*OpenApp\(\)/.test(tray) && /DeviceHub\.vbs/.test(tray), 'the tray icon opens DeviceHub again (double-click, Open DeviceHub)');
 }
 
+// ---------- the PC going to sleep (29 Oct 2026, Shawn: close it so it uses nothing while the PC sleeps) ----------
+{
+  const { decide, startIdleClose } = ic;
+  check(decide({ hiddenSince: null, now: 0, focused: true, sleep: 'sleep' }).close, 'going to sleep: closes at once, shown or not');
+  check(!decide({ hiddenSince: null, now: 0, focused: false, sleep: 'sleep', enabled: false }).close, 'going to sleep, switched off: kept');
+  check(!decide({ hiddenSince: null, now: 0, focused: false, sleep: 'sleep', reasons: ['a device change is being written'] }).close, 'going to sleep while a write runs: kept');
+  check(decide({ hiddenSince: null, now: 0, focused: false, sleep: 'woke' }).close && !decide({ hiddenSince: null, now: 0, focused: true, sleep: 'woke' }).close, 'on waking: closes unless it is in use');
+  const asked = [];
+  const doc = { visibilityState: 'visible', hasFocus: () => true, addEventListener() {}, removeEventListener() {}, querySelector: () => null };
+  const t = startIdleClose({ page: () => '#/mouse', doc, win: { addEventListener() {}, removeEventListener() {}, matchMedia: () => ({ matches: false }) }, setI: () => 0, clearI() {}, api: async (b) => { asked.push(b); return { closing: true }; } });
+  const r1 = await t.tick();
+  const r2 = await t.tick('sleep');
+  check(!r1.close && r2.close && asked.length === 1 && asked[0].sleep === 'sleep' && asked[0].hiddenFor === 0, 'the sleep message asks the server to close it, the timer alone does not');
+  const agent = fs.readFileSync(path.join(ROOT, 'helpers/agent.mjs'), 'utf8'), app = fs.readFileSync(path.join(ROOT, 'public/app.js'), 'utf8');
+  check(/send\('sleep', \{ at: Date\.now\(\) \}\)/.test(agent) && /send\('woke', \{ at: wokeAt \}\)/.test(agent), 'the agent passes Windows\' sleep and wake on to the window');
+  check(/onEvent\('sleep', \(\) => \{ idle\.tick\('sleep'\); \}\)/.test(app) && /onEvent\('woke'/.test(app), 'the window acts on them');
+}
+
 if (fails.length) { console.log(`idle-close: ${fails.length} failed`); for (const f of fails) console.log(`  FAIL ${f}`); process.exit(1); }
 console.log('idle-close: all checks passed');
