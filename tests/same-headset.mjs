@@ -49,5 +49,13 @@ const nova3 = { id: 'steelseries-arctis-test', title: 'SteelSeries Arctis', kind
 const sc = await MD.selfCheck(nova3, nova3.write, { backup: async () => {}, makerApp: async () => ({}) });
 check(sc.ran && sc.counts.failed === 0 && sc.counts.checked === 0 && sc.keys.sidetone?.skip === true, `a setting the model does not report is skipped (${JSON.stringify(sc.counts)})`);
 
+// ---- another brand's headset names its own maker's app, never iCUE (29 Oct 2026, Shawn)
+const hsSrc = fs.readFileSync(new URL('../public/devices/headset-adapter.js', import.meta.url), 'utf8');
+check(/app: vid \? `maker:\$\{vid\.toUpperCase\(\)\}` : null/.test(hsSrc) && /if \(!generic\) return \{ label: 'iCUE', app: 'icue' \}/.test(hsSrc), 'iCUE only for the HS80; any other headset by its USB vendor id');
+const LA = await import('../helpers/learn-apps.mjs');
+check(LA.makerOf('1038')?.name === 'SteelSeries GG' && LA.makerOf('046d')?.name === 'Logitech G HUB' && LA.makerOf('1b1c')?.key === 'icue', 'the maker of each brand');
+const srv = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+check(/url\.pathname === '\/api\/maker'/.test(srv) && /\^maker:\(\[0-9A-F\]\{4\}\)\$/.test(srv), 'the server says which app it is and opens it');
+
 if (fails.length) { console.log(`same-headset: ${fails.length} FAILED\n - ${fails.join('\n - ')}`); process.exit(1); }
 console.log('same-headset (other Pulsar dongle, one headset shown once, speakers named plainly): all good');

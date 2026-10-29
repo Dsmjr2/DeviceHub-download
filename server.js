@@ -527,9 +527,26 @@ async function api(req, res, url) {
     if (req.method === 'POST') { writeAtomic(PROFILES, JSON.stringify(await readBody(req), null, 2)); return send(res, 200, { ok: true }); }
   }
   // which makers' apps are on this PC (the device pages say so instead of offering a button that cannot open one)
+  // the maker's app for a USB vendor id (29 Oct 2026): { known, name, page, installed, running } (helpers/learn-apps.mjs)
+  if (url.pathname === '/api/maker' && req.method === 'GET') {
+    const vid = String(url.searchParams.get('vid') || '');
+    if (!/^[0-9A-Fa-f]{4}$/.test(vid)) return send(res, 400, { error: 'vid: 4 hex digits' });
+    const { findMaker } = await import('./helpers/learn-apps.mjs');
+    const m = await findMaker(vid);
+    return send(res, 200, { known: m.known, name: m.name, page: m.page, installed: !!m.installed, running: !!m.running, web: !!m.web });
+  }
   if (url.pathname === '/api/vendor-apps') return send(res, 200, Object.fromEntries(Object.entries(VENDOR_APPS).map(([k, p]) => [k, fs.existsSync(p)])));
   if (url.pathname === '/api/open' && req.method === 'POST') {
     const { app } = await readBody(req);
+    // another brand's app, by its USB vendor id: opened from the Start menu, or its download page when it is not there
+    const mk = /^maker:([0-9A-F]{4})$/i.exec(String(app || ''));
+    if (mk) {
+      const { openMaker, findMaker } = await import('./helpers/learn-apps.mjs');
+      const r = await openMaker(mk[1]);
+      if (r.opened) return send(res, 200, { ok: true });
+      const m = await findMaker(mk[1]);
+      return m.page ? send(res, 200, { ok: true, url: m.page }) : send(res, 404, { error: r.why });
+    }
     // only an app that is there (20 Oct 2026: on a PC without iCUE the button crashed the server); otherwise its page
     if (VENDOR_APPS[app] && fs.existsSync(VENDOR_APPS[app])) {
       const p = spawn(VENDOR_APPS[app], [], { detached: true, stdio: 'ignore' });

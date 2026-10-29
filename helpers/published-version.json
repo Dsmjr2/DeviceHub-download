@@ -1,7 +1,7 @@
 {
-  "version": "1.11",
-  "commit": "b25a161538c0",
+  "version": "1.12",
+  "commit": "615b65791124",
   "notes": [
-    "Self-check skips settings a model lacks"
+    "Headsets name and open their own brand's app"
   ]
 }

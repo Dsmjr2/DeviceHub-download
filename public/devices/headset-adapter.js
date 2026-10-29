@@ -108,7 +108,14 @@ const adapter = {
   id: 'headset',
   get title() { return generic ? generic.device : 'Corsair HS80'; },
   kind: 'Headset',
-  get vendor() { return generic ? { label: "its maker's app", app: null } : { label: 'iCUE', app: 'icue' }; },
+  // another headset's maker's app is found by its USB vendor id (29 Oct 2026, Shawn: "I want the app to look for whatever
+  // app it is for whatever brand it is"): pages/common.js vendorNote asks the server which app that is and whether it is
+  // installed (helpers/learn-apps.mjs MAKERS: SteelSeries GG, G HUB, Synapse, NGENUITY, ...). iCUE only for the HS80.
+  get vendor() {
+    if (!generic) return { label: 'iCUE', app: 'icue' };
+    const vid = /VID_([0-9A-F]{4})/i.exec(generic.usb || '')?.[1];
+    return { label: "its maker's app", app: vid ? `maker:${vid.toUpperCase()}` : null };
+  },
   get unsupported() { return generic ? ['lights', 'battery', 'its own settings (teach them in Learn a device)'] : ['firmware updates', 'receiver pairing']; },
   get generic() { return generic; },
   autoReconnect: true,

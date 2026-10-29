@@ -60,8 +60,26 @@ export async function openVendor(app) {
 // so, with no button that cannot open anything; an app that is a web page always keeps its button.
 let vendorApps = null;
 const vendorAppsLoad = fetch('/api/vendor-apps').then((r) => (r.ok ? r.json() : {})).then((v) => { vendorApps = v; }).catch(() => { vendorApps = {}; });
+const makers = {};   // 'maker:1038' -> the server's answer (/api/maker), asked once per window
+function makerInfo(app) {
+  if (!/^maker:[0-9A-F]{4}$/i.test(app || '') || isDemo()) return Promise.resolve(null);
+  return (makers[app] ||= fetch(`/api/maker?vid=${app.slice(6)}`).then((r) => (r.ok ? r.json() : null)).catch(() => null));
+}
 export function vendorNote(a) {
-  const app = a.vendor.app, label = a.vendor.label;
+  const app = a.vendor.app;
+  let label = a.vendor.label;
+  // another brand's headset: the note names its own app (SteelSeries GG, G HUB ...) and opens it, or links to it
+  if (/^maker:/i.test(app || '')) {
+    const el = h('div', { class: 'vendor-note' }, icon('external'), h('div', { class: 'grow' }, h('b', {}, `Only in ${label}: `), a.unsupported.join(', '), '.'));
+    makerInfo(app).then((m) => {
+      if (!m?.known || !m.name) return;
+      label = m.name;
+      el.replaceChildren(icon('external'),
+        h('div', { class: 'grow' }, h('b', {}, `Only in ${label}${m.installed || m.web ? '' : ' (not installed)'}: `), a.unsupported.join(', '), '.'),
+        button(m.installed ? `Open ${label}` : `Get ${label}`, () => openVendor(app), { kind: 'small' }));
+    });
+    return el;
+  }
   const fill = (el) => {
     const missing = vendorApps && vendorApps[app] === false;
     el.replaceChildren(icon('external'),
