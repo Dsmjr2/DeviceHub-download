@@ -320,6 +320,25 @@ async function api(req, res, url) {
       return send(res, 200, r);
     } catch (e) { return send(res, 200, { closing: false, why: e.message }); }
   }
+  // the low-memory window (an app window in the person's own Chrome) closed as its X button does (29 Oct 2026): Chrome
+  // ignores the page's window.close() once it has moved between pages, so the page gives its window a one-time title and
+  // helpers/close-app-window.ps1 closes only the chrome / msedge window with exactly that title (never the person's
+  // other windows, never a process). Only after /api/window/idle-close answered self, by the same switch.
+  if (url.pathname === '/api/window/close-titled' && req.method === 'POST') {
+    const b = await readBody(req).catch(() => ({}));
+    const nonce = String(b?.nonce || '');
+    if (!/^[0-9a-f]{16}$/.test(nonce)) return send(res, 400, { closed: false, why: 'nonce: 16 hex digits' });
+    if (readJsonFile(SETTINGS, {}).closeWhenMinimized === false) return send(res, 200, { closed: false, why: 'switched off' });
+    if (!tray || quitting) return send(res, 200, { closed: false, why: 'no tray icon to open it again' });
+    const ps = path.join(__dirname, 'helpers', 'close-app-window.ps1');
+    require('child_process').execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps, '-Title', `DeviceHub closing ${nonce}`], { windowsHide: true, timeout: 20000 }, (e, out) => {
+      const text = String(out || '').trim();
+      const closed = !e && /^closed 1$/.test(text);
+      if (closed) serverLog({ kind: 'info', text: `Window closed (${b?.sleep === 'screens' ? 'after the screens were put to sleep' : b?.sleep === 'sleep' ? 'as the PC went to sleep' : b?.sleep === 'woke' ? 'after the PC woke, not in use' : 'after 5 minutes minimized'}; DeviceHub is still in the tray)` });
+      send(res, 200, { closed, why: closed ? null : (e ? e.message : text) });
+    });
+    return;
+  }
   if (url.pathname === '/api/version') return send(res, 200, { version: appVersion() });
   // a new version is ready (helpers/update-notice.mjs): the window asks once, Update or Later
   if (url.pathname === '/api/update-notice') return send(res, 200, { notice: updateNotice });

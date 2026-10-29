@@ -1,7 +1,7 @@
 {
-  "version": "1.15",
-  "commit": "2e13927082f6",
+  "version": "1.16",
+  "commit": "8dec68bb7ada",
   "notes": [
-    "Monitors Sleep closes the window once the screens are off"
+    "Close the low-memory window as its X button does"
   ]
 }

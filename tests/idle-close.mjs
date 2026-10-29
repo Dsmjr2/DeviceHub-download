@@ -275,6 +275,23 @@ const procs = [
   const t2 = startIdleClose({ page: () => '#/monitors', doc, win: { addEventListener() {}, removeEventListener() {}, matchMedia: () => ({ matches: false }) }, setI: () => 0, clearI() {}, api: async (b) => { asked.push(b); return { closing: true }; } });
   await later.fn(); await new Promise((r) => setTimeout(r, 0));
   check(asked.at(-1)?.sleep === 'screens' && t2, 'then asks the server to close the window');
+  // the low-memory window (an app window in the person's own Chrome): its own close is ignored once it has moved
+  // between pages, so it gets a one-time title and DeviceHub closes the window with exactly that title
+  {
+    const calls = [];
+    const d3 = { ...doc, title: 'Monitors · DeviceHub' };
+    let seenTitle = null;
+    const t3 = startIdleClose({ page: () => '#/monitors', doc: d3, win: { addEventListener() {}, removeEventListener() {}, matchMedia: (q) => ({ matches: /standalone/.test(q) }), close() { calls.push('close'); } },
+      setI: () => 0, clearI() {}, wait: async () => {}, api: async () => ({ self: true }), titled: async (b) => { seenTitle = d3.title; calls.push(b); return { closed: false, why: 'not found' }; } });
+    const r3 = await t3.tick('screens');
+    check(calls[0] === 'close' && /^[0-9a-f]{16}$/.test(calls[1]?.nonce) && seenTitle === `DeviceHub closing ${calls[1].nonce}` && calls[1].sleep === 'screens', 'its own close first, then the titled close with a one-time title');
+    check(d3.title === 'Monitors · DeviceHub' && r3.titled?.closed === false, 'not closed: the title goes back');
+  }
+  const cs = fs.readFileSync(path.join(ROOT, 'helpers/close-app-window.ps1'), 'utf8');
+  check(/ValidatePattern\('\^DeviceHub closing \[0-9a-f\]\{16\}\$'\)/.test(cs) && /sb\.ToString\(\) != title/.test(cs) && /name == "chrome" \|\| name == "msedge"/.test(cs) && /hits\.Count != 1/.test(cs) && /0x0010/.test(cs) && !/\.Kill\(|taskkill|Stop-Process/i.test(cs),
+    'the close script: only the exact one-time title, only Chrome or Edge, only one window, WM_CLOSE (never a kill)');
+  const appSrc = fs.readFileSync(path.join(ROOT, 'public/app.js'), 'utf8');
+  check(/if \(!document\.title\.startsWith\('DeviceHub closing '\)\) document\.title =/.test(appSrc), 'a redraw keeps the one-time title');
   const mon = fs.readFileSync(path.join(ROOT, 'public/pages/monitors.js'), 'utf8'), cmd = fs.readFileSync(path.join(ROOT, 'public/core/commands.js'), 'utf8');
   check(/else closeAfterScreensOff\(\)/.test(mon) && /\/api\/monitors\/sleep', \{\}\); closeAfterScreensOff\(\)/.test(cmd), 'the Monitors Sleep button and the search\'s Sleep monitors both close it');
 }

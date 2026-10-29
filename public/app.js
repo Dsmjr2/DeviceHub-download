@@ -290,7 +290,8 @@ function render(fresh) {
   // as a flash on every page change.
   swap();
   paintRail();
-  document.title = page.id === 'overview' ? 'DeviceHub' : `${page.title} · DeviceHub`;
+  // a window being closed keeps its one-time title until it is gone (core/idle-close.js, helpers/close-app-window.ps1)
+  if (!document.title.startsWith('DeviceHub closing ')) document.title = page.id === 'overview' ? 'DeviceHub' : `${page.title} · DeviceHub`;
 }
 
 // A slider being dragged is never redrawn under the pointer (21 Oct 2026: a reading arriving mid-drag rebuilt the

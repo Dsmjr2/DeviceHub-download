@@ -78,6 +78,8 @@ export function closeAfterScreensOff(set = setTimeout) { return set(() => { runn
 export function startIdleClose({ state = () => ({}), page = () => location.hash, enabled = () => true,
   doc = globalThis.document, win = globalThis.window, now = () => Date.now(), setI = setInterval, clearI = clearInterval,
   api = (body) => fetch('/api/window/idle-close', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json()),
+  titled = (body) => fetch('/api/window/close-titled', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json()),
+  wait = (ms) => new Promise((r) => setTimeout(r, ms)),
   log = () => {} } = {}) {
   const hiddenNow = () => (doc?.visibilityState ? doc.visibilityState !== 'visible' : !!doc?.hidden);
   let hiddenSince = hiddenNow() ? now() : null;
@@ -99,7 +101,20 @@ export function startIdleClose({ state = () => ({}), page = () => location.hash,
       // the server closed DeviceHub's own window (this page ends with it), or says this is the low-memory window:
       // then only this app window closes itself, never a browser tab
       if (r?.closing) done = true;
-      else if (r?.self && isAppWindow(win)) { done = true; try { win.close(); } catch {} }
+      else if (r?.self && isAppWindow(win)) {
+        // the page's own close first; Chrome ignores it once the person has moved between pages (29 Oct 2026, measured:
+        // history 4, the window stayed), so then DeviceHub closes the window with this one-time title, as its X does
+        try { win.close(); } catch {}
+        await wait(400);
+        const was = doc.title;
+        const nonce = Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+        doc.title = `DeviceHub closing ${nonce}`;
+        await wait(400);
+        const c = await titled({ nonce, ...(sleep ? { sleep } : {}) }).catch((e) => ({ closed: false, why: e.message }));
+        if (c?.closed) done = true; else doc.title = was;
+        log(c);
+        return { ...d, server: r, titled: c };
+      }
       else if (r?.retry === false || r?.isolated) done = true;   // switched off, no tray: not again until the window is shown again
       return { ...d, server: r };
     } catch (e) { return { ...d, error: e.message }; }
