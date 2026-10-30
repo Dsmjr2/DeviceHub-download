@@ -271,7 +271,9 @@ let streamSeq = 0;
 let pushedVersion = null, pushedBackup = null;
 const helloNow = () => {
   pushedVersion = appVersion(); pushedBackup = windowEvents.lastBackupAt(BACKUPS);
-  return { version: pushedVersion, saving: !!require('./helpers/power').state().saving, backupAt: pushedBackup, notice: updateNotice };
+  // hasBattery (29 Oct 2026): the window shows the Laptop page only on a PC with a battery
+  const power = require('./helpers/power').state();
+  return { version: pushedVersion, saving: !!power.saving, hasBattery: !!power.hasBattery, backupAt: pushedBackup, notice: updateNotice };
 };
 // what the server does once Update has the new version: a copy from the zip is already being installed (its installer
 // quits and restarts DeviceHub); a git copy restarts with code 3
@@ -547,6 +549,27 @@ async function api(req, res, url) {
   }
   // which makers' apps are on this PC (the device pages say so instead of offering a button that cannot open one)
   // the maker's app for a USB vendor id (29 Oct 2026): { known, name, page, installed, running } (helpers/learn-apps.mjs)
+  // the Laptop page (helpers/laptop.ps1): this laptop's battery health and power modes; POST sets Windows' power mode
+  // (efficiency, balanced, performance) on the person's click, then reads it back. One at a time.
+  if (url.pathname === '/api/laptop' || url.pathname === '/api/laptop/mode') {
+    const mode = url.pathname === '/api/laptop/mode' && req.method === 'POST' ? String((await readBody(req).catch(() => ({})))?.mode || '') : '';
+    if (url.pathname === '/api/laptop/mode' && !['efficiency', 'balanced', 'performance'].includes(mode)) return send(res, 400, { ok: false, why: 'mode: efficiency, balanced or performance' });
+    if (laptopBusy) return send(res, 409, { ok: false, why: 'busy' });
+    laptopBusy = true;
+    const ps = path.join(__dirname, 'helpers', 'laptop.ps1');
+    require('child_process').execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps, ...(mode ? ['-Mode', mode] : [])], { windowsHide: true, timeout: 30000 }, (e, out) => {
+      laptopBusy = false;
+      let r = null;
+      try { r = JSON.parse(String(out || '').trim().split(/\r?\n/).pop()); } catch {}
+      if (mode && r?.ok) serverLog({ kind: r.powerMode === mode ? 'good' : 'bad', text: r.powerMode === mode ? `Windows power mode → ${mode}` : `Windows power mode not changed to ${mode} (it reads ${r.powerMode || 'unknown'})` });
+      send(res, 200, r && typeof r === 'object' ? r : { ok: false, why: e ? e.message : 'no answer' });
+    });
+    return;
+  }
+  // a maker's app's saved setups (helpers/maker-profiles.mjs): G HUB's mouse setups, read from a copy, read-only
+  if (url.pathname === '/api/maker-profiles' && req.method === 'GET') {
+    try { return send(res, 200, await (await import('./helpers/maker-profiles.mjs')).status()); } catch (e) { return send(res, 200, { ok: false, why: e.message }); }
+  }
   if (url.pathname === '/api/maker' && req.method === 'GET') {
     const vid = String(url.searchParams.get('vid') || '');
     if (!/^[0-9A-Fa-f]{4}$/.test(vid)) return send(res, 400, { error: 'vid: 4 hex digits' });
@@ -1251,6 +1274,7 @@ const AGENT_ON = process.env.DEVICEHUB_AGENT !== '0';
 let agent = null, agentTried = false;
 let tray = false;
 let quitting = false;
+let laptopBusy = false;   // /api/laptop: one read or power-mode change at a time
 async function shutdown() {
   if (ISOLATED) process.exit(0);   // isolated test mode started nothing to stop (helpers/openrgb.js stop() would remove the real copy's pid file)
   // an AnkerCamera test running: muted again first (at most 1.5 s), while the audio helper is still there

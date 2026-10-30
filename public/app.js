@@ -63,6 +63,9 @@ const PAGES = [
   page('settings', 'Settings', 'settings', () => import('./pages/settings.js')),
   page('learn', 'Learn a device', 'plug', () => import('./pages/learn.js')),
   page('supported', 'Supported devices', 'plug', () => import('./pages/supported.js'), { rail: false }),
+  // only on a PC with a battery (29 Oct 2026; pages/laptop.js): battery health and power modes. Last, so Alt+1 to Alt+8
+  // keep their pages; the sidebar shows it at the end of Desk.
+  page('laptop', 'Laptop', 'bolt', () => import('./pages/laptop.js'), { laptopOnly: true }),
 ];
 // a page's code (p.code, its default export), loaded once; a load that failed (DeviceHub restarting) is tried again
 // the next time the page is opened
@@ -114,7 +117,12 @@ document.addEventListener('pointermove', (e) => {
 }, { passive: true });
 
 // ---------- rail ----------
-const SETUP = ['fans', 'lighting', 'monitors', 'wallpapers'];
+const SETUP = ['fans', 'laptop', 'lighting', 'monitors', 'wallpapers'];
+// the Laptop page shows in the sidebar only on a PC with a battery (told on the live stream's hello and power events;
+// ?demo&laptop shows it in demo mode)
+let isLaptop = DEMO && new URLSearchParams(location.search).has('laptop');
+const seeBattery = (p) => { if (!DEMO && p?.hasBattery && !isLaptop) { isLaptop = true; buildRail(); } };
+const shown = (p) => !p.laptopOnly || isLaptop;
 function buildRail() {
   const rail = $('#rail');
   const navBtn = (p) => h('button', { class: 'nav', dataset: { page: p.id }, onclick: () => go(p.id) },
@@ -133,7 +141,7 @@ function buildRail() {
     // "Desk" became "Setup" when Wallpapers joined it (22 Oct 2026, Shawn: "put it under the desk area and rename that to
     // make more sense"): the lights, screens, fans and wallpapers of their setup
     h('div', { class: 'nav-label' }, 'Desk'),
-    ...PAGES.filter((p) => SETUP.includes(p.id)).map(navBtn),
+    ...PAGES.filter((p) => SETUP.includes(p.id) && shown(p)).map(navBtn),
     h('div', { class: 'nav-label' }, 'App'),
     // rail: false = reached from another page only (Supported devices: Settings and Search; Learn a device is listed here too, 22 Oct 2026)
     ...PAGES.filter((p) => !p.device && p.id !== 'overview' && p.id !== 'setup' && p.rail !== false && !SETUP.includes(p.id)).map(navBtn),
@@ -335,7 +343,7 @@ window.addEventListener('keydown', (e) => {
 });
 
 await loadArtStyle();  // the chosen drawing style and theme (Settings > Appearance)
-setCommands((q) => commands(q, { go, pages: PAGES }));
+setCommands((q) => commands(q, { go, pages: PAGES.filter(shown) }));   // the Laptop page only on a laptop
 buildRail();
 setGlow();
 // the first time the window opens on this PC: Setup instead of the Overview (core/first-run.js; never on a PC with
@@ -378,8 +386,8 @@ async function reloadWhenUp() {
 // Lighter glass on battery: while the battery saver is saving, html[data-saving] drops the panes' blur (style.css).
 // Told on the live stream (hello, then power when the saver turns on or off; 27 Oct 2026, it was asked every 30 s).
 const paintSaving = (p) => document.documentElement.toggleAttribute('data-saving', !!p?.saving);
-onEvent('hello', paintSaving);
-onEvent('power', paintSaving);
+onEvent('hello', (p) => { paintSaving(p); seeBattery(p); });
+onEvent('power', (p) => { paintSaving(p); seeBattery(p); });
 
 // Pause infinite CSS animations while minimized or behind a game
 const syncVisibility = () => {

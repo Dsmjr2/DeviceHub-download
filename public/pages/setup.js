@@ -22,6 +22,7 @@ import { getHelp, helpHere } from '../ui/get-help.js';
 import { worksReport, offersWorks } from '../ui/works-report.js';
 import { installerInline, installerStatus } from '../ui/installer-button.js';
 import { boardLights, boardLightsStatus } from '../ui/board-lights.js';
+import { deviceChecks } from '../ui/device-checks.js';
 import { DEMO_SUMMARY, DEMO_LIVE, DEMO_DIAG, DEMO_TOOLS, DEMO_EQ, DEMO_ORGB, DEMO_BT } from '../core/setup-demo.js';
 import { deviceRows, doAllSteps, soundRows, lightRows, batteryRows, learnRows, summaryLine, planSetup, makerApps, askLine, leftLine, canDo } from '../core/setup-list.js';
 
@@ -443,6 +444,8 @@ export default {
         h('header', { class: 'panel-head' }, h('h2', {}, 'Your devices')),
         h('div', { class: 'su-tiles' }, ...plan.devices.map(tile)),
         openTile ? h('ul', { class: 'su-list su-tile-open' }, rowEl(openTile)) : null) : null,
+      // the two checks for each device (public/ui/device-checks.js), at the end of setup
+      deviceChecks({ redraw }),
       fold('extras', 'Optional extras', plan.extras),
       fold('done', `Done (${plan.done.length})`, plan.done));
   },

@@ -1,7 +1,7 @@
 {
-  "version": "1.21",
-  "commit": "f939f72ff850",
+  "version": "1.22",
+  "commit": "278f528104da",
   "notes": [
-    "Revert \"Exact polling rate from Windows' own count\""
+    "Setup checks, supported-now notices, one headset over Bluetooth, G…"
   ]
 }

@@ -12,7 +12,9 @@ import { rateOf, verdict, roundHz, TEST_MS } from '../core/polling-rate.js';
 import { log } from '../core/devices.js';
 
 const run = { stage: 'idle', who: null, result: null, setHz: null, times: [], first: null, timer: null, tick: null, name: null };
-let view = null;   // the card on the page now: { box, draw }
+// the cards on the page now, one per mouse (the Setup page can show two): who -> { box, draw }
+const views = new Map();
+const viewOf = (who) => views.get(who);
 
 // the browser's own mouse reports: pointerrawupdate hands over each one as it comes (Chrome and Edge on localhost);
 // otherwise pointermove with the reports it merged into it
@@ -27,10 +29,11 @@ function start(setHz, who) {
   Object.assign(run, { stage: 'running', who, setHz, result: null, times: [], first: null, name: rawName() });
   window.addEventListener(run.name, onRaw, { passive: true });
   run.tick = setInterval(() => {
-    if (!view?.box.isConnected || view.who !== run.who) return stop(true);   // the page moved on: stop listening
+    const view = viewOf(run.who);
+    if (!view?.box.isConnected) return stop(true);   // the page moved on: stop listening
     view.draw();
   }, 250);
-  view?.draw();
+  viewOf(who)?.draw();
 }
 function stop(quiet = false) {
   clearTimeout(run.timer); clearInterval(run.tick); run.timer = run.tick = null;
@@ -40,12 +43,21 @@ function stop(quiet = false) {
   Object.assign(run, { stage: 'done', result: rateOf(run.times), times: [] });
   const v = verdict(run.result, run.setHz);
   if (v.kind !== 'short') log(`Polling rate test: about ${roundHz(run.result.hz)} Hz arrived${run.setHz ? ` (set to ${run.setHz} Hz)` : ''}, ${Math.round(run.result.steady * 100)}% steady, ${run.result.events} reports: ${v.kind === 'match' ? 'matches' : v.kind === 'limit' ? 'as high as a browser can count' : v.kind === 'low' ? 'lower than set' : 'higher than set'}`, 'info', run.who);
-  view?.draw();
+  viewOf(run.who)?.draw();
+}
+
+// a mouse's polling rate in Hz: the Pulsar's pollingRate, or a library driver's setting named like one (pollingRate,
+// poll, reportRate), or null
+export function pollHzOf(d) {
+  if (Number(d?.values?.pollingRate) > 0) return Number(d.values.pollingRate);
+  const s = (d?.adapter?.settings || []).find((x) => /poll|report.?rate/i.test(`${x.key} ${x.label || ''}`));
+  const v = Number(s ? d.values?.[s.key] : NaN);
+  return v > 0 ? v : null;
 }
 
 // setHz: what the mouse is set to (null when unknown); card(title, ...body): the page's card maker; who: the device id,
-// so one mouse's result never shows on another mouse's page
-export function pollingTest(setHz, card, who = 'mouse') {
+// so one mouse's result never shows on another mouse's page; title: the card's heading
+export function pollingTest(setHz, card, who = 'mouse', title = 'Polling rate test') {
   const box = h('div', { class: 'polling-test' });
   const p = (text, extra = {}) => h('p', { class: 'faint', style: { margin: '0 0 10px' }, ...extra }, text);
   const draw = () => {
@@ -66,7 +78,7 @@ export function pollingTest(setHz, card, who = 'mouse') {
     box.replaceChildren(p(`Press Start, then move the mouse in circles for 5 seconds.${setHz ? ` It is set to ${setHz} Hz.` : ''} Nothing on the mouse changes.`),
       h('div', { class: 'actions' }, button('Start', () => start(setHz, who), { kind: 'primary small' })));
   };
-  view = { box, draw, who };
+  views.set(who, { box, draw });
   draw();
-  return card([h('h2', {}, 'Polling rate test')], box);
+  return card([h('h2', {}, title)], box);
 }

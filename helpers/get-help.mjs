@@ -654,6 +654,9 @@ export function openInBrowser(u) {
   });
 }
 
+// a Request support kept for "Your device is supported now" (helpers/support-wait.mjs); a failure never stops the request
+async function wanted(q) { try { (await import('./support-wait.mjs')).remember(q?.vid, q?.pid, q?.name); } catch {} }
+
 // server.js: if (url.pathname.startsWith('/api/help/')) ... handle(url, req, res, send, readBody); true when it answered
 export async function handle(url, req, res, send, readBody) {
   if (!url.pathname.startsWith('/api/help/')) return false;
@@ -669,9 +672,11 @@ export async function handle(url, req, res, send, readBody) {
     // "Test it with me" (helpers/guided-test.mjs): the person's answers, kept on this PC for the works record
     if (url.pathname === '/api/help/tried' && req.method === 'GET') { send(res, 200, await (await import('./guided-test.mjs')).getTried(url.searchParams.get('id'), { port })); return true; }
     if (url.pathname === '/api/help/tried' && req.method === 'POST') { send(res, 200, await (await import('./guided-test.mjs')).postTried((await readBody(req)) || {}, { port })); return true; }
-    if (url.pathname === '/api/help/request' && req.method === 'GET') { send(res, 200, await requestSupport({ vid: url.searchParams.get('vid'), pid: url.searchParams.get('pid'), name: url.searchParams.get('name') })); return true; }
+    // the device asked about is remembered on this PC, so the Overview can say when a driver for it arrives (helpers/support-wait.mjs)
+    if (url.pathname === '/api/help/request' && req.method === 'GET') { const q = { vid: url.searchParams.get('vid'), pid: url.searchParams.get('pid'), name: url.searchParams.get('name') }; const r = await requestSupport(q); if (r?.ok) await wanted(q); send(res, 200, r); return true; }
     // Request support in one click through the relay (helpers/support-request.mjs); fallback: true = use the request above
-    if (url.pathname === '/api/help/request/send' && req.method === 'POST') { const b = (await readBody(req)) || {}; const r = await (await import('./support-request.mjs')).send({ vid: b.vid, pid: b.pid, name: b.name }); send(res, r.bad ? 400 : 200, r); return true; }
+    if (url.pathname === '/api/help/request/send' && req.method === 'POST') { const b = (await readBody(req)) || {}; const r = await (await import('./support-request.mjs')).send({ vid: b.vid, pid: b.pid, name: b.name }); if (r.sent || r.queued) await wanted(b); send(res, r.bad ? 400 : 200, r); return true; }
+    if (url.pathname.startsWith('/api/help/supported-now') && await (await import('./support-wait.mjs')).handle(url, req, res, send, readBody)) return true;
     if (url.pathname === '/api/help/open' && req.method === 'POST') { const r = await open((await readBody(req))?.token); send(res, r.ok ? 200 : 400, r); return true; }
     send(res, 404, { error: 'no such help route' });
   } catch (e) { send(res, e.code === 404 ? 404 : e.code === 503 ? 503 : 400, { error: e.message }); }

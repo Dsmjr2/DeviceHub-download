@@ -160,6 +160,38 @@ function oneDriveBanner(redraw, fresh) {
     h('div', { class: 'actions' }, button('Review', review, { kind: 'primary small' }), button('Not now', notNow, { kind: 'ghost small' })));
 }
 
+// "Your device is supported now" (29 Oct 2026; helpers/support-wait.mjs): a device the person pressed Request support for
+// now has a library driver. Install is the person's click (the Set up card's own route); Not now forgets it.
+let arrivedList = null, arrivedAsked = false;
+const arrivedNote = {};
+function supportedNow(redraw, fresh) {
+  if (isDemo()) return null;
+  if (fresh) arrivedAsked = false;
+  if (!arrivedAsked) { arrivedAsked = true; fetch('/api/help/supported-now').then((r) => (r.ok ? r.json() : null)).then((j) => { arrivedList = j?.arrived || []; if (arrivedList.length) redraw(); }).catch(() => {}); }
+  const x = arrivedList?.[0];
+  if (!x) return null;
+  const forget = () => fetch('/api/help/supported-now/forget', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: x.id }) }).catch(() => {});
+  const notNow = () => { arrivedList = arrivedList.slice(1); redraw(); forget(); };
+  const install = async () => {
+    arrivedNote[x.id] = 'Installing…'; redraw();
+    try {
+      const r = await fetch('/api/library/install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: x.entry }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) throw new Error(j.error || r.statusText);
+      await forget();
+      arrivedNote[x.id] = `Installed. ${j.note ? j.note.charAt(0).toUpperCase() + j.note.slice(1) : ''}`.trim();
+    } catch (e) { arrivedNote[x.id] = `Not installed: ${e.message}`; }
+    redraw();
+  };
+  const done = /^Installed/.test(arrivedNote[x.id] || '');
+  return h('div', { class: 'banner info' }, icon('plug'),
+    h('div', { class: 'grow' }, h('b', {}, `Your ${x.name} is supported now`),
+      h('small', {}, arrivedNote[x.id] || `You asked for it, and DeviceHub now has a driver (${x.product}${x.status === 'untested' ? ', new: not yet tried on a real one' : ''}).`)),
+    h('div', { class: 'actions' }, done
+      ? button('OK', () => { arrivedList = arrivedList.slice(1); redraw(); }, { kind: 'ghost small' })
+      : [button('Install', install, { kind: 'primary small' }), button('Not now', notNow, { kind: 'ghost small' })]));
+}
+
 let setupInfo = null, setupAsked = false, setupHidden = false;
 // Short since 22 Oct 2026 (Shawn: "I want the setup to all be on one page"): one line saying how many things need the
 // person, and Open Setup (pages/setup.js has every row and button). Counted the Setup page's way (core/setup-list.js).
@@ -387,6 +419,7 @@ export default {
       isDemo() ? h('div', { class: 'banner info' }, icon('shield'), h('div', { class: 'grow' }, h('b', {}, 'Demo mode'),
         h('small', {}, 'Pretend devices. Try anything.'))) : null,
       oneDriveBanner(redraw, fresh),
+      supportedNow(redraw, fresh),
       setupCard(redraw),
       noDevicesYet() ? firstRun(go, redraw)
         : h('div', { class: 'bays', style: { gridTemplateColumns: `repeat(${list.length}, minmax(0, 1fr))` } }, ...list.map((d) => bay(d, go, redraw))),

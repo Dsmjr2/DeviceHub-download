@@ -15,6 +15,7 @@ import { LIFT_OFF } from '../devices/pulsar.js';
 import { EFFECTS } from '../devices/keycodes.js';
 import { modal, toast } from '../ui/overlay.js';
 import { helpHere } from '../ui/get-help.js';
+import { makerImportCard } from '../ui/maker-import.js';   // (29 Oct 2026) G HUB mouse setups as profiles
 import { gameModeCard } from './game-mode-card.js';   // (27 Oct 2026) per-game switches put back when the game quits
 import { fieldOf, toEdit, fromEdit, startValue, addable, parseRef, getAt, setAt, removeAt, countSettings } from '../core/profile-edit.js';
 
@@ -567,6 +568,7 @@ export default {
       topbar('Setups', 'Profiles', 'Switch every device at once.', ui.adding ? null : button('New profile', startNew, { kind: 'primary', ic: 'plus' }), helpHere('profiles')),
       h('div', { style: { marginBottom: '18px' } }, autoPanel()),
       h('div', { style: { marginBottom: '18px' } }, gameModeCard(() => rerender())),
+      (() => { const c = makerImportCard(() => refreshList()); return c ? h('div', { style: { marginBottom: '18px' } }, c) : null; })(),
       h('div', { class: 'profiles' }, newTile(), ...(list || []).map((p) => profileCard(p))));
   },
 };

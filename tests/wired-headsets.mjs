@@ -38,5 +38,37 @@ const adapter = fs.readFileSync(new URL('../public/devices/headset-adapter.js', 
 check(/isJack\(generic\.usb\)\) \{ sidetone = null; return; \}/.test(adapter) && /a wired headset has no sidetone control/.test(adapter), 'no sidetone for a wired headset');
 const server = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
 check(/!\/\^JACK_\/\.test\(x\.usb\)/.test(server), 'the EQ never takes a wired headset unless it is picked');
+// one headset over Bluetooth (29 Oct 2026): its music and call sound devices are one headset, folded into the same
+// headset on USB when it is on both, and never listed as a jack
+{
+  const { bluetoothHeadsets, foldBluetooth } = require('../helpers/wired-headsets.js');
+  const bt = [
+    E('playback', 'b1', 'Headphones (Arctis Nova 3P)'),
+    E('playback', 'b2', 'Headset (Arctis Nova 3P Hands-Free AG Audio)'),
+    E('recording', 'b3', 'Headset (Arctis Nova 3P Hands-Free AG Audio)'),
+    E('playback', 'b4', 'Headphones (WH-1000XM4)'),
+    E('playback', 'b5', 'Headset (WH-1000XM4 Hands-Free)'),
+    E('recording', 'b6', 'Headset (WH-1000XM4 Hands-Free)'),
+  ];
+  const ids = bt.map((e) => e.id);
+  const everything = [...all, ...bt];
+  const jacks = wiredHeadsets(everything, ['{0.0.0.00000000}.{usb}'], {}, ids);
+  check(jacks.length === 2 && !jacks.some((x) => /Arctis|WH-1000/.test(x.device)), `Bluetooth sound devices are not jacks (${jacks.map((x) => x.device)})`);
+  const b = bluetoothHeadsets(everything, new Set(ids), {});
+  const nova = b.find((x) => x.device === 'Arctis Nova 3P'), sony = b.find((x) => x.device === 'WH-1000XM4');
+  check(b.length === 2 && nova && sony, `two Bluetooth headsets, one each, named as the headset (${b.map((x) => x.device)})`);
+  check(nova.playback[0].id === 'b1' && nova.playback.length === 2 && nova.recording.map((m) => m.id).join() === 'b3', 'the stereo output first, then hands-free; the hands-free mic');
+  check(isJack(nova.usb) && nova.bluetooth === true && nova.usb === bluetoothHeadsets(everything, new Set(ids), {})[0].usb, 'a stable key the picker accepts');
+  const usbNova = { usb: 'VID_1038&PID_2269', device: 'Arctis Nova 3P Wireless', playback: [{ id: 'u1' }], recording: [] };
+  const hs80 = { usb: 'VID_1B1C&PID_0A6B', device: 'CORSAIR HS80 RGB Wireless Gaming Receiver', playback: [{ id: 'u2' }], recording: [] };
+  const folded = foldBluetooth([usbNova, hs80], b);
+  check(folded.headsets.length === 2 && folded.headsets[0].bluetooth?.playback?.length === 2 && !folded.headsets[1].bluetooth, 'the Nova on its dongle gets its Bluetooth side; the HS80 does not');
+  check(folded.bluetooth.length === 1 && folded.bluetooth[0].device === 'WH-1000XM4', 'a headset on Bluetooth only stays a choice of its own');
+  check(!usbNova.bluetooth, 'the USB list given in is not changed');
+  const named = bluetoothHeadsets(everything, new Set(ids), { [sony.usb]: 'Sony headphones' });
+  check(named.some((x) => x.device === 'Sony headphones'), 'the name the person gave it');
+  const corsair = fs.readFileSync(new URL('../helpers/corsair.js', import.meta.url), 'utf8');
+  check(/op: 'hs80-endpoints', usb: 'BTH' \}/.test(corsair) && /foldBluetooth\(usbList/.test(corsair), "the headset list asks Windows which sound devices are on Bluetooth (the helper's own list, no new program)");
+}
 if (fails.length) { console.log(`wired-headsets: ${fails.length} failed\n - ${fails.join('\n - ')}`); process.exit(1); }
 console.log('wired-headsets (a headset on the PC\'s jack): all good');

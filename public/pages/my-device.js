@@ -12,7 +12,7 @@ import { modal, toast } from '../ui/overlay.js';
 import { isDemo } from '../core/devices.js';
 import { worksReport, offersWorks } from '../ui/works-report.js';
 import { guidedTest } from '../ui/guided-test.js';
-import { pollingTest } from '../ui/polling-test.js';
+import { pollingTest, pollHzOf } from '../ui/polling-test.js';
 import { loadBatteryEstimates, batteryLeft } from '../ui/controls.js';
 import { batteryChart } from '../ui/battery-chart.js';
 import { showAdded } from '../core/profiles.js';
@@ -142,9 +142,6 @@ function askLibrary(d, redraw) {
 }
 const newerLine = (d) => (d.adapter?.library?.newerDriver ? h('p', { style: { marginTop: '12px', fontSize: '13px' } }, icon('refresh'), ` ${d.adapter.library.newerDriver}`) : null);
 
-// a library mouse's polling rate in Hz, from a setting named like one (pollingRate, poll, reportRate), or null
-const pollHz = (d) => { const s = (d.adapter?.settings || []).find((x) => /poll|report.?rate/i.test(`${x.key} ${x.label || ''}`)); const v = Number(s ? d.values?.[s.key] : NaN); return v > 0 ? v : null; };
-
 const ICON = { mouse: 'mouse', headset: 'headset', keyboard: 'keyboard' };
 const ACCENT = { mouse: 'var(--c-mouse)', headset: 'var(--c-headset)', keyboard: 'var(--c-keyboard)' };
 
@@ -254,7 +251,7 @@ export function devicePage(id) {
           card([h('h2', {}, 'Device'), h('span', { class: 'spacer' }), deviceActions(d)], kv(d.info || {}), shareButton(d, shown))),
         a.battery ? batteryChart(id, () => ctx.redraw?.(), { title: a.title, kind: a.kind }) : null,
         // any mouse: the polling rate test, against its polling setting when the driver has one (public/ui/polling-test.js)
-        /mouse/i.test(a.kind || '') ? pollingTest(pollHz(d), card, id) : null);
+        /mouse/i.test(a.kind || '') ? pollingTest(pollHzOf(d), card, id) : null);
     },
   };
 }

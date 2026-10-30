@@ -37,7 +37,7 @@ for (const [page, not] of [['pages/overview.js', ['pages/learn.js', 'pages/backu
 // 2. the sidebar's list matches each page
 const app = src('app.js');
 const entries = [...app.matchAll(/^\s*page\('([\w-]+)', '([^']*)', '([\w-]+)', \(\) => import\('\.\/(pages\/[\w-]+\.js)'\)(?:, (\{[^}]*\}))?\),?$/gm)];
-check(entries.length === 14, `14 pages in app.js PAGES (found ${entries.length})`);
+check(entries.length === 15, `15 pages in app.js PAGES (found ${entries.length})`);
 for (const [, id, title, ic, file, more = ''] of entries) {
   const head = (/export default \{([\s\S]*?)\n\s*(?:render|keepAlive|get watches|\/\/)/.exec(src(file)) || [])[1] || '';
   check(new RegExp(`\\bid: '${id}', title: '${title}', icon: '${ic}'`).test(head), `${id}: id, title and icon as in ${file}`);
@@ -45,7 +45,7 @@ for (const [, id, title, ic, file, more = ''] of entries) {
   check(dev === ((/device: '([\w-]+)'/.exec(more) || [])[1] || null), `${id}: device as in ${file} (${dev})`);
   check(/\brail: false/.test(head) === /rail: false/.test(more), `${id}: rail as in ${file}`);
 }
-check(entries.map((e) => e[1]).join(' ') === 'overview setup mouse headset keyboard fans lighting monitors wallpapers profiles backups settings learn supported', 'the pages keep their order (Alt+1 to Alt+8, Search)');
+check(entries.map((e) => e[1]).join(' ') === 'overview setup mouse headset keyboard fans lighting monitors wallpapers profiles backups settings learn supported laptop', 'the pages keep their order (Alt+1 to Alt+8, Search)');
 // a device added on this PC: its sidebar title and icon by the same rule as pages/my-device.js
 const iconsOf = (s) => (/const (?:KIND_)?ICON = (\{[^}]*\})/.exec(s) || [])[1];
 check(iconsOf(app) && iconsOf(app) === iconsOf(src('pages/my-device.js')), 'an added device gets the icon its page gives it');

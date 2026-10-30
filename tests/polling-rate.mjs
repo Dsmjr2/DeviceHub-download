@@ -48,12 +48,12 @@ ok(roundHz(7963) === 8000 && roundHz(996) === 1000 && roundHz(124.6) === 120, 'r
 // the page: listens only, cleans up, on both mouse pages
 const ui = fs.readFileSync(path.join(REAL, 'public/ui/polling-test.js'), 'utf8').replace(/\/\/.*$/gm, '');
 ok(!/fetch\(|write\(|toast\(|modal\(|\btitle:|alert\(|Notification|sendFeatureReport/.test(ui), 'the test only listens: no fetch, no writes, no pop-ups');
-ok(/removeEventListener\(run\.name, onRaw\)/.test(ui) && /setTimeout\(\(\) => stop\(\), TEST_MS\)/.test(ui) && /!view\?\.box\.isConnected \|\|/.test(ui), 'it stops by itself, and when the page moves on');
-ok(/const mine = run\.who === who;/.test(ui) && /view\.who !== run\.who\) return stop\(true\)/.test(ui), "one mouse's result never shows on another mouse's page");
+ok(/removeEventListener\(run\.name, onRaw\)/.test(ui) && /setTimeout\(\(\) => stop\(\), TEST_MS\)/.test(ui) && /if \(!view\?\.box\.isConnected\) return stop\(true\);/.test(ui), 'it stops by itself, and when the page moves on');
+ok(/const mine = run\.who === who;/.test(ui) && /const view = viewOf\(run\.who\);/.test(ui) && /views\.set\(who, \{ box, draw \}\)/.test(ui), "one mouse's result never shows on another mouse's page, and each mouse has its own card");
 ok((ui.match(/\blog\(/g) || []).length === 1 && /if \(v\.kind !== 'short'\) log\(`Polling rate test:/.test(ui), 'each real result is saved once to the activity log on this PC (not a too-short one)');
 ok(/pointerrawupdate/.test(ui) && /getCoalescedEvents/.test(ui), 'it reads every report the browser hands over');
 ok(/pollingTest\(v\.pollingRate, card\)/.test(fs.readFileSync(path.join(REAL, 'public/pages/mouse.js'), 'utf8')), 'the mouse page has it');
-ok(/\/mouse\/i\.test\(a\.kind \|\| ''\) \? pollingTest\(pollHz\(d\), card, id\)/.test(fs.readFileSync(path.join(REAL, 'public/pages/my-device.js'), 'utf8')), 'every library mouse page has it');
+ok(/\/mouse\/i\.test\(a\.kind \|\| ''\) \? pollingTest\(pollHzOf\(d\), card, id\)/.test(fs.readFileSync(path.join(REAL, 'public/pages/my-device.js'), 'utf8')), 'every library mouse page has it');
 
 if (fails.length) { console.log(`polling-rate: ${fails.length} failed`); for (const f of fails) console.log(`  FAIL ${f}`); process.exit(1); }
 console.log('polling-rate (measured rate from 0.1 ms times, pauses left out, the verdict, a test that only listens): all good');

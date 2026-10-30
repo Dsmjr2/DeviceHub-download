@@ -52,7 +52,10 @@ async function listHeadsets(maxAge = 0) {
   try { usbList = (await call('usb-headsets', {})).headsets || []; listAt = Date.now(); } catch { return null; }
   return usbList;
 }
-const toGeneric = (h) => ({ usb: h.usb, device: h.device || h.usb, ids: new Set([...h.playback, ...h.recording].map((e) => e.id)) });
+// bt (29 Oct 2026, helpers/wired-headsets.js): 'only' = this headset is on Bluetooth only; 'also' = it is on USB and
+// Bluetooth at once, and its Bluetooth sound devices count as this headset's too
+const toGeneric = (h) => ({ usb: h.usb, device: h.device || h.usb, bt: h.bluetooth === true ? 'only' : h.bluetooth ? 'also' : null,
+  ids: new Set([...h.playback, ...h.recording, ...(h.bluetooth?.playback || []), ...(h.bluetooth?.recording || [])].map((e) => e.id)) });
 const gone = (msg) => Object.assign(new Error(msg), { gone: true });
 async function findGeneric() {
   const list = await listHeadsets();

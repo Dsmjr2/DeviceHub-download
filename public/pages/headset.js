@@ -44,6 +44,11 @@ function ownHeadset(a) {
 // any other headset: what works now, plus its driver page (if installed) or Learn a device for USB models
 function genericCard(a, redraw) {
   const g = a.generic || {};
+  // one headset over Bluetooth (helpers/wired-headsets.js): its music and call sides are one headset
+  if (g.bt === 'only') {
+    return card([h('h2', {}, 'Bluetooth headset')],
+      h('p', { class: 'faint', style: { margin: '0' } }, 'Sound, mic and the equalizer below work now. Over Bluetooth, Windows passes on sound only, so battery and headset settings need its USB dongle or cable.'));
+  }
   if (isJack(g.usb)) {
     return card([h('h2', {}, 'Wired headset')],
       h('p', { class: 'faint', style: { margin: '0' } }, 'Sound, mic and the equalizer below work now. Wired headphones on the PC\'s sound jack have no battery or lights to read.'));
@@ -51,7 +56,8 @@ function genericCard(a, redraw) {
   const vid = /VID_([0-9A-F]{4})/i.exec(g.usb || '')?.[1]?.toLowerCase(), pid = /PID_([0-9A-F]{4})/i.exec(g.usb || '')?.[1]?.toLowerCase();
   const u = { id: `${vid}:${pid}`, vid, name: g.device, brand: brandForUsb(vid) };
   const own = ownHeadset(a);
-  if (own && own === headsetTwin()) return twinSettingsCard(own, redraw);
+  const alsoBt = g.bt === 'also' ? h('p', { class: 'faint', style: { margin: '10px 0 0', fontSize: '12.5px' } }, 'Also connected over Bluetooth: the same headset, not a second one.') : null;
+  if (own && own === headsetTwin()) { const c = twinSettingsCard(own, redraw); if (alsoBt) c.append(alsoBt); return c; }
   return card([h('h2', {}, 'Lights & battery')],
     own
       ? h('p', { style: { margin: '0 0 10px' } }, `Battery${own.battery?.percent != null ? ` (${own.battery.percent}%)` : ''} and headset settings are on the ${own.adapter.title} page.`)
@@ -59,7 +65,8 @@ function genericCard(a, redraw) {
     h('div', { class: 'actions' },
       own ? button(`Open ${own.adapter.title}`, () => { location.hash = `#/${own.id}`; }, { kind: 'primary small' }) : null,
       button('Learn a device', () => { location.hash = '#/learn'; }, { kind: own ? 'ghost small' : 'small' }),
-      button('Copy prompt', () => copyPrompt(u), { kind: 'ghost small' })));
+      button('Copy prompt', () => copyPrompt(u), { kind: 'ghost small' })),
+    alsoBt);
 }
 
 // Two or more USB headsets (22 Oct 2026): which one this page controls. The choice is kept in DeviceHub's settings

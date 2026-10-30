@@ -90,13 +90,22 @@ async function handle(action, body) {
     // gave any headset on the Headset page (settings.json "headsetNames")
     const names = headsetNames();
     const usbList = (r.headsets || []).map((x) => (names[String(x.usb).toUpperCase()] ? { ...x, device: names[String(x.usb).toUpperCase()] } : x));
-    let wired = [];
+    let wired = [], list = usbList;
     try {
+      const wh = require('./wired-headsets');
       const all = await ask({ op: 'audio-list', match: '' });
       const onUsb = await ask({ op: 'hs80-endpoints', usb: 'USB\\' });   // every sound device on a USB device, any state
-      if (all.ok && onUsb.ok) wired = require('./wired-headsets').wiredHeadsets(all.endpoints, (onUsb.endpoints || []).map((e) => e.id), names);
+      // every sound device on Bluetooth (BTHENUM, BTHHFENUM, BTHLEDevice): one headset, not two jacks (29 Oct 2026)
+      const onBt = await ask({ op: 'hs80-endpoints', usb: 'BTH' }).catch(() => ({ ok: false }));
+      const btIds = onBt.ok ? (onBt.endpoints || []).map((e) => e.id) : [];
+      if (all.ok && onUsb.ok) {
+        wired = wh.wiredHeadsets(all.endpoints, (onUsb.endpoints || []).map((e) => e.id), names, btIds);
+        const folded = wh.foldBluetooth(usbList, wh.bluetoothHeadsets(all.endpoints, new Set(btIds), names));
+        list = folded.headsets;
+        wired = [...folded.bluetooth, ...wired];
+      }
     } catch {}
-    return { headsets: [...usbList, ...wired] };
+    return { headsets: [...list, ...wired] };
   }
   if (action === 'hs80-endpoints') { const r = await ask({ op: 'hs80-endpoints', usb }); if (!r.ok) throw new Error(r.error); return r; }
   if (action === 'set-default') {

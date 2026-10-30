@@ -63,7 +63,7 @@ const app = src('public/app.js');
 // version is asked for only while the stream is not open, and then only while the window is shown
 check(/onEvent\('backup', \(x\) => setLastBackup\(x\.at\)\)/.test(app) && !/fetch\('\/api\/backups'\)/.test(app), 'the backup shield is told on the stream, never read');
 check(/everyVisible\(paintSetupNav, 5 \* 60000\)/.test(app), 'the Setup check\'s 5-minute look runs only while the window is shown');
-check(/onEvent\('power', paintSaving\)/.test(app) && !/fetch\('\/api\/power'\)/.test(app), 'the battery saver is told on the stream, never read');
+check(/onEvent\('power', \(p\) => \{ paintSaving\(p\); seeBattery\(p\); \}\)/.test(app) && !/fetch\('\/api\/power'\)/.test(app), 'the battery saver is told on the stream, never read');
 check(/everyVisible\(async \(\) => \{\s*if \(streamUp\(\)\) return reloadIfNew\(\);[^\n]*\n\s*try \{ sawVersion\(\(await \(await fetch\('\/api\/version'\)\)/.test(app), 'the version check runs only while the window is shown, and only while the stream is down');
 check(/function reloadIfNew\(\) \{\s*if \(!newVersion \|\| reloading \|\| isHidden\(\) \|\| isBusy\(\)\) return;/.test(app), 'a hidden window reloads for new files only once it is shown');
 check(/onChange\(\(id\) => \{ if \(isHidden\(\)\) \{ changedWhileHidden = true; return; \} pageChanged\(id\); \}\)/.test(app), 'a hidden window does not redraw on a device change');
