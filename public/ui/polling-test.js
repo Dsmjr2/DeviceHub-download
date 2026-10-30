@@ -1,13 +1,15 @@
 // "Test the polling rate" (29 Oct 2026, Shawn's pick): measures how many reports per second really arrive from the
 // mouse while the person moves it, and compares that with the rate it is set to (public/core/polling-rate.js). It runs
-// in the page only: it reads mouse movement, writes nothing to the mouse and sends nothing anywhere. It stops by itself
-// after 5 seconds of movement. Everything shows in place: no pop-ups.
+// in the page only: it reads mouse movement and writes nothing to the mouse. It stops by itself after 5 seconds of
+// movement. Everything shows in place: no pop-ups. Each result goes in DeviceHub's activity log on this PC (Shawn,
+// 29 Oct 2026: "you can save results"), so a reading can be looked at later; nothing is sent anywhere.
 //
 // The test lives here, not in the card: the mouse page redraws whenever the mouse reports (its battery, a setting), and
 // each redraw makes a new card, which picks the running test up. Leaving the page stops it.
 import { h } from './dom.js';
 import { button } from './controls.js';
 import { rateOf, verdict, roundHz, TEST_MS } from '../core/polling-rate.js';
+import { log } from '../core/devices.js';
 
 const run = { stage: 'idle', who: null, result: null, setHz: null, times: [], first: null, timer: null, tick: null, name: null };
 let view = null;   // the card on the page now: { box, draw }
@@ -36,6 +38,8 @@ function stop(quiet = false) {
   run.name = null;
   if (quiet === true) { if (run.stage === 'running') run.stage = 'idle'; return; }
   Object.assign(run, { stage: 'done', result: rateOf(run.times), times: [] });
+  const v = verdict(run.result, run.setHz);
+  if (v.kind !== 'short') log(`Polling rate test: about ${roundHz(run.result.hz)} Hz arrived${run.setHz ? ` (set to ${run.setHz} Hz)` : ''}, ${Math.round(run.result.steady * 100)}% steady, ${run.result.events} reports: ${v.kind === 'match' ? 'matches' : v.kind === 'low' ? 'lower than set' : 'higher than set'}`, 'info', run.who);
   view?.draw();
 }
 

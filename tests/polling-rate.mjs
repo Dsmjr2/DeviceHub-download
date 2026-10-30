@@ -47,6 +47,7 @@ const ui = fs.readFileSync(path.join(REAL, 'public/ui/polling-test.js'), 'utf8')
 ok(!/fetch\(|write\(|toast\(|modal\(|\btitle:|alert\(|Notification|sendFeatureReport/.test(ui), 'the test only listens: no fetch, no writes, no pop-ups');
 ok(/removeEventListener\(run\.name, onRaw\)/.test(ui) && /setTimeout\(\(\) => stop\(\), TEST_MS\)/.test(ui) && /!view\?\.box\.isConnected \|\|/.test(ui), 'it stops by itself, and when the page moves on');
 ok(/const mine = run\.who === who;/.test(ui) && /view\.who !== run\.who\) return stop\(true\)/.test(ui), "one mouse's result never shows on another mouse's page");
+ok((ui.match(/\blog\(/g) || []).length === 1 && /if \(v\.kind !== 'short'\) log\(`Polling rate test:/.test(ui), 'each real result is saved once to the activity log on this PC (not a too-short one)');
 ok(/pointerrawupdate/.test(ui) && /getCoalescedEvents/.test(ui), 'it reads every report the browser hands over');
 ok(/pollingTest\(v\.pollingRate, card\)/.test(fs.readFileSync(path.join(REAL, 'public/pages/mouse.js'), 'utf8')), 'the mouse page has it');
 ok(/\/mouse\/i\.test\(a\.kind \|\| ''\) \? pollingTest\(pollHz\(d\), card, id\)/.test(fs.readFileSync(path.join(REAL, 'public/pages/my-device.js'), 'utf8')), 'every library mouse page has it');
