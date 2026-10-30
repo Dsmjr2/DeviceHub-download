@@ -1,7 +1,7 @@
 {
-  "version": "1.20",
-  "commit": "0e0a8e79cd29",
+  "version": "1.21",
+  "commit": "f939f72ff850",
   "notes": [
-    "Exact polling rate from Windows' own count"
+    "Revert \"Exact polling rate from Windows' own count\""
   ]
 }

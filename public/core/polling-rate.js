@@ -32,30 +32,20 @@ export function rateOf(times) {
 // a rate shown the way the mouse page names them: 125, 250, 500, 1000 ... 8000
 export const roundHz = (hz) => (hz >= 1000 ? Math.round(hz / 100) * 100 : Math.round(hz / 10) * 10);
 
-// the verdict: { kind: 'match'|'low'|'high'|'short', line } for a measured rate against the one the mouse is set to.
-// exact: Windows' own count (helpers/mouse-rate.ps1), so the note that a browser can merge reports does not apply.
-export function verdict(r, setHz, { exact = false } = {}) {
+// the verdict: { kind: 'match'|'low'|'high'|'short', line } for a measured rate against the one the mouse is set to
+// The browser's ceiling (29 Oct 2026, measured on Shawn's Pulsar: 990 Hz at 1000, 2000 at 2000, only about 2400 at
+// 8000). Above about 2000 Hz a browser passes the page fewer reports than arrive, so at 4000 and 8000 the test can
+// say the link is fast but not confirm the rate. Counting outside the browser does not help: since July 2023
+// (KB5028185) Windows 11 gives a background program only about 125 mouse messages a second (measured here: 130).
+export const BROWSER_MAX_HZ = 2000;
+export function verdict(r, setHz) {
   if (!r || r.events < MIN_EVENTS || r.movingMs < 1000) return { kind: 'short', line: 'Not enough movement to measure. Press Start and keep the mouse moving in circles for the whole 5 seconds.' };
   const got = roundHz(r.hz);
   const shaky = r.steady < 0.7 ? ' It was uneven, which usually means a weak wireless signal or a busy USB port.' : '';
   if (!Number.isFinite(setHz) || setHz <= 0) return { kind: 'match', line: `About ${got} Hz arrived.${shaky}` };
   if (r.hz >= setHz * 0.75 && r.hz <= setHz * 1.25) return { kind: 'match', line: `About ${got} Hz arrived. That matches the ${setHz} Hz it is set to.${shaky}` };
   if (r.hz > setHz * 1.25) return { kind: 'high', line: `About ${got} Hz arrived, more than the ${setHz} Hz it is set to. Another mouse may have been moving too.` };
-  const high = setHz >= 2000 && !exact ? ' At 2000 Hz and up, Windows or the browser can also merge reports, so this test can read lower than the mouse sends.' : '';
+  if (setHz > BROWSER_MAX_HZ && r.hz >= BROWSER_MAX_HZ * 0.75) return { kind: 'limit', line: `About ${got} Hz reached this page. A browser can't count much past ${BROWSER_MAX_HZ} Hz, so this test can't confirm ${setHz} Hz, but it shows the mouse, dongle and port are fast. That is not a fault.${shaky}` };
+  const high = setHz > BROWSER_MAX_HZ ? ` At ${setHz} Hz the browser can also miss reports, so try the test at 1000 Hz too.` : '';
   return { kind: 'low', line: `Only about ${got} Hz arrived, but it is set to ${setHz} Hz. Plug the dongle or cable straight into the PC (not a hub or the front panel) and keep the dongle close to the mouse, then test again.${high}${shaky}` };
-}
-
-// Windows' count for this mouse: the device named with its vendor id (VID_3710 for the Pulsar), else the busiest
-export function pickNative(r, vid) {
-  if (!r?.ok) return { error: r?.why || 'Windows did not answer' };
-  const list = Array.isArray(r.devices) ? r.devices : [];
-  if (!r.moved || !list.length) return { error: 'Windows saw no mouse movement' };
-  const want = vid ? `VID_${String(vid).toUpperCase()}` : null;
-  const d = (want && list.find((x) => String(x.name || '').toUpperCase().includes(want))) || list[0];
-  return { hz: Number(d.hz) || 0, reports: Number(d.reports) || 0, movingMs: Number(d.movingMs) || 0 };
-}
-// the reading the card and the log use: Windows' count when it has one (exact), else the browser's
-export function reading(result, native) {
-  if (native && !native.error && native.reports) return { r: { hz: native.hz, events: native.reports, movingMs: native.movingMs, steady: 1 }, exact: true };
-  return { r: result, exact: false };
 }

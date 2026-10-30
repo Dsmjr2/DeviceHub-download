@@ -339,20 +339,6 @@ async function api(req, res, url) {
     });
     return;
   }
-  // the exact polling rate (helpers/mouse-rate.ps1): every mouse report as Windows gets it, for the polling rate test.
-  // It only listens; one at a time.
-  if (url.pathname === '/api/mouse/rate' && req.method === 'POST') {
-    if (mouseRateBusy) return send(res, 409, { ok: false, why: 'a test is already running' });
-    mouseRateBusy = true;
-    const ps = path.join(__dirname, 'helpers', 'mouse-rate.ps1');
-    require('child_process').execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps, '-Seconds', '5', '-WaitSeconds', '25'], { windowsHide: true, timeout: 45000 }, (e, out) => {
-      mouseRateBusy = false;
-      let r = null;
-      try { r = JSON.parse(String(out || '').trim().split(/\r?\n/).pop()); } catch {}
-      send(res, 200, r && typeof r === 'object' ? r : { ok: false, why: e ? e.message : 'no answer' });
-    });
-    return;
-  }
   if (url.pathname === '/api/version') return send(res, 200, { version: appVersion() });
   // a new version is ready (helpers/update-notice.mjs): the window asks once, Update or Later
   if (url.pathname === '/api/update-notice') return send(res, 200, { notice: updateNotice });
@@ -1265,7 +1251,6 @@ const AGENT_ON = process.env.DEVICEHUB_AGENT !== '0';
 let agent = null, agentTried = false;
 let tray = false;
 let quitting = false;
-let mouseRateBusy = false;   // /api/mouse/rate: one polling rate measurement at a time
 async function shutdown() {
   if (ISOLATED) process.exit(0);   // isolated test mode started nothing to stop (helpers/openrgb.js stop() would remove the real copy's pid file)
   // an AnkerCamera test running: muted again first (at most 1.5 s), while the audio helper is still there
