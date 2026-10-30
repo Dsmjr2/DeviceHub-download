@@ -149,7 +149,7 @@ check(btName("Sam's AirPods") === 'a Bluetooth airpods' && btName('Bob phone') =
   const lineOf = (r, id) => r.lines.find((x) => x.id === id);
   // the friend's case: USBPcap installed but never tested, an unknown 2.4G receiver, no app DeviceHub knows
   let r = await pf();
-  check(!r.ok && !lineOf(r, 'capture').ok && lineOf(r, 'capture').action === 'check', `never tested: Test my learning setup is the fix (${JSON.stringify(lineOf(r, 'capture'))})`);
+  check(!r.ok && lineOf(r, 'capture').ok, `never tested: not a stop of its own, the session's listening tests it (${JSON.stringify(lineOf(r, 'capture'))})`);
   check(!lineOf(r, 'app').ok && /does not know this device's app/.test(lineOf(r, 'app').says) && lineOf(r, 'app').action === 'app-open', 'an unknown app: says so, with I have its app open');
   check(r.lines.every((x) => x.ok || x.fix), 'each failing line has one fix');
   world.usbpcap = false;

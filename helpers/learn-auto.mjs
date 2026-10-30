@@ -189,6 +189,8 @@ async function session(r) {
   if (stopped(r)) return quit(r);
   if (ls?.listener !== 'ready' && ls?.listener !== 'stopped') return fail(r, ls?.listenerError ? `The listener says: ${ls.listenerError}.` : 'DeviceHub did not start listening (the Windows prompt may not have been answered).', 'Press Test my learning setup (below): it says what is missing.');
   say(r, 'Listening.');
+  // listening started: the capture works, so the pre-flight's capture line passes from now on (30 Oct 2026)
+  try { lw.options.deps.saveCheck?.(lw.options.root, { ok: true, at: new Date(d.now()).toISOString() }); } catch {}
 
   // 5. each setting
   r.phase = 'learn';

@@ -20,7 +20,7 @@
 import { h } from '../ui/dom.js';
 import { card, row, segmented, button, pill } from '../ui/controls.js';
 import { installerButton } from '../ui/installer-button.js';
-import { isDemo, devices, connect } from '../core/devices.js';
+import { isDemo, devices } from '../core/devices.js';
 import { env } from '../core/env.js';
 import { topbar, checkAnswer } from './common.js';
 import { genericDongle } from '../core/generic-dongle.js';
@@ -76,7 +76,7 @@ async function startAuto(d) {
 }
 // a learning session is under way (the window is not closed while one runs, core/idle-close.js): any step past
 // picking the device and its checks, or Learn it for me still running
-export const learnBusy = () => (st.step === 'auto' ? !!auto.s && !AUTO_OVER.includes(auto.s.phase) : !['pick', 'preflight'].includes(st.step));
+export const learnBusy = () => (st.step === 'auto' ? !!auto.s && !AUTO_OVER.includes(auto.s.phase) : st.step !== 'pick');
 // told to the window (app.js), which loads this file only when Learn is first used (27 Oct 2026)
 env.learnBusy = learnBusy;
 function pollAuto() {
@@ -157,28 +157,30 @@ async function loadPreflight(d, labels) {
   if (st.pf?.key === key) st.pf = { key, loading: false, lines: r.lines || [], ok: !!r.ok };
   redrawPage();
 }
+// one failing pre-flight line's fix, as a button (again: what to do once it is fixed)
+function fixFor(x, d, again) {
+  if (x.ok) return null;
+  if (x.action === 'check') return button(st.check === 'running' ? 'Testing…' : 'Test my learning setup', async () => { await checkSetup(); again(); }, { kind: 'ghost small', disabled: st.check === 'running' });
+  if (x.action === 'install-usbpcap') return installerButton('usbpcap', { onDone: again, redraw: redrawPage, kind: 'ghost small' });
+  if (x.action === 'open-app') return button('Open it', async () => { await fetch('/api/learn/open-app', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vid: d.vid }) }).catch(() => {}); setTimeout(again, 4000); }, { kind: 'ghost small' });
+  if (x.action === 'app-open') return button('I have its app open', () => { st.appOpen[`${d.vid}:${d.pid}`] = true; again(); }, { kind: 'ghost small' });
+  if (x.action === 'pick') return button('Pick another device', () => { auto.s = null; st.step = 'pick'; st.devices = null; redrawPage(); }, { kind: 'ghost small' });
+  if (x.action === 'look') return button('Look again', () => { st.devices = null; loadDevices().then(again); }, { kind: 'ghost small' });
+  if (x.link) return h('a', { href: x.link, target: '_blank', rel: 'noopener' }, 'Official download');
+  return null;
+}
+const pfLines = (lines, d, again) => lines.map((x) => h('div', { class: `learn-pf-line ${x.ok ? 'ok' : 'bad'}` },
+  h('span', { class: 'learn-pf-mark' }, x.ok ? '✓' : '✗'),
+  h('span', {}, x.says, x.ok || !x.fix ? null : h('span', { class: 'faint' }, ` ${x.fix}`)),
+  fixFor(x, d, again)));
 function preflightBox(d, labels) {
   const key = pfKey(d, labels);
   if (st.pf?.key !== key && !st.pf?.loading) setTimeout(() => loadPreflight(d, labels), 0);
   const pf = st.pf?.key === key ? st.pf : null;
   const again = () => loadPreflight(d, labels);
-  const fixOf = (x) => {
-    if (x.ok) return null;
-    if (x.action === 'check') return button(st.check === 'running' ? 'Testing…' : 'Test my learning setup', async () => { await checkSetup(); again(); }, { kind: 'ghost small', disabled: st.check === 'running' });
-    if (x.action === 'install-usbpcap') return installerButton('usbpcap', { onDone: again, redraw: redrawPage, kind: 'ghost small' });
-    if (x.action === 'open-app') return button('Open it', async () => { await fetch('/api/learn/open-app', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vid: d.vid }) }).catch(() => {}); setTimeout(again, 4000); }, { kind: 'ghost small' });
-    if (x.action === 'app-open') return button('I have its app open', () => { st.appOpen[`${d.vid}:${d.pid}`] = true; again(); }, { kind: 'ghost small' });
-    if (x.action === 'pick') return button('Pick another device', () => { st.step = 'pick'; st.devices = null; redrawPage(); }, { kind: 'ghost small' });
-    if (x.action === 'look') return button('Look again', () => { st.devices = null; loadDevices().then(again); }, { kind: 'ghost small' });
-    if (x.link) return h('a', { href: x.link, target: '_blank', rel: 'noopener' }, 'Official download');
-    return null;
-  };
   return h('div', { class: 'learn-pf', role: 'status' },
     h('div', { class: 'learn-pf-head' }, pf?.ok ? 'Ready to record.' : 'Fix these first:'),
-    !pf?.lines ? faint('Checking…') : pf.lines.map((x) => h('div', { class: `learn-pf-line ${x.ok ? 'ok' : 'bad'}` },
-      h('span', { class: 'learn-pf-mark' }, x.ok ? '✓' : '✗'),
-      h('span', {}, x.says, x.ok || !x.fix ? null : h('span', { class: 'faint' }, ` ${x.fix}`)),
-      fixOf(x))),
+    !pf?.lines ? faint('Checking…') : pfLines(pf.lines, d, again),
     pf && !pf.ok && !pf.loading ? h('div', { class: 'actions', style: { margin: '6px 0 0' } }, button('Check again', again, { kind: 'ghost small', ic: 'refresh' })) : null);
 }
 // what Start listening sends: the person said an app DeviceHub does not know is open (the pre-flight's app line)
@@ -218,9 +220,6 @@ const sentNote = () => (st.sent ? h('div', { class: st.sent.sent || st.sent.queu
 // ---------- small parts
 const p = (text, cls) => h('p', { class: cls || null, style: { margin: '0 0 10px' } }, text);
 const faint = (text) => p(text, 'faint');
-const steps = ['pick', 'ready', 'take', 'found', 'driver', 'saved'];
-const stepAs = { starting: 'ready', plan: 'ready', driving: 'take', change: 'take' };
-const stepNo = (s) => h('span', { class: 'learn-step' }, `Step ${Math.max(1, steps.indexOf(stepAs[s] || s) + 1)} of 6`);
 const field = (label, key, obj, attrs = {}) => {
   const el = h('input', { class: 'text', value: obj[key] ?? '', 'aria-label': label, ...attrs });
   el.addEventListener('input', () => { obj[key] = el.value; });
@@ -240,7 +239,7 @@ const roleWord = (l) => (l.role === 'battery' ? 'battery level' : l.role === 'ch
 function pickStep() {
   if (!st.devices) {
     if (!st.loading) { st.loading = true; setTimeout(() => loadDevices().finally(() => { st.loading = false; }), 0); }
-    return card([h('h2', {}, 'Pick the device'), h('span', { class: 'spacer' }), stepNo('pick')], faint('Looking…'));
+    return card([h('h2', {}, 'Pick the device')], faint('Looking…'));
   }
   const idOf = (d) => `${d.vid}:${d.pid}`.toUpperCase();
   // the device Lighting > This PC sent here goes first
@@ -248,118 +247,54 @@ function pickStep() {
   const list = wanted ? [wanted, ...st.devices.filter((d) => d !== wanted)] : st.devices;
   const primary = (d) => (wanted ? d === wanted : !d.library);
   const kindOf = (d) => st.kindFor[`${d.vid}:${d.pid}`] || null;
-  const pick = (d) => run('begin', { vid: d.vid, pid: d.pid, ...(kindOf(d) ? { kind: kindOf(d) } : {}) }, () => { Object.assign(st, { step: 'plan', plan: null, queue: null, log: [], putBack: [], want: null }); st.save.title = d.name; });
   // only one device can be learned (or This PC sent one that can): it is picked by itself, once
   const pickable = list.filter((d) => !d.refused);
   const only = wanted && !wanted.refused ? wanted : pickable.length === 1 ? pickable[0] : null;
-  if (st.autoStart && wanted && !wanted.refused && !wanted.ready && !st.busy) { st.autoStart = null; st.pfFor = wanted; st.step = 'preflight'; setTimeout(redrawPage, 0); }
+  if (st.autoStart && wanted && !wanted.refused && !wanted.ready && !st.busy) { st.autoStart = null; setTimeout(() => startAuto(wanted), 0); }
   // three groups (23 Oct 2026, Shawn on a friend's PC: "the learn a device area doesnt seem to help" when every row was a
   // long refusal): what can be learned, what already works with a driver (nothing to learn), and what cannot be learned
   // a ready driver (24 Oct 2026): never learned; its row names the driver and sends the person to its page
   const works = (d) => d.asIs || (d.ready && !d.ready.learned) || (d.refused && (d.driver || d.library || (d.vendor && /ready-made|driver written as code|already has a driver/i.test(d.refused))));
-  const learnable = list.filter((d) => !d.refused && !works(d)), working = list.filter(works), cannot = list.filter((d) => d.refused && !works(d));
-  const short = (d) => {
-    if (d.ready) return `Works with its driver (${runningCopy(d)?.name || d.ready.name}).`;
-    if (d.driver) return `Works with its driver (${d.driver.name}).`;
-    const brand = /No learning needed for ([^:]+):/.exec(d.refused || '')?.[1];
-    if (brand) return `Works with DeviceHub's ${brand} driver.`;
-    return 'Works with a driver DeviceHub has.';
-  };
-  const why = (d) => (genericDongle({ ...d, name: /^USB device /.test(d.name) ? null : d.name })?.line || (!d.vendor ? 'No settings channel. Nothing to learn.' : String(d.refused || '').split(/(?<=\.)\s/)[0]));
-  const learnRow = (d) => row(d.title || d.name, [d === wanted ? 'your pick' : null, `USB ${d.vid}:${d.pid}`, d.seems ? `looks like: ${d.seems}` : null, kindOf(d) ? `you said: a ${kindOf(d)}` : null, d.vendor ? 'settings channel' : 'no settings channel', d.library && !d.note ? 'shared driver: install in Setup' : null, d.note || null].filter(Boolean).join(' · '),
+  // 30 Oct 2026 (Shawn, after a friend's PC: "the learn a device area is a mess and confusing"): one button per device
+  // that can be learned, a short line of what already works (its fixes are on its own page), the rest folded away; no
+  // USB ids, no "settings channel", no separate checks step
+  const learnable = list.filter((d) => !d.refused && !works(d));
+  const working = list.filter((d) => works(d) && (d.ready || d.driver));
+  const cannot = list.filter((d) => !learnable.includes(d) && !working.includes(d));
+  const nameOf = (d) => devices[runningCopy(d)?.id]?.adapter?.title || d.title || d.name;
+  const why = (d) => (genericDongle({ ...d, name: /^USB device /.test(d.name) ? null : d.name })?.line || (d.asIs || !d.vendor ? 'Nothing on it to set.' : String(d.refused || '').split(/(?<=\.)\s/)[0]));
+  const learnRow = (d) => row(d.title || d.name, [d === wanted ? 'the one you picked' : null, kindOf(d) ? `you said: a ${kindOf(d)}` : d.seems ? `looks like a ${d.seems}` : null, d.note || null].filter(Boolean).join(' · ') || null,
     // its USB interfaces say both a keyboard and a mouse: asked once, before anything is learned
     d.askKind && !kindOf(d) ? h('span', { class: 'actions', style: { margin: 0 } }, h('span', { class: 'muted' }, d.askKind.line),
       ...d.askKind.options.map((o) => button(o.label, () => { st.kindFor[`${d.vid}:${d.pid}`] = o.value; redrawPage(); }, { kind: 'ghost small' })))
-      : h('span', { class: 'actions', style: { margin: 0 } },
-        button('Learn it for me', () => { st.pfFor = d; st.step = 'preflight'; redrawPage(); }, { kind: primary(d) || d === only ? 'primary small' : 'ghost small', ic: 'plug' }),
-        button('Choose the settings', () => pick(d), { kind: 'ghost small' })));
-  const head = (t) => h('h3', { class: 'learn-group' }, t);
-  return card([h('h2', {}, learnable.length ? 'Pick the device' : working.length ? 'Your devices' : 'Nothing to learn'), h('span', { class: 'spacer' }), learnable.length ? stepNo('pick') : null],
-    learnable.length ? null
-      : p(working.length ? 'Nothing here needs learning: each device has a driver. What is left for each is below.' : 'Nothing to learn.'),
-    st.want && !wanted ? faint(`USB ${st.want.toLowerCase()} is not in the list: nothing to learn on it.`) : null,
-    learnable.length ? [head('Can be learned'), ...learnable.map(learnRow)] : null,
-    working.length ? [learnable.length ? head('Already works') : null, ...working.map((d) => h('div', {}, row(devices[runningCopy(d)?.id]?.adapter?.title || d.title || d.name, `${devices[runningCopy(d)?.id]?.adapter?.title ? `${d.title || d.name} · ` : ''}${short(d)} · USB ${d.vid}:${d.pid}`,
-      h('span', { class: 'actions', style: { margin: 0 } },
-        button('Open its page', () => { location.hash = runningCopy(d)?.page || d.ready?.page || '#/setup'; }, { kind: 'ghost small' }),
-        d.ready || d.driver ? button('A setting is missing?', () => missingFor(d), { kind: 'ghost small' }) : null)),
-      nextStep(d))),
-      h('div', { class: 'actions', style: { margin: '4px 0 8px' } }, button('Open Setup', () => { location.hash = '#/setup'; }, { kind: 'ghost small' }))] : null,
-    cannot.length ? [head('Cannot be learned here'), ...cannot.map((d) => row(d.title || d.name, `${why(d)} · USB ${d.vid}:${d.pid}`,
-      genericDongle({ ...d, name: /^USB device /.test(d.name) ? null : d.name }) || d.vendor ? getHelp(`request:${d.vid.toLowerCase()}:${d.pid.toLowerCase()}`, null, { label: 'Request support', request: { vid: d.vid, pid: d.pid, name: '' }, kind: 'ghost small' }) : null))] : null,
-    problems(),
-    checkResult(),
-    h('div', { class: 'actions', style: { marginTop: '12px' } }, button('Look again', loadDevices, { kind: 'ghost small', ic: 'refresh' }),
-      isDemo() ? null : button(st.check === 'running' ? 'Testing…' : 'Test my learning setup', () => checkSetup(), { kind: 'ghost small', disabled: st.check === 'running' })));
+      : button(st.busy ? 'Starting…' : 'Learn it', () => startAuto(d), { kind: primary(d) || d === only ? 'primary small' : 'ghost small', ic: 'plug', disabled: st.busy }));
+  const openPage = (d) => { location.hash = runningCopy(d)?.page || d.ready?.page || '#/setup'; };
+  return h('div', {},
+    card([h('h2', {}, learnable.length ? 'Pick the device to learn' : 'Nothing to learn')],
+      learnable.length ? faint('Open its maker\'s app first if you have it. DeviceHub changes a few settings there and watches what the device is sent. It only listens.')
+        : p(working.length ? 'Every device here already works with DeviceHub. Learn a device is only for one it cannot control yet: plug it in, then press Look again.' : 'No mouse, keyboard or headset to learn is plugged in. Plug one in, then press Look again.'),
+      st.want && !wanted ? faint('The device you picked is not plugged in, or there is nothing on it to learn.') : null,
+      ...learnable.map(learnRow),
+      problems(),
+      h('div', { class: 'actions', style: { marginTop: '12px' } }, button('Look again', loadDevices, { kind: 'ghost small', ic: 'refresh' }))),
+    working.length ? card([h('h2', {}, 'Already working')],
+      h('p', { class: 'learn-works', style: { margin: '0 0 10px' } }, ['These have a driver, so there is nothing to learn. Change them on their own page: ', ...working.flatMap((d, i) => [i ? ', ' : '', h('a', { href: runningCopy(d)?.page || d.ready?.page || '#/setup', onclick: (e) => { e.preventDefault(); openPage(d); } }, nameOf(d))]), '.']),
+      h('details', { class: 'learn-other' }, h('summary', {}, 'A setting is missing on one of these?'),
+        faint('DeviceHub records you changing it in the maker\'s app and sends that to Shawn, who adds it to the driver.'),
+        ...working.map((d) => row(nameOf(d), null, button('Record a missing setting', () => missingFor(d), { kind: 'ghost small' }))))) : null,
+    cannot.length ? h('details', { class: 'learn-other' }, h('summary', {}, `Other USB devices (${cannot.length}): can't be learned`),
+      ...cannot.map((d) => row(d.title || d.name, why(d),
+        genericDongle({ ...d, name: /^USB device /.test(d.name) ? null : d.name }) || (d.vendor && !d.asIs) ? getHelp(`request:${d.vid.toLowerCase()}:${d.pid.toLowerCase()}`, null, { label: 'Request support', request: { vid: d.vid, pid: d.pid, name: '' }, kind: 'ghost small' }) : null))) : null);
 }
 
-// ---------- a device that already works: its page, and its one next step (24 Oct 2026) ----------
-// Shawn, on a friend's PC: "the learn a device area is still completely unusable for his setup and I cant go through ANY
-// steps": every device had a driver, so the page only said "Already works". Now each one shows what still stands in the
-// way, from its own diagnosis (GET /api/diagnose, the same answer as its page), as one button: closing the maker's app
-// also turns the settings on right after (the G HUB tray kept a Logitech mouse read-only).
+// ---------- a device that already works: the driver that runs it (its page is where its problems are fixed; 30 Oct 2026)
 // the driver that runs the device: of the copies on its USB id, one shown (not stepped aside), connected first
 function runningCopy(d) {
   const all = [d.ready, ...(d.ready?.others || [])].filter((x) => x?.id);
   const live = (x) => devices[x.id] && !devices[x.id].absent;
   return all.find((x) => live(x) && devices[x.id].status === 'connected') || all.find((x) => live(x) && devices[x.id].status === 'asleep') || all.find(live) || all[0] || null;
 }
-const nextCache = {};   // id -> { at, data, note, busy }
-const diagPost = async (body) => {
-  const r = await fetch('/api/diagnose/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok || j.error) throw new Error(j.error || r.statusText);
-  return j;
-};
-function nextStep(d) {
-  const copy = runningCopy(d);
-  if (!copy || isDemo()) return null;
-  const id = copy.id, c = (nextCache[id] ||= { at: 0, data: null, note: null, busy: false });
-  if (!c.data && Date.now() - c.at > 15000) {
-    c.at = Date.now();
-    fetch(`/api/diagnose?id=${encodeURIComponent(id)}`).then((r) => r.json()).then((j) => { c.data = j; redrawPage(); }).catch(() => {});
-  }
-  const top = (c.data?.findings || []).find((f) => f.action) || null;
-  const say = (t) => { c.note = t; c.busy = false; c.data = null; c.at = 0; redrawPage(); };
-  const go = async () => {
-    if (c.busy) return;
-    c.busy = true; redrawPage();
-    const a = top.action;
-    try {
-      if (a.kind === 'close-app') {
-        const r = await diagPost({ kind: 'close-app', app: a.app, confirm: true });
-        if (r.ok === false) return say(r.error || 'It is still running.');
-        await new Promise((ok) => setTimeout(ok, 3000));
-        await connect(id, false).catch(() => {});
-        const t = await diagPost({ kind: 'turn-on', id });
-        return say(`${a.label.replace(/^Close /, '')} closed. ${checkAnswer(t, 'turn-on')}`);
-      }
-      if (a.kind === 'turn-on' || a.kind === 'check-again') return say(checkAnswer(await diagPost({ kind: a.kind, id }), a.kind));
-      if (a.kind === 'retry') { await connect(id, false); return say('Connecting…'); }
-      if (a.kind === 'settings' || a.kind === 'open-folder') { await diagPost({ kind: a.kind, page: a.page }); return say('Opened.'); }
-      say('');
-    } catch (e) { say(`Not done: ${e.message}`); }
-  };
-  const label = !top ? null : top.action.kind === 'close-app' ? `${top.action.label} and turn on settings` : top.action.label || (top.action.kind === 'turn-on' ? 'Turn on settings' : top.action.kind === 'retry' ? 'Connect again' : 'Check again');
-  return h('div', { class: 'learn-next' },
-    top ? h('small', {}, h('b', {}, `${top.problem}. `), top.fix ? `Fix: ${top.fix}` : '') : c.data ? h('small', { class: 'faint' }, 'Nothing to do: it works.') : null,
-    top && ['close-app', 'turn-on', 'check-again', 'retry', 'settings', 'open-folder'].includes(top.action.kind) ? button(c.busy ? 'Working…' : label, go, { kind: 'primary small', ic: 'plug', disabled: c.busy }) : null,
-    c.note ? h('small', { role: 'status' }, c.note) : null);
-}
 
-// the pre-flight before Learn it for me: its settings are the ones the plan will tick (the device's kind), so the lines
-// are checked for the device itself; Start opens only when every line passes
-function preflightStep() {
-  const d = st.pfFor;
-  if (!d) { st.step = 'pick'; return pickStep(); }
-  return card([h('h2', {}, `Before learning the ${d.title || d.name}`), h('span', { class: 'spacer' }), stepNo('ready')],
-    p('Four checks first.'),
-    preflightBox(d, []),
-    checkResult(),
-    h('div', { class: 'actions', style: { marginTop: '12px' } },
-      button('Start learning', () => startAuto(d), { kind: 'primary', ic: 'plug', disabled: !pfOk(d, []) }),
-      button('Back', () => { st.step = 'pick'; redrawPage(); }, { kind: 'ghost small' })));
-}
 // "A setting is missing?" on a device with a ready driver: the settings its driver lacks, recorded for Shawn only
 function missingFor(d) {
   st.sent = null;
@@ -388,7 +323,7 @@ function readyStep() {
   const f = st.form;
   const d = device();
   if (st.usbpcap === false) {
-    return card([h('h2', {}, 'Get ready'), h('span', { class: 'spacer' }), stepNo('ready')],
+    return card([h('h2', {}, 'Get ready')],
       p('Needs USBPcap (free). Install it, then restart the PC.'),
       h('div', { class: 'actions' }, installerButton('usbpcap', { onDone: () => { st.devices = null; loadDevices(); }, redraw: redrawPage }),
         button('I installed it', () => { st.devices = null; loadDevices(); }, { kind: 'ghost small' })));
@@ -424,14 +359,14 @@ function readyStep() {
     st.step = 'starting'; redrawPage(); waitListener();
   };
   if (cur) {
-    return card([h('h2', {}, `On USB ${d ? `${d.vid}:${d.pid}` : ''}: ${cur.label}`), h('span', { class: 'spacer' }), stepNo('ready')],
+    return card([h('h2', {}, `On USB ${d ? `${d.vid}:${d.pid}` : ''}: ${cur.label}`)],
       p(`Setting ${sec.done + 1} of ${sec.total}: learn ${cur.label} again, on its ${sec.link === 'receiver' ? 'receiver' : 'cable'}.`),
       cur.kind === 'number' || (reading && role !== 'charging' && !cur.fixed) ? p(role === 'battery' ? 'Give the percent the app shows now.' : 'Give two values the app offers.') : null,
       h('div', { style: { margin: '6px 0 12px' } }, values),
       problems(),
       h('div', { class: 'actions' }, button(st.busy ? 'Starting…' : 'Start listening', start, { kind: 'primary', ic: 'plug', disabled: st.busy })));
   }
-  return card([h('h2', {}, `Get ready${d ? `: ${d.name}` : ''}`), h('span', { class: 'spacer' }), stepNo('ready')],
+  return card([h('h2', {}, `Get ready${d ? `: ${d.name}` : ''}`)],
     p('Pick one setting and two of its values.'),
     faint('Remaps, macros and EQ cannot be learned yet.'),
     st.server?.addsTo?.note ? faint(`${st.server.addsTo.name}: ${st.server.addsTo.note}.`) : null,
@@ -494,12 +429,12 @@ function planStep() {
   const d = device();
   if (!st.plan) {
     if (!st.planLoading) setTimeout(() => loadPlan(), 0);
-    return card([h('h2', {}, `Learn the ${d?.title || d?.name || 'device'}`), h('span', { class: 'spacer' }), stepNo('plan')], faint('Looking for its app and settings…'));
+    return card([h('h2', {}, `Learn the ${d?.title || d?.name || 'device'}`)], faint('Looking for its app and settings…'));
   }
   const pl = st.plan, m = pl.maker || {};
   if (pl.ask) {
     const answer = async (v) => { st.kindFor[`${d.vid}:${d.pid}`] = v; st.planLoading = true; const r = await api('plan', { kind: v }); st.planLoading = false; st.plan = null; if (r.ok !== false) { st.plan = { ...r, items: (r.items || []).map((it) => ({ ...it, values: (it.values || []).map((x) => (typeof x === 'boolean' ? x : String(x))), percent: '' })) }; st.save.kind = KIND_FOR_SAVE[r.kind] || st.save.kind; } else { st.error = r.error || null; st.plan = { maker: { known: false }, kind: 'device', items: [] }; } redrawPage(); };
-    return card([h('h2', {}, `Learn the ${d?.title || d?.name || 'device'}`), h('span', { class: 'spacer' }), stepNo('plan')],
+    return card([h('h2', {}, `Learn the ${d?.title || d?.name || 'device'}`)],
       p(pl.ask.line),
       h('div', { class: 'actions' }, ...pl.ask.options.map((o) => button(o.label, () => answer(o.value), { kind: 'ghost small' }))));
   }
@@ -508,7 +443,7 @@ function planStep() {
   const box = (it) => { const el = h('input', { type: 'checkbox', 'aria-label': it.label }); el.checked = !!it.ticked; el.addEventListener('change', () => { it.ticked = el.checked; redrawPage(); }); return el; };
   const from = pl.from === 'files' ? `These are the settings ${m.name || 'the maker\'s app'} keeps for it.` : pl.from === 'brand' ? 'These are the settings this maker\'s devices usually have.' : `These are the usual settings for a ${pl.kind === 'device' ? 'device like this' : pl.kind}.`;
   return h('div', {},
-    card([h('h2', {}, `Learn the ${d?.title || d?.name || 'device'}`), h('span', { class: 'spacer' }), stepNo('plan')],
+    card([h('h2', {}, `Learn the ${d?.title || d?.name || 'device'}`)],
       makerLine(m),
       st.usbpcap === false ? [p('Needs USBPcap (free). Install it, then restart the PC.'),
         h('div', { class: 'actions', style: { marginBottom: '12px' } }, installerButton('usbpcap', { onDone: () => { st.devices = null; loadDevices(); }, redraw: redrawPage }))] : null,
@@ -645,7 +580,7 @@ async function analyzeQueued(it) {
 function drivingStep() {
   const it = current();
   const vals = st.server?.setting?.values || [];
-  return card([h('h2', {}, `Learning ${it?.label || ''}`), h('span', { class: 'spacer' }), stepNo('driving')],
+  return card([h('h2', {}, `Learning ${it?.label || ''}`)],
     faint(`Setting ${st.qi + 1} of ${st.queue?.length || 1}.`),
     p(`Changing ${it?.label} in ${appName()} to ${vals.map(show).join(', then ')}. Leave the app alone.`),
     h('div', { class: 'loadbar-wrap' }, h('div', { class: 'loadbar sweep', role: 'progressbar', 'aria-label': 'Changing it and listening' }, h('span')), h('span', { class: 'loadbar-text' }, 'Listening')));
@@ -657,7 +592,7 @@ function changeStep() {
   const steps = changeOf(it);
   const now = steps[Math.min(ch.phase, steps.length - 1)];
   const recording = !!st.server?.recording;
-  return card([h('h2', {}, it.label), h('span', { class: 'spacer' }), stepNo('change')],
+  return card([h('h2', {}, it.label)],
     faint(`Setting ${st.qi + 1} of ${st.queue.length}.${ch.why ? ` ${ch.why}` : ''}`),
     p(now.line),
     recording ? h('div', { class: 'loadbar-wrap' }, h('div', { class: 'loadbar sweep', role: 'progressbar', 'aria-label': 'Listening' }, h('span')), h('span', { class: 'loadbar-text' }, 'Listening')) : null,
@@ -688,16 +623,23 @@ function autoStep() {
   if (a.phase === 'done') return autoDone(a);
   if (a.phase === 'failed' || a.phase === 'stopped') {
     const d = auto.dev || (a.device ? { vid: a.device.vid, pid: a.device.pid, name } : null);
-    return card([h('h2', {}, a.phase === 'stopped' ? 'Stopped' : `The ${name} was not learned`), h('span', { class: 'spacer' })],
-      log, items,
+    // 30 Oct 2026: the checks are no longer a step of their own; when one fails, only the failing ones show, each with
+    // its fix, and Try again runs them again. A device whose app DeviceHub does not know goes to Choose the settings myself.
+    const bad = (a.preflight?.lines || []).filter((x) => !x.ok);
+    const unknownApp = /does not know/.test(a.error?.text || '');
+    const listening = /listen|USBPcap|capture|prompt/i.test(`${a.error?.text || ''} ${a.error?.next || ''}`) || bad.some((x) => x.id === 'capture');
+    const choose = () => { st.devices = st.devices || []; if (!st.devices.some((x) => x.vid === d.vid && x.pid === d.pid)) st.devices.push(d); run('begin', { vid: d.vid, pid: d.pid }, () => { Object.assign(st, { step: 'plan', plan: null, queue: null, log: [], putBack: [] }); st.save.title = d.name || name; }); };
+    return card([h('h2', {}, a.phase === 'stopped' ? 'Stopped' : bad.length ? `Before learning the ${name}` : `The ${name} was not learned`)],
+      bad.length ? null : log, bad.length ? null : items,
       a.phase === 'stopped' ? p('Stopped. Nothing was saved.')
-        : h('div', { class: 'learn-problem', role: 'status' }, p(a.error?.text || 'Something went wrong.'), a.error?.next ? p(a.error.next) : null),
+        : bad.length && d ? h('div', { class: 'learn-pf', role: 'status' }, h('div', { class: 'learn-pf-head' }, bad.length === 1 ? 'Fix this, then press Try again:' : 'Fix these, then press Try again:'), pfLines(bad, d, () => redrawPage()))
+          : h('div', { class: 'learn-problem', role: 'status' }, p(a.error?.text || 'Something went wrong.'), a.error?.next ? p(a.error.next) : null),
       a.sent ? h('div', { class: a.sent.sent || a.sent.queued ? 'learn-check' : 'learn-problem', role: 'status' }, p(a.sent.line)) : null,
       checkResult(),
       h('div', { class: 'actions', style: { marginTop: '12px' } },
-        d ? button('Try again', () => startAuto(d), { kind: 'primary', ic: 'refresh' }) : null,
-        d ? button('Choose the settings myself', () => { st.devices = st.devices || []; if (!st.devices.some((x) => x.vid === d.vid && x.pid === d.pid)) st.devices.push(d); run('begin', { vid: d.vid, pid: d.pid }, () => { Object.assign(st, { step: 'plan', plan: null, queue: null, log: [], putBack: [] }); st.save.title = d.name || name; }); }, { kind: 'ghost small' }) : null,
-        isDemo() ? null : button(st.check === 'running' ? 'Testing…' : 'Test my learning setup', () => checkSetup(), { kind: 'ghost small', disabled: st.check === 'running' }),
+        d ? button('Try again', () => startAuto(d), { kind: unknownApp ? 'ghost small' : 'primary', ic: 'refresh' }) : null,
+        d ? button('Choose the settings myself', choose, { kind: unknownApp ? 'primary' : 'ghost small' }) : null,
+        isDemo() || !listening || bad.some((x) => x.action === 'check') ? null : button(st.check === 'running' ? 'Testing…' : 'Test my learning setup', () => checkSetup(), { kind: 'ghost small', disabled: st.check === 'running' }),
         button('Back', () => { auto.s = null; st.step = 'pick'; st.devices = null; redrawPage(); }, { kind: 'ghost small' })));
   }
   const now = ask?.kind === 'change' ? h('div', { class: 'auto-ask', role: 'status' },
@@ -816,7 +758,7 @@ async function demoApi(path, b) {
 }
 
 function startingStep() {
-  return card([h('h2', {}, 'Starting to listen'), h('span', { class: 'spacer' }), stepNo('ready')],
+  return card([h('h2', {}, 'Starting to listen')],
     h('div', { class: 'uac-wait', role: 'status' }, UAC_LINE),
     faint('Asked once per session.'),
     h('div', { class: 'loadbar-wrap' }, h('div', { class: 'loadbar sweep', role: 'progressbar', 'aria-label': 'Waiting for the listener' }, h('span')), h('span', { class: 'loadbar-text' }, 'Waiting for the Yes')),
@@ -845,7 +787,7 @@ function takeStep() {
         : `set ${label} = ${v} in the maker's app, and wait until it is applied`;
   const before = set.kind !== 'reading' ? `Set ${label} to anything but ${v}. Press Record, ${doIt}, then Done.`
     : `Press Record, ${doIt}, then Done.`;
-  return card([h('h2', {}, `Recording ${Math.min(done + 1, total)} of ${total}: ${label} = ${v}`), h('span', { class: 'spacer' }), stepNo('take')],
+  return card([h('h2', {}, `Recording ${Math.min(done + 1, total)} of ${total}: ${label} = ${v}`)],
     recording
       ? [p(`DeviceHub is listening. Now ${doIt}. Then press Done.`),
         h('div', { class: 'loadbar-wrap' }, h('div', { class: 'loadbar sweep', role: 'progressbar', 'aria-label': 'Listening' }, h('span')), h('span', { class: 'loadbar-text' }, 'Listening')), heardLine()]
@@ -880,9 +822,9 @@ function foundStep() {
   const f = st.found;
   const s = st.server || {};
   const label = s.setting?.label || 'the setting';
-  if (!f) return card([h('h2', {}, 'Looking at the recordings'), h('span', { class: 'spacer' }), stepNo('found')], faint('Comparing the recordings…'));
+  if (!f) return card([h('h2', {}, 'Looking at the recordings')], faint('Comparing the recordings…'));
   if (!f.ok) {
-    return card([h('h2', {}, `${label} could not be learned yet`), h('span', { class: 'spacer' }), stepNo('found')],
+    return card([h('h2', {}, `${label} could not be learned yet`)],
       ...(f.why || [f.error || 'Something went wrong.']).map((x) => p(x)),
       f.needMore ? (s.setting?.role === 'battery'
         ? row('Another percent', 'When the app shows a new percent', field('Another percent', 'third', st, { placeholder: 'e.g. 79', style: { width: '160px' } }))
@@ -900,7 +842,7 @@ function foundStep() {
     if (st.queue) { const it = current(); if (it) { it.learned = true; it.ticked = false; logItem(it, null); } setTimeout(nextItem, 0); return; }
     st.step = second()?.next ? 'ready' : 'driver';
   };
-  return card([h('h2', {}, `Found ${label}`), h('span', { class: 'spacer' }), stepNo('found')],
+  return card([h('h2', {}, `Found ${label}`)],
     ...f.evidence.map((x) => p(x)),
     h('div', { style: { margin: '4px 0 12px' } }, ...f.writeBytes.map((b, i) => h('div', {}, h('span', { class: 'faint' }, `${showAs(s.setting, s.takes?.[i]?.value)}: `), bytesLine(b, f.valueAt)))),
     f.kind === 'reading' ? p(f.role === 'battery' ? 'Shown as its battery level.' : 'Read only.', 'faint') : null,
@@ -933,7 +875,7 @@ function driverStep() {
   if (sec) {
     // the other USB id: every setting of the saved driver, one at a time, then the id is added to it
     const d = s.device || {};
-    return card([h('h2', {}, `${sec.of} on USB ${d.vid}:${d.pid}`), h('span', { class: 'spacer' }), stepNo('driver')],
+    return card([h('h2', {}, `${sec.of} on USB ${d.vid}:${d.pid}`)],
       p(`${sec.done} of ${sec.total} learned on this id.`),
       learned.map((l, i) => row(l.label, what(l), i === learned.length - 1 ? button('Learn it again', () => run('remove', {}), { kind: 'ghost small' }) : null)),
       sec.next ? p(`Next: ${sec.next.label}.`) : p('Next: add this id.'),
@@ -943,7 +885,7 @@ function driverStep() {
           : button(st.busy ? 'Adding…' : 'Add USB id', () => run('save', {}, () => { st.step = 'saved'; }), { kind: 'primary', disabled: st.busy })));
   }
   const kinds = ['Mouse', 'Keyboard', 'Headset', 'Light', 'Device'];
-  return card([h('h2', {}, `Driver for the ${s.device?.name || 'device'}`), h('span', { class: 'spacer' }), stepNo('driver')],
+  return card([h('h2', {}, `Driver for the ${s.device?.name || 'device'}`)],
     sentNote(),
     learned.length ? learned.map((l) => row(l.label, what(l),
       button('Remove', () => run('remove', { key: l.key }), { kind: 'ghost small' }))) : faint('No settings yet.'),
@@ -988,10 +930,10 @@ function otherStep() {
   const o = st.other || {};
   if (!st.devices) {
     if (!st.loading) { st.loading = true; setTimeout(() => loadDevices().finally(() => { st.loading = false; }), 0); }
-    return card([h('h2', {}, 'Plug it in the other way'), h('span', { class: 'spacer' }), stepNo('pick')], faint('Looking…'));
+    return card([h('h2', {}, 'Plug it in the other way')], faint('Looking…'));
   }
   const list = st.devices.filter((x) => x.vid === o.vid && !(o.pids || []).includes(x.pid));
-  return card([h('h2', {}, `Plug in the ${o.name || 'device'} the other way`), h('span', { class: 'spacer' }), stepNo('pick')],
+  return card([h('h2', {}, `Plug in the ${o.name || 'device'} the other way`)],
     p('Plug it in the other way, then pick it.'),
     row('It is now on', null, segmented({ value: st.link, options: [{ value: 'cable', label: 'Its cable' }, { value: 'receiver', label: 'Its receiver' }], onCommit: (v) => { st.link = v; redrawPage(); } })),
     list.length ? list.map((x) => row(x.name, `USB ${x.vid}:${x.pid}`, button('Learn this one', () => run('second', { vid: x.vid, pid: x.pid, link: st.link }, () => { st.step = 'ready'; st.form = newForm(); }), { kind: 'primary small' })))
@@ -1002,7 +944,7 @@ function otherStep() {
       button('Done', () => { Object.assign(st, { step: 'pick', devices: null, server: null, error: null, why: null, other: null }); redrawPage(); }, { kind: 'ghost small' })));
 }
 
-const STEP_NAMES = { preflight: 'the checks before recording', sent: 'sent to Shawn', pick: 'pick the device', plan: 'the settings to learn', ready: 'ready to listen', starting: 'starting to listen', take: 'recording', found: 'what it found', driver: 'the driver', saved: 'saved', other: 'its other USB id', driving: "changing it in the maker's app", change: 'change it in the app' };
+const STEP_NAMES = { sent: 'sent to Shawn', pick: 'pick the device', plan: 'the settings to learn', ready: 'ready to listen', starting: 'starting to listen', take: 'recording', found: 'what it found', driver: 'the driver', saved: 'saved', other: 'its other USB id', driving: "changing it in the maker's app", change: 'change it in the app' };
 function learnContext() {
   const it = st.queue?.[st.qi];
   const f = st.found;
@@ -1015,9 +957,9 @@ function learnContext() {
     // what the device list showed (24 Oct 2026: a report from this page said only "pick the device"): each row, its group,
     // the driver its page opens and its next step with what the button answered
     listed: st.step !== 'pick' ? '' : !st.devices ? 'the list was not read yet' : !st.devices.length ? 'no devices listed' : st.devices.map((d) => {
-      const c = runningCopy(d), n = c ? nextCache[c.id] : null, top = (n?.data?.findings || []).find((f) => f.action);
+      const c = runningCopy(d);
       const group = d.asIs || d.ready || (d.refused && (d.driver || d.library)) ? 'works' : d.refused ? 'cannot' : 'learnable';
-      return `${d.title || d.name} (${d.vid}:${d.pid}): ${group}${c ? `, page ${c.id}${devices[c.id] ? ` (${devices[c.id].status}${devices[c.id].absent ? ', hidden' : ''})` : ' (not loaded)'}` : ''}${top ? `, next: ${top.problem} [${top.action.kind}]` : n?.data ? ', next: none' : c ? ', next: not read' : ''}${n?.note ? `, answered: ${n.note}` : ''}`;
+      return `${d.title || d.name} (${d.vid}:${d.pid}): ${group}${c ? `, page ${c.id}${devices[c.id] ? ` (${devices[c.id].status}${devices[c.id].absent ? ', hidden' : ''})` : ' (not loaded)'}` : ''}`;
     }).join('; '),
   };
 }
@@ -1027,7 +969,7 @@ const STYLE_ID = 'learn-css';
 function style() {
   if (document.getElementById(STYLE_ID)) return;
   document.head.append(h('style', { id: STYLE_ID }, `
-.learn-step { font-size: 12.5px; color: var(--muted); }
+.learn-works a { color: var(--accent); }
 .learn-bytes { display: inline-flex; flex-wrap: wrap; gap: 4px; font-size: 12.5px; }
 .learn-bytes span { padding: 1px 3px; border-radius: 4px; }
 .learn-bytes span.v { background: var(--accent); color: var(--bg, #000); font-weight: 700; }
@@ -1081,9 +1023,9 @@ export default {
     // the server adds the session (device id, recordings and how many messages each heard). Nothing typed by hand.
     const head = topbar('', 'Learn a device', null, null, helpHere('learn', { context: learnContext }));
     if (st.step === 'pick') resumeAuto();
-    const body = { preflight: preflightStep, sent: sentStep, auto: autoStep, pick: pickStep, plan: planStep, ready: readyStep, starting: startingStep, take: takeStep, found: foundStep, driver: driverStep, saved: savedStep, other: otherStep, driving: drivingStep, change: changeStep }[st.step] || pickStep;
+    const body = { sent: sentStep, auto: autoStep, pick: pickStep, plan: planStep, ready: readyStep, starting: startingStep, take: takeStep, found: foundStep, driver: driverStep, saved: savedStep, other: otherStep, driving: drivingStep, change: changeStep }[st.step] || pickStep;
     return h('div', {}, head,
-      p('Learns settings from the maker\'s app.', 'faint'),
+      p('For a mouse, keyboard or headset DeviceHub cannot control yet: it learns the settings from the maker\'s app and makes a driver.', 'faint'),
       isDemo() ? faint('Demo: nothing is saved.') : null,
       putBackNote(),
       body(),

@@ -1304,7 +1304,10 @@ export async function preflight({ vid, pid, labels = [], appOpen = false, kind =
   const has = d.usbpcapInstalled();
   const last = has && d.lastCheck ? d.lastCheck(root) : null;
   const fresh = last?.ok && Date.now() - Date.parse(last.at || 0) < CHECK_FRESH_MS;
-  line('capture', has && fresh, !has ? 'USBPcap is not installed.' : fresh ? 'Capture works.' : last && !last.ok ? 'Capture did not pass its last test.' : 'Capture is not tested yet.',
+  // never tested (30 Oct 2026): no longer a stop of its own; listening for the session is the test (Windows asks once,
+  // not twice), and a listener that fails says so. Only a test that failed holds it back.
+  const failed = !!last && !last.ok;
+  line('capture', has && !failed, !has ? 'USBPcap is not installed.' : failed ? 'Capture did not pass its last test.' : fresh ? 'Capture works.' : 'USBPcap is installed.',
     !has ? { fix: 'Install it, then restart the PC.', action: 'install-usbpcap' }
       : { fix: 'Press Test my learning setup.', action: 'check' });
   // 2 and 3. the maker's app

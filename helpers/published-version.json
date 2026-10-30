@@ -1,7 +1,7 @@
 {
-  "version": "1.22",
-  "commit": "278f528104da",
+  "version": "1.23",
+  "commit": "9718c52e7232",
   "notes": [
-    "Setup checks, supported-now notices, one headset over Bluetooth, G…"
+    "Learn a device: one button per device, no extra steps"
   ]
 }
