@@ -217,7 +217,7 @@ export default {
         // shown open, no "More" row to click first (22 Oct 2026, Shawn)
         h('div', { class: 'more-body' },
           batteryChart('mouse', redraw),
-          pollingTest(v.pollingRate, card),
+          pollingTest(v.pollingRate, card, 'mouse', '3710'),
           pointerCard(redraw),
           card([h('h2', {}, 'Device'), h('span', { class: 'spacer' }), deviceActions(dev)], kv(dev.info)))));
   },

@@ -254,7 +254,7 @@ export function devicePage(id) {
           card([h('h2', {}, 'Device'), h('span', { class: 'spacer' }), deviceActions(d)], kv(d.info || {}), shareButton(d, shown))),
         a.battery ? batteryChart(id, () => ctx.redraw?.(), { title: a.title, kind: a.kind }) : null,
         // any mouse: the polling rate test, against its polling setting when the driver has one (public/ui/polling-test.js)
-        /mouse/i.test(a.kind || '') ? pollingTest(pollHz(d), card, id) : null);
+        /mouse/i.test(a.kind || '') ? pollingTest(pollHz(d), card, id, (a.usbIds || [])[0]?.split(':')[0] || null) : null);
     },
   };
 }
