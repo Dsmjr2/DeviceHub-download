@@ -73,7 +73,12 @@ export async function planSetup(file) {
     try {
       const now = await (await fetch('/api/sound-setup')).json();
       const differs = (a, b) => JSON.stringify(a ?? null) !== JSON.stringify(b ?? null);
-      if ((file.sound.eq && differs(file.sound.eq, now.eq)) || (file.sound.settings && differs(file.sound.settings, now.settings))) sound = file.sound;
+      // only the options a setup file puts in place (server.js /api/sound-setup) are compared (31 Oct 2026: two PCs always
+      // differ on others, so "Sound" was listed as a change in every file and "Nothing to change" never showed)
+      const SOUND_KEYS = ['autoSwitch', 'defaultProfile', 'artStyle', 'themeAccent', 'themeBg', 'ankerGuard'];
+      const pick = (o) => Object.fromEntries(SOUND_KEYS.filter((k) => o && k in o).map((k) => [k, o[k]]));
+      const optsDiffer = file.sound.settings && SOUND_KEYS.some((k) => k in file.sound.settings && differs(file.sound.settings[k], now.settings?.[k]));
+      if ((file.sound.eq && differs(file.sound.eq, now.eq)) || optsDiffer) sound = { ...file.sound, ...(file.sound.settings ? { settings: pick(file.sound.settings) } : {}) };
     } catch {}
   }
   // extras: described by hash (pictures stay in the file) and compared with this PC by the server

@@ -63,10 +63,13 @@ async function tick() {
     auto.busy = true;
     try {
       const r = await apply(target, { retry: true });
+      auto.retryTries = (auto.retryTries || 0) + 1;
+      if (!r.asleep && r.failed && auto.retryTries >= 3) { auto.retry = null; log(`${target.name} profile: ${r.failed} change${r.failed === 1 ? '' : 's'} still refused after 3 tries; not tried again`, 'bad', undefined, { auto: true }); }
       if (!r.failed && !r.asleep) { auto.retry = null; log(`${target.name} profile finished: the ${r.done === 1 ? 'change' : `${r.done} changes`} waiting for a device to wake went through`, 'good', undefined, { auto: true }); }
     } finally { auto.busy = false; }
     return;
   }
+  if (auto.retry && auto.retry !== target?.name) auto.retry = null;
   if (!target || target.name === auto.active) return;
   if (!match && !auto.active) return; // nothing was auto-applied yet: leave the current setup alone
   auto.busy = true;
@@ -75,6 +78,7 @@ async function tick() {
     const r = await apply(target);
     auto.active = match ? target.name : null;
     auto.retry = r.failed || r.asleep ? target.name : null;
+    auto.retryTries = 0;
     // auto: true makes an open window show it as a toast (the agent has no screen of its own).
     const waiting = r.asleep && r.failed <= r.asleep;
     log(`${why} · ${target.name} profile${waiting ? ' (the mouse was asleep: finishes when it wakes)' : r.failed ? ` (${r.failed} failed, trying again)` : ''}`, r.failed && !waiting ? 'bad' : 'good', undefined, { auto: true });

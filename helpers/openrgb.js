@@ -175,7 +175,7 @@ const fanHeader = (name) => { const m = /^(?:ARGB Header|D_LED|Addressable Heade
 const zoneName = (c, i, name) => savedFor(c)?.names?.[i] || ZONE_NAMES.find((z) => z.board.test(c.name || ''))?.names[i] || fanHeader(name);
 const zoneHidden = (c, i) => !!savedFor(c)?.hidden?.includes(i);
 const shapeOut = (c) => ({
-  index: c.index, name: c.name, vendor: c.vendor, type: TYPES[c.type] || 'other', location: c.location,
+  index: c.index, key: pageKey(c), name: c.name, vendor: c.vendor, type: TYPES[c.type] || 'other', location: c.location,
   zones: (() => { let at = 0; return c.zones.map((z) => { const i = c.zones.indexOf(z), o = { name: zoneName(c, i, z.name), leds: z.leds, color: c.colors[at] || null }; if (savedFor(c)?.names?.[i]) o.named = true; if (zoneHidden(c, i)) o.hidden = true; at += z.leds; return o; }); })(), leds: c.colors.length,
   mode: c.modes[c.activeMode]?.name || null, color: c.colors[0] || null,
   same: c.colors.every((x) => x === c.colors[0]),
@@ -379,6 +379,8 @@ const writable = (s) => { if (s.bundled) { const c = bundleCheck(); if (!c.write
 // One light is known by its name, where OpenRGB found it and its LED count, never by its number in the list (the
 // numbers change when OpenRGB rescans or restarts).
 const keyOf = (c) => `${c.name}|${c.location}|${c.colors.length}`;
+// the same for the page (31 Oct 2026): its place cut like the one kept on disk (placeOnly), so no instance path leaves
+const pageKey = (c) => `${c.name}|${placeOnly(c.location)}|${c.colors.length}`;
 const PER_LED = 1;   // a mode's color_mode: MODE_COLORS_PER_LED (OpenRGB's RGBController.h)
 // what each light was before DeviceHub first changed it, kept until DeviceHub stops (and in backups/)
 const saved = new Map();
@@ -424,8 +426,14 @@ async function setColor(target, hexColor, zone = null) {
   return serial(() => withOpenRGB('write', async (s) => {
     writable(s);
     const before = await readAll(s);
-    const chosen = before.filter((c) => usable(s, c) && (target === 'all' ? !isOwn(c) : c.index === Number(target)));
-    if (!chosen.length) throw new Error(target === 'all' ? 'no OpenRGB lights to set' : 'no such OpenRGB device');
+    // 31 Oct 2026: the page names one light by its key (pageKey) from a list that may be old, matched here on this fresh
+    // read, its number only telling two lights with the same key apart; a request with only a number still works
+    const asked = target && typeof target === 'object' ? target : null;
+    let chosen;
+    if (target === 'all') chosen = before.filter((c) => usable(s, c) && !isOwn(c));
+    else if (asked?.key) { const same = before.filter((c) => usable(s, c) && pageKey(c) === String(asked.key)); chosen = same.length > 1 ? same.filter((c) => c.index === Number(asked.index)) : same; }
+    else chosen = before.filter((c) => usable(s, c) && c.index === Number(asked ? asked.index : target));
+    if (!chosen.length) throw new Error(target === 'all' ? 'no OpenRGB lights to set' : asked?.key ? 'that light is not where it was (OpenRGB found the lights again): press Look again' : 'no such OpenRGB device');
     const file = backupNew(chosen);
     const want = hexColor.toLowerCase();
     // one zone (an ARGB fan header): only its lights change, the rest keep the colors read just before

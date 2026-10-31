@@ -1,5 +1,5 @@
 // The PC page (id 'fans': it began as the Fans page, 20 Oct 2026). The graphics card's temperature, fan, load and power
-// (helpers/gpu.js, NVIDIA's own nvidia-smi), refreshed every 2 s while this page is open and never in the background.
+// (helpers/gpu.js, NVIDIA's own nvidia-smi), refreshed every 3 s while this page is open and never in the background.
 // Fan speeds stay on the motherboard's own curve (its BIOS; docs/FANS.md); DeviceHub only reads them.
 // Fan lights (23 Oct 2026, Shawn: fan colours "why isnt it shown in here, it should"): the lights OpenRGB sees on fans,
 // fan hubs, coolers and the board's fan headers, each with a colour and Undo (the same backed-up, read-back path as
@@ -13,6 +13,7 @@ import { boardLights } from '../ui/board-lights.js';
 import { env } from '../core/env.js';
 import { isDemo } from '../core/devices.js';
 import { topbar } from './common.js';
+import { everyVisible } from '../core/visible-timer.js';
 // Temperatures and fans, and the PC check (24 Oct 2026, docs/handoff/display-health.md): this page became "PC" so the
 // readings, the fans and the check of the whole PC are one place in the sidebar (Settings > Health stays about DeviceHub)
 import { tempsCard, pcCheckCard, cpuCard, chipCard } from '../ui/pc-health.js';
@@ -21,6 +22,7 @@ const DEMO = { available: true, gpus: [{ name: 'NVIDIA GeForce RTX 4070', tempC:
 let gpu = null, error = null, timer = null, lastGpuSig = '', rerender = () => {};
 // the temperature over the last 2 minutes, kept only while the page is open (one reading every 3 s)
 let history = [];
+const READ_MS = 3000;
 
 async function load() {
   if (isDemo()) { gpu = { ...DEMO, gpus: [{ ...DEMO.gpus[0], tempC: 60 + Math.round(Math.random() * 5) }] }; }
@@ -29,16 +31,25 @@ async function load() {
   const sig = JSON.stringify([gpu, error]);
   if (sig !== lastGpuSig) { lastGpuSig = sig; rerender(); }
 }
-// refresh while the page is open; stop as soon as it is left
+// refresh while the page is open; stop as soon as it is left. 31 Oct 2026: a hidden window only pauses it
+// (core/visible-timer.js runs it again when the window is shown), and the graph starts over after the pause so it never
+// joins readings minutes apart
+let lastReadAt = 0;
 function keepFresh() {
   if (timer) return;
-  timer = setInterval(() => { if (location.hash !== '#/fans' || document.hidden) { clearInterval(timer); timer = null; history = []; return; } load(); }, 3000);
+  lastReadAt = Date.now();
+  timer = everyVisible(() => {
+    if (location.hash !== '#/fans') { timer?.(); timer = null; history = []; return; }
+    if (Date.now() - lastReadAt > 2 * READ_MS) history = [];
+    lastReadAt = Date.now();
+    return load();
+  }, READ_MS);
 }
 
 // the same card as the processor's (ui/pc-health.js chipCard, 24 Oct 2026: one look for both)
 function gpuCard(g) {
   return chipCard({
-    title: 'Graphics card', name: g.name.replace(/^NVIDIA (GeForce )?/i, ''), tempC: g.tempC, loadPct: g.loadPct, history, everyS: 2,
+    title: 'Graphics card', name: g.name.replace(/^NVIDIA (GeForce )?/i, ''), tempC: g.tempC, loadPct: g.loadPct, history, everyS: READ_MS / 1000,   // 31 Oct 2026: the graph's "last N" from the real 3 s reading
     fan: { pct: g.fanPct, value: g.fanPct == null ? '—' : g.fanPct === 0 ? 'Stopped' : `${g.fanPct}%`, label: 'fans' },
     rows: [['Power', g.powerW == null ? null : `${Math.round(g.powerW)} of ${Math.round(g.powerLimitW || 0)} W`],
       ['Headroom', g.headroomC == null ? null : `${g.headroomC} °C before it slows`],
@@ -71,13 +82,16 @@ async function setFan(c, hex) {
   if (lightsBusy) return;
   if (isDemo()) { c.color = hex; c.same = true; rerender(); return; }
   lightsBusy = true; rerender();
-  try { await env.api('/api/openrgb/color', { target: c.index, hex }); toast(`${c.name}: ${isOff(hex) ? 'off' : hex}`, 'good'); }
+  // 31 Oct 2026: by its key as well as its number, so a list read before OpenRGB rescanned never colors another light
+  try { await env.api('/api/openrgb/color', { target: c.key ? { index: c.index, key: c.key } : c.index, hex }); toast(`${c.name}: ${isOff(hex) ? 'off' : hex}`, 'good'); }
   catch (e) { toast('Fan lights not changed', 'bad', { detail: e.message }); }
   lightsBusy = false; loadLights(true);
 }
 async function undoFans() {
   if (isDemo()) { lights = DEMO_LIGHTS(); rerender(); return; }
-  try { await env.api('/api/openrgb/restore', {}); toast('Fan lights undone', 'good'); } catch (e) { toast('Nothing to undo', 'bad', { detail: e.message }); }
+  try { await env.api('/api/openrgb/restore', {}); toast('Fan lights undone', 'good'); }
+  // 31 Oct 2026: "Nothing to undo" only when that is why (helpers/openrgb.js restore); any other failure says so
+  catch (e) { toast(/nothing changed/i.test(e.message || '') ? 'Nothing to undo' : 'Not undone', 'bad', { detail: e.message }); }
   loadLights(true);
 }
 // why no fan light shows, for this PC (helpers/lights-diagnose.js, the same answer as Lighting > PC lights): where the
@@ -126,7 +140,7 @@ const tag = (el, cls) => { el.classList.add(cls); return el; };
 
 export default {
   id: 'fans', title: 'PC', icon: 'fan', accent: 'var(--signal)',
-  watches: [],  // its own 2 s reading redraws it; a device's readings do not (21 Oct 2026)
+  watches: [],  // its own 3 s reading redraws it; a device's readings do not (21 Oct 2026)
   render() {
     rerender = () => { const el = document.querySelector('#main .page'); if (el && location.hash === '#/fans') el.replaceWith(Object.assign(this.render(), { className: 'page no-anim' })); };
     if (!gpu && !error) queueMicrotask(load);

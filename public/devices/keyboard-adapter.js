@@ -245,6 +245,9 @@ const adapter = {
     }
     if (kind === 'macro' || kind === 'macroRaw') {
       const [idx] = index(rest, [base.macros.mi.count], 'macro');
+      // the whole macro memory is written back, so it is read fresh first (31 Oct 2026: it was the copy read at connect,
+      // which put back macros changed in VIA since)
+      base.macros = await loadMacros();
       const { mi, raw } = base.macros;
       let bytes1;
       if (kind === 'macroRaw') {

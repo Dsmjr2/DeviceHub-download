@@ -230,6 +230,7 @@ export async function start({ port, corsairHelper }) {
       procs: async () => { const r = await corsair.handle('procs', {}); if (!Array.isArray(r.names)) throw new Error('no names'); return r.names; },
       profileBusy: () => auto.busy, onChange: () => send('auto', autoState()),
     });
+    batteryCare.holdBy(() => gameMode?.status().saved || []);
     env.gameModeExes = () => gameMode.exes();   // auto-switch leaves these games to game mode (public/core/autoswitch.js)
   }
   // the weekly setup file (helpers/weekly-setup.mjs): checked 90 s after start (the devices have connected) and daily

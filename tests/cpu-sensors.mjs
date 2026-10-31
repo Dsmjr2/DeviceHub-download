@@ -130,7 +130,9 @@ check(s3.state === 'error' && /Access is denied/.test(s3.why), `a task Windows d
 check(shouldRead({ hash: '#/fans', page: 'fans', hidden: false, onScreen: true }) === true, 'on the PC page, window shown, card on screen: read');
 check(!shouldRead({ hash: '#/fans', page: 'fans', hidden: false, onScreen: false }) && !shouldRead({ hash: '#/fans', page: 'fans', hidden: true, onScreen: true }) && !shouldRead({ hash: '#/mouse', page: 'fans', hidden: false, onScreen: true }), 'card off screen, window hidden or another page: no read');
 const ui = fs.readFileSync(path.join(ROOT, 'public', 'ui', 'pc-health.js'), 'utf8');
-check(/if \(!canRead\(page\)\) \{ clearInterval\(tempsTimer\)/.test(ui) && /if \(canRead\(page\)\) \{ if \(!tempsTimer\) loadTemps\(\)/.test(ui), 'the card reads only through shouldRead (the 5 s timer stops itself)');
+check(/if \(!canRead\(page\)\) \{ tempsTimer\?\.\(\); tempsTimer = null/.test(ui) && /if \(canRead\(page\)\) \{ if \(!tempsTimer\) loadTemps\(\)/.test(ui), 'the card reads only through shouldRead (the 5 s timer stops itself)');
+// 31 Oct 2026: a hidden window only pauses the 5 s reading (core/visible-timer.js), so it carries on when shown again
+check(/tempsTimer = everyVisible\(/.test(ui), 'the temperatures timer rests while the window is hidden and restarts when it is shown');
 
 // ---------- the temperatures card's data ----------
 const ok = { setUp: true, state: 'ok', ...a };

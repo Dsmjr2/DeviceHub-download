@@ -11,7 +11,8 @@ let cache = { at: 0, value: null }, pending = null;
 const num = (s) => { const n = Number(String(s).trim()); return Number.isFinite(n) ? n : null; };
 
 function read() {
-  if (!SMI) return Promise.resolve({ available: false, reason: 'no NVIDIA graphics card (or its driver) on this PC' });
+  // 31 Oct 2026: said plainly, so a PC with an AMD or Intel card is not told it has no graphics card
+  if (!SMI) return Promise.resolve({ available: false, reason: 'Only NVIDIA graphics cards are read here.' });
   if (cache.value && Date.now() - cache.at < 2500) return Promise.resolve(cache.value);
   if (pending) return pending;
   pending = new Promise((resolve) => {

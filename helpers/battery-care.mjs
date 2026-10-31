@@ -36,6 +36,11 @@ const CHARGING = {
 };
 
 let core = null, file = null, settingsFile = null, saved = {}, busy = false;
+// game mode's switches held now (helpers/game-mode.mjs status().saved) -> the battery care settings they cover
+let heldBy = () => [];
+const HELD = { polling: ['mouse:pollingRate'], lights: ['mouse:dpiEffect', 'headset:logoBrightness', 'headset:micLight'] };
+const held = () => { try { return new Set((heldBy() || []).flatMap((k) => HELD[k] || [])); } catch { return new Set(); } };
+export const holdBy = (fn) => { heldBy = typeof fn === 'function' ? fn : () => []; };
 const on = () => { try { return JSON.parse(fs.readFileSync(settingsFile, 'utf8')).batteryCare !== false; } catch { return true; } };
 const save = () => { try { writeAtomic(file, JSON.stringify(saved, null, 1)); } catch {} };
 
@@ -57,11 +62,14 @@ async function tick() {
         core.log(`${d.adapter.title}: battery ${pct}%, so ${changes.map((c) => `${c.label} ${c.show(c.was)} → ${c.show(c.to)}`).join(', ')} to save it (put back once it charges)`, 'info', id);
         for (const c of changes) await core.write(id, c.key, c.to, { label: `${c.label} (battery care)`, display: c.show(c.to), noUndo: true }).catch(() => {});
       } else if (mine && (charging || pct >= BACK || !on())) {
-        const back = mine.items.filter((it) => JSON.stringify(d.values[it.key]) === JSON.stringify(it.to));  // not changed by hand meanwhile
-        delete saved[id]; save();
-        if (!back.length) continue;
+        const h = held(), wait = mine.items.filter((it) => h.has(`${id}:${it.key}`));
+        const back = mine.items.filter((it) => !h.has(`${id}:${it.key}`) && JSON.stringify(d.values[it.key]) === JSON.stringify(it.to));  // not changed by hand meanwhile
+        if (!back.length) { if (wait.length) saved[id] = { ...mine, items: wait }; else delete saved[id]; save(); continue; }
         core.log(`${d.adapter.title}: ${charging ? 'charging' : `battery ${pct}%`}, so ${back.map((it) => `${plan.find((p) => p.key === it.key).label} back to ${plan.find((p) => p.key === it.key).show(it.was)}`).join(', ')}`, 'good', id);
-        for (const it of back) await core.write(id, it.key, it.was, { label: `${plan.find((p) => p.key === it.key).label} (battery care)`, display: plan.find((p) => p.key === it.key).show(it.was), noUndo: true }).catch(() => {});
+        const left = [];
+        for (const it of back) await core.write(id, it.key, it.was, { label: `${plan.find((p) => p.key === it.key).label} (battery care)`, display: plan.find((p) => p.key === it.key).show(it.was), noUndo: true }).catch(() => left.push(it));
+        if (left.length || wait.length) saved[id] = { ...mine, items: [...left, ...wait] }; else delete saved[id];
+        save();
       }
     }
     for (const [id, plan] of Object.entries(CHARGING)) {
@@ -77,10 +85,12 @@ async function tick() {
         for (const c of changes) await core.write(id, c.key, c.to, { label: `${c.label} (charging)`, display: c.show(c.to), noUndo: true }).catch(() => {});
       } else if (mine && !charging) {
         const back = mine.items.filter((it) => JSON.stringify(d.values[it.key]) === JSON.stringify(it.to));  // not changed by hand meanwhile
-        delete saved[slot]; save();
-        if (!back.length) continue;
+        if (!back.length) { delete saved[slot]; save(); continue; }
         core.log(`${d.adapter.title}: unplugged, so ${back.map((it) => `${plan.find((p) => p.key === it.key).label} back to ${plan.find((p) => p.key === it.key).show(it.was)}`).join(', ')}`, 'info', id);
-        for (const it of back) await core.write(id, it.key, it.was, { label: `${plan.find((p) => p.key === it.key).label} (charging)`, display: plan.find((p) => p.key === it.key).show(it.was), noUndo: true }).catch(() => {});
+        const left = [];
+        for (const it of back) await core.write(id, it.key, it.was, { label: `${plan.find((p) => p.key === it.key).label} (charging)`, display: plan.find((p) => p.key === it.key).show(it.was), noUndo: true }).catch(() => left.push(it));
+        if (left.length) saved[slot] = { ...mine, items: left }; else delete saved[slot];
+        save();
       }
     }
     await addedTick();

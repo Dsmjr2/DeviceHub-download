@@ -122,6 +122,14 @@ check(refused, 'nothing left to put back after a full Put back');
 
 let bad = false; try { await orgb.setColor(0, 'blue'); } catch { bad = true; }
 check(bad, 'a bad color is refused');
+// 31 Oct 2026: the page sends the light's key with the number it had; after a rescan the number is another light's, and
+// the key still finds the right one (devs is now hub, RAM, headset, board)
+check(typeof mb.key === 'string' && mb.key.startsWith('B450 AORUS PRO WIFI-CF|') && !/\\\\\?\\/.test(mb.key), `each light carries its key, its place cut like the disk copy (${mb.key})`);
+const byKey = await orgb.setColor({ index: mb.index, key: mb.key }, '#00ff00');
+check(byKey.changed.join() === 'B450 AORUS PRO WIFI-CF' && devs[3].colors.every((c) => c === rgb(0, 0xff, 0)) && devs[0].colors.every((c) => c !== rgb(0, 0xff, 0)), `a stale number with its key colors the board, not the hub that took its number (${byKey.changed})`);
+let staleKey = null; try { await orgb.setColor({ index: 0, key: 'Gone light|USB|3' }, '#00ff00'); } catch (e) { staleKey = e.message; }
+check(staleKey && /Look again/.test(staleKey) && devs[0].colors.every((c) => c !== rgb(0, 0xff, 0)), `a key no longer there is refused, nothing written (${staleKey})`);
+await orgb.restore();
 serverProto = 2;
 const old = await orgb.status(true);
 check(!old.running && /0\.7 or newer/.test(old.reason), `a protocol-2 OpenRGB is refused (${old.reason})`);

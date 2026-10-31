@@ -559,7 +559,27 @@ async function api(req, res, url) {
   }
   if (url.pathname === '/api/profiles') {
     if (req.method === 'GET') return send(res, 200, readJsonFile(PROFILES, []));
-    if (req.method === 'POST') { writeAtomic(PROFILES, JSON.stringify(await readBody(req), null, 2)); return send(res, 200, { ok: true }); }
+    if (req.method === 'POST') {
+      const list = await readBody(req);
+      if (!Array.isArray(list)) return send(res, 400, { error: 'profiles must be a list' });
+      // the list before is kept (31 Oct 2026: a setup file from another PC replaced every profile with no copy) in
+      // backups\profiles\: always when a profile would go, else at most every 10 minutes; the last 20 kept
+      try {
+        const old = readJsonFile(PROFILES, []);
+        const names = (l) => new Set((Array.isArray(l) ? l : []).map((p) => p?.name));
+        const now = names(list), goes = [...names(old)].some((n) => !now.has(n));
+        const dir = path.join(BACKUPS, 'profiles');
+        fs.mkdirSync(dir, { recursive: true });
+        const kept = fs.readdirSync(dir).filter((f) => /^profiles-.*\.json$/.test(f)).sort();
+        const lastAt = kept.length ? fs.statSync(path.join(dir, kept[kept.length - 1])).mtimeMs : 0;
+        if (old.length && (goes || Date.now() - lastAt > 10 * 60 * 1000)) {
+          fs.writeFileSync(path.join(dir, `profiles-${new Date().toISOString().replace(/[:.]/g, '-')}.json`), JSON.stringify(old, null, 2));
+          for (const f of kept.slice(0, Math.max(0, kept.length + 1 - 20))) fs.unlinkSync(path.join(dir, f));
+        }
+      } catch (e) { console.log(`[profiles] the list before was not kept: ${e.message}`); }
+      writeAtomic(PROFILES, JSON.stringify(list, null, 2));
+      return send(res, 200, { ok: true });
+    }
   }
   // which makers' apps are on this PC (the device pages say so instead of offering a button that cannot open one)
   // the maker's app for a USB vendor id (29 Oct 2026): { known, name, page, installed, running } (helpers/learn-apps.mjs)
@@ -674,7 +694,8 @@ async function api(req, res, url) {
         if (big) return send(res, 413, { error: 'That setup file is over 400 MB.' });
         const x = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
         const r = setupExtras().apply(x);
-        if (typeof x.headsetPick === 'string') { try { await agent?.op('headset-pick', { pick: x.headsetPick }); } catch {} }
+        // only a pick of the form setup-extras accepts (31 Oct 2026: the file's value went to the agent unchecked)
+        if (typeof x.headsetPick === 'string' && /^(hs80|VID_[0-9A-F]{4}&PID_[0-9A-F]{4}|JACK_[0-9A-F]{8})$/i.test(x.headsetPick)) { try { await agent?.op('headset-pick', { pick: x.headsetPick }); } catch {} }
         agent?.reloadSettings();
         return send(res, 200, r);
       }
@@ -1266,7 +1287,8 @@ http.createServer(async (req, res) => {
   if (corsair && !TEST) require('./helpers/power').start(corsair.handle, SETTINGS);
   if (corsair && !TEST) ankerGuard.start(corsair.handle, serverLog, SETTINGS);
   // settings sync between PCs through the private settings repository (helpers/settings-sync.js)
-  if (!TEST) settingsSync.start(eqapo, serverLog, { windowOpen: () => openWindows > 0 });
+  // settings loaded from the other PC reach the running auto-switch at once (31 Oct 2026: they waited for a restart)
+  if (!TEST) settingsSync.start(eqapo, serverLog, { windowOpen: () => openWindows > 0, loaded: () => agent?.reloadSettings() });
   if (!TEST) receiverLight.start(require('./helpers/hs80-direct').icueRunning, serverLog);
   // old backups into backups\older-backups.zip, recent ones and the first of each kind kept (helpers/backup-tidy.js)
   if (!TEST) require('./helpers/backup-tidy').start(BACKUPS, serverLog);

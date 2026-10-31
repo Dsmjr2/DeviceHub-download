@@ -94,6 +94,8 @@ async function load() {
     else data = await getJson('/api/wallpapers');
     error = null;
     if (data.previousKept && !windowsLine) windowsLine = { text: 'DeviceHub set your wallpaper.', putBack: true };
+    // 31 Oct 2026: the wallpaper was changed in Windows since (or can no longer be put back): no Undo button left over
+    else if (!data.previousKept && windowsLine?.putBack) windowsLine = { ...windowsLine, putBack: false };
   } catch (e) { error = e.message; }
   rerender();
 }
@@ -202,7 +204,7 @@ async function setWindows(name) {
 async function putBack() {
   if (isDemo()) { windowsLine = { text: DEMO_SAID }; rerender(); return; }
   try { await post('/api/wallpapers/put-back-windows'); windowsLine = { text: 'Your earlier Windows wallpaper is back.' }; }
-  catch (e) { windowsLine = { text: e.message, bad: true, putBack: !/no longer there/.test(e.message) }; }
+  catch (e) { windowsLine = { text: e.message, bad: true, putBack: !/no longer there|changed in Windows/.test(e.message) }; }
   rerender();
 }
 async function useAsBackground(name) {

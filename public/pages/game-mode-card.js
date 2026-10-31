@@ -133,8 +133,9 @@ function picker() {
 // the one line for what is on now: from the live stream (core/devices.js remoteAuto.game), else the last read
 export function gameModeLine() {
   const g = remoteAuto?.game || st.status;
-  if (g?.active?.name) return `${g.active.name} mode on`;
+  // putting back first (31 Oct 2026): the game stays "active" while its put-back waits, so it read "on" after it quit
   if (g?.restoring) return 'Putting settings back';
+  if (g?.active?.name) return `${g.active.name} mode on`;
   return null;
 }
 

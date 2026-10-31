@@ -204,6 +204,32 @@ const nonWin = create({ ...dirs, platform: 'linux' });
 check(await nonWin.setWindows('Sunset.png').then(() => false, (e) => /Windows only/.test(e.message)), 'other systems get a clear answer for the Windows wallpaper');
 check(PS_SET.includes('$env:DEVICEHUB_WALLPAPER') && PS_SET.includes('0x14') && /, 3\)\)/.test(PS_SET), 'the script calls SystemParametersInfo(0x14, 0, path, 3) with the path from the environment');
 
+// 31 Oct 2026: Undo puts back the kept copy, then Set again must not delete it (it was the only copy); and Undo is not
+// offered once the person changed the wallpaper in Windows themselves. Real temporary files, any system.
+{
+  const root2 = path.join(tmp, 'DeviceHub2'); fs.mkdirSync(root2, { recursive: true });
+  // Windows' own TranscodedWallpaper, which it overwrites, so Undo uses the kept copy
+  let reg = path.join(tmp, 'Microsoft', 'Windows', 'Themes', 'TranscodedWallpaper');
+  fs.mkdirSync(path.dirname(reg), { recursive: true }); fs.writeFileSync(reg, png(8, 8, 33));
+  const ps = async (script, env) => { if (script.includes('SystemParametersInfo')) reg = env.DEVICEHUB_WALLPAPER; return `${reg}\r\n`; };
+  const w2 = create({ ...dirs, root: root2, platform: 'win32', powershell: ps });
+  const getKept = async () => { let b = null; await w2.handle(new URL('http://x/api/wallpapers'), { method: 'GET' }, {}, (res, code, x) => { b = x; }, async () => ({})); return b?.previousKept; };
+  const s1 = await w2.setWindows('Sunset.png');
+  check(s1.canUndo === true && (await getKept()) === true, 'Undo offered while the desktop shows the one DeviceHub set');
+  const u1 = await w2.putBackWindows();
+  const copy = path.join(root2, 'wallpaper-previous', 'previous.png');
+  check(path.resolve(u1.path) === path.resolve(copy), `Undo puts back the kept copy (${u1.path})`);
+  await w2.setWindows('Sunset (2).png');
+  check(fs.existsSync(copy) && fs.readFileSync(copy).equals(png(8, 8, 33)), 'setting another after Undo keeps the kept copy (the only one)');
+  const u2 = await w2.putBackWindows().catch((e) => ({ error: e.message }));
+  check(u2.ok && path.resolve(reg) === path.resolve(copy), `a second Undo still puts the earlier wallpaper back (${u2.error || ''})`);
+  await w2.setWindows('Sunset.png');
+  reg = path.join(tmp, 'mine.png'); fs.writeFileSync(reg, png(8, 8, 44));   // the person picks another in Windows
+  check((await getKept()) === false, 'no Undo once the wallpaper was changed in Windows');
+  const u3 = await w2.putBackWindows().catch((e) => ({ error: e.message }));
+  check(u3.error && /changed in Windows/.test(u3.error) && reg === path.join(tmp, 'mine.png'), `Undo then refuses and leaves their choice (${u3.error})`);
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 // previews and renaming (22 Oct 2026: "make the wallpaper area faster", "make the names easily editable")
 {

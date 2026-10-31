@@ -68,6 +68,8 @@ let shownKeys = '';                     // the listed rows when drawn; another l
 
 const sections = () => groupLights(st.orgb?.controllers || [], { showAll: showingAll() });
 const label = (hex) => (isOff(hex) ? 'Off' : hex ? hex.toUpperCase() : 'Several colors');
+// an Undo that failed (31 Oct 2026): "Nothing to undo" only when that is why (helpers/openrgb.js restore), else "Not undone"
+const undoFailed = (e) => (/nothing changed/i.test(e?.message || '') ? 'Nothing to undo' : 'Not undone');
 
 async function sendWrites(writes, hex, { quiet = false } = {}) {
   const list = st.orgb?.controllers;
@@ -78,7 +80,10 @@ async function sendWrites(writes, hex, { quiet = false } = {}) {
   if (isDemo()) return;
   try {
     let r = null;
-    for (const w of writes) r = await env.api('/api/openrgb/color', { target: w.index, hex, zone: w.zone });
+    // 31 Oct 2026: each light by its key as well as its number, so a list read before OpenRGB rescanned never colors
+    // the light that took its number (helpers/openrgb.js setColor)
+    const keyAt = new Map(list.map((c) => [c.index, c.key]));
+    for (const w of writes) r = await env.api('/api/openrgb/color', { target: keyAt.get(w.index) ? { index: w.index, key: keyAt.get(w.index) } : w.index, hex, zone: w.zone });
     if (mine === gen && Array.isArray(r?.controllers) && st.orgb) { st.orgb.controllers = r.controllers; paintRows(); }
   } catch (e) {
     if (mine === gen && st.orgb) { st.orgb.controllers = JSON.parse(before); paintRows(); }
@@ -158,6 +163,8 @@ function paintRows() {
   }
 }
 
+// a zone OpenRGB has no name for ("???", e.g. a fan hub's channel) shows as "Zone N" (31 Oct 2026)
+const zoneLabel = (r) => (/^\s*\?+\s*$/.test(r.label || '') && Number.isInteger(r.writes?.[0]?.zone) ? `Zone ${r.writes[0].zone + 1}` : r.label);
 function lightSections() {
   rowEls = new Map();
   const secs = sections();
@@ -172,7 +179,7 @@ function lightSections() {
     head.classList.add('pcl-head');
     return h('div', { class: 'pcl-sec', dataset: { sec: s.id } },
       head,
-      s.rows.length > 1 ? h('div', { class: 'pcl-rows' }, ...s.rows.map((r) => lightRow(r.key, r.label, common ? null : r.detail, r, r.leds > 0 ? r.writes : []))) : null,
+      s.rows.length > 1 ? h('div', { class: 'pcl-rows' }, ...s.rows.map((r) => lightRow(r.key, zoneLabel(r), common ? null : r.detail, r, r.leds > 0 ? r.writes : []))) : null,
       s.hidden ? h('small', { class: 'faint pcl-note' }, `${s.hidden} more part${s.hidden === 1 ? "" : "s"}: ${ALL_NAMES[s.id] || 'All'} colors ${s.hidden === 1 ? "it" : "them"} too.`) : null);
   });
   queueMicrotask(paintRows);
@@ -268,7 +275,7 @@ function pcLights() {
     // Find my lights: one color per zone, the person names what lit (ui/find-lights.js)
     findLights(o, redraw),
     h('div', { class: 'actions' },
-      button('Undo', async () => { pcStopLive(); if (isDemo()) { st.orgb = DEMO_ORGB(); redraw(); toast('PC lights undone', 'good'); return; } try { await env.api('/api/openrgb/restore', {}); toast('PC lights undone', 'good'); } catch (e) { toast('Nothing to undo', 'bad', { detail: e.message }); } loadPc(true); }, { kind: 'small', ic: 'undo' }),
+      button('Undo', async () => { pcStopLive(); if (isDemo()) { st.orgb = DEMO_ORGB(); redraw(); toast('PC lights undone', 'good'); return; } try { await env.api('/api/openrgb/restore', {}); toast('PC lights undone', 'good'); } catch (e) { toast(undoFailed(e), 'bad', { detail: e.message }); } loadPc(true); }, { kind: 'small', ic: 'undo' }),
       button('Look again', () => loadPc(true), { kind: 'ghost small', ic: 'refresh' })),
     // the built-in OpenRGB reaches USB lights only: the way to the board and RAM stays one click away
     fanHelp(),

@@ -53,8 +53,11 @@ async function current() {
 }
 
 // a copy from GitHub, put in place part by part (only what differs)
+// told when settings or profiles from the other PC were put in place (server.js: the running auto-switch reloads them)
+let onLoaded = () => {};
 async function apply(remote, local) {
   const changed = [];
+  try { fs.mkdirSync(path.join(ROOT, 'backups'), { recursive: true }); } catch {}
   if (remote.eq && eqapo && eqapo.installed() && hash(remote.eq) !== hash(local.eq)) { await eqapo.importState(remote.eq); changed.push('sound'); }
   if (remote.options && hash(remote.options) !== hash(local.options)) {
     const cur = readJson(SETTINGS, {});
@@ -98,6 +101,7 @@ async function sync() {
       const remote = JSON.parse(await git(['show', 'origin/main:settings.json']));
       const changed = await apply(remote, await current());
       st.lastRemote = head; st.lastLocal = hash(await current());
+      if (changed.includes('options') || changed.includes('profiles')) { try { onLoaded(changed); } catch {} }
       if (changed.length) { status.lastLoaded = { at: new Date().toISOString(), from: remote.from, parts: changed }; log({ kind: 'good', text: `Settings from ${remote.from || 'the other PC'} loaded (${changed.join(', ')})` }); }
       if (remote.from) status.mainName = remote.from;
     }
@@ -120,7 +124,8 @@ async function sync() {
 
 module.exports = {
   // every 2 minutes while a DeviceHub window is open, every 5 with none (26 Oct 2026, idle CPU: a git fetch each time)
-  start(eq, logFn, { windowOpen = () => true } = {}) {
+  start(eq, logFn, { windowOpen = () => true, loaded = () => {} } = {}) {
+    onLoaded = loaded;
     eqapo = eq; log = logFn;
     const loop = () => { timer = setTimeout(() => sync().finally(loop), power.every(windowOpen() ? 120000 : 300000)); };
     setTimeout(() => sync().finally(loop), 20000);

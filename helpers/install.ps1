@@ -115,6 +115,27 @@ if ($same) { Write-Host '   already in place' } else {
   # Folders are merged with robocopy (21 Oct 2026): Copy-Item onto a folder that already exists puts the new one INSIDE
   # it (public\public), so a reinstall or an update left every folder's old files running. Files are always replaced
   # (/IS /IT); files that are only on this PC (my-devices\, a VIA file) are left as they are.
+  # the version before, kept so a new one that stops on start goes back to it (31 Oct 2026: only git copies could): the
+  # app's code (the files at the top and its code folders; not this PC's data, its added files or the bundled tools), in
+  # backups\pre-update (one, replaced each update)
+  if (Test-Path -LiteralPath (Join-Path $Target 'server.js')) {
+    $pre = Join-Path $Target 'backups\pre-update'
+    $code = 'public', 'helpers', 'device-library'
+    try {
+      if (Test-Path -LiteralPath $pre) { Remove-Item -LiteralPath $pre -Recurse -Force }
+      New-Item -ItemType Directory -Force $pre | Out-Null
+      Get-ChildItem -LiteralPath $Target -Force | Where-Object { $keep -notcontains $_.Name -and (-not $_.PSIsContainer -or $code -contains $_.Name) } | ForEach-Object {
+        if ($_.PSIsContainer) {
+          & robocopy $_.FullName (Join-Path $pre $_.Name) /E /XD bin /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
+          if ($LASTEXITCODE -ge 8) { throw "keeping $($_.Name) failed (robocopy $LASTEXITCODE)" }
+        } else { Copy-Item -LiteralPath $_.FullName (Join-Path $pre $_.Name) -Force }
+      }
+      New-Item -ItemType Directory -Force (Join-Path $Target 'data') | Out-Null
+      Set-Content -LiteralPath (Join-Path $Target 'data\update-rollback.txt') -Value 'files:backups\pre-update' -Encoding ASCII
+      Write-Host '   kept the version before (backups\pre-update), in case the new one does not start'
+    } catch { Write-Host "   the version before could not be kept: $($_.Exception.Message)" -ForegroundColor Yellow }
+    $global:LASTEXITCODE = 0
+  }
   # a copy that fails part-way (a file held by antivirus or another program) starts DeviceHub again before it stops, so
   # the person is not left with DeviceHub closed and only a log in a temp folder (31 Oct 2026); a file is tried 3 times
   try {

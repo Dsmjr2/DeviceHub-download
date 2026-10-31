@@ -169,6 +169,28 @@ check(!JSON.parse(fs.readFileSync(file, 'utf8'))['headset:charging'], 'nothing l
   check(!order.length, 'a batteryCare its setting cannot take is ignored');
 }
 
+// a setting game mode holds is not "changed by hand" (31 Oct 2026): the 8000 Hz from before comes back once game mode
+// has put back battery care's 1000 Hz
+{
+  const { holdBy } = await import('../helpers/battery-care.mjs');
+  _test.set(core, file, settings);
+  fs.writeFileSync(settings, '{}');
+  core.devices.mouse.values = { dpiEffect: 'off', pollingRate: 1000 };
+  core.devices.mouse.battery = { percent: 15, charging: false };
+  core.devices.headset.battery = { percent: 50, charging: false };
+  _test.saved().mouse = { at: new Date().toISOString(), items: [{ key: 'pollingRate', was: 8000, to: 1000 }] };
+  core.devices.mouse.values.pollingRate = 4000;   // a game's setting, game mode holding 1000 as its "before"
+  core.devices.mouse.battery = { percent: 40, charging: true };
+  let gameOn = true;
+  holdBy(() => (gameOn ? ['polling'] : []));
+  writes.length = 0; await _test.tick();
+  check(!writes.length && _test.saved().mouse?.items?.[0]?.was === 8000, `while game mode holds it, nothing is written and the entry stays (${JSON.stringify({ writes, saved: _test.saved().mouse })})`);
+  gameOn = false; core.devices.mouse.values.pollingRate = 1000;   // the game quit: game mode put 1000 back
+  writes.length = 0; await _test.tick();
+  check(writes.some(([i, k, v]) => i === 'mouse' && k === 'pollingRate' && v === 8000) && !_test.saved().mouse, `then battery care puts 8000 back (${JSON.stringify(writes)})`);
+  holdBy(null);
+}
+
 // battery history for added devices (tests/battery-history.mjs; run here so test:offline covers it)
 for (const f of await (await import('./battery-history.mjs')).run()) fails.push(`battery history: ${f}`);
 

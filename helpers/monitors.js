@@ -145,6 +145,11 @@ function keepTrying() {
   retry.unref?.();
 }
 let flushing = false;
+// 31 Oct 2026: a waiting change that fails while its monitor answers is tried MAX_TRIES times in all, and the backup is
+// written before the first of them only (the monitor's values do not change between failed tries)
+const MAX_TRIES = 5;
+const tries = new Map();          // `${id}|${feature}` -> failed writes from the queue
+const queueBackedUp = new Set();  // monitor ids whose waiting changes already have their backup
 async function flush() {
   if (flushing) return; flushing = true;
   try {
@@ -152,10 +157,18 @@ async function flush() {
       const m = (cache.list || []).find((x) => x.id === id);
       if (!m || !m.ddc || m.away) continue;
       for (const [feature, value] of Object.entries({ ...keys })) {
-        try { await set(id, feature, value, { fromQueue: true }); if (waiting[id]?.[feature] === value) delete waiting[id][feature]; onApplied(`${m.name}: ${feature === 'volume' ? 'speaker volume' : feature} → ${value} (made while it was off)`); }
-        catch (e) { if (notAnswering(e)) break; if (waiting[id]?.[feature] === value) delete waiting[id][feature]; onApplied(`${m.name}: ${feature} not changed: ${e.message}`, true); }
+        const k = `${id}|${feature}`;
+        try { await set(id, feature, value, { fromQueue: true }); tries.delete(k); if (waiting[id]?.[feature] === value) delete waiting[id][feature]; onApplied(`${m.name}: ${feature === 'volume' ? 'speaker volume' : feature} → ${value} (made while it was off)`); }
+        catch (e) {
+          // 31 Oct 2026: a monitor that answers but keeps failing the write is not tried forever: MAX_TRIES, then told
+          const n = (tries.get(k) || 0) + 1;
+          if (notAnswering(e) && n < MAX_TRIES) { tries.set(k, n); break; }
+          tries.delete(k);
+          if (waiting[id]?.[feature] === value) delete waiting[id][feature];
+          onApplied(`${m.name}: ${feature} not changed: ${e.message}${notAnswering(e) ? ` (tried ${MAX_TRIES} times)` : ''}`, true);
+        }
       }
-      if (waiting[id] && !Object.keys(waiting[id]).length) delete waiting[id];
+      if (waiting[id] && !Object.keys(waiting[id]).length) { delete waiting[id]; queueBackedUp.delete(id); }
     }
   } finally { flushing = false; saveWaiting(); }
 }
@@ -212,6 +225,13 @@ async function list(fresh) {
   refreshing = readAll();
   try { return await refreshing; } finally { refreshing = null; }
 }
+// two monitors of the same model would show the same name (31 Oct 2026): each then gets its Windows screen number,
+// "Acer IPS (screen 2)"; a name no other monitor has stays as it is
+function apartNames(list) {
+  const count = new Map();
+  for (const m of list) count.set(m.name, (count.get(m.name) || 0) + 1);
+  return list.map((m, i) => (count.get(m.name) > 1 ? { ...m, name: `${m.name} (screen ${(/DISPLAY(\d+)/i.exec(m.screen || '') || [])[1] || i + 1})` } : m));
+}
 async function readAll() {
   const result = await serial(async () => {
     let r0 = await call({ op: 'monitors', caps: false }, 30000);
@@ -219,7 +239,7 @@ async function readAll() {
     if (r0.monitors.some((m) => !m.ddc && capsById.has(m.id))) r0 = await call({ op: 'monitors', caps: false }, 30000);
     // capabilities only for a monitor not read before
     const r = r0.monitors.some((m) => m.ddc && !capsById.has(m.id)) ? await call({ op: 'monitors', caps: true }, 30000) : r0;
-    cache = { at: Date.now(), list: await builtIn(withWaiting(r.monitors.map(shape))) };
+    cache = { at: Date.now(), list: apartNames(await builtIn(withWaiting(r.monitors.map(shape)))) };
     return cache.list;
   });
   if (result.some((m) => m.waiting && m.ddc && !m.away)) setTimeout(() => flush().catch(() => {}), 0);
@@ -252,11 +272,12 @@ async function set(id, feature, value, { live = false, fromQueue = false } = {})
   // back up all of this monitor's values first; changes a few seconds apart (a slider dragged) share the backup taken
   // before the first, which holds every value as it was (21 Oct 2026)
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  if (!(Date.now() - (lastBackupAt.get(id) || 0) < 15000)) {
+  if (!(fromQueue && queueBackedUp.has(id)) && !(Date.now() - (lastBackupAt.get(id) || 0) < 15000)) {
     writeAtomic(path.join(backupDir, `monitor-${(m.model || 'monitor').replace(/[^\w-]/g, '')}-${stamp}.json`),
       JSON.stringify({ at: new Date().toISOString(), monitor: m.name, model: m.model, id: m.id, ...Object.fromEntries(Object.keys(FEATURES).map((k) => [k, (lastSeen.get(id) || m)[k] ?? null])) }, null, 1));
     lastBackupAt.set(id, Date.now());
   }
+  if (fromQueue) queueBackedUp.add(id);
   // a gain or black level on a monitor that is not on its Custom preset: switch it there first (one write, read back)
   let presetSwitched = null;
   const to = customFirst(m, feature);
@@ -272,7 +293,15 @@ async function set(id, feature, value, { live = false, fromQueue = false } = {})
   }
   let r;
   try { r = await serial(() => call({ op: 'monitor-set', id, code, value, live })); }
-  catch (e) { if (!live && !fromQueue && notAnswering(e)) return wait(m, feature, value); throw e; }
+  catch (e) {
+    if (live || !notAnswering(e)) throw e;
+    // 31 Oct 2026: "refused it" also comes from a monitor that is on and answering but will not take that value; only
+    // one that no longer answers (a fresh read says so) is off, and only then does the change wait. From the queue the
+    // monitor has just answered the read that started it, so a refusal there is a refusal.
+    if (/refused it/i.test(e.message) && (fromQueue || await answersNow(id))) throw Object.assign(new Error('the monitor refused that change (it is on and answering)'), { refused: true });
+    if (!fromQueue) return wait(m, feature, value);
+    throw e;
+  }
   // a live step is not read back (the release is): its value is kept as sent
   if (live) { if (m[feature]) m[feature] = { ...m[feature], value }; return { name: m.name, feature, value, live: true, presetSwitched }; }
   const back = r.cur;
@@ -306,12 +335,16 @@ async function setBuiltIn(m, feature, value, live) {
   return { name: m.name, feature, value: back };
 }
 
+// does this monitor answer over DDC/CI now (a fresh read)?
+const answersNow = async (id) => { const now = await list(true).catch(() => null); const x = now?.find((y) => y.id === id); return !!x && !!x.ddc && !x.away; };
+
 function wait(m, feature, value) {
   (waiting[m.id] ||= {})[feature] = value;
+  queueBackedUp.delete(m.id); tries.delete(`${m.id}|${feature}`);   // a new change made while off: backed up and tried afresh
   saveWaiting(); keepTrying();
   // shown as made at once (the saved reading is patched; lastSeen keeps what the monitor really has)
   if (cache.list) cache.list = cache.list.map((x) => (x.id !== m.id ? x : { ...x, waiting: Object.keys(waiting[m.id]), ...(x[feature] ? { [feature]: { ...x[feature], value } } : {}) }));
   return { name: m.name, feature, value, waiting: true };
 }
 
-module.exports = { quiet, start(nat, dir, applied) { native = nat; backupDir = dir; if (applied) onApplied = applied; keepTrying(); warm(); }, list, set, FEATURES, _test: { vcpList, supportsList, warm, age: (ms) => { cache.at -= ms; }, customFirst, refusesColor } };
+module.exports = { quiet, start(nat, dir, applied) { native = nat; backupDir = dir; if (applied) onApplied = applied; keepTrying(); warm(); }, list, set, FEATURES, _test: { vcpList, supportsList, warm, age: (ms) => { cache.at -= ms; }, forgetBackupTimes: () => lastBackupAt.clear(), customFirst, refusesColor } };

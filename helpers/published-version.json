@@ -1,7 +1,8 @@
 {
-  "version": "1.26",
-  "commit": "94b11c68e0d1",
+  "version": "1.27",
+  "commit": "29a998f0f696",
   "notes": [
-    "Waiting changes in order, keyboard saves on release, safer updates…"
+    "Fixes: profiles kept, battery care, sync, monitors, PC lights…",
+    "Zip and Setup.exe updates can go back to the version before"
   ]
 }

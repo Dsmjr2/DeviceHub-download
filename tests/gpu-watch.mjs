@@ -29,5 +29,17 @@ ok(timers === 0 && w.watching() === 0, 'no window left: reading stops');
 const before = reads; await flush();
 ok(reads === before, 'and nothing more is read');
 
+// 31 Oct 2026: a read still running when the last window stops wanting: its answer is dropped, so the next window gets
+// its first reading even when it is the same temperature
+{
+  let release = null, t = 60;
+  const sent = [];
+  const w2 = createGpuWatch({ read: () => new Promise((r) => { release = () => r({ gpus: [{ tempC: t }] }); }), setI: () => ({ unref() {} }), clearI: () => {} });
+  w2.want(1, true, () => {}); w2.want(1, false);     // the read starts, then the only window stops wanting
+  release(); await flush();                          // that read answers after the stop
+  w2.want(2, true, (d) => sent.push(d.tempC)); release(); await flush();
+  ok(sent.join() === '60', `a new window gets the reading even when it equals the one read during the stop (${sent})`);
+}
+
 console.log(failed ? `${failed} failed` : 'gpu-watch: all passed');
 process.exit(failed ? 1 : 0);

@@ -116,7 +116,9 @@ function create({ root = path.join(__dirname, '..'), wallpapers = null } = {}) {
       const buf = Buffer.from(String(x.background.data || ''), 'base64');
       const ok = { png: (b) => b.readUInt32BE(0) === 0x89504e47, jpg: (b) => b[0] === 0xff && b[1] === 0xd8, webp: (b) => b.toString('latin1', 8, 12) === 'WEBP' }[x.background.ext];
       if (buf.length > 12 && buf.length <= 8 * 1024 * 1024 && ok(buf)) {
-        const old = picture(); if (old) fs.unlinkSync(old.file);
+        // the picture here is copied to backups first (31 Oct 2026: it was deleted with no copy)
+        const old = picture();
+        if (old) { fs.mkdirSync(BACKUPS, { recursive: true }); fs.copyFileSync(old.file, path.join(BACKUPS, `background-picture-${new Date().toISOString().replace(/[:.]/g, '-')}${path.extname(old.file)}`)); fs.unlinkSync(old.file); }
         writeAtomic(dataFile(`background-picture.${x.background.ext}`, root), buf);
         done.push('background picture');
       }

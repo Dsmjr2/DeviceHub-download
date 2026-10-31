@@ -148,9 +148,12 @@ async function saveHere(p) {
   if (!now) { say(p.name, NOTHING, 'bad'); rerender(); return; }
   const keep = { ...(p.added || {}), ...now.added };
   const next = (x) => {
-    const o = { ...x, games: x.games || [], devices: now.snap, savedAt: new Date().toISOString() };
+    // a device or monitor not connected now keeps what the profile had for it (31 Oct 2026: saving with the headset off
+    // removed the headset from the profile, and another PC's monitors went too)
+    const o = { ...x, games: x.games || [], devices: { ...(x.devices || {}), ...now.snap }, savedAt: new Date().toISOString() };
+    const mons = { ...(x.monitors || {}), ...now.mons };
     delete o.monitors; delete o.added;
-    if (Object.keys(now.mons).length) o.monitors = now.mons;
+    if (Object.keys(mons).length) o.monitors = mons;
     if (Object.keys(keep).length) o.added = keep;
     return o;
   };

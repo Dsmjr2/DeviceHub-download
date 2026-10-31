@@ -13,6 +13,7 @@ import { env } from '../core/env.js';
 import { isDemo } from '../core/devices.js';
 import { cpuSensors, cpuSensorsSetUp } from './cpu-sensors.js';
 import { shouldRead } from '../core/cpu-sensors.js';
+import { everyVisible } from '../core/visible-timer.js';
 import { wifiPause } from './wifi-pause.js';
 import { startupApps } from './startup-apps.js';
 
@@ -53,12 +54,13 @@ async function loadTemps() {
   const sig = JSON.stringify([cmp, tempsErr]);
   if (sig !== lastTempsSig) { lastTempsSig = sig; redrawTemps(); }
 }
-// every 5 s, only while the card is on screen and the window is shown
+// every 5 s, only while the card is on screen and the window is shown. 31 Oct 2026: a hidden window only pauses it
+// (core/visible-timer.js runs it again when the window is shown); leaving the page or scrolling the card away stops it
 function keepTemps(page) {
   if (tempsTimer) return;
-  tempsTimer = setInterval(() => {
-    if (!canRead(page)) { clearInterval(tempsTimer); tempsTimer = null; return; }
-    loadTemps();
+  tempsTimer = everyVisible(() => {
+    if (!canRead(page)) { tempsTimer?.(); tempsTimer = null; return; }
+    return loadTemps();
   }, 5000);
 }
 function watchVisible(el, page) {

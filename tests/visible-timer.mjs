@@ -83,7 +83,7 @@ check(/gpuTimer = setInterval\(tick, 15000\)/.test(src('public/pages/overview.js
 // that already runs for the program names (tasklist only as a fallback)
 const server = src('server.js');
 check(/if \(!quitting && openWindows > 0\) native\.request\('win', `BRAND/.test(server), 'the window branding call runs only while a window is open');
-check(/settingsSync\.start\(eqapo, serverLog, \{ windowOpen: \(\) => openWindows > 0 \}\)/.test(server) && /power\.every\(windowOpen\(\) \? 120000 : 300000\)/.test(src('helpers/settings-sync.js')), 'settings sync: every 2 minutes with a window open, every 5 with none');
+check(/settingsSync\.start\(eqapo, serverLog, \{ windowOpen: \(\) => openWindows > 0[,}]/.test(server) && /power\.every\(windowOpen\(\) \? 120000 : 300000\)/.test(src('helpers/settings-sync.js')), 'settings sync: every 2 minutes with a window open, every 5 with none');
 check(/corsair\.handle\('procs', \{\}\)[^\n]*\.catch\(\(\) => tasklist\(\)\)/.test(server), 'auto-switch reads program names from the helper, tasklist only when it cannot answer');
 check(/case "procs":/.test(src('helpers/native/helper.cs')) && /action === 'procs'/.test(src('helpers/corsair.js')), 'the helper answers procs (names only)');
 

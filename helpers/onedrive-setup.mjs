@@ -93,6 +93,8 @@ export function read(pc) {
   if (!dir || !/^[\w.-]{1,60}$/.test(String(pc))) throw new Error('no such PC');
   const f = fileOf(dir, pc);
   if (!fs.existsSync(f)) throw new Error('no such PC');
+  // the same limit as a setup file loaded by hand (31 Oct 2026: another PC's file was read whole, any size)
+  if (fs.statSync(f).size > 400 * 1024 * 1024) throw new Error("that PC's setup file is over 400 MB");
   return JSON.parse(fs.readFileSync(f, 'utf8'));
 }
 

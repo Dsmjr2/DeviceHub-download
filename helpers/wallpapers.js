@@ -285,7 +285,14 @@ function create(opts = {}) {
     const kept = readPrevious();
     if (!(kept && inside(was, DIR))) {
       fs.mkdirSync(PREVIOUS, { recursive: true });
-      for (const f of fs.readdirSync(PREVIOUS)) if (f !== 'previous.json') try { fs.unlinkSync(path.join(PREVIOUS, f)); } catch {}
+      // 31 Oct 2026: after Undo the desktop can be showing the kept copy itself (wallpaper-previous\previous.jpg), so that
+      // file is not cleared with the rest: it is the only copy of the earlier wallpaper
+      const wasKeptCopy = inside(was, PREVIOUS);
+      for (const f of fs.readdirSync(PREVIOUS)) {
+        const full = path.join(PREVIOUS, f);
+        if (f === 'previous.json' || (wasKeptCopy && full.toLowerCase() === path.resolve(was).toLowerCase())) continue;
+        try { fs.unlinkSync(full); } catch {}
+      }
       let copy = null;
       try {
         const st = was && fs.statSync(was);
@@ -293,13 +300,13 @@ function create(opts = {}) {
           const head = Buffer.alloc(Math.min(st.size, 64)); const fd = fs.openSync(was, 'r'); fs.readSync(fd, head, 0, head.length, 0); fs.closeSync(fd);
           const ext = kindOf(head)?.[0] || 'jpg';
           copy = path.join(PREVIOUS, `previous.${ext}`);
-          fs.copyFileSync(was, copy);
+          if (copy.toLowerCase() !== path.resolve(was).toLowerCase()) fs.copyFileSync(was, copy);
         }
       } catch { copy = null; }
-      writeAtomic(PREV_JSON, JSON.stringify({ path: was, copy, keptAt: new Date().toISOString() }, null, 2));
+      writeAtomic(PREV_JSON, JSON.stringify({ path: wasKeptCopy && copy ? copy : was, copy, keptAt: new Date().toISOString() }, null, 2));
     }
     await applyWindows(full);
-    return { ok: true, previous: readPrevious()?.path || '', canUndo: canUndo() };
+    return { ok: true, previous: readPrevious()?.path || '', canUndo: await canUndo(full) };
   }
 
   // what Undo would put back, or null when it is gone (23 Oct 2026, Shawn: "if this is the case then do not show the
@@ -314,7 +321,13 @@ function create(opts = {}) {
   }
   // Undo is offered only while the kept wallpaper can still be put back (read-only: the record stays, so setting another
   // one later never takes DeviceHub's own wallpaper for the earlier one)
-  const canUndo = () => { const kept = readPrevious(); return !!kept && undoTarget(kept) != null; };
+  // 31 Oct 2026: and only while the desktop still shows a wallpaper DeviceHub set (one from its folder); once the person
+  // picks another in Windows themselves, Undo would throw their choice away
+  const canUndo = async (now) => {
+    const kept = readPrevious();
+    if (!kept || undoTarget(kept) == null) return false;
+    try { return inside(now ?? await currentWindows(), DIR); } catch { return false; }
+  };
 
   async function putBackWindows() {
     if (platform !== 'win32') throw Object.assign(new Error('Setting the desktop wallpaper works on Windows only.'), { code: 400 });
@@ -322,6 +335,8 @@ function create(opts = {}) {
     if (!kept) throw Object.assign(new Error('Nothing to undo: no earlier wallpaper was kept.'), { code: 400 });
     const target = undoTarget(kept);
     if (target == null) throw Object.assign(new Error(`The earlier wallpaper (${kept.path}) is no longer there, so it cannot be put back.`), { code: 400, gone: true });
+    // 31 Oct 2026: the person changed the wallpaper in Windows since; their choice is not undone
+    if (!inside(await currentWindows(), DIR)) throw Object.assign(new Error('Nothing to undo: the wallpaper was changed in Windows since DeviceHub set it.'), { code: 400, changed: true });
     await applyWindows(target);
     try { fs.unlinkSync(PREV_JSON); } catch {}
     return { ok: true, path: target };
@@ -342,7 +357,7 @@ function create(opts = {}) {
     const fail = (e) => send(res, e.code || 400, { error: e.message });
     try {
       if (p === '/api/wallpapers' && GET) {
-        const undo = canUndo(), kept = undo ? readPrevious() : null;
+        const undo = platform === 'win32' && await canUndo(), kept = undo ? readPrevious() : null;
         return send(res, 200, { ...list(), windows: platform === 'win32', previousKept: undo, previous: kept?.path || null });
       }
       if (p === '/api/wallpapers/starters' && GET) return send(res, 200, { items: starters() });
