@@ -195,7 +195,8 @@ async function refreshUnlocked(id, { quiet, first, full, dpi } = {}) {
     const info = quick ? d.info : await d.adapter.info();
     // while the mouse's own DPI announcements are heard (env.dpiEvents, helpers/agent.mjs), the minute check reads only
     // the battery; a press (dpi), a wake and the 10-minute full read still read the mouse
-    const values = !quick ? await d.adapter.read() : env.dpiEvents && !dpi && d.status === 'connected' ? d.values : await d.adapter.wakeRead();
+    // (31 Oct 2026) a quick read may bring only what changed (a library driver's DPI and stage): laid over what is known
+    const values = !quick ? await d.adapter.read() : env.dpiEvents && id === 'mouse' && !dpi && d.status === 'connected' ? d.values : { ...d.values, ...(await d.adapter.wakeRead()) };
     if (!quick) fullReadAt[id] = Date.now();
     const battery = d.adapter.battery ? await d.adapter.battery() : null;
     // Unchanged readings don't redraw the page (keeps sliders and inputs undisturbed).

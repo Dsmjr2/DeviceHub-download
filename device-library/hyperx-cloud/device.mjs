@@ -429,6 +429,10 @@ export default {
   // asleep (switched off, out of range): one read asked before the whole set (31 Oct 2026: every look at a switched-off
   // headset waited on every read's timeout, about 9 s, and the log filled with them); only a read on the safe list
   async awake() {
+    // asked at most every 30 s, as the Logitech drivers do (31 Oct 2026: DeviceHub looks at an asleep device every 5 s,
+    // and each look here was a request and its retry to a dongle that never answered)
+    if (Date.now() - (this.awakeAskedAt || 0) < 30000) return false;
+    this.awakeAskedAt = Date.now();
     try {
       const m = this.model();
       const k = KEYS.find((x) => Object.hasOwn(m.reads, x));

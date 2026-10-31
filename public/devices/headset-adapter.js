@@ -93,7 +93,9 @@ export const sidetoneDb = (pct) => (pct <= 0 ? -42 : Math.max(-42, Math.min(4, 4
 // HS80 sound devices and each question could wait the helper's full 15 s, which kept the headset on "Connecting" for
 // about a minute (19 Oct 2026). A capped answer shows "—" and asks for a re-read a few seconds later.
 let audioLate = false;
-const soon = (p, ms = 3000) => Promise.race([p, new Promise((_, rej) => setTimeout(() => { audioLate = true; rej(new Error('Windows audio not ready yet')); }, ms))]);
+// the timer is cleared once the answer came (31 Oct 2026: left running, it marked every read "late", and the headset
+// was read again every 5 s for good instead of once a minute)
+const soon = (p, ms = 3000) => { let t; return Promise.race([p, new Promise((_, rej) => { t = setTimeout(() => { audioLate = true; rej(new Error('Windows audio not ready yet')); }, ms); })]).finally(() => clearTimeout(t)); };
 export const takeAudioLate = () => { const x = audioLate; audioLate = false; return x; };
 
 async function readBoost(v) {

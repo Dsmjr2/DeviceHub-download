@@ -704,6 +704,17 @@ const adapter = {
     return v;
   },
 
+  // DeviceHub's minute look at a wireless mouse (public/core/devices.js, quick): only what its buttons change, DPI and
+  // the DPI stage (DeviceHub keeps the rest as last read); a full read still comes every 10 minutes (31 Oct 2026: every
+  // minute was a whole read, about 9 radio requests, where the built-in mouse needs 2)
+  async wakeRead() {
+    await this.needAwake();
+    const v = { dpi: (await this.readDpi()).dpi };
+    const stage = await this.readDpiStage();
+    if (stage !== undefined) v.dpiStage = stage;
+    return v;
+  },
+
   // one setting, then read back; a read-back that differs throws (CLAUDE.md: reported as failed)
   async write(key, value) {
     if (!this.chan) throw new Error('the mouse is not connected');

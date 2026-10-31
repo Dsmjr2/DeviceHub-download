@@ -13,12 +13,16 @@ let call, log, settingsFile, timer, busy = false, inCall = false, last = null, t
 // weMuted: the guard muted it (so switching the guard off unmutes it again); test: a Mic check test is recording it
 let weMuted = false, test = null;  // test: { prev } the mute it had before the test
 
-const enabled = () => { try { return JSON.parse(fs.readFileSync(settingsFile, 'utf8')).ankerGuard === true; } catch { return false; } };
+let enabledAt = -1, enabledWas = false;
+const enabled = () => {
+  try { const m = fs.statSync(settingsFile).mtimeMs; if (m !== enabledAt) { enabledAt = m; enabledWas = JSON.parse(fs.readFileSync(settingsFile, 'utf8')).ankerGuard === true; } return enabledWas; } catch { return false; }
+};
 const findMic = async () => (await call('audio-list', { match: '(' })).endpoints.find((e) => e.flow === 'recording' && ANKER.test(e.name));
 
 async function tick() {
   if (busy) return; busy = true;
   try {
+    if (!test && !weMuted && !enabled()) { last = null; return; }
     const mic = await findMic();
     if (!mic) { last = null; return; }
     if (test && Date.now() > testUntil) await endTest(mic);  // the 35 s limit

@@ -60,7 +60,7 @@ function startStandby() {
   if (standbyTimer) return;
   standby = new Host('wired');
   let last = Date.now();
-  standbyTimer = setInterval(() => { if (Date.now() - last < (windowsEvents ? 60000 : 10000) - 500) return; last = Date.now(); standbyTick().catch(() => {}); }, 10000);
+  standbyTimer = setInterval(() => { if (Date.now() - last < require('./power').every(windowsEvents ? 60000 : 10000) - 500) return; last = Date.now(); standbyTick().catch(() => {}); }, 10000);
 }
 // a device was plugged in: look for the headset's cable now, and as Windows finishes setting it up
 function lookForCable() { if (!standbyTimer) return; for (const ms of [0, 1200, 3000]) setTimeout(() => standbyTick().catch(() => {}), ms); }
@@ -183,7 +183,7 @@ async function lightRound() {
   // 21 Oct 2026; battery: each question is radio the headset answers; no other drop was ever seen)
   if (lights.back || lights.ticks % 60 === 1) {
     const m = await get(0x03);
-    if (lastTimedOut) { lights.quietUntil = Date.now() + 5000; lights.back = true; return; }
+    if (lastTimedOut) { lights.quietUntil = Date.now() + require('./power').every(5000); lights.back = true; return; }
     lights.back = false;
     if (m && m.status === 0 && m.value !== 2) { lights.modeDrops++; lights.lastSent = null; await one('MODE 2'); }
   }
@@ -192,7 +192,7 @@ async function lightRound() {
   // 2026: half the questions, for the headset's battery)
   if (lights.ticks % 2 === 0) {
     const m = await get(0xa6);
-    if (lastTimedOut) { lights.quietUntil = Date.now() + 5000; lights.back = true; return; }
+    if (lastTimedOut) { lights.quietUntil = Date.now() + require('./power').every(5000); lights.back = true; return; }
     if (m && m.status === 0) lights.muted = m.value === 1;
   }
   const msg = lightMessage();

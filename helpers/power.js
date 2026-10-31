@@ -23,7 +23,8 @@ async function check() {
 }
 
 module.exports = {
-  start(corsairCall, file) { call = corsairCall; settingsFile = file; check(); timer = setInterval(check, 30000); },
+  // (31 Oct 2026) a PC whose last answer had no battery is asked every 10 minutes instead of every 30 s
+  start(corsairCall, file) { call = corsairCall; settingsFile = file; check(); let n = 0; timer = setInterval(() => { n++; if (hasBattery || n % 20 === 0) check(); }, 30000); },
   stop() { clearInterval(timer); },
   // how much longer a background check waits now: 3 on battery with the saver on, else 1
   factor: () => (saving() ? 3 : 1),
