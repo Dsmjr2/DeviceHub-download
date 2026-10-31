@@ -52,7 +52,7 @@ if ($devCopy) { Say "$Dir is a development copy of DeviceHub (it has code histor
 if (-not $Relaunched) {
   if (-not $Quiet -and -not $FromApp) {
     Add-Type -AssemblyName System.Windows.Forms
-    $a = [System.Windows.Forms.MessageBox]::Show("Remove DeviceHub from this PC?`n`nYour backups are kept in Documents\DeviceHub backups. Your devices keep their settings.", 'Uninstall DeviceHub', 'YesNo', 'Question')
+    $a = [System.Windows.Forms.MessageBox]::Show("Remove DeviceHub from this PC?`n`nYour backups, settings and added drivers are kept in Documents\DeviceHub backups. Your devices keep their settings.", 'Uninstall DeviceHub', 'YesNo', 'Question')
     if ($a -ne 'Yes') { exit 0 }
   }
   $copy = Join-Path $env:TEMP "DeviceHub-uninstall-$([guid]::NewGuid().ToString('N').Substring(0, 6)).ps1"
@@ -128,6 +128,19 @@ try {
     New-Item -ItemType Directory -Force $kept | Out-Null
     Copy-Item -Path (Join-Path $b '*') -Destination $kept -Recurse -Force
   }
+  $own = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'DeviceHub backups\kept at uninstall'
+  foreach ($n in 'data', 'my-devices', 'setups') {
+    $src = Join-Path $Dir $n
+    if (-not (Test-Path -LiteralPath $src) -or -not (Get-ChildItem -LiteralPath $src -Recurse -File -ErrorAction SilentlyContinue)) { continue }
+    try {
+      New-Item -ItemType Directory -Force $own | Out-Null
+      $to = Join-Path $own $n
+      if (Test-Path -LiteralPath $to) { Remove-Item -LiteralPath $to -Recurse -Force }
+      Copy-Item -LiteralPath $src -Destination $to -Recurse -Force
+      if (-not $kept) { $kept = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'DeviceHub backups' }
+      Log "kept $n in $to"
+    } catch { Log "$n not kept: $($_.Exception.Message)" }
+  }
   Log "backups: $(if ($kept) { "copied to $kept" } else { 'none' })"
   # 6. the folder (a file still open is retried a few times)
   for ($i = 0; $i -lt 5 -and (Test-Path -LiteralPath $Dir); $i++) { try { Remove-Item -LiteralPath $Dir -Recurse -Force } catch { Log "folder not removed yet: $($_.Exception.Message)"; Start-Sleep 2 } }
@@ -136,6 +149,6 @@ try {
   $script:showAll = $others.Count -gt 0
   $tail = $(if ($others.Count) { "`n`nOther programs stay:`n" + ($others -join "`n") } else { '' })
   if (Test-Path -LiteralPath $Dir) { Say ("DeviceHub is removed, but some files in $Dir were still in use. Restart the PC and delete that folder." + $tail) 'Warning'; exit 2 }
-  Say ("DeviceHub is removed." + $(if ($kept) { " Your backups are in $kept." } else { '' }) + $tail)
+  Say ("DeviceHub is removed." + $(if ($kept) { " Your backups, settings and added drivers are in $kept." } else { '' }) + $tail)
   exit 0
 } catch { Say "DeviceHub was not fully removed: $($_.Exception.Message) (details: $log)" 'Error'; exit 3 }

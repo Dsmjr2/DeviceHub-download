@@ -124,7 +124,7 @@ try {
   // an update replaces the bat while cmd runs it, and cmd reads on from the byte after the server.js line: that line
   // must end where it did before (1452 with Windows line ends, as checked out), or the cmd still running the old
   // version reads half a line and never starts the new one (27 Oct 2026, tried in a throwaway git folder)
-  const crlf = bat.replace(/\r?\n/g, '\r\n'), nodeLine = /^%NODE% .* server\.js >> logs\\server\.log 2>&1\r\n/m.exec(crlf);
+  const crlf = bat.replace(/\r?\n/g, '\r\n'), nodeLine = /^!NODE! .* server\.js >> logs\\server\.log 2>&1\r\n/m.exec(crlf);
   check(nodeLine && Buffer.byteLength(crlf.slice(0, nodeLine.index + nodeLine[0].length), 'latin1') === 1452, `keep-running.bat: the server.js line ends at byte 1452, as before (${nodeLine ? Buffer.byteLength(crlf.slice(0, nodeLine.index + nodeLine[0].length), 'latin1') : 'no line'})`);
   check(/^:loop\r\nif not exist logs mkdir logs\r\n/m.test(crlf), 'keep-running.bat makes logs\\ inside the loop (a cmd from the version before an update jumps to :loop)');
   const back = bat.indexOf('helpers/data-migrate.js 2>nul ||'), toR = bat.indexOf('data-migrate.js --to-root'), reset = bat.indexOf('git reset --quiet --keep');

@@ -331,7 +331,10 @@ export function restoreWaiting(saved) {
 }
 export const waitingFor = (id) => waiting[id] || {};
 function queue(id, key, value, { label = key, display = value, noLog } = {}) {
-  (waiting[id] ||= {})[key] = { value, label, display: String(display), at: Date.now() };
+  // changed again: moved to the end, so the changes are applied in the order they were made (31 Oct 2026: a DPI stage
+  // picked before the stage count it needs was written first, and refused)
+  delete (waiting[id] ||= {})[key];
+  waiting[id][key] = { value, label, display: String(display), at: Date.now() };
   saveWaiting();
   const d = devices[id];
   set(id, { values: { ...d.values, [key]: value }, waiting: waitingList(id) });
@@ -451,15 +454,19 @@ async function writeUnlocked(id, key, value, { label = key, display = value, sil
   const t = silent ? null : slowToast(`${d.adapter.title}: ${label} → ${display}`);
   try {
     if (!backedUp && !(Date.now() - (lastBackupAt[id] || 0) < BACKUP_REUSE_MS)) await backupUnlocked(id, `before ${label}`);
-    const confirmed = await d.adapter.write(key, value);
+    const confirmed = await d.adapter.write(key, value, live ? { live: true } : undefined);
     if (!d.adapter.rawUnaffected?.(key)) delete rawCache[id];
     d.values = { ...d.values, [key]: confirmed };
+    // a change made now replaces one still waiting for this setting (31 Oct 2026: the queue, applied a moment after the
+    // device woke, wrote the older value over the newer one)
+    if (!fromQueue && waiting[id]?.[key]) { delete waiting[id][key]; if (!Object.keys(waiting[id]).length) delete waiting[id]; saveWaiting(); d.waiting = waitingList(id); }
     if (before !== undefined && !live) recordUndo(id, key, before, confirmed, label);
     emit(id);
     t?.done(`${label} set to ${display}`);
     if (!noLog) log(`${label} → ${display}`, 'good', id);
     return confirmed;
   } catch (e) {
+    if (live) { t?.fail(`${label} not changed`, e.message); throw e; }
     // the device went to sleep or was switched off just now: the change waits for it instead of failing
     const willWait = env.agent && !demo && !live && !fromQueue && !quietFail && canWait(e);
     if (!willWait) t?.fail(`${label} not changed`, e.message); else t?.done(`${label}: applied when it is back`);
@@ -483,7 +490,8 @@ export function startPolling() {
   // an adapter whose read came back incomplete (Windows audio not ready) asks for a quick re-read
   for (const d of Object.values(devices)) d.adapter.onLate = () => refresh(d.id, { quiet: true });
   loadHistory();
-  repeat(() => {
+  // (not in the agent: its minute re-read below reads the battery too, inside the device lock; 31 Oct 2026)
+  if (!env.agent) repeat(() => {
     for (const d of Object.values(devices)) if (d.status === 'connected' && d.adapter.battery && !d.adapter.pollRead) {
       d.adapter.battery().then((b) => { if (b) set(d.id, { battery: b }); }).catch(() => {});
     }

@@ -218,7 +218,7 @@ const adapter = {
     return { model: layout.name, rows: layout.rows, cols: layout.cols, layers: base.info.layers, keymap, encoders, macroBuffer: [...macros.buf.slice(0, macros.raw.reduce((n, m) => n + m.length + 1, 0))] };
   },
 
-  async write(key, value) {
+  async write(key, value, opts) {
     const [kind, ...rest] = key.split(':');
     const layers = base.info.layers;
     // an unlisted keyboard (27 Oct 2026): nothing is sent until its settings are on and that group's check passed
@@ -270,7 +270,7 @@ const adapter = {
       if (!lightingOk) throw new Error('this keyboard did not answer the lighting channel');
       if (!isInt(value, 0, 255)) throw new Error(`${key} must be a whole number from 0 to 255`);
       try {
-        const after = await kb.setLighting(key, value);
+        const after = await kb.setLighting(key, value, { save: !opts?.live });
         return after[key];
       } catch (e) {
         // 20 Oct 2026: with the effect set to None (lights off), the P75 keeps brightness at 0 whatever it is sent

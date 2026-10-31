@@ -107,7 +107,8 @@ export class ViaKeyboard {
   }
 
   // Write ONE lighting value, re-read it, and only then save to EEPROM.
-  async setLighting(key, value) {
+  // save: false for a step while a slider is dragged (kept, not saved to the keyboard's memory; the release saves)
+  async setLighting(key, value, { save = true } = {}) {
     if (!Number.isInteger(value) || value < 0 || value > 255) throw new Error(`${key} must be a whole number from 0 to 255`);
     const ch = await this.findLightingChannel();
     if (!ch) throw new Error('no lighting channel');
@@ -125,7 +126,7 @@ export class ViaKeyboard {
     let after = await this.getLighting();
     // the P75 keeps a little less brightness/speed than it is sent (250 -> 247), so putting a read value back drifted
     // down a step each time (20 Oct 2026): send one more at a time (at most 4) until it keeps at least what was asked
-    if ((key === 'brightness' || key === 'speed') && value > 0) {
+    if (save && (key === 'brightness' || key === 'speed') && value > 0) {
       for (let d = 1; d <= 4 && after[key] < value && value + d <= 255; d++) {
         await this.cmd([CMD.customSet, ch, id, value + d]);
         after = await this.getLighting();
@@ -134,8 +135,8 @@ export class ViaKeyboard {
     // brightness and speed are kept in the keyboard's own steps (20 Oct 2026: the P75 reads 63 after 64), so a value
     // within 4 is the keyboard's rounding (253 -> 250) and counts as set; what it kept is what is shown
     const close = (key === 'brightness' || key === 'speed') && value > 0 && Math.abs(after[key] - value) <= 4;
-    if (after[key] !== (value & 0xff) && !close) throw new Error(`keyboard reports ${key}=${after[key]} after writing ${value}`);
-    await this.cmd([CMD.customSave, ch]);
+    if (after[key] !== (value & 0xff) && !close && save) throw new Error(`keyboard reports ${key}=${after[key]} after writing ${value}`);
+    if (save) await this.cmd([CMD.customSave, ch]);
     return after;
   }
 

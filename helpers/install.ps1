@@ -89,6 +89,7 @@ if ($same) { Write-Host '   already in place' } else {
   $mine = { @(Get-CimInstance Win32_Process | Where-Object { ($_.ExecutablePath -and $_.ExecutablePath.StartsWith($full, [StringComparison]::OrdinalIgnoreCase)) -or ($_.CommandLine -and $_.CommandLine.IndexOf("${full}helpers\keep-running.bat", [StringComparison]::OrdinalIgnoreCase) -ge 0) }) }
   if ((& $mine).Count) {
     Write-Host '   DeviceHub is running from there: quitting it first'
+    $wasRunning = $true
     $port = Get-NetTCPConnection -LocalPort 5577 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
     # a DeviceHub window open now (Settings > Update is pressed in one) stays open and reloads itself when DeviceHub
     # is back, so the start at the end must not open a second one (23 Oct 2026, a friend's PC: two windows after
@@ -114,12 +115,21 @@ if ($same) { Write-Host '   already in place' } else {
   # Folders are merged with robocopy (21 Oct 2026): Copy-Item onto a folder that already exists puts the new one INSIDE
   # it (public\public), so a reinstall or an update left every folder's old files running. Files are always replaced
   # (/IS /IT); files that are only on this PC (my-devices\, a VIA file) are left as they are.
-  Get-ChildItem $Source -Force | Where-Object { $keep -notcontains $_.Name } | ForEach-Object {
-    $dest = Join-Path $Target $_.Name
-    if ($_.PSIsContainer) {
-      & robocopy $_.FullName $dest /E /IS /IT /R:3 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
-      if ($LASTEXITCODE -ge 8) { throw "copying $($_.Name) failed (robocopy $LASTEXITCODE)" }
-    } else { Copy-Item -LiteralPath $_.FullName $dest -Force }
+  # a copy that fails part-way (a file held by antivirus or another program) starts DeviceHub again before it stops, so
+  # the person is not left with DeviceHub closed and only a log in a temp folder (31 Oct 2026); a file is tried 3 times
+  try {
+    Get-ChildItem $Source -Force | Where-Object { $keep -notcontains $_.Name } | ForEach-Object {
+      $dest = Join-Path $Target $_.Name
+      if ($_.PSIsContainer) {
+        & robocopy $_.FullName $dest /E /IS /IT /R:3 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
+        if ($LASTEXITCODE -ge 8) { throw "copying $($_.Name) failed (robocopy $LASTEXITCODE)" }
+      } else {
+        for ($try = 1; ; $try++) { try { Copy-Item -LiteralPath $_.FullName $dest -Force; break } catch { if ($try -ge 3) { throw } ; Start-Sleep -Seconds 1 } }
+      }
+    }
+  } catch {
+    if ($wasRunning -and -not $NoLaunch) { Start-Process "$env:WINDIR\System32\wscript.exe" -ArgumentList @('"' + (Join-Path $Target 'DeviceHub.vbs') + '"') }
+    throw "$($_.Exception.Message). DeviceHub was started again; run the update again once nothing holds its files"
   }
   $global:LASTEXITCODE = 0
   Write-Host '   done (your backups and profiles on this PC, if any, are kept)'
@@ -247,3 +257,6 @@ Write-Host '   Open DeviceHub from the Desktop or Start. Plug in your devices; t
 # -Background: comes back in the tray only. Nothing passes it since updates stopped installing by themselves (24 Oct 2026);
 # kept because a copy from that morning still passes it when it updates. A window that was open reloads (/afterupdate).
 if (-not $NoLaunch) { Start-Process "$env:WINDIR\System32\wscript.exe" -ArgumentList (@('"' + (Join-Path $Target 'DeviceHub.vbs') + '"') + $(if ($hadWindow) { @('/afterupdate') } elseif ($Background) { @('/background') } else { @() })) }
+# a clean end says so (31 Oct 2026): robocopy and git leave their own codes behind (robocopy 1 = files copied), and
+# Setup.exe reads this one to tell an installer that refused from one that finished
+exit 0

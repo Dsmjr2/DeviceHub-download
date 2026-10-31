@@ -5,6 +5,7 @@
 $ErrorActionPreference = 'Stop'
 $here = $PSScriptRoot
 $tmp = Join-Path $env:TEMP ("DeviceHub-setup-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+$global:LASTEXITCODE = 0
 try {
   Write-Host 'Unpacking DeviceHub...' -ForegroundColor Cyan
   Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -13,6 +14,9 @@ try {
   # not started; the tester starts it on a spare port
   if ($env:DEVICEHUB_TEST_TARGET) { & (Join-Path $tmp 'DeviceHub\helpers\install.ps1') -Source (Join-Path $tmp 'DeviceHub') -Target $env:DEVICEHUB_TEST_TARGET -NoShortcuts -NoLaunch -AppsKey 'DeviceHubTest' }
   else { & (Join-Path $tmp 'DeviceHub\helpers\install.ps1') -Source (Join-Path $tmp 'DeviceHub') }
+  # the installer refusing (a development copy, files changed on this PC) ends with a code: said, not 'installed'
+  # (31 Oct 2026: the green line showed and the window closed with the reason in it)
+  if ($LASTEXITCODE) { throw "the installer stopped (code $LASTEXITCODE); its reason is above" }
   Write-Host ''
   Write-Host 'DeviceHub is installed and opening. This window closes by itself.' -ForegroundColor Green
   if (-not $env:DEVICEHUB_TEST_TARGET) { Start-Sleep 4 }

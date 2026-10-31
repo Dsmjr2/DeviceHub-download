@@ -42,13 +42,18 @@ export function segmented({ value, options, onCommit, disabled, compact }) {
   const buttons = [];
   options.forEach((o, i) => {
     const b = h('button', { role: 'radio', 'aria-checked': String(o.value === value), class: o.value === value ? 'sel' : '', disabled: disabled || o.disabled, title: o.title }, o.label);
-    b.addEventListener('click', () => {
+    const mark = (at) => {
+      el.style.setProperty('--i', Math.max(0, at));
+      el.classList.toggle('none', at < 0);
+      buttons.forEach((x, j) => { x.classList.toggle('sel', j === at); x.setAttribute('aria-checked', String(j === at)); });
+    };
+    b.addEventListener('click', async () => {
       if (o.value === cur) return;
+      const was = cur;
       cur = o.value;
-      el.style.setProperty('--i', i);
-      el.classList.remove('none');
-      buttons.forEach((x, j) => { x.classList.toggle('sel', j === i); x.setAttribute('aria-checked', String(j === i)); });
-      run(el, () => onCommit(o.value));
+      mark(i);
+      // a change that failed moves back, as a switch does (31 Oct 2026: it stayed on the new choice, with an unhandled error)
+      try { await run(el, () => onCommit(o.value)); } catch { cur = was; mark(options.findIndex((x) => x.value === was)); }
     });
     buttons.push(b);
     el.append(b);

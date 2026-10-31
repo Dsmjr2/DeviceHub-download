@@ -106,7 +106,7 @@ async function recStart(redraw) {
   recDelete(redraw, true, true);
   if (!isDemo()) await api('clear', {}).catch(() => {});
   rec.error = null;
-  if (isDemo()) { rec.state = 'recording'; rec.seconds = 0; rec.poll = setInterval(() => { rec.seconds += 0.2; rec.level = -30 + Math.random() * 18; paintRec(); }, 200); redraw(); return; }
+  if (isDemo()) { rec.state = 'recording'; rec.seconds = 0; rec.poll = setInterval(() => { rec.seconds += 0.2; rec.level = -30 + Math.random() * 18; if (rec.seconds >= 30) { recStop(redraw); return; } paintRec(); }, 200); redraw(); return; }   // stops at 30 s, as the real one does
   try {
     // the headset picked on the Headset page (the HS80 as before when it is picked or the only one)
     const st = await startMicTest(env.api, { mic: rec.mic, generic: devices.headset?.adapter?.generic });

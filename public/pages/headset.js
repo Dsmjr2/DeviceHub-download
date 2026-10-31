@@ -158,7 +158,8 @@ export default {
         // Lights & power, with Mic check under it (the two columns balance)
         h('div', { class: 'stack' }, generic ? genericCard(a, redraw) : card([h('h2', {}, 'Lights & power'), h('span', { class: 'sub' }, direct ? null : 'iCUE controls these while open')],
           row('Headset color', null, h('div', { class: 'swatches compact' },
-            ...SWATCHES.map((c) => h('button', { class: 'swatch', style: { '--s': c }, title: c, 'aria-label': `color ${c}`, onclick: () => set('led', c, 'Headset Color', c).then(() => setGlow(c)) })),
+            // the colour the headset has now shows as chosen, as Off does (31 Oct 2026)
+            ...SWATCHES.map((c) => h('button', { class: `swatch${String(v.led || '').toLowerCase() === c.toLowerCase() ? ' on sel' : ''}`, style: { '--s': c }, title: c, 'aria-label': `color ${c}`, 'aria-pressed': String(String(v.led || '').toLowerCase() === c.toLowerCase()), onclick: () => set('led', c, 'Headset Color', c).then(() => setGlow(c)) })),
             h('input', { type: 'color', class: 'swatch-custom', title: 'Any color', value: v.led && !isOff(v.led) ? v.led : '#ff6a1a', 'aria-label': 'custom color', onchange: (e) => set('led', e.target.value, 'Headset Color', e.target.value) }),
             offSwatch({ on: isOff(v.led), label: 'Headset lights', onclick: () => set('led', OFF, 'Headset Color', 'off') }))),
           direct && v.logoBrightness != null ? row('Logo brightness', null, slider({ value: v.logoBrightness, min: 0, max: 100, unit: '%', accent: 'var(--c-headset)', grab: () => prepare('headset'), live: live('logoBrightness'), onCommit: (x) => set('logoBrightness', x, 'Ear Cup Logo', x ? `${x}%` : 'off') })) : null,

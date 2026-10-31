@@ -14,7 +14,7 @@ import { toast, modal } from '../ui/overlay.js';
 // lights); other programs stay and are named at the end; one unticked box empties Equalizer APO's DeviceHub settings
 async function uninstall() {
   const eq = h('input', { type: 'checkbox' });
-  const yes = await modal('Uninstall DeviceHub?', h('div', {}, h('p', {}, 'Backups move to Documents\\DeviceHub backups. Windows may ask once, to remove the parts DeviceHub set up as administrator.'),
+  const yes = await modal('Uninstall DeviceHub?', h('div', {}, h('p', {}, 'Backups, settings and added drivers move to Documents\\DeviceHub backups. Windows may ask once, to remove the parts DeviceHub set up as administrator.'),
     h('label', {}, eq, ' Also clear DeviceHub\'s sound settings from Equalizer APO')),
     [{ label: 'Cancel', value: false, kind: 'ghost' }, { label: 'Uninstall', value: true, kind: 'primary' }]);
   if (!yes) return;

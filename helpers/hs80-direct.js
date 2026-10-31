@@ -219,7 +219,8 @@ onEvent = (id, v) => { if (id === 0xa6) { lights.muted = v === 1; lightTick().ca
 async function set(id, value) {
   const r = await one(`SET ${id.toString(16)} ${value}`, 3000);
   if (r === 'GONE') throw Object.assign(new Error('the HS80 receiver was unplugged'), { gone: true });
-  if (r !== '00') throw new Error(r === 'NONE' ? 'the headset did not answer (is it on?)' : `the headset refused it (${r})`);
+  // a timeout is no answer too (31 Oct 2026: it read as a refusal, so a change made as the headset fell asleep was lost)
+  if (r !== '00') throw new Error(r === 'NONE' || r === 'TIMEOUT' ? 'the headset did not answer (is it on?)' : `the headset refused it (${r})`);
   const back = await get(id);
   if (!back || back.status !== 0 || back.value !== value) throw new Error(`the headset reads ${back ? back.value : 'nothing'} after setting ${value}`);
   return back.value;

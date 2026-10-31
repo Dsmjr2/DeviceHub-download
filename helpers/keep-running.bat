@@ -2,11 +2,12 @@
 rem DeviceHub's keep-running loop (20 Oct 2026); what it does: the notes under the server.js line below.
 rem KEEP that line ending at byte 1452 (CRLF), as before: an update replaces this file while cmd runs it, and cmd
 rem reads on from that byte (27 Oct 2026; tests/data-migrate.mjs checks it).
-setlocal EnableDelayedExpansion
 cd /d "%~dp0.."
 set "NODE=node"
-if exist "%CD%\runtime\node.exe" set "NODE="%CD%\runtime\node.exe""
+if exist "%CD%\runtime\node.exe" set NODE="%CD%\runtime\node.exe"
+setlocal EnableDelayedExpansion
 rem the port (DEVICEHUB_PORT, as the server reads it), so a test copy can run beside the real one
+
 set "PORT=5577"
 if defined DEVICEHUB_PORT set "PORT=%DEVICEHUB_PORT%"
 rem already answering (DeviceHub itself, not another program on the port): nothing to do
@@ -23,7 +24,8 @@ if exist logs\server.log for %%F in (logs\server.log) do if %%~zF GTR 2097152 (
 )
 rem logs\ is made here, inside the loop, so a cmd still running the version from before an update makes it too
 rem (27 Oct 2026) smaller V8 memory limits, ~3 MB less (below)
-%NODE% --no-warnings --max-semi-space-size=1 --max-old-space-size=512 server.js >> logs\server.log 2>&1
+!NODE! --no-warnings --max-semi-space-size=1 --max-old-space-size=512 server.js >> logs\server.log 2>&1
+rem NODE (above): the quoted path, set before delayed expansion and read as !NODE!, so a folder with & or ! works (31 Oct 2026)
 rem the young generation at 1 MB, the heap capped at 512 MB (it uses ~20): measured, no slower
 rem What this does (20 Oct 2026: replaces the script-host loop in DeviceHub.vbs, which used ~25 MB to wait; this hidden
 rem cmd uses ~4 MB): starts the server and keeps it running: after a crash it starts it again in 3 s, at most 5 times in
@@ -48,7 +50,7 @@ if defined rb (
   set "failed=data\update-failed.txt"
   git cat-file -e !old!:helpers/data-migrate.js 2>nul || (
     set "failed=update-failed.txt"
-    %NODE% helpers\data-migrate.js --to-root >> logs\server.log 2>&1
+    !NODE! helpers\data-migrate.js --to-root >> logs\server.log 2>&1
   )
   rem remember the version that failed, so Update does not offer it again (helpers/self-update.js)
   git rev-parse HEAD > !failed! 2>nul

@@ -2775,7 +2775,8 @@ html[data-skin="coral-reef"]:not([data-art="live"]) .art.mark { filter: sepia(.2
 @media (max-width: 760px) { .su-list { grid-template-columns: minmax(0, 1fr); } }
 .su-app { display: flex; align-items: center; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 13px; min-width: 0; }
 .su-app-name { flex: 1; min-width: 0; display: grid; line-height: 1.3; }
-.su-app-title, .su-app-name small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* names and notes wrap instead of being cut (31 Oct 2026: "Off = DeviceHub won't start with Wi...") */
+.su-app-title, .su-app-name small { overflow-wrap: anywhere; }
 .su-app-name small { font-size: 11.5px; }
 .su-app-note { color: var(--warn); }
 .su-app-impact { flex: none; min-width: 3.5em; text-align: right; font-size: 11.5px; color: var(--muted); }

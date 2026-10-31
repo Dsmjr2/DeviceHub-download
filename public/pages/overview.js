@@ -93,11 +93,13 @@ function readouts(d, redraw) {
 // A PC with none of the supported devices (yet): the shared library sets known ones up by itself; Learn a device for
 // the rest (ADD-YOUR-DEVICES.md).
 // While the window has just opened it only says it is looking, so a PC that has them never flashes this.
+let lookTimer = null;
 function firstRun(go, redraw) {
   // the first seconds: the three device tiles as faint generic drawings with a light sweeping over them, marked Looking, and
   // shimmering lines where their readings will be (21 Oct 2026, Shawn: a splash that shows the tiles loading)
   if (stillLooking()) {
-    setTimeout(redraw, 12500);
+    // one redraw when the looking ends, not one per redraw while it lasts (31 Oct 2026)
+    if (!lookTimer) lookTimer = setTimeout(() => { lookTimer = null; redraw(); }, 12500);
     return h('div', { class: 'bays', style: { '--bays': 3 } }, ...[['mouse', 'Mouse'], ['headset', 'Headset'], ['keyboard', 'Keyboard']].map(([id, kind]) =>
       h('div', { class: 'bay ghost', 'aria-label': `Looking for the ${kind.toLowerCase()}` },
         h('div', { class: 'bay-top' }, h('span', { class: 'bay-kind' }, kind), h('span', { class: 'ghost-pill' }, h('i'), 'Looking')),

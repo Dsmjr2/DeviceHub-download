@@ -78,6 +78,6 @@ export function wifiPause({ redraw = () => {} } = {}) {
     v.result ? h('div', { class: `gh-note ${v.result.ok ? 'good' : 'bad'}` }, v.result.text) : null,
     v.busy ? null : h('div', { class: 'actions' },
       v.resume ? button(s.resuming ? 'Resuming' : 'Resume', () => resumeNow(redraw), { kind: 'primary small', disabled: s.resuming }) : null,
-      btn(v.action, v.label), v.also ? btn(v.also, 'Remove') : null,
+      btn(v.action, v.label), v.also ? btn(v.also, 'Remove the Wi-Fi pause') : null,
       v.action === 'remove' ? button('Cancel', () => { s.confirm = false; redraw(); }, { kind: 'ghost small' }) : null));
 }

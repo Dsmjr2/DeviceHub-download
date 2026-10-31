@@ -1179,11 +1179,26 @@ http.createServer(async (req, res) => {
     q.on('error', taken);
     return;
   }
+  // a port Windows keeps for itself (Hyper-V, WSL and Docker reserve ranges): said, and not retried (31 Oct 2026: it
+  // threw, the loop restarted it 5 times, and the launcher said only that it did not start)
+  if (e.code === 'EACCES') {
+    console.log(`[start] Windows keeps port ${PORT} for itself (Hyper-V, WSL or Docker reserve some ports), so DeviceHub cannot start on it. Start DeviceHub with DEVICEHUB_PORT set to another port, such as 5588.`);
+    process.exit(4);
+  }
   throw e;
 }).listen(PORT, '127.0.0.1', async () => {
   console.log(`DeviceHub on http://localhost:${PORT}`);
   // a save cut off by a crash leaves a temporary file beside the whole old one: tidy those away
   for (const d of [ROOT, path.join(ROOT, 'data'), BACKUPS, path.join(ROOT, 'setups')]) require('./helpers/safe-write').cleanLeftovers(d);
+  // an update's download folder (self-update.js, 170-250 MB each) once it is a day old: nothing else removes it (31 Oct 2026)
+  try {
+    const tmp = require('os').tmpdir();
+    for (const n of fs.readdirSync(tmp)) {
+      if (!/^devicehub-update-/.test(n)) continue;
+      const p = path.join(tmp, n);
+      try { if (Date.now() - fs.statSync(p).mtimeMs > 24 * 3600e3) fs.rmSync(p, { recursive: true, force: true }); } catch {}
+    }
+  } catch {}
   // isolated test mode: none of the background parts below (self-update, agent, auto setup, library updates, audio,
   // battery saver, Anker guard, settings sync, receiver light, backup tidy, battery history, tray)
   if (ISOLATED) { console.log('[isolated] test mode: no devices, helper, iCUE, OpenRGB, tray, sync or updates'); return; }
