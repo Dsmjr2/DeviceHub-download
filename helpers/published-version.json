@@ -1,8 +1,7 @@
 {
-  "version": "1.37",
-  "commit": "770ac62dd686",
+  "version": "1.38",
+  "commit": "5ae14c6a1bc4",
   "notes": [
-    "Font bundled, files cached with a check, Logitech restore fixes from…",
-    "Logitech drivers try every connection"
+    "Every library driver dated, so its fixes reach PCs that already have…"
   ]
 }

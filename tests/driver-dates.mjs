@@ -17,7 +17,9 @@ if (git) {
     if (name.startsWith('_') || !fs.existsSync(meta)) continue;
     let updated;
     try { updated = JSON.parse(fs.readFileSync(meta, 'utf8').replace(/^﻿/, '')).updated; } catch { continue; }
-    if (!updated) continue;
+    // (31 Oct 2026) no date at all: never replaces a copy a PC already has (helpers/library-updates.mjs entryVersion), so
+    // its fixes reached nobody who had it; 16 were like that
+    if (!updated) { checked++; bad.push(`${name}: no "updated" date, so a PC that has it never gets a new copy: set "updated" in its device.json to now`); continue; }
     const code = ['device.mjs', 'driver.json'].map((f) => `device-library/${name}/${f}`).filter((f) => fs.existsSync(path.join(root, f)));
     if (!code.length) continue;
     const last = execFileSync('git', ['log', '-1', '--format=%cI', '--', ...code], { cwd: root, encoding: 'utf8' }).trim();
