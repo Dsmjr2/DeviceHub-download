@@ -10,8 +10,8 @@ const fails = [];
 const check = (ok, what) => { if (!ok) fails.push(what); };
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-eqapo-'));
 const cfgDir = path.join(root, 'EqualizerAPO', 'config'), cfg = path.join(cfgDir, 'config.txt'), backups = path.join(root, 'backups');
-const storePath = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..', 'data', 'eq-presets.json');
-const origStore = fs.existsSync(storePath) ? fs.readFileSync(storePath, 'utf8') : null;
+// the settings file is the test's own (31 Oct 2026: it was the real data\eq-presets.json, overwritten and put back)
+process.env.DEVICEHUB_EQ_STORE = path.join(root, 'eq-presets.json');
 fs.mkdirSync(cfgDir, { recursive: true }); fs.mkdirSync(backups);
 process.env.ProgramFiles = root;
 const require = createRequire(import.meta.url);
@@ -38,7 +38,6 @@ delete require.cache[require.resolve('../helpers/eqapo.js')];
 require('../helpers/eqapo.js')(null, noDevices, backups);
 check(fs.readFileSync(cfg, 'utf8') === dh, "DeviceHub's own settings are left alone");
 
-if (origStore != null) fs.writeFileSync(storePath, origStore);
 fs.rmSync(root, { recursive: true, force: true });
 console.log(fails.length ? `eqapo-default: FAILED: ${fails.join('; ')}` : "eqapo-default (Equalizer APO's quieter starting settings): all good");
 process.exit(fails.length ? 1 : 0);

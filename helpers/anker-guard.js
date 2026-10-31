@@ -38,8 +38,9 @@ async function tick() {
     if (mic.muted !== want) {
       const r = await call('audio-set', { id: mic.id, muted: want });
       if (r.muted === want && !test) log({ kind: 'info', text: want ? 'Anker mic muted (no Meet or Chat call)' : 'Anker mic on for a Google Meet or Chat call' });
+      if (want && r.muted === want) weMuted = true;
+      if (!want) weMuted = false;
     }
-    if (want) weMuted = true;
     last = want;
   } catch { /* the audio helper is restarting; next tick */ } finally { busy = false; }
 }

@@ -33,11 +33,11 @@ async function set(db, backupDir, sdkConnected = () => false) {
   if (!fs.existsSync(CFG)) throw new Error('iCUE settings file not found');
   if (busy) { queued = { db, backupDir, sdkConnected }; return { db, queued: true }; }
   busy = true;
-  let started = false;
+  let started = false, killedIt = false;
   try {
     const wasRunning = ours ? false : await running();
     // iCUE writes this file itself while it runs: close it before editing
-    if (await running()) { await kill(); for (let i = 0; i < 30 && (await running()); i++) await sleep(200); }
+    if (await running()) { await kill(); killedIt = wasRunning; for (let i = 0; i < 30 && (await running()); i++) await sleep(200); }
     const text = fs.readFileSync(CFG, 'utf8');
     if (!RE.test(text)) throw new Error('no mic boost setting in the iCUE settings file');
     fs.copyFileSync(CFG, path.join(backupDir, `headset-icue-config-${new Date().toISOString().replace(/[:.]/g, '-')}.cuecfg`));
@@ -60,6 +60,9 @@ async function set(db, backupDir, sdkConnected = () => false) {
       }
     })();
     return { db };
+  } catch (e) {
+    if (killedIt && !started) { try { spawn(fs.existsSync(LAUNCHER) ? LAUNCHER : ICUE, fs.existsSync(LAUNCHER) ? ['--autorun'] : [], { detached: true, stdio: 'ignore' }).unref(); } catch {} }
+    throw e;
   } finally { if (!started) { busy = false; ours = false; } }
 }
 // true while DeviceHub has iCUE open to apply a boost (or one is waiting to be applied)

@@ -16,7 +16,8 @@ const crypto = require('crypto');
 const ROOT = path.join(__dirname, '..');
 const DIR = path.join(process.env.ProgramFiles || 'C:\\Program Files', 'EqualizerAPO', 'config');
 const CONFIG = path.join(DIR, 'config.txt');
-const STORE = require('./data-dir').dataFile('eq-presets.json', ROOT);
+// DEVICEHUB_EQ_STORE: a test's own file (31 Oct 2026: tests/eqapo-default.mjs wrote the real one)
+const STORE = process.env.DEVICEHUB_EQ_STORE || require('./data-dir').dataFile('eq-presets.json', ROOT);
 const BANDS = ['32', '64', '125', '250', '500', '1k', '2k', '4k', '8k', '16k'];
 const FREQS = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 const Q = 1.41;  // one octave per band, as a ten-band graphic EQ
@@ -346,7 +347,7 @@ module.exports = (icueEq, allDevices, backupDir) => {
       next.extras.speakers = { ...(cur.extras?.speakers || {}) };
       for (const [guid, v] of Object.entries(st.extras?.speakers || {})) {
         if (!/^\{[0-9a-f-]{36}\}$/i.test(guid) || !v) continue;
-        next.extras.speakers[guid] = { on: !!v.on, stages: Array.isArray(v.stages) ? check(v.stages) : Array(10).fill(0), gate: !!v.gate, level: !!v.level, ...(v.name ? { name: String(v.name).slice(0, 40) } : {}), ...(v.kind === 'mic' ? { kind: 'mic' } : {}) };
+        next.extras.speakers[guid] = { on: !!v.on, stages: Array.isArray(v.stages) ? check(v.stages) : Array(10).fill(0), gate: !!v.gate, level: !!v.level, ...(v.name ? { name: String(v.name).replace(/[\r\n\t]+/g, ' ').trim().slice(0, 40) } : {}), ...(v.kind === 'mic' ? { kind: 'mic' } : {}) };   // (31 Oct 2026: a line break in a name from a file could add a config.txt line)
       }
       if (backupDir && fs.existsSync(STORE)) fs.copyFileSync(STORE, path.join(backupDir, `eq-presets-${new Date().toISOString().replace(/[:.]/g, '-')}.json`));
       store(next); draft = null; await apply(next);
@@ -366,9 +367,9 @@ module.exports = (icueEq, allDevices, backupDir) => {
       const speakers = Object.fromEntries(Object.entries(s.extras.speakers || {}).map(([g, v]) => {
         const zero = !Array.isArray(v.stages) || v.stages.every((x) => x === 0);
         const def = v.kind === 'mic' ? MIC_START['Webcam mic'] : /oled|agon/i.test(v.name || '') ? SPEAKER_START['AGON OLED'] : SPEAKER_START['Small monitor speakers'];
-        return [g, { ...v, stages: zero ? def.slice() : v.stages }];
+        return [g, { ...v, on: false, gate: false, level: false, stages: zero ? def.slice() : v.stages }];
       }));
-      s.extras = { ...EXTRAS(), speakers };   // headset extra filters and mic effects off; monitor speaker presets kept
+      s.extras = { ...EXTRAS(), speakers };   // headset extra filters and mic effects off; each speaker off, its bands kept
       draft = null; store(s); await apply(s);
       return api.read();
     },

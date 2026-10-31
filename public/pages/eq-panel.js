@@ -271,7 +271,7 @@ function filterRows(x) {
       button('', () => setExtras({ filters: list.filter((_, j) => j !== i) }), { kind: 'ghost small', ic: 'trash', title: 'Remove this filter' }))),
     button('Add a filter', () => setExtras({ filters: [...list, { f: 1000, g: 0, q: 1.41 }] }), { kind: 'ghost small', ic: 'plus', disabled: list.length >= 20 }));
 }
-const balanceText = (v) => (v === 0 ? 'Centered' : v > 0 ? `Right +${v} dB` : `Left +${-v} dB`);
+const balanceText = (v) => (v === 0 ? 'Centered' : v > 0 ? `Left −${v} dB` : `Right −${-v} dB`);
 
 export function soundTools() {
   if (!APO() || !ui.eq?.extras) return null;

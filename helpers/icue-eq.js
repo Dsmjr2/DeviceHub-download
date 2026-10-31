@@ -116,7 +116,7 @@ async function save(body, backupDir) {
     for (let i = 0; i < 30 && (await icueRunning()); i++) await sleep(300);
     if (await icueRunning()) throw new Error('iCUE did not close; nothing was changed');
   }
-  writeAtomic(LIBRARY, xml);
+  try { writeAtomic(LIBRARY, xml); } catch (e) { if (wasRunning && fs.existsSync(ICUE_EXE)) spawn(ICUE_EXE, [], { detached: true, stdio: 'ignore' }).unref(); throw e; }
   if (wasRunning && fs.existsSync(ICUE_EXE)) spawn(ICUE_EXE, [], { detached: true, stdio: 'ignore' }).unref();
   // iCUE rewrites the file on start; give it time, then confirm our bands survived.
   await sleep(wasRunning ? 9000 : 300);

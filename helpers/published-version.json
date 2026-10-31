@@ -1,7 +1,7 @@
 {
-  "version": "1.33",
-  "commit": "0392cdc06cfa",
+  "version": "1.34",
+  "commit": "ca61fe73ee8f",
   "notes": [
-    "Review fixes: wake reads, laptop battery, guard cache, demo wording"
+    "Small fixes and improvements"
   ]
 }

@@ -21,7 +21,11 @@ const zone = (db) => (db >= -1 ? ['clipping', 'bad', 'Clipping. Lower Mic level 
       : db >= -35 ? ['quiet', 'warn', 'A bit quiet. Raise Mic level.']
         : ['silent', '', 'Talk normally.']);
 
+let starting = false;
+addEventListener('hashchange', () => { if (ui.on && location.hash !== '#/headset') stop(() => {}); });
 async function start(redraw) {
+  if (starting || ui.on) return;
+  starting = true;
   ui.error = null;
   try {
     // ask once (any mic) so device names become visible, then open the headset mic itself
@@ -36,7 +40,8 @@ async function start(redraw) {
     if (!hs) throw new Error(`no ${other || 'HS80'} microphone in Windows (is the headset on?)`);
     stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: hs.deviceId }, echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
     ui.label = hs.label;
-  } catch (e) { ui.error = e.name === 'NotAllowedError' ? 'Mic blocked. Allow it in site settings.' : e.message; redraw(); return; }
+  } catch (e) { starting = false; ui.error = e.name === 'NotAllowedError' ? 'Mic blocked. Allow it in site settings.' : e.message; redraw(); return; }
+  starting = false;
   ctx = new AudioContext();
   const an = ctx.createAnalyser(); an.fftSize = 2048;
   ctx.createMediaStreamSource(stream).connect(an);
