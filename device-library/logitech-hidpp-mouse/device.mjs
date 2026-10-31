@@ -324,20 +324,34 @@ const adapter = {
   async connect(prompt) {
     releaseSlots(this.id);
     this.dev = null; this.chan = null; this.features = {}; this.caps = {}; this.profileReadBase = undefined; this.asleep = false; this.usbId = null; this.wokeAt = 0; this.pendingNotMine = null; this.superstrike = false; this.shownOnly = new Set();
-    let dev = injected;
-    if (!dev) {
-      for (const pid of [...RECEIVERS, ...Object.keys(WIRED).map(Number)]) {
-        dev = await getDevice([{ vendorId: VID, productId: pid, usagePage: 0xff00, usage: 0x0002 }], { prompt: false });
-        if (dev) break;
-      }
-      // Bluetooth: no usage page in the filter (BLE_HID picks the collection)
-      for (const pid of Object.keys(BLE).map(Number)) { if (dev) break; dev = await getDevice([{ vendorId: VID, productId: pid }], { prompt: false }); }
-      // a model not listed here, matched by its HID++ collection (device.json family, helpers/my-devices.mjs familyPids):
-      // tried last, and it must answer HID++ 2.0 and have a DPI feature, else the driver steps aside
-      for (const pid of this.familyIds()) { if (dev) break; dev = await getDevice([{ vendorId: VID, productId: pid, usagePage: 0xff00, usage: 0x0002 }], { prompt: false }); }
-      if (!dev && prompt) dev = await getDevice(RECEIVERS.concat(Object.keys(WIRED).map(Number)).map((p) => ({ vendorId: VID, productId: p, usagePage: 0xff00, usage: 0x0002 })));
+    // every id in turn (31 Oct 2026): a receiver that holds only a keyboard (or a keyboard driver's slots) no longer hides a
+    // wired mouse or a mouse on another receiver further down the list; "not mine" only once every id was tried. Wired and
+    // receivers first, then Bluetooth (no usage page in the filter: BLE_HID picks the collection), then a model not listed
+    // here, matched by its HID++ collection (device.json family, helpers/my-devices.mjs familyPids): it must answer HID++
+    // 2.0 and have a DPI feature, else the driver steps aside.
+    if (injected) return this.connectTo(injected);
+    const tries = [
+      ...[...RECEIVERS, ...Object.keys(WIRED).map(Number)].map((pid) => [{ vendorId: VID, productId: pid, usagePage: 0xff00, usage: 0x0002 }]),
+      ...Object.keys(BLE).map(Number).map((pid) => [{ vendorId: VID, productId: pid }]),
+      ...this.familyIds().map((pid) => [{ vendorId: VID, productId: pid, usagePage: 0xff00, usage: 0x0002 }]),
+    ];
+    let lastNotMine = null, any = false;
+    for (const filters of tries) {
+      const dev = await getDevice(filters, { prompt: false });
+      if (!dev) continue;
+      any = true;
+      try { return await this.connectTo(dev); } catch (err) { if (!err?.notMine) throw err; lastNotMine = err; }
     }
-    if (!dev) return false;
+    if (lastNotMine) throw lastNotMine;
+    if (!any && prompt) {
+      const dev = await getDevice(RECEIVERS.concat(Object.keys(WIRED).map(Number)).map((p) => ({ vendorId: VID, productId: p, usagePage: 0xff00, usage: 0x0002 })));
+      if (dev) return this.connectTo(dev);
+    }
+    return false;
+  },
+
+  // one opened id: a receiver's slots, or the wired / Bluetooth mouse itself
+  async connectTo(dev) {
     if (!dev.opened) await dev.open();
     this.dev = dev;
     this.pid = typeof dev.pid === 'string' ? parseInt(dev.pid, 16) : dev.productId;

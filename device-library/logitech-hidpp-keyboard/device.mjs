@@ -214,11 +214,22 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
     async connect() {
       releaseSlots(this.id);
       this.dev = null; this.chan = null; this.features = {}; this.caps = {}; this.asleep = false; this.usbId = null; this.wokeAt = 0; this.pendingNotMine = null;
-      let dev = null;
       // then a model not listed here, matched by its HID++ collection (device.json family, helpers/my-devices.mjs
-      // familyPids): it must answer HID++ 2.0 as a keyboard, else the driver steps aside
-      for (const pid of [...PIDS, ...this.familyIds()]) { dev = await open(pid); if (dev) break; }
-      if (!dev) return false;
+      // familyPids): it must answer HID++ 2.0 as a keyboard, else the driver steps aside. Every id in turn (31 Oct 2026):
+      // a receiver that holds no keyboard (only a mouse) no longer hides a wired keyboard or another receiver further
+      // down the list; "not mine" only once every id was tried.
+      let lastNotMine = null;
+      for (const pid of [...PIDS, ...this.familyIds()]) {
+        const dev = await open(pid);
+        if (!dev) continue;
+        try { return await this.connectTo(dev); } catch (e) { if (!e?.notMine) throw e; lastNotMine = e; }
+      }
+      if (lastNotMine) throw lastNotMine;
+      return false;
+    },
+
+    // one opened id: a receiver's slots, or the wired / Bluetooth keyboard itself
+    async connectTo(dev) {
       if (!dev.opened && dev.open) await dev.open();
       this.dev = dev;
       this.pid = typeof dev.pid === 'string' ? parseInt(dev.pid, 16) : dev.productId;

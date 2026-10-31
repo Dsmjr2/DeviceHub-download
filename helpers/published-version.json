@@ -1,7 +1,7 @@
 {
-  "version": "1.30",
-  "commit": "0f09fa41c418",
+  "version": "1.31",
+  "commit": "488375bce64a",
   "notes": [
-    "Idle savings: headset re-read loop fixed, fewer background requests"
+    "Logitech drivers try every receiver and cable, not only the first"
   ]
 }
