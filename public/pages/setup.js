@@ -415,9 +415,9 @@ export default {
     const ask = st.ask && !st.all?.busy ? h('div', { class: 'su-confirm su-ask' },
       h('div', { style: { marginBottom: '8px' } },
         h('b', {}, askLine(apps)),
-        h('small', { class: 'faint', style: { display: 'block', marginTop: '3px' } }, 'Closing vendor software lets DeviceHub access your hardware directly. You can also choose "Not now" to leave them running.')),
+        h('small', { class: 'faint', style: { display: 'block', marginTop: '3px' } }, `Closing ${apps.length === 1 ? 'it' : 'them'} lets DeviceHub reach your devices directly. Not now leaves ${apps.length === 1 ? 'it' : 'them'} running.`)),
       h('div', { class: 'actions' },
-        button('Yes, close them', () => { st.ask = false; doAll(steps, devRows, { close: apps }); }, { kind: 'primary small' }),
+        button(apps.length === 1 ? 'Yes, close it' : 'Yes, close them', () => { st.ask = false; doAll(steps, devRows, { close: apps }); }, { kind: 'primary small' }),
         button('Not now', () => { st.ask = false; doAll(steps, devRows, { left: apps }); }, { kind: 'ghost small' }))) : null;
     const status = n ? h('section', { class: 'panel su-status' },
       h('div', { class: 'su-status-top' },

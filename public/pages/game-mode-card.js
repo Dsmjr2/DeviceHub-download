@@ -24,6 +24,7 @@ async function load() {
   redraw();
 }
 async function save(note) {
+  if (isDemo()) { if (note) st.note = Object.fromEntries(Object.entries(note).map(([k, v]) => [k, `${v} (demo: nothing saved)`])); return redraw(); }
   try {
     const r = await env.api('/api/game-mode', { games: st.games });
     st.games = r.games; st.status = r.status; st.error = '';
@@ -38,6 +39,7 @@ const setSwitch = (g, k, v) => {
 
 // "Use now's settings": what each switch is set to now
 async function useNow(g) {
+  if (isDemo()) { st.note = { [g.id]: 'Demo: nothing read' }; return redraw(); }
   let n;
   try { n = await env.api('/api/game-mode/now'); } catch (e) { st.note = { [g.id]: `Could not read: ${e.message}` }; return redraw(); }
   const s = {};
@@ -55,6 +57,7 @@ async function useNow(g) {
 
 async function openPicker() {
   st.picking = true; st.typed = ''; redraw();
+  if (isDemo()) { st.installed = []; st.apps = [{ exe: 'demo-game.exe', title: 'Demo Game' }]; return redraw(); }
   if (!st.installed) { try { st.installed = await env.api('/api/game-mode/installed'); } catch { st.installed = []; } }
   st.apps = (await runningWindows()).filter((a) => !/^(DeviceHub|explorer|ApplicationFrameHost|TextInputHost|SystemSettings)/i.test(a.exe) && !/DeviceHub/.test(a.title));
   redraw();

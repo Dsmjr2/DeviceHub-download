@@ -626,7 +626,8 @@ function autoStep() {
   const items = a.items?.length ? h('div', { class: 'auto-items' }, ...a.items.map((x) => autoItem(x, app))) : null;
   const log = a.steps?.length ? h('div', { class: 'auto-log' }, ...a.steps.map((x) => h('div', { class: x.ok ? 'faint' : 'auto-warn' }, x.text))) : null;
   if (a.phase === 'done') return autoDone(a);
-  if (a.phase === 'failed' || a.phase === 'stopped') {
+  // a run whose phase went back to idle under the page (demo, a restart) ends like a stopped one
+  if (a.phase === 'failed' || a.phase === 'stopped' || a.phase === 'idle') {
     const d = auto.dev || (a.device ? { vid: a.device.vid, pid: a.device.pid, name } : null);
     // 30 Oct 2026: the checks are no longer a step of their own; when one fails, only the failing ones show, each with
     // its fix, and Try again runs them again. A device whose app DeviceHub does not know goes to Choose the settings myself.
@@ -634,9 +635,9 @@ function autoStep() {
     const unknownApp = /does not know/.test(a.error?.text || '');
     const listening = /listen|USBPcap|capture|prompt/i.test(`${a.error?.text || ''} ${a.error?.next || ''}`) || bad.some((x) => x.id === 'capture');
     const choose = () => { st.devices = st.devices || []; if (!st.devices.some((x) => x.vid === d.vid && x.pid === d.pid)) st.devices.push(d); run('begin', { vid: d.vid, pid: d.pid }, () => { Object.assign(st, { step: 'plan', plan: null, queue: null, log: [], putBack: [] }); st.save.title = d.name || name; }); };
-    return card([h('h2', {}, a.phase === 'stopped' ? 'Stopped' : bad.length ? `Before learning the ${name}` : `The ${name} was not learned`)],
+    return card([h('h2', {}, a.phase === 'stopped' || a.phase === 'idle' ? 'Stopped' : bad.length ? `Before learning the ${name}` : `The ${name} was not learned`)],
       bad.length ? null : log, bad.length ? null : items,
-      a.phase === 'stopped' ? p('Stopped. Nothing was saved.')
+      a.phase === 'stopped' || a.phase === 'idle' ? p('Stopped. Nothing was saved.')
         : bad.length && d ? h('div', { class: 'learn-pf', role: 'status' }, h('div', { class: 'learn-pf-head' }, bad.length === 1 ? 'Fix this, then press Try again:' : 'Fix these, then press Try again:'), pfLines(bad, d, () => redrawPage()))
           : h('div', { class: 'learn-problem', role: 'status' }, p(a.error?.text || 'Something went wrong.'), a.error?.next ? p(a.error.next) : null),
       a.sent ? h('div', { class: a.sent.sent || a.sent.queued ? 'learn-check' : 'learn-problem', role: 'status' }, p(a.sent.line)) : null,
@@ -662,7 +663,8 @@ function autoStep() {
   return card([h('h2', {}, `Learning the ${name}`), h('span', { class: 'spacer' }), working ? pill('listening only') : null],
     now, items, log,
     a.phase === 'learn' && !ask ? faint(`Leave ${app} alone for now.`) : null,
-    h('div', { class: 'actions', style: { marginTop: '12px' } }, button('Stop', () => autoApi('stop', {}), { kind: 'ghost small' })));
+    // Stop's own answer is shown at once (31 Oct 2026: in demo the page stayed on "Working" for good, with no way back)
+    h('div', { class: 'actions', style: { marginTop: '12px' } }, button('Stop', async () => { const r = await autoApi('stop', {}); if (r?.phase) { auto.s = { ...auto.s, ...r, phase: r.phase === 'idle' ? 'stopped' : r.phase }; redrawPage(); } }, { kind: 'ghost small' })));
 }
 function autoDone(a) {
   const r = a.result || {}, name = a.device?.name || 'device', f = auto.finish;

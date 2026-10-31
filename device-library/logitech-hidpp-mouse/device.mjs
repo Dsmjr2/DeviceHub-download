@@ -609,8 +609,17 @@ const adapter = {
         }
       }
     }
-    // the page's list: every setting except HITS ones this mouse does not have
-    settings.splice(0, settings.length, ...ALL.filter((s) => !HITS[s.key] || (this.caps.hits && HITS[s.key][0] < this.caps.hits.buttons)));
+    // the page's list: every setting this mouse has, the same rule as its reads (31 Oct 2026: a Bluetooth mouse was
+    // offered "1000 Hz" and its write failed with "report rate must be one of  Hz"; a SUPERSTRIKE showed a lift-off it
+    // never reports)
+    const has = {
+      reportRate: !!this.caps.rate,
+      profile: !!this.caps.profiles,
+      dpiStage: !!this.caps.profiles,
+      mode: !!this.features[F.ONBOARD_PROFILES],
+      liftOff: !!this.caps.ext?.lod && !this.superstrike,
+    };
+    settings.splice(0, settings.length, ...ALL.filter((s) => (has[s.key] ?? true) && (!HITS[s.key] || (this.caps.hits && HITS[s.key][0] < this.caps.hits.buttons))));
   },
 
   // 0x1B0C fn 0x20 [btn] -> the 4-byte record [btn, act<<2, (rt<<2)|flag, hap<<2] (header)
@@ -733,7 +742,7 @@ const adapter = {
   async write(key, value) {
     if (!this.chan) throw new Error('the mouse is not connected');
     if (this.asleep) throw Object.assign(asleepError(this.pid), { waiting: true });
-    if (!settings.some((s) => s.key === key)) throw new Error(HITS[key] ? `${key}: this mouse has no HITS buttons (0x1B0C) DeviceHub can read` : `${key} is not a setting`);
+    if (!settings.some((s) => s.key === key)) throw new Error(HITS[key] ? `${key}: this mouse has no HITS buttons (0x1B0C) DeviceHub can read` : ALL.some((s) => s.key === key) ? `${ALL.find((s) => s.key === key).label}: this mouse does not have it (on this connection)` : `${key} is not a setting`);
     // shown-only settings on this mouse (the SUPERSTRIKE's stale getters, header): refused before anything is sent
     if (this.shownOnly?.has(key)) throw new Error(`${byKey(key).label} is shown only on this mouse: ${key === 'liftOff' ? 'the sources disagree on its lift-off values' : 'its read-back cannot prove a write'} (docs/handoff/superstrike.md)`);
     // waiting: true = refused only because of how things are right now (helpers/my-devices.mjs isWaiting): the library

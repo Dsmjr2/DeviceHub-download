@@ -125,7 +125,8 @@ const seeBattery = (p) => { if (!DEMO && p?.hasBattery && !isLaptop) { isLaptop 
 const shown = (p) => !p.laptopOnly || isLaptop;
 function buildRail() {
   const rail = $('#rail');
-  const navBtn = (p) => h('button', { class: 'nav', dataset: { page: p.id }, onclick: () => go(p.id) },
+  // its name for a screen reader too (31 Oct 2026: on a narrow window only the icon shows)
+  const navBtn = (p) => h('button', { class: 'nav', dataset: { page: p.id }, 'aria-label': p.title, onclick: () => go(p.id) },
     icon(p.icon), h('span', {}, p.title), p.device ? h('span', { class: 'dot', dataset: { dev: p.device } }) : null,
     p.id === 'setup' ? h('span', { class: 'nav-count', hidden: true }) : null,
     p.id === 'backups' ? h('span', { class: 'nav-shield', title: 'Checking backups…' }, icon('shield')) : null);

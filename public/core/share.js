@@ -11,6 +11,8 @@ export async function copyDownloadLink() {
 
 // the short report for whoever helps (server.js /api/report/short): versions, devices, PC, recent problems
 export async function copyShortReport() {
+  // demo mode copies nothing of the real PC (31 Oct 2026), as Health's Save does
+  if (window.DEVICEHUB_DEMO || new URLSearchParams(location.search).has('demo')) { toast('Not in demo mode', 'info', { detail: 'The report is about the real PC.' }); return; }
   try {
     const r = await fetch('/api/report/short'); if (!r.ok) throw new Error(`HTTP ${r.status}`);
     await navigator.clipboard.writeText(await r.text());

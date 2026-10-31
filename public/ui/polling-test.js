@@ -66,14 +66,14 @@ export function pollingTest(setHz, card, who = 'mouse', title = 'Polling rate te
       const left = run.first === null ? null : Math.max(0, TEST_MS - (performance.now() - run.first));
       return box.replaceChildren(p('Move the mouse in circles now. It stops by itself.'),
         h('p', { class: 'polling-meter', 'aria-live': 'polite', style: { margin: '0 0 10px' } }, left === null ? 'Waiting for the mouse to move…' : `${Math.ceil(left / 1000)} s left · about ${roundHz(rateOf(run.times).hz)} Hz so far`),
-        h('div', { class: 'actions' }, button('Stop', () => stop(), { kind: 'ghost small' })));
+        h('div', { class: 'actions' }, button('Stop', () => { run.stoppedEarly = true; stop(); }, { kind: 'ghost small' })));
     }
     if (run.stage === 'done' && run.result && mine) {
       const v = verdict(run.result, run.setHz);
       return box.replaceChildren(
         h('div', { class: 'stat' }, h('b', {}, v.kind === 'short' ? '—' : `${roundHz(run.result.hz)} Hz`), h('span', {}, 'measured')),
-        h('p', { style: { margin: '10px 0' } }, v.line),
-        h('div', { class: 'actions' }, button('Test again', () => start(setHz, who), { kind: 'ghost small' })));
+        h('p', { style: { margin: '10px 0' } }, v.kind === 'short' && run.stoppedEarly ? 'Stopped before there was enough to measure. Press Test again and keep the mouse moving for the whole 5 seconds.' : v.line),
+        h('div', { class: 'actions' }, button('Test again', () => { run.stoppedEarly = false; start(setHz, who); }, { kind: 'ghost small' })));
     }
     box.replaceChildren(p(`Press Start, then move the mouse in circles for 5 seconds.${setHz ? ` It is set to ${setHz} Hz.` : ''} Nothing on the mouse changes.`),
       h('div', { class: 'actions' }, button('Start', () => start(setHz, who), { kind: 'primary small' })));

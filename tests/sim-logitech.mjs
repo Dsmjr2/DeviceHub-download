@@ -134,7 +134,7 @@ e = await refusal(() => driver.write('dpiStage', 6));
 check(/1-5/.test(e?.message || '') && m1.state.slot === 4, `DPI stage 6 refused (${e?.message})`);
 check((await driver.write('dpiStage', 2)) === 2 && m1.state.slot === 1, 'DPI stage put back to 2');
 e = await refusal(() => driver.write('liftOff', 'high'));
-check(/onboard|lift-off/.test(e?.message || ''), `no 0x2202: lift-off refused (${e?.message})`);
+check(/onboard|lift-off|does not have it/i.test(e?.message || ''), `no 0x2202: lift-off refused (${e?.message})`);
 check(has(m1, [0x01, 7, 0x2b, 0x00]) && has(m1, [0x01, 9, 0x2b]) && has(m1, [0x01, 11, 0x2b]), 'reads: 0x2201 fn 0x20 [0], 0x8061 fn 0x20, 0x8100 fn 0x20');
 const b1 = await driver.battery();
 check(b1.percent === 77 && b1.charging === true && b1.level === 'good' && b1.external === true, `0x1004 battery: ${JSON.stringify(b1)}`);
@@ -206,7 +206,7 @@ check((await driver.write('dpi', 3200)) === 3200 && has(m2, [0xff, 5, 0x3b, 0x00
 e = await refusal(() => driver.write('dpi', 1000));
 check(/one of/.test(e?.message || ''), 'a DPI not in the list is refused');
 e = await refusal(() => driver.write('mode', 'host'));
-check(/no onboard/.test(e?.message || ''), 'no mode switch without 0x8100');
+check(/no onboard|does not have it/.test(e?.message || ''), 'no mode switch without 0x8100');
 await driver.write('reportRate', 1000); await driver.write('dpi', 800);
 check(m2.state.rateMs === 1 && m2.state.dpi === 800, 'wired mouse put back');
 
@@ -356,7 +356,7 @@ driver.vendorApp = async () => null;
     check(ble.w.join() === '1600,800' && bt.state.dpi === 800 && JSON.stringify(ble.bat) === JSON.stringify(cable.bat), 'Bluetooth: DPI written, read back and put back; battery the same');
     check(ble.info.Connection === 'Bluetooth' && /test mouse/.test(ble.info.Model) && cable.info.Connection === 'USB cable', `info names the connection (${ble.info.Connection}, ${ble.info.Model})`);
     e = await refusal(() => driver.write('reportRate', 1000));
-    check(/report rate/.test(e?.message || '') && bt.state.rateIndex === 3, `Bluetooth: a report-rate write is refused unsent (${e?.message})`);
+    check(/report rate/i.test(e?.message || '') && bt.state.rateIndex === 3, `Bluetooth: a report-rate write is refused unsent (${e?.message})`);
   } finally { delete BLE[0xb0aa]; }
 }
 
@@ -414,7 +414,7 @@ driver.vendorApp = async () => null;
   check(v.dpi === 800 && v.reportRate === undefined && v.profile === 2 && v.dpiStage === 2 && v.mode === 'host', `G604 read: ${JSON.stringify(v)}`);
   check((await driver.write('profile', 3)) === 3 && g604.state.profile === 3 && (await driver.write('profile', 2)) === 2, 'G604 profile 3 selected, read back 1-based, put back');
   e = await refusal(() => driver.write('reportRate', 500));
-  check(/report rate/.test(e?.message || '') && g604.state.rateMs === 1, `G604 on Bluetooth: report rate refused unsent (${e?.message})`);
+  check(/report rate/i.test(e?.message || '') && g604.state.rateMs === 1, `G604 on Bluetooth: report rate refused unsent (${e?.message})`);
 }
 
 // ---- 9. receiver slots (22 Oct 2026, docs/handoff/logitech-c539.md; problem report Dsmjr2/DeviceHub-support#2): a C539
@@ -669,7 +669,7 @@ driver.vendorApp = async () => null;
     check(await d2.connect(false) && d2.superstrike, 'fresh driver copy: SUPERSTRIKE connects');
     for (const [k, val] of [['dpi', 1600], ['reportRate', 8000], ['profile', 2], ['liftOff', 'high']]) {
       const r = await refusal(() => d2.write(k, val));
-      check(/shown only on this mouse/.test(r?.message || ''), `the driver itself refuses ${k} (${r?.message})`);
+      check(/shown only on this mouse|does not have it/.test(r?.message || ''), `the driver itself refuses ${k} (${r?.message})`);
     }
     check(!m.sent.some((s) => (s.b[1] === 0x09 && (s.b[2] & 0xf0) === 0x60) || (s.b[1] === 0x0d && (s.b[2] & 0xf0) === 0x30) || (s.b[1] === 0x0e && (s.b[2] & 0xf0) === 0x30)), 'nothing was sent for them');
     m.sent.length = 0;
@@ -694,7 +694,7 @@ driver.vendorApp = async () => null;
   useDevice(after);
   check(await driver.connect(false) && !driver.superstrike, 'another mouse after it connects');
   const dS = driver.settings.find((s) => s.key === 'dpi'), rS = driver.settings.find((s) => s.key === 'reportRate');
-  check(dS.type === 'slider' && dS.min === 100 && dS.max === 25600 && rS.type === 'choice' && driver.settings.find((s) => s.key === 'profile').type === 'choice' && !driver.settings.some((s) => HITS[s.key]), `the next mouse gets its own settings back (${dS.type}, ${rS.type}, ${driver.settings.map((s) => s.key)})`);
+  check(dS.type === 'slider' && dS.min === 100 && dS.max === 25600 && rS.type === 'choice' && !driver.settings.some((s) => s.key === 'profile') && !driver.settings.some((s) => HITS[s.key]), `the next mouse gets its own settings back (${dS.type}, ${rS.type}, ${driver.settings.map((s) => s.key)})`);
   check((await driver.write('dpi', 1600)) === 1600 && (await driver.write('dpi', 800)) === 800, 'and its DPI writes as before');
 
   // ---- 11. a C54D that holds only the SUPERSTRIKE, with the keyboard driver on the same handle (23 Oct 2026, a friend's

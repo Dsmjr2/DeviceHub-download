@@ -22,7 +22,7 @@ ok(/Other USB devices \(\$\{cannot\.length\}\): can't be learned/.test(pick) && 
 ok(/st\.autoStart && wanted[\s\S]{0,140}startAuto\(wanted\)/.test(pick), "Setup's Learn it for me starts at once");
 ok(!/preflightStep|stepNo\(|Step \$\{/.test(code), 'no checks step and no step numbers anywhere');
 
-const failed = code.slice(code.indexOf("if (a.phase === 'failed' || a.phase === 'stopped')"), code.indexOf("const now = ask?.kind === 'change'"));
+const failed = code.slice(code.indexOf("if (a.phase === 'failed' || a.phase === 'stopped' || a.phase === 'idle')"), code.indexOf("const now = ask?.kind === 'change'"));
 ok(/const bad = \(a\.preflight\?\.lines \|\| \[\]\)\.filter\(\(x\) => !x\.ok\)/.test(failed) && /pfLines\(bad, d,/.test(failed), 'a failed check shows only its failing lines, each with its fix');
 ok(/unknownApp \? 'primary' : 'ghost small'/.test(failed), "an app DeviceHub does not know: Choose the settings myself is the next step");
 

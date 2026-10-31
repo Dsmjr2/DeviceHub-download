@@ -370,7 +370,8 @@ export default {
     if (!this.keys().includes(key)) throw new Error(`${key} is not a setting of the ${this.model.name}: the headset cannot report it back, so DeviceHub does not write it`);
     if (!d.check(value)) throw new Error(`${value} is not a valid ${d.label.toLowerCase()} for the ${this.model.name}`);
     const app = await this.vendorApp();
-    if (app) throw new Error(`${app} is running: close SteelSeries GG first (two programs writing the headset fight)`);
+    // waiting, not failed (31 Oct 2026): the change waits for the app to close, as the other drivers do
+    if (app) throw Object.assign(new Error(`${app} is running: close SteelSeries GG first (two programs writing the headset fight)`), { waiting: true });
     // read before the write: is the headset there? (a base or dongle answers with the headset off, sheet s2)
     const st = await this.readStatus();
     if (st && !st.online) throw new Error(`the ${this.model.name} is off or out of range; turn it on and try again`);
