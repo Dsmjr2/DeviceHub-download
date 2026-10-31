@@ -423,7 +423,7 @@ export async function write(id, key, value, opts = {}) {
     const r = await rcall('/api/agent/write', { id, key, value, label, display: String(display), live: !!live });
     t?.done(r.waiting ? `${label}: applied when the ${devices[id].adapter.kind.toLowerCase()} is back` : `${label} set to ${display}`);
     return r.value;
-  } catch (e) { t?.fail(`${label} not changed`, e.message); throw e; }
+  } catch (e) { t?.fail(`${label} not changed`, e.message); try { e.shown = true; } catch {} throw e; }
 }
 
 // Several writes under one lock and one backup (restore, keyboard color). Each is reported.

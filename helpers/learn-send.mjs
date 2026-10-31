@@ -100,6 +100,10 @@ export async function sendCaptures(data, deps = {}) {
   const { personalNames } = await import('./share-device.mjs');
   const { devicehubVersion } = await import('./device-library.mjs');
   const r = captureReport(data);
+  // the same scrub as Get help before the final check (31 Oct 2026: names and paths went to the check unscrubbed,
+  // so a flagged line was dropped rather than cleaned)
+  const gh = deps.strip ? deps : await import('./get-help.mjs');
+  if (typeof gh.strip === 'function') { const names = personalNames(ar.options?.names || []); r.title = gh.strip(r.title, names).text; r.body = gh.strip(r.body, names).text; }
   const fin = ar.finalCheck(findPersonal, r.title, r.body, personalNames(ar.options?.names || []));
   if (!fin.ok) return { sent: false, fallback: true, why: fin.why, line: NOT_SENT };
   const d = data.device || {};

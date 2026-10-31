@@ -199,7 +199,7 @@ function settingRow(d, s) {
 
 function control(d, s, off = false) {
   const v = d.values?.[s.key];
-  const set = (x) => off ? undefined : write(d.id, s.key, x, { label: s.label, display: s.type === 'choice' ? (s.options.find((o) => o.value === x)?.label ?? String(x)) : `${x}${s.unit || ''}` }).catch(() => {});
+  const set = (x) => off ? undefined : write(d.id, s.key, x, { label: s.label, display: s.type === 'choice' ? (s.options.find((o) => o.value === x)?.label ?? String(x)) : `${x}${s.unit || ''}` });
   if (s.type === 'toggle') return toggle({ value: !!v, label: s.label, disabled: off, onCommit: set });
   if (s.type === 'choice') return segmented({ value: v, compact: s.options.length > 3, options: s.options, disabled: off, onCommit: set });
   return slider({ value: v ?? null, min: s.min, max: s.max, step: s.step || 1, unit: s.unit || '', label: s.label, disabled: off,

@@ -18,7 +18,7 @@ import { brandForUsb } from '../core/brands.js';
 import { SWATCHES } from '../core/color.js';
 
 const d = () => devices.headset;
-const set = (key, value, label, display) => write('headset', key, value, { label, display }).catch(() => {});
+const set = (key, value, label, display) => write('headset', key, value, { label, display });
 // a slider step while dragging: the headset follows at once (21 Oct 2026)
 const live = (key) => (value) => write('headset', key, value, { live: true }).catch(() => {});
 
@@ -159,7 +159,7 @@ export default {
         h('div', { class: 'stack' }, generic ? genericCard(a, redraw) : card([h('h2', {}, 'Lights & power'), h('span', { class: 'sub' }, direct ? null : 'iCUE controls these while open')],
           row('Headset color', null, h('div', { class: 'swatches compact' },
             // the colour the headset has now shows as chosen, as Off does (31 Oct 2026)
-            ...SWATCHES.map((c) => h('button', { class: `swatch${String(v.led || '').toLowerCase() === c.toLowerCase() ? ' on sel' : ''}`, style: { '--s': c }, title: c, 'aria-label': `color ${c}`, 'aria-pressed': String(String(v.led || '').toLowerCase() === c.toLowerCase()), onclick: () => set('led', c, 'Headset Color', c).then(() => setGlow(c)) })),
+            ...SWATCHES.map((c) => h('button', { class: `swatch${String(v.led || '').toLowerCase() === c.toLowerCase() ? ' on sel' : ''}`, style: { '--s': c }, title: c, 'aria-label': `color ${c}`, 'aria-pressed': String(String(v.led || '').toLowerCase() === c.toLowerCase()), onclick: () => set('led', c, 'Headset Color', c).then(() => setGlow(c)).catch(() => {}) })),
             h('input', { type: 'color', class: 'swatch-custom', title: 'Any color', value: v.led && !isOff(v.led) ? v.led : '#ff6a1a', 'aria-label': 'custom color', onchange: (e) => set('led', e.target.value, 'Headset Color', e.target.value) }),
             offSwatch({ on: isOff(v.led), label: 'Headset lights', onclick: () => set('led', OFF, 'Headset Color', 'off') }))),
           direct && v.logoBrightness != null ? row('Logo brightness', null, slider({ value: v.logoBrightness, min: 0, max: 100, unit: '%', accent: 'var(--c-headset)', grab: () => prepare('headset'), live: live('logoBrightness'), onCommit: (x) => set('logoBrightness', x, 'Ear Cup Logo', x ? `${x}%` : 'off') })) : null,

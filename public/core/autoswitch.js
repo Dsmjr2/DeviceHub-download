@@ -63,7 +63,8 @@ async function tick() {
     auto.busy = true;
     try {
       const r = await apply(target, { retry: true });
-      auto.retryTries = (auto.retryTries || 0) + 1;
+      // only a try the device answered counts (one asleep the whole time is still waited for)
+      if (!r.asleep) auto.retryTries = (auto.retryTries || 0) + 1;
       if (!r.asleep && r.failed && auto.retryTries >= 3) { auto.retry = null; log(`${target.name} profile: ${r.failed} change${r.failed === 1 ? '' : 's'} still refused after 3 tries; not tried again`, 'bad', undefined, { auto: true }); }
       if (!r.failed && !r.asleep) { auto.retry = null; log(`${target.name} profile finished: the ${r.done === 1 ? 'change' : `${r.done} changes`} waiting for a device to wake went through`, 'good', undefined, { auto: true }); }
     } finally { auto.busy = false; }

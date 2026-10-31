@@ -1,7 +1,7 @@
 {
-  "version": "1.28",
-  "commit": "aab8a91136fd",
+  "version": "1.29",
+  "commit": "5f6f1765ce68",
   "notes": [
-    "Fixes: device timeouts never stop DeviceHub, report privacy, edited…"
+    "Fixes from reviewing today's changes: scrubber keeps text, failed…"
   ]
 }

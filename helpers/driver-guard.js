@@ -17,9 +17,9 @@ function driverOf(err) {
   const m = /[\\/](?:my-devices|device-library)[\\/]([^\\/:]+)[\\/]/i.exec(stack);
   if (m) return m[1];
   if (/declarative-driver\.mjs/i.test(stack)) return 'driver.json';
-  // a device's reply timer (public/devices/hid.js marks its errors; helpers/hid-host.mjs is the same channel in the
-  // server): a device that did not answer, never a reason to stop DeviceHub (31 Oct 2026)
-  if ((err && err.device === true) || /[\\/]public[\\/]devices[\\/]hid\.js|hid-host\.mjs/i.test(stack)) return 'a device';
+  // a device's reply timer (public/devices/hid.js marks its "no reply" errors): a device that did not answer, never a
+  // reason to stop DeviceHub (31 Oct 2026). Only the mark counts, so a real bug in DeviceHub's own code still does.
+  if (err && err.device === true) return 'a device';
   return null;
 }
 

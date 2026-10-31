@@ -353,6 +353,9 @@ if (!DEMO && !location.hash) { try { const r = await (await fetch('/api/window/r
 if ((await firstStart({ demo: DEMO, ready: REMOTE || LOCAL, search: location.search, hash: location.hash, devices: Object.values(devices) })).setup) history.replaceState(null, '', '#/setup');
 render(true);
 
+// a device change that failed has its own message; it is not an unhandled error as well (core/devices.js marks it shown)
+addEventListener('unhandledrejection', (e) => { if (e.reason && e.reason.shown) e.preventDefault(); });
+
 // Close the window after 5 minutes minimized or hidden, when nothing is running (core/idle-close.js; Settings > Startup)
 if (!DEMO) {
   const unsaved = unsavedWatcher();

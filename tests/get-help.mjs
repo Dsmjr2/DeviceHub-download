@@ -217,6 +217,10 @@ for (const [input, gone] of [
   ['USB\\VID_046D&PID_C539&MI_00&COL01\\7&abc123&0&0000', /abc123/],
 ]) { const t = strip(input).text; ok(!gone.test(t) && !findPersonal(t).length, `scrubbed: ${input} -> ${t}`); }
 ok(strip('C:\\Users\\Public\\Documents\\x.txt').text === 'C:\\Users\\Public\\Documents\\x.txt', 'the Public folder stays as it is');
+// and the sentence after a bare user folder stays (a first try at the above ate it to the end of the line)
+ok(strip('C:\\Users\\sam is missing and so is y').text === '%USERPROFILE% is missing and so is y', `the text after a user folder stays (${strip('C:\\Users\\sam is missing and so is y').text})`);
+ok(/^%USERPROFILE% then error at D:\\games\\x$/.test(strip('C:\\Users\\sam then error at D:\\games\\x').text), 'a later path on the line stays');
+ok(strip('version 1.2.… and 12:30:… ok').text === 'version 1.2.… and 12:30:… ok', 'a cut version number or time is not taken for an address');
 
 if (fails.length) { console.log(`get-help: ${fails.length} failed`); for (const f of fails) console.log(`  FAIL ${f}`); process.exitCode = 1; }
 else console.log('get-help: all checks passed (report built, personal data taken out or refused, link within the limit, opened only on request)');

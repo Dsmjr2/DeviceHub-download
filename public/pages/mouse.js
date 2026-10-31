@@ -54,7 +54,7 @@ function pointerCard(redraw) {
     row('Enhance pointer precision', 'Acceleration. Best off for games.', toggle({ value: p.precision, label: 'Enhance pointer precision', onCommit: (on) => setPointer('precision', on, 'Pointer precision', on ? 'on' : 'off', redraw) })),
     row('Scroll one page at a time', null, toggle({ value: page, label: 'Scroll one page', onCommit: (on) => setPointer('scrollLines', on ? -1 : 3, 'Scrolling', on ? 'one page' : '3 lines', redraw) })));
 }
-const set = (key, value, label, display) => write('mouse', key, value, { label, display }).catch(() => {});
+const set = (key, value, label, display) => write('mouse', key, value, { label, display });
 const locked = (key) => d().adapter.trusted && !d().adapter.trusted(key);
 
 // Log scale so 400 and 26000 both read well.
@@ -147,7 +147,7 @@ function buttonsPanel(v) {
       if (val === 'pick-keys') { val = await pickKeys(BUTTONS[i], isKeys ? cur : null); if (!val) { s.value = cur; return; } }
       if (val === cur) return;
       wrap.classList.add('pending');
-      await set(`btn${i}`, val, BUTTONS[i], parseKeys(val) ? keysText(val) : ACTIONS[val].label);
+      try { await set(`btn${i}`, val, BUTTONS[i], parseKeys(val) ? keysText(val) : ACTIONS[val].label); } catch { s.value = cur; }
       wrap.classList.remove('pending');
     });
     return wrap;

@@ -38,7 +38,7 @@ const CHARGING = {
 let core = null, file = null, settingsFile = null, saved = {}, busy = false;
 // game mode's switches held now (helpers/game-mode.mjs status().saved) -> the battery care settings they cover
 let heldBy = () => [];
-const HELD = { polling: ['mouse:pollingRate'], lights: ['mouse:dpiEffect', 'headset:logoBrightness', 'headset:micLight'] };
+const HELD = { polling: ['mouse:pollingRate'] };
 const held = () => { try { return new Set((heldBy() || []).flatMap((k) => HELD[k] || [])); } catch { return new Set(); } };
 export const holdBy = (fn) => { heldBy = typeof fn === 'function' ? fn : () => []; };
 const on = () => { try { return JSON.parse(fs.readFileSync(settingsFile, 'utf8')).batteryCare !== false; } catch { return true; } };
@@ -67,7 +67,7 @@ async function tick() {
         if (!back.length) { if (wait.length) saved[id] = { ...mine, items: wait }; else delete saved[id]; save(); continue; }
         core.log(`${d.adapter.title}: ${charging ? 'charging' : `battery ${pct}%`}, so ${back.map((it) => `${plan.find((p) => p.key === it.key).label} back to ${plan.find((p) => p.key === it.key).show(it.was)}`).join(', ')}`, 'good', id);
         const left = [];
-        for (const it of back) await core.write(id, it.key, it.was, { label: `${plan.find((p) => p.key === it.key).label} (battery care)`, display: plan.find((p) => p.key === it.key).show(it.was), noUndo: true }).catch(() => left.push(it));
+        for (const it of back) await core.write(id, it.key, it.was, { label: `${plan.find((p) => p.key === it.key).label} (battery care)`, display: plan.find((p) => p.key === it.key).show(it.was), noUndo: true }).catch(() => { if ((it.tries || 0) + 1 < 3) left.push({ ...it, tries: (it.tries || 0) + 1 }); else core.log(`${d.adapter.title}: ${plan.find((p) => p.key === it.key).label} could not be put back after 3 tries; set it on its page`, 'bad', id); });
         if (left.length || wait.length) saved[id] = { ...mine, items: [...left, ...wait] }; else delete saved[id];
         save();
       }
@@ -88,7 +88,7 @@ async function tick() {
         if (!back.length) { delete saved[slot]; save(); continue; }
         core.log(`${d.adapter.title}: unplugged, so ${back.map((it) => `${plan.find((p) => p.key === it.key).label} back to ${plan.find((p) => p.key === it.key).show(it.was)}`).join(', ')}`, 'info', id);
         const left = [];
-        for (const it of back) await core.write(id, it.key, it.was, { label: `${plan.find((p) => p.key === it.key).label} (charging)`, display: plan.find((p) => p.key === it.key).show(it.was), noUndo: true }).catch(() => left.push(it));
+        for (const it of back) await core.write(id, it.key, it.was, { label: `${plan.find((p) => p.key === it.key).label} (charging)`, display: plan.find((p) => p.key === it.key).show(it.was), noUndo: true }).catch(() => { if ((it.tries || 0) + 1 < 3) left.push({ ...it, tries: (it.tries || 0) + 1 }); else core.log(`${d.adapter.title}: ${plan.find((p) => p.key === it.key).label} could not be put back after 3 tries; set it on its page`, 'bad', id); });
         if (left.length) saved[slot] = { ...mine, items: left }; else delete saved[slot];
         save();
       }

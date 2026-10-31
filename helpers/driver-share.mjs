@@ -95,7 +95,9 @@ export async function shareFolder(folder, { root = ROOT, report = () => import('
   if (!s.ok) return { sent: false, why: s.refused };
   if (mark.sharedSha === s.sha) return { sent: false, why: 'already shared', already: true };
   const res = await ar.sendNow({ fingerprint: s.fingerprint, title: s.title, body: s.body, version: mark?.devicehub || 'unknown', channel: 'driver' });
-  if (res.sent || res.queued) {
+  // marked shared only once it went (31 Oct 2026: a queued send that later gave up was marked too, and never tried
+  // again); a queued one is tried again the next time (the relay files one issue per driver a day)
+  if (res.sent) {
     try { fs.writeFileSync(path.join(folder, 'library.json'), JSON.stringify({ ...mark, sharedSha: s.sha, sharedAt: new Date().toISOString() }, null, 2) + '\n'); } catch {}
     log(`${path.basename(folder)}: driver shared (${s.record.title})`);
   }

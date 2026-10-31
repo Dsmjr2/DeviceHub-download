@@ -63,13 +63,13 @@ export function strip(text, names = []) {
   // a folder name with spaces is taken while another \ follows it, a last name with spaces while it ends in .ext
   // the user folder's own name may have spaces or an apostrophe (C:\Users\Sam Smith, C:\Users\O'Brien): all of it goes,
   // not its first word (31 Oct 2026: "%USERPROFILE% Smith\Pictures\Mum.jpg" passed every check)
-  rep(new RegExp(`[A-Za-z]:[\\\\/]+Users[\\\\/]+(?!(?:Public|Default)\\b)(?:[^\\\\/"\`:*?<>|\\r\\n]+?(?=[\\\\/])|${SEG}(?:[ '’]${SEG})*)(?:[\\\\/]+(?:${SEG}(?: ${SEG})*(?=[\\\\/])|${SEG}(?: ${SEG})*\\.[A-Za-z0-9]{1,6}(?![\\w.])|${SEG})?)*`, 'gi'),
+  rep(new RegExp(`[A-Za-z]:[\\\\/]+Users[\\\\/]+(?!(?:Public|Default)\\b)(?:${SEG}(?:[ '’]+${SEG})*(?=[\\\\/])|${SEG})(?:[\\\\/]+(?:${SEG}(?: ${SEG})*(?=[\\\\/])|${SEG}(?: ${SEG})*\\.[A-Za-z0-9]{1,6}(?![\\w.])|${SEG})?)*`, 'gi'),
     (m) => (/^[A-Za-z]:[\\/]+Users[\\/]+[^\\/]+$/i.test(m) ? '%USERPROFILE%' : '%USERPROFILE%\\<path>'), 'your Windows user folder');
   rep(/\/(?:Users|home)\/[A-Za-z0-9._-]+(?:\/[^/'"`\s]*)*/g, (m) => (/^\/(?:Users|home)\/[^/]+$/.test(m) ? '/<user folder>' : '/<user folder>/<path>'), 'your user folder');
   // (31 Oct 2026) with &COLnn too; a Bluetooth instance id holds the device's address; a MAC written without colons
   rep(/(VID_[0-9A-F]{4}&PID_[0-9A-F]{4})(?:&MI_[0-9A-F]{2})?(?:&COL[0-9A-F]{2})?[\\#]+[^\s'"`\\#]{4,}/gi, (m, a) => `${a} (instance id removed)`, 'a device serial number');
   rep(/BTH(?:LE)?ENUM[\\#]\S+/gi, 'BTHENUM (instance id removed)', 'a Bluetooth address');
-  rep(/(&0&|address\s*[:=]?\s*)[0-9A-F]{12}\b/gi, (m, a) => `${a}<address>`, 'a MAC address');
+  rep(/(&0&|address\s*[:=]?\s*)(?=[0-9]*[A-F])[0-9A-F]{12}\b/gi, (m, a) => `${a}<address>`, 'a MAC address');
   rep(/(serial(?:\s*(?:number|no|#))?['"`]?\s*[:=]\s*['"`]?)[A-Za-z0-9-]{4,}/gi, (m, a) => `${a}<removed>`, 'a serial number');
   rep(/\b(?:[0-9A-F]{2}[:-]){5}[0-9A-F]{2}\b/gi, '<address>', 'a MAC address');
   rep(/[A-Za-z0-9._%+-]+@(?!(?:example\.(?:com|org)|localhost)\b)[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '<e-mail>', 'an e-mail address');
@@ -77,8 +77,8 @@ export function strip(text, names = []) {
   rep(IPV6, '<IP address>', 'an IP address');
   // cut short at the end before it got here (31 Oct 2026): "name@gma…", "AA:BB:CC:DD:E…", "192.168.1.…"
   rep(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]*…/g, '<e-mail>…', 'an e-mail address');
-  rep(/\b(?:[0-9A-F]{2}[:-]){2,5}[0-9A-F]?…/gi, '<address>…', 'a MAC address');
-  rep(/(?<![\w.])(?:25[0-5]|2[0-4]\d|1?\d?\d)\.(?:25[0-5]|2[0-4]\d|1?\d?\d)\.[\d.]*…/g, '<IP address>…', 'an IP address');
+  rep(/\b(?:[0-9A-F]{2}[:-]){3,5}[0-9A-F]?…/gi, '<address>…', 'a MAC address');
+  rep(/(?<![\w.])(?:25[0-5]|2[0-4]\d|1?\d?\d)\.(?:25[0-5]|2[0-4]\d|1?\d?\d)\.(?:25[0-5]|2[0-4]\d|1?\d?\d)\.?\d{0,3}…/g, '<IP address>…', 'an IP address');
   for (const n of names) rep(new RegExp(`(^|[^A-Za-z0-9])${esc(n)}(?=[^A-Za-z0-9]|$)`, 'gim'), (m, a) => `${a}<name>`, "this PC's user or computer name");
   return { text: t, removed };
 }
@@ -281,11 +281,20 @@ export function dropBluetooth(lines, names) {
     .sort((a, b) => b.length - a.length).map((n) => new RegExp(`(^|[^A-Za-z0-9])${esc(n)}(?=[^A-Za-z0-9]|$)`, 'gi'));
   return lines.map((l) => res.reduce((t, re) => t.replace(re, (m, a) => `${a}<Bluetooth device>`), l));
 }
-async function bluetoothNames(deps) {
-  try {
-    const list = await within(deps.bluetooth ? deps.bluetooth() : require('./std-battery.js').read({}), 15000);
-    return Array.isArray(list) ? list.map((d) => d?.name).filter(Boolean) : null;
-  } catch { return null; }
+// read once per report (31 Oct 2026: the findings and the log each asked, up to 15 s apiece): the same read is reused
+// for 20 s by the same caller
+const btRead = new WeakMap();
+async function bluetoothNames(deps = {}) {
+  const was = btRead.get(deps);
+  if (was && Date.now() - was.at < 20000) return was.p;
+  const p = (async () => {
+    try {
+      const list = await within(deps.bluetooth ? deps.bluetooth() : require('./std-battery.js').read({}), 15000);
+      return Array.isArray(list) ? list.map((d) => d?.name).filter(Boolean) : null;
+    } catch { return null; }
+  })();
+  btRead.set(deps, { p, at: Date.now() });
+  return p;
 }
 
 // deps (tests and the real run): port, version, windows, state, usb, diagnose, log, specs, bluetooth (the names' list)

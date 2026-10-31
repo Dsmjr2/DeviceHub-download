@@ -199,6 +199,8 @@ async function sendWithRetry(url, payload) {
     const r = await post(url, payload);
     if (r !== 'retry' || i >= options.retryMs.length) return r === 'retry' ? 'given up' : r;
     await wait(options.retryMs[i]);
+    // switched off in Settings meanwhile: the tries still waiting stop (31 Oct 2026: one could go out minutes later)
+    if (!enabled()) return 'switched off in Settings';
   }
 }
 

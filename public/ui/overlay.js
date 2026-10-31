@@ -39,6 +39,9 @@ export function modal(title, body, actions = []) {
     const opener = document.activeElement;
     const keys = (e) => {
       if (!back.isConnected) return;
+      // with two dialogs open, only the top one answers (31 Oct 2026: one Escape closed both)
+      const open = document.querySelectorAll('.modal-back');
+      if (open[open.length - 1] !== back) return;
       if (e.key === 'Escape') { e.preventDefault(); done(null); return; }
       if (e.key !== 'Tab') return;
       const all = [...box.querySelectorAll('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')].filter((x) => !x.disabled && x.offsetParent !== null);

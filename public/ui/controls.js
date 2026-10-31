@@ -92,8 +92,9 @@ export function slider({ value, min, max, step = 1, onCommit, live, grab, disabl
     // after live steps the release is always sent: it is the one that is confirmed (and a drag back to the start may
     // have left the device on a step in between)
     if (v === cur && !moved) return;
+    const was = cur;
     moved = false; cur = v;
-    run(el, () => onCommit(v));
+    run(el, () => onCommit(v)).catch(() => { cur = was; });
   });
   return el;
 }
@@ -107,8 +108,9 @@ export function stepper({ value, min, max, step = 1, onCommit, disabled, unit, b
     v = clamp(Math.round(v / step) * step, min, max);
     input.value = v;
     if (v === cur) return;
+    const was = cur;
     cur = v;
-    run(el, () => onCommit(v));
+    run(el, () => onCommit(v)).catch(() => { cur = was; });
   };
   const minus = h('button', { class: 'step', disabled, 'aria-label': 'decrease', onclick: () => commit(Number(input.value) - step) }, '−');
   const plus = h('button', { class: 'step', disabled, 'aria-label': 'increase', onclick: () => commit(Number(input.value) + step) }, '+');
@@ -169,7 +171,8 @@ export function button(label, onclick, { kind = '', ic, title, disabled } = {}) 
     if (b.dataset.busy) return;
     b.dataset.busy = '1';
     const t = setTimeout(() => b.classList.add('pending'), 500);
-    try { await onclick(e); } finally { clearTimeout(t); delete b.dataset.busy; b.classList.remove('pending'); }
+    // a failure is said by what failed (a write's own message); it does not also go to the console as unhandled
+    try { await onclick(e); } catch {} finally { clearTimeout(t); delete b.dataset.busy; b.classList.remove('pending'); }
   });
   return b;
 }
@@ -252,11 +255,12 @@ export function colorRow({ value, onCommit, label = 'color', disabled }) {
   let cur = typeof value === 'string' ? value.toLowerCase() : null;
   const el = h('div', { class: 'theme-row kind-color' });
   const pick = (hex) => {
+    const was = cur;
     cur = hex;
     for (const b of el.querySelectorAll('.theme-swatch')) { const on = b.dataset.hex === hex; b.classList.toggle('sel', on); b.setAttribute('aria-pressed', String(on)); }
     box.value = hex;
     dot.style.setProperty('--s', hex);
-    run(el, () => onCommit(hex)).catch(() => {});
+    run(el, () => onCommit(hex)).catch(() => { cur = was; });
   };
   for (const [hex, name] of COLOR_SWATCHES) {
     el.append(h('button', { class: `theme-swatch${hex === OFF ? ' swatch-off' : ''}${cur === hex ? ' sel' : ''}`, ...(hex === OFF ? { title: 'Off' } : {}), style: { '--s': hex }, dataset: { hex }, disabled,

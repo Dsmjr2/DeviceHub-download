@@ -346,7 +346,10 @@ export async function selfCheck(a, write, { folder, mark = {}, backup, log = () 
     keys[s.key] = r;
   }
   const result = { checkedAt: at, firmware, driver: a.id, status: mark.status || null, source: mark.source || null, devicehub: version || previous?.devicehub || null, keys };
-  try { if (folder) saveVerified(folder, result); } catch (e) { result.saveError = e.message; }
+  // a check by the driver still running after a library update put a newer one on disk is not kept: the newer driver
+  // would have inherited passes it never earned (31 Oct 2026)
+  if (folder && a.library?.newerDriver) result.saveError = 'a newer driver waits for a restart, so this check was not kept';
+  else try { if (folder) saveVerified(folder, result); } catch (e) { result.saveError = e.message; }
   // a skipped setting (not to be checked, or one this model does not have) is neither a pass nor a failure
   const checked = todo.filter(writable).filter((s) => !keys[s.key]?.skip);
   const ok = checked.filter((s) => keys[s.key]?.ok).map((s) => s.label);
