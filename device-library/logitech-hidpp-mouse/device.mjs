@@ -335,13 +335,28 @@ const adapter = {
       ...Object.keys(BLE).map(Number).map((pid) => [{ vendorId: VID, productId: pid }]),
       ...this.familyIds().map((pid) => [{ vendorId: VID, productId: pid, usagePage: 0xff00, usage: 0x0002 }]),
     ];
-    let lastNotMine = null, any = false;
+    // (31 Oct 2026) a receiver with no mouse answering is kept, but the ids further down are still tried: a mouse charging
+    // on its cable while its receiver is plugged in is run on the cable instead of waiting "asleep" on the receiver. An
+    // id that fails for another reason no longer ends the search either; its error is given only if nothing else worked.
+    let lastNotMine = null, firstError = null, sleeping = null, any = false;
     for (const filters of tries) {
+      const pid = filters[0].productId;
+      if (sleeping && pid >= 0xc500 && pid <= 0xc5ff) continue;   // a receiver is held asleep already: only cabled and Bluetooth ids after it (probing another receiver's slots took up to ~18 s)
       const dev = await getDevice(filters, { prompt: false });
-      if (!dev) continue;
+      if (!dev || dev === sleeping?.dev) continue;
       any = true;
-      try { return await this.connectTo(dev); } catch (err) { if (!err?.notMine) throw err; lastNotMine = err; }
+      this.features = {}; this.caps = {}; this.asleep = false; this.pendingNotMine = null; this.superstrike = false; this.shownOnly = new Set(); this.profileReadBase = undefined;
+      try {
+        const r = await this.connectTo(dev);
+        if (!this.asleep) { if (sleeping) this.letGo(sleeping); return r; }
+        if (!sleeping) sleeping = this.held(); else this.letGo(this.held());
+      } catch (err) {
+        if (err?.notMine) lastNotMine = err;
+        else { firstError ||= err; releaseSlots(this.id); if (this.dev === dev) { this.letGo(this.held()); this.dev = null; this.chan = null; } }
+      }
     }
+    if (sleeping) { Object.assign(this, sleeping); return true; }
+    if (firstError) throw firstError;
     if (lastNotMine) throw lastNotMine;
     if (!any && prompt) {
       const dev = await getDevice(RECEIVERS.concat(Object.keys(WIRED).map(Number)).map((p) => ({ vendorId: VID, productId: p, usagePage: 0xff00, usage: 0x0002 })));
@@ -425,6 +440,10 @@ const adapter = {
     const h = held[0];
     return `the Logitech device on receiver ${hex4(this.pid)} (slot ${h.slot}) is run by ${h.owner} and no mouse answered: the mouse driver leaves it alone`;
   },
+  // connect(): what one opened id left, kept while the ids after it are tried; letGo closes one that is not used (a
+  // receiver shared with the keyboard driver is left open, as stepAside does)
+  held() { return { dev: this.dev, chan: this.chan, pid: this.pid, receiver: this.receiver, ble: this.ble, usbId: this.usbId, index: this.index, asleep: this.asleep, wokeAt: this.wokeAt, protocol: this.protocol, features: this.features, caps: this.caps, profileReadBase: this.profileReadBase, superstrike: this.superstrike, shownOnly: this.shownOnly, pendingNotMine: this.pendingNotMine }; },
+  letGo(h) { if (!(h.receiver && SHARED_WITH_KEYBOARD.includes(h.pid))) { try { h.dev?.close?.(); } catch {} } },
   // let go of the receiver, so another driver can open it (on a receiver shared with the keyboard driver the handle may
   // be that driver's too: let go of it without closing it)
   stepAside() {

@@ -54,7 +54,7 @@
     "Kingston-era 0951 ids: device-library/hyperx-kingston (a library entry declares one vendor id)"
   ],
   "status": "read-only",
-  "updated": "2026-10-23T12:00:00Z",
+  "updated": "2026-10-31T15:59:22Z",
   "tested": [
     {
       "by": "nobody yet: simulation only",

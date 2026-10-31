@@ -48,6 +48,8 @@ if defined rb (
   >> logs\server.log echo [launcher] %date:~4% %time:~0,8% the new version stopped with code !code! on start; going back to !old!
   rem a zip or Setup.exe update (31 Oct 2026): "files:<folder>" holds the version before, put back over the app
   if "!old:~0,6!"=="files:" (
+    rem the version that failed (release.json names it), so Update does not offer it again (helpers/self-update.js zipStatus)
+    !NODE! -e "try{process.stdout.write(require('./release.json').commit||'')}catch{}" > data\update-failed.txt 2>nul
     robocopy "!old:~6!" . /E /IS /IT /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >nul
     goto loop
   )

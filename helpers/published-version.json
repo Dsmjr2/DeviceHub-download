@@ -1,7 +1,8 @@
 {
-  "version": "1.36",
-  "commit": "4c12d1b2c13e",
+  "version": "1.37",
+  "commit": "770ac62dd686",
   "notes": [
-    "Answered route errors no longer look like crashes"
+    "Font bundled, files cached with a check, Logitech restore fixes from…",
+    "Logitech drivers try every connection"
   ]
 }

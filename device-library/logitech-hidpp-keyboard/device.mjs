@@ -218,12 +218,27 @@ export function createLogitechKeyboard({ open = defaultOpen, vendorApp = default
       // familyPids): it must answer HID++ 2.0 as a keyboard, else the driver steps aside. Every id in turn (31 Oct 2026):
       // a receiver that holds no keyboard (only a mouse) no longer hides a wired keyboard or another receiver further
       // down the list; "not mine" only once every id was tried.
-      let lastNotMine = null;
+      // A receiver with no keyboard answering is kept while the ids after it are tried (a keyboard on its cable is run
+      // there), and an id that fails for another reason no longer ends the search; its error only if nothing worked.
+      let lastNotMine = null, firstError = null, sleeping = null;
+      const held = () => ({ dev: this.dev, chan: this.chan, pid: this.pid, receiver: this.receiver, shared: this.shared, swid: this.swid, ble: this.ble, usbId: this.usbId, index: this.index, asleep: this.asleep, wokeAt: this.wokeAt, protocol: this.protocol, features: this.features, caps: this.caps, pendingNotMine: this.pendingNotMine });
+      const letGo = (h) => { if (!h.shared) { try { h.dev?.close?.(); } catch {} } };
       for (const pid of [...PIDS, ...this.familyIds()]) {
+        if (sleeping && RECEIVERS[pid]) continue;   // a receiver is held asleep already: only cabled and Bluetooth ids after it
         const dev = await open(pid);
-        if (!dev) continue;
-        try { return await this.connectTo(dev); } catch (e) { if (!e?.notMine) throw e; lastNotMine = e; }
+        if (!dev || dev === sleeping?.dev) continue;
+        this.features = {}; this.caps = {}; this.asleep = false; this.pendingNotMine = null;
+        try {
+          const r = await this.connectTo(dev);
+          if (!this.asleep) { if (sleeping) letGo(sleeping); return r; }
+          if (!sleeping) sleeping = held(); else letGo(held());
+        } catch (e) {
+          if (e?.notMine) lastNotMine = e;
+          else { firstError ||= e; releaseSlots(this.id); if (this.dev === dev) { letGo(held()); this.dev = null; this.chan = null; } }
+        }
       }
+      if (sleeping) { Object.assign(this, sleeping); return true; }
+      if (firstError) throw firstError;
       if (lastNotMine) throw lastNotMine;
       return false;
     },

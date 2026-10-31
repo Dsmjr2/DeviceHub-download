@@ -1176,7 +1176,13 @@ http.createServer(async (req, res) => {
     if (!file.startsWith(PUBLIC) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return send(res, 404, 'not found', 'text/plain');
     // isolated test mode: the window runs on the demo devices (public/devices/demo.js), so it never opens WebHID itself
     if (ISOLATED && file === path.join(PUBLIC, 'index.html')) return send(res, 200, fs.readFileSync(file, 'utf8').replace('<script type="module" src="app.js"></script>', '<script>window.DEVICEHUB_DEMO = true; window.DEVICEHUB_ISOLATED = true;</script>\n  <script type="module" src="app.js"></script>'), 'text/html');
-    send(res, 200, fs.readFileSync(file), TYPES[path.extname(file)] || 'application/octet-stream');
+    // (31 Oct 2026) kept by the browser but checked every time (no-cache + ETag): an unchanged file is a 304 with no
+    // body, so the device pictures are no longer downloaded and decoded again on every redraw (they were, 2-3 times on
+    // the Overview), and an updated file still shows at once
+    const st = fs.statSync(file), tag = `"${st.size.toString(36)}-${Math.floor(st.mtimeMs).toString(36)}"`;
+    if (req.headers['if-none-match'] === tag) { res.writeHead(304, { ETag: tag, 'Cache-Control': 'no-cache' }); return res.end(); }
+    res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache', ETag: tag });
+    res.end(fs.readFileSync(file));
   } catch (e) {
     // an answer already started (the live stream) cannot get a second one: writeHead again threw and stopped the server
     if (res.headersSent) { try { res.destroy(); } catch {} return; }

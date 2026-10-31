@@ -16,6 +16,12 @@ $dist = Join-Path $root 'dist'
 # helpers/sign-release.mjs puts the number and the lines into version.json, signed. Preview: node helpers/release-notes.mjs --dry-run
 $verFile = 'helpers/published-version.json'
 Push-Location $root
+# (31 Oct 2026) a library driver changed after its device.json "updated" date never reaches the PCs that have it (they
+# take a driver only when its date is newer): three fixed drivers went out that way. Checked first; nothing is built.
+try {
+  & (Get-Command node).Source (Join-Path $root 'tests\driver-dates.mjs')
+  if ($LASTEXITCODE) { throw 'a library driver changed after its "updated" date (above); set the date, commit, then publish again. Nothing was built' }
+} catch { Pop-Location; throw }
 try {
   $next = (& (Get-Command node).Source (Join-Path $PSScriptRoot 'release-notes.mjs') --bump | Select-Object -Last 1)
   if ($LASTEXITCODE -or $next -notmatch '^\d+\.\d+$') { & git checkout -q HEAD -- $verFile; throw 'the next version number could not be worked out (helpers/release-notes.mjs); nothing was built' }

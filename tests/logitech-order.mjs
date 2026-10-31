@@ -53,6 +53,46 @@ function fake(F, pid, slot, features, kind) {
   ok(r === true && wired.opened && mouse.pid === 0xc08b, `mouse driver: the wired G502 behind a keyboard-only receiver is found (${e ? e.message : mouse.pid?.toString(16)})`);
 }
 
+// a receiver with nothing answering (the mouse charging on its cable) no longer hides the cabled mouse; with nothing else
+// the receiver is still taken as asleep; an id that fails to open no longer ends the search, and is the error only alone
+{
+  const quietRx = fake(MF, 0xc539, 99, {}, 3);
+  const wired = fake(MF, 0xc08b, 0xff, { [MF.ADJUSTABLE_DPI]: 3 }, 3);
+  const broken = { opened: false, productId: 0xc53f, async open() { throw new Error('the id is in use'); }, close() {} };
+  const run = async (list) => {
+    setDeviceProvider(async (filters) => list.find((d) => d.productId === filters[0].productId) || null);
+    let r, e; try { r = await mouse.connect(false); } catch (x) { e = x; } return { r, e };
+  };
+  let t = await run([quietRx, wired]);
+  ok(t.r === true && !mouse.asleep && mouse.pid === 0xc08b, `mouse driver: the cabled mouse behind a quiet receiver is run (${t.e ? t.e.message : mouse.pid?.toString(16)} asleep ${mouse.asleep})`);
+  t = await run([quietRx]);
+  ok(t.r === true && mouse.asleep && mouse.pid === 0xc539 && mouse.dev === quietRx, `mouse driver: a quiet receiver alone is still asleep (${t.e?.message} pid ${mouse.pid?.toString(16)})`);
+  // a cabled try that fails half way (its caps read, then an error) leaves nothing on the sleeping receiver (a review,
+  // 31 Oct 2026: its settings showed on the receiver's tile), and a second receiver is not probed once one sleeps
+  const fc = mouse.finishConnect;
+  mouse.finishConnect = async function () { if (this.pid === 0xc08b) { this.caps = { rate: 1 }; this.profileReadBase = 1; throw new Error('the read timed out'); } return fc.call(this); };
+  const secondRx = fake(MF, 0xc53d, 99, {}, 3); let secondAsked = false;
+  const sr = secondRx.open; secondRx.open = async function () { secondAsked = true; return sr.call(this); };
+  t = await run([quietRx, secondRx, wired]);
+  mouse.finishConnect = fc;
+  ok(t.r === true && mouse.asleep && mouse.pid === 0xc539 && !mouse.caps.rate && mouse.profileReadBase === undefined, `mouse driver: a failed cabled try leaves nothing behind on the sleeping receiver (${t.e?.message} caps ${JSON.stringify(mouse.caps)} base ${mouse.profileReadBase})`);
+  ok(!secondAsked, 'mouse driver: a second receiver is not probed once one is held asleep');
+  t = await run([broken, wired]);
+  ok(t.r === true && mouse.pid === 0xc08b, `mouse driver: an id that fails to open no longer hides the next one (${t.e?.message})`);
+  t = await run([broken]);
+  ok(/in use/.test(t.e?.message || ''), `mouse driver: that failure is the error when nothing else is there (${t.e?.message} ${t.r})`);
+}
+{
+  const quietRx = fake(KF, 0xc541, 99, {}, 0);
+  const g815 = fake(KF, 0xc33f, 0xff, { [KF.ONBOARD_PROFILES]: 4 }, 0);
+  const kb = Object.assign(createLogitechKeyboard({ open: async (p) => (p === 0xc541 ? quietRx : p === 0xc33f ? g815 : null), vendorApp: async () => null }), { pingMs: 100 });
+  let r, e; try { r = await kb.connect(); } catch (x) { e = x; }
+  ok(r === true && !kb.asleep && kb.pid === 0xc33f, `keyboard driver: the cabled G815 behind a quiet G915 receiver is run (${e ? e.message : kb.pid?.toString(16)} asleep ${kb.asleep})`);
+  const kb2 = Object.assign(createLogitechKeyboard({ open: async (p) => (p === 0xc541 ? quietRx : null), vendorApp: async () => null }), { pingMs: 100 });
+  r = undefined; e = undefined; try { r = await kb2.connect(); } catch (x) { e = x; }
+  ok(r === true && kb2.asleep && kb2.pid === 0xc541, `keyboard driver: a quiet receiver alone is still asleep (${e?.message})`);
+}
+
 if (fails.length) { console.log(`logitech-order: ${fails.length} failed`); for (const f of fails) console.log(`  FAIL ${f}`); process.exit(1); }
 console.log('logitech-order (every id tried in turn: a receiver holding the other kind of device hides nothing): all good');
 process.exit(0);
