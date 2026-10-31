@@ -1,7 +1,7 @@
 {
-  "version": "1.35",
-  "commit": "e4c78b8a4aee",
+  "version": "1.36",
+  "commit": "4c12d1b2c13e",
   "notes": [
-    "EQ boost capped at +12 dB with Prevent distortion off"
+    "Answered route errors no longer look like crashes"
   ]
 }

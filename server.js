@@ -1182,7 +1182,9 @@ http.createServer(async (req, res) => {
     if (res.headersSent) { try { res.destroy(); } catch {} return; }
     if (e instanceof URIError) return send(res, 400, { error: 'bad address' });
     if (e?.status === 400 || e?.status === 413) return send(res, e.status, { error: e.message });
-    console.error(e);
+    // one line, not a stack (31 Oct 2026): a route's answered error printed like a crash, and the next restart from
+    // outside was then counted as one (helpers/auto-report.mjs crashLineIn)
+    console.log(`[route] ${String(req.url || '').slice(0, 120)}: ${String(e?.message || e).split(/\r?\n/)[0].slice(0, 300)}`);
     send(res, 500, { error: e.message });
   }
 }).on('error', (e) => {
