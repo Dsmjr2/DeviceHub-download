@@ -296,7 +296,7 @@ check(names(r.lastRun.installed) === 'acme-reader,acme-tested', `matching tested
 check(names(r.lastRun.offered) === 'acme-untested' && r.lastRun.skipped.some((x) => x.name === 'acme-runs' && /already runs/.test(x.why)), `untested is offered, a device DeviceHub runs is skipped (${JSON.stringify(r.lastRun)})`);
 check(fs.readFileSync(path.join(root, 'my-devices/acme-mine/device.mjs'), 'utf8').includes('person changed'), 'an existing my-devices folder is left as it is');
 const m = json('my-devices/acme-reader/library.json');
-check(m.status === 'read-only' && m.source === 'device-library/acme-reader' && m.installedAt && Object.keys(m).every((k) => ['source', 'name', 'id', 'status', 'installedAt', 'devicehub', 'libraryTested', 'libraryDevicehub'].includes(k)), `the marker names source and status only (${JSON.stringify(m)})`);
+check(m.status === 'read-only' && m.source === 'device-library/acme-reader' && m.installedAt && Object.keys(m).every((k) => ['source', 'name', 'id', 'status', 'installedAt', 'installedSha', 'devicehub', 'libraryTested', 'libraryDevicehub'].includes(k)), `the marker names source and status only (${JSON.stringify(m)})`);
 check(r.lastRun.loaded?.includes('acme-reader') && connected.includes('acme-reader') && reg['acme-reader']?.library?.status === 'read-only', `installed drivers load at once, guarded, and connect (${JSON.stringify(r.lastRun.loaded)})`);
 check(setupLogs.length === 2 && setupLogs.every((t) => /^Set up: .* installed from the device library/.test(t) && !/restart/.test(t)), `Activity says what was installed (${setupLogs.join(' | ')})`);
 const sj = readSetup(root);

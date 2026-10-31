@@ -30,7 +30,10 @@ const PRODUCT = /\b(xbox|dualsense|dualshock|wireless controller|pro controller|
 // the person's own words ("Zorb Buds Pro")
 export function btName(n) {
   const m = PRODUCT.exec(String(n || ''));
-  return m ? `a Bluetooth ${m[1].toLowerCase()}` : 'a Bluetooth device';
+  if (!m) return 'a Bluetooth device';
+  const k = m[1].toLowerCase();
+  const NAMED = { xbox: 'Xbox', dualsense: 'DualSense', dualshock: 'DualShock', airpods: 'AirPods', 'galaxy buds': 'Galaxy Buds', logitech: 'Logitech', razer: 'Razer', corsair: 'Corsair', hyperx: 'HyperX', steelseries: 'SteelSeries', sony: 'Sony', jbl: 'JBL', bose: 'Bose', beats: 'Beats' };
+  return NAMED[k] ? `a Bluetooth device (${NAMED[k]})` : `a Bluetooth ${k.replace(/-$/, '')}`;
 }
 
 // which ids a my-devices folder's driver declares: device.json vid/pids, else driver.json hid

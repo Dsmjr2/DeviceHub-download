@@ -327,7 +327,8 @@ async function api(req, res, url) {
     if (up && Date.now() - up.at < 10 * 60000) held.push('updating');
     try { if (openrgb.findState().running) held.push('Find my lights'); } catch {}
     try { const ph = (await import('./helpers/learn-auto.mjs')).state().phase; if (!['idle', 'done', 'stopped', 'failed'].includes(ph)) held.push('learning'); } catch {}
-    try { const ip = (await import('./helpers/installers.mjs')).getProgress(); if (ip && !ip.done && Date.now() - ip.at < 10 * 60000) held.push('installing'); } catch {}
+    // an install holds the window until it is done (31 Oct 2026: not only for 10 minutes; the install ends by itself)
+    try { const ip = (await import('./helpers/installers.mjs')).getProgress(); if (ip && !ip.done) held.push('installing'); } catch {}
     if (held.length) return send(res, 200, { closing: false, why: held.join(', ') });
     try {
       const r = await require('./helpers/window-close').closeAsking({ clientPort: req.socket.remotePort, serverPort: PORT, root: ROOT, page: b?.page, appWindow: b?.appWindow === true });
@@ -948,6 +949,7 @@ async function api(req, res, url) {
       if (clash.length) return send(res, 400, { ok: false, name, error: `DeviceHub's own driver already runs ${clash.join(', ')}, so the library driver is not installed` });
       const r = await lib.installFromLibrary(name, { readOnly: true, untested: true });
       if (r?.ok) {
+        try { (await import('./helpers/auto-setup.mjs')).rememberInstalled(ROOT, { name: r.name, id: r.id, status: r.status }); } catch {}
         let loaded = null;
         if (agent) try { loaded = await (await import('./helpers/my-devices.mjs')).loadNew(ROOT); } catch {}
         r.loaded = !!loaded?.some((x) => x.name === r.name && x.id);

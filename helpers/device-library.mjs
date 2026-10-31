@@ -164,7 +164,7 @@ export async function installFromLibrary(name, { root = ROOT, examples = showsEx
   for (const f of [...DRIVER_FILES.filter((x) => fs.existsSync(path.join(entry.dir, x))), 'device.json']) fs.copyFileSync(path.join(entry.dir, f), path.join(to, f), fs.constants.COPYFILE_EXCL);
   // the marker my-devices.mjs loads it guarded by (its source and status; nothing about the PC or the person)
   const last = entry.meta.tested.at(-1) || {};
-  const mark = { source: `${entry.origin || 'device-library'}/${name}`, name, id: entry.meta.id, status: entry.meta.status, installedAt: now().toISOString(), devicehub: devicehubVersion(root), libraryTested: last.date || null, libraryDevicehub: last.devicehub || null,
+  const mark = { source: `${entry.origin || 'device-library'}/${name}`, name, id: entry.meta.id, status: entry.meta.status, installedAt: now().toISOString(), installedSha: driverShaOf(entry.dir) || null, devicehub: devicehubVersion(root), libraryTested: last.date || null, libraryDevicehub: last.devicehub || null,
     ...(familyPids.length ? { familyPids: [...new Set(familyPids.map(hex4))].filter((p) => /^[0-9a-f]{4}$/.test(p)) } : {}) };
   fs.writeFileSync(path.join(to, 'library.json'), JSON.stringify(mark, null, 2) + '\n', { flag: 'wx' });
   const sha = driverShaOf(to);

@@ -42,7 +42,7 @@ export class HidChannel {
         if (this.log.length > 200) this.log.splice(0, this.log.length - 200);
         resolve(new Uint8Array(reply));
       };
-      const timer = setTimeout(() => { cleanup(); this.quietUntil = Date.now() + 400; reject(new Error(`no reply to ${hex(out.slice(0, 4))}`)); }, timeoutMs);
+      const timer = setTimeout(() => { cleanup(); this.quietUntil = Date.now() + 400; reject(Object.assign(new Error(`no reply to ${hex(out.slice(0, 4))}`), { device: true })); }, timeoutMs);
       const cleanup = () => { clearTimeout(timer); this.device.removeEventListener('inputreport', onReport); };
       this.device.addEventListener('inputreport', onReport);
       this.device.sendReport(reportId, out).catch((err) => { cleanup(); reject(err); });

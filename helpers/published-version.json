@@ -1,8 +1,7 @@
 {
-  "version": "1.27",
-  "commit": "29a998f0f696",
+  "version": "1.28",
+  "commit": "aab8a91136fd",
   "notes": [
-    "Fixes: profiles kept, battery care, sync, monitors, PC lights…",
-    "Zip and Setup.exe updates can go back to the version before"
+    "Fixes: device timeouts never stop DeviceHub, report privacy, edited…"
   ]
 }

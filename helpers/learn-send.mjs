@@ -18,7 +18,7 @@
 //   data: { device: { vid, pid, name, kind, seems, interfaces }, maker: { name, installed, running }, captures:
 //          [{ label, kind, value, messages: [{ dir, type, reportId, data }] }], ready: { name } | null, why }
 export const SENT_DONE = 'Sent. The driver usually arrives within a day.';
-export const NOT_SENT = "It could not be sent from here. Press Get help (top right) and Send: it carries the same recordings.";
+export const NOT_SENT = "It could not be sent from here. Press Learn it again later to send it, or Get help (top right) to say what happened: it sends how far learning came, not the recordings.";
 export const RELAY_BODY = 11500;   // under relay/worker.js LIMITS.body (12,000), with room for the relay's own footer line
 export const RELAY_JSON = 15500;   // under LIMITS.total (16,384) once title, ids and JSON escapes are added
 

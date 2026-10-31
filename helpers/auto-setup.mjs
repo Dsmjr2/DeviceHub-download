@@ -328,6 +328,12 @@ export function summary({ root = ROOT, sources = {} } = {}) {
 function hash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); }
 
 // the Set up card's dismiss: kept until the summary says something new
+export function rememberInstalled(root = ROOT, { name, id, status, at = new Date().toISOString() } = {}) {
+  if (typeof name !== 'string' || !name) return;
+  const s = readSetup(root);
+  s.installed = Array.isArray(s.installed) ? s.installed : [];
+  if (!s.installed.some((x) => x.name === name)) { s.installed.push({ name, id: id || null, status: status || null, at, byClick: true }); saveSetup(root, s); }
+}
 export function dismiss(root = ROOT, signature) {
   if (typeof signature !== 'string' || !/^[0-9a-f]{1,8}$/.test(signature)) throw new Error('signature must be the summary\'s signature');
   const s = readSetup(root);

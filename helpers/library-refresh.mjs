@@ -59,6 +59,7 @@ async function doRefresh({ root = ROOT, log = () => {}, now = () => new Date() }
     if (mark.learned) { skip('the learning wizard made it on this PC'); continue; }
     if (Array.isArray(mark.learnedKeys) && mark.learnedKeys.length) { skip(`it has settings learned on this PC (${mark.learnedKeys.join(', ')}): kept as it is`); continue; }
     const newSha = driverShaOf(entry.dir), oldSha = driverShaOf(folder);
+    if (mark.installedSha && oldSha !== mark.installedSha) { skip('its driver was changed on this PC: kept as it is'); continue; }
     const sameMeta = JSON.stringify(copyMeta) === JSON.stringify(entry.meta);
     if (newSha === oldSha && sameMeta) continue;
     if (ownClash(entry.meta.vid, entry.meta.pids).length) { skip("DeviceHub's own driver runs one of its ids"); continue; }
@@ -79,7 +80,7 @@ async function doRefresh({ root = ROOT, log = () => {}, now = () => new Date() }
       if (fs.existsSync(path.join(folder, VERIFIED_FILE))) fs.rmSync(path.join(folder, VERIFIED_FILE));   // a copy is in the backup
       const last = Array.isArray(entry.meta.tested) ? entry.meta.tested.at(-1) || {} : {};
       putFile(path.join(folder, LIBRARY_FILE), JSON.stringify({ ...readJson(path.join(folder, LIBRARY_FILE)), source: `${entry.origin || 'device-library'}/${entry.name}`, status: entry.meta.status,
-        libraryTested: last.date || null, libraryDevicehub: last.devicehub || null, updatedFromLibrary: { at, from: from || null, to, backup: path.relative(root, back) } }, null, 2) + '\n');
+        libraryTested: last.date || null, libraryDevicehub: last.devicehub || null, installedSha: newSha || null, updatedFromLibrary: { at, from: from || null, to, backup: path.relative(root, back) } }, null, 2) + '\n');
     } catch (e) { skip(`it could not be written (${e.message}); the old files are in ${path.relative(root, back)}`); continue; }
     out.replaced.push({ name, from: from || null, to });
     try { log({ kind: 'good', text: `Device library: the ${entry.meta.product || name} driver was updated (${from || 'undated'} -> ${to})${loadedYet() ? '; it loads when DeviceHub restarts' : ''}` }); } catch {}

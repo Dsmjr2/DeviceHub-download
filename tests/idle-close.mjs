@@ -239,7 +239,8 @@ const procs = [
   check(/req\.method === 'POST'/.test(server.slice(server.indexOf("'/api/window/idle-close'") - 10, server.indexOf("'/api/window/idle-close'") + 60)), 'server: closing is a POST (a web page cannot trigger it with a GET)');
   check(/closeWhenMinimized: 'boolean'/.test(server), 'server: the setting is saved');
   const app = src('public/app.js');
-  check(/startIdleClose\(\{ state: \(\) => \(\{ busy: isBusy\(\), dropdown: dropdownOpen\(\), learn: learnBusy\(\), displayKeep: displayWaiting\(\), unsaved: unsaved\(\) \}\) \}\)/.test(app), 'app: the timer knows device writes, dropdowns, learning, Keep this? and unsaved text');
+  // (31 Oct 2026: busy also while the Setup page's Set it all up or one of its actions runs)
+  check(/startIdleClose\(\{ state: \(\) => \(\{ busy: isBusy\(\) \|\| !!env\.setupBusy\?\.\(\), dropdown: dropdownOpen\(\), learn: learnBusy\(\), displayKeep: displayWaiting\(\), unsaved: unsaved\(\) \}\) \}\)/.test(app), 'app: the timer knows device writes, dropdowns, learning, Keep this? and unsaved text');
   check(/\/api\/window\/resume/.test(app) && app.indexOf('/api/window/resume') < app.indexOf('await firstStart('), 'app: a reopened window goes back to its page before the first draw');
   const set = src('public/pages/settings.js');
   const m = /row\('Close window when minimized', '([^']+)'/.exec(set);

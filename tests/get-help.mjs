@@ -208,5 +208,15 @@ try {
   fs.rmSync(root, { recursive: true, force: true });
 }
 
+// 31 Oct 2026 (an audit of what leaked): a user folder name with a space or an apostrophe, text cut short before the
+// check, Bluetooth and &COLnn instance ids, a MAC written without colons
+for (const [input, gone] of [
+  ['C:\\Users\\Sam Smith\\Pictures\\Mum.jpg', /Smith|Mum/], ["C:\\Users\\O'Brien\\Pictures\\x.jpg", /Brien/], ["C:\\Users\\sam's files\\x", /files/],
+  ['user someone.else@gma…', /someone|gma/], ['mac AA:BB:CC:DD:E…', /AA:BB/], ['ip 192.168.1.…', /192\.168/],
+  ['BTHENUM\\{0000110e-0000-1000-8000-00805f9b34fb}_VID&0001004c_PID&2002\\7&1234abcd&0&A0B1C2D3E4F5_C00000000', /A0B1C2D3E4F5/],
+  ['USB\\VID_046D&PID_C539&MI_00&COL01\\7&abc123&0&0000', /abc123/],
+]) { const t = strip(input).text; ok(!gone.test(t) && !findPersonal(t).length, `scrubbed: ${input} -> ${t}`); }
+ok(strip('C:\\Users\\Public\\Documents\\x.txt').text === 'C:\\Users\\Public\\Documents\\x.txt', 'the Public folder stays as it is');
+
 if (fails.length) { console.log(`get-help: ${fails.length} failed`); for (const f of fails) console.log(`  FAIL ${f}`); process.exitCode = 1; }
 else console.log('get-help: all checks passed (report built, personal data taken out or refused, link within the limit, opened only on request)');

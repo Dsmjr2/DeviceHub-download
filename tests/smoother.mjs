@@ -78,7 +78,7 @@ check(/Click Yes in Windows' prompt \(if hidden, the blinking taskbar shield\)/.
 }
 
 // ---------- 3. the whole device picture ----------
-check(btName("Sam's AirPods") === 'a Bluetooth airpods' && btName('Bob phone') === 'a Bluetooth device' && !/Zorb/.test(btName('Zorb Buds Pro')), 'a Bluetooth name gives only its kind');
+check(btName("Sam's AirPods") === 'a Bluetooth device (AirPods)' && btName('Pad Controller') === 'a Bluetooth controller' && btName('Bob phone') === 'a Bluetooth device' && !/Zorb/.test(btName('Zorb Buds Pro')), 'a Bluetooth name gives only its kind');
 {
   const root = path.join(tmp, 'dh');
   const put = (rel, o) => { fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true }); fs.writeFileSync(path.join(root, rel), typeof o === 'string' ? o : JSON.stringify(o)); };

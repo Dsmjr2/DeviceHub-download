@@ -47,6 +47,16 @@ copy('acme-renamed', 'acme-renamed', 'aaa6', '2026-10-22', 'old');
 entry('acme-own', 'acme-own', 'aaa7', '2026-10-23', 'new');
 put('my-devices/acme-own/device.mjs', driver('acme-own', 'own')); put('my-devices/acme-own/device.json', meta('acme-own', 'aaa7', '2026-10-01'));
 
+// changed by hand on this PC since it was installed (31 Oct 2026): its installedSha no longer matches, so it is kept
+entry('acme-edited', 'acme-edited', 'aaa8', '2026-10-23', 'new');
+copy('acme-edited', 'acme-edited', 'aaa8', '2026-10-22', 'old');
+{
+  const installedSha = driverShaOf(path.join(root, 'my-devices', 'acme-edited'));
+  put('my-devices/acme-edited/device.mjs', driver('acme-edited', 'edited'));
+  const m = JSON.parse(read('my-devices/acme-edited/library.json'));
+  put('my-devices/acme-edited/library.json', { ...m, installedSha });
+}
+
 const oldSha = driverShaOf(path.join(root, 'my-devices', 'acme-mouse'));
 const logs = [];
 const r = await refreshInstalled({ root, log: (l) => logs.push(l.text), now: () => new Date('2026-10-24T08:00:00.000Z') });
@@ -57,7 +67,9 @@ check(mark.updatedFromLibrary?.from === '2026-10-22' && mark.updatedFromLibrary?
 check(!fs.existsSync(path.join(root, 'my-devices/acme-mouse/verified.json')), 'verified.json is moved aside, so the self-check runs again');
 const backs = fs.readdirSync(path.join(root, 'backups', 'library-drivers'));
 check(backs.length === 1 && fs.readFileSync(path.join(root, 'backups', 'library-drivers', backs[0], 'device.mjs'), 'utf8').includes('// old') && fs.existsSync(path.join(root, 'backups', 'library-drivers', backs[0], 'verified.json')), 'the old files are kept in backups\\library-drivers');
-for (const [n, tag] of [['acme-same', 'old'], ['acme-ahead', 'old'], ['acme-learned', 'old'], ['acme-keys', 'old'], ['acme-renamed', 'old'], ['acme-own', 'own']]) check(read(`my-devices/${n}/device.mjs`).includes(`// ${tag}`), `${n} is left as it was`);
+check(r.skipped.some((x) => x.name === 'acme-edited' && /changed on this PC/.test(x.why)), `a driver changed by hand is kept and said (${JSON.stringify(r.skipped.find((x) => x.name === 'acme-edited'))})`);
+check(mark.installedSha === driverShaOf(path.join(root, 'my-devices', 'acme-mouse')), 'an updated copy records its new driver hash');
+for (const [n, tag] of [['acme-edited', 'edited'], ['acme-same', 'old'], ['acme-ahead', 'old'], ['acme-learned', 'old'], ['acme-keys', 'old'], ['acme-renamed', 'old'], ['acme-own', 'own']]) check(read(`my-devices/${n}/device.mjs`).includes(`// ${tag}`), `${n} is left as it was`);
 check(r.skipped.some((s) => s.name === 'acme-learned' && /learning wizard/.test(s.why)), 'a learned copy is named as skipped');
 check(r.skipped.some((s) => s.name === 'acme-keys' && /learned on this PC/.test(s.why)), 'a copy with learned settings is named as skipped');
 check(r.skipped.some((s) => s.name === 'acme-renamed' && /id/.test(s.why)), 'a driver whose id changed is named as skipped');

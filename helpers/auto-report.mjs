@@ -208,6 +208,10 @@ export async function report(ev) {
   if (!started) return { sent: false, why: 'not started' };
   const fp = fingerprint(ev.code, ev.device || ev.where);
   if (inFlight.has(fp)) return { sent: false, why: 'already being sent' };
+  // marked at once, before anything waits (31 Oct 2026: two events at the same moment both passed the check during
+  // the waits, and the same problem was sent twice)
+  inFlight.add(fp);
+  try {
   const url = relayUrl();
   if (!url) return { sent: false, why: 'no relay set up (helpers/report-config.json)' };
   if (!enabled()) return { sent: false, why: 'switched off in Settings' };
@@ -215,8 +219,6 @@ export async function report(ev) {
   const st = loadState();
   if (st.sent[fp] === day()) return { sent: false, why: 'already sent today' };
   if (Object.values(st.sent).filter((v) => v === day()).length >= DAY_CAP) return { sent: false, why: 'ten sent today already' };
-  inFlight.add(fp);
-  try {
     const b = await build(ev);
     if (!b.ok) {
       // a refused report is not built again today; an ordinary state is simply not a problem

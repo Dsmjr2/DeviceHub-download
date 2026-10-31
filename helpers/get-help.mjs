@@ -61,15 +61,24 @@ export function strip(text, names = []) {
   const rep = (re, to, why) => { t = t.replace(re, (...m) => { removed[why] = (removed[why] || 0) + 1; return typeof to === 'function' ? to(...m) : to; }); };
   // the WHOLE path after the user folder goes (final audit, 22 Oct 2026: folder and file names can be personal too);
   // a folder name with spaces is taken while another \ follows it, a last name with spaces while it ends in .ext
-  rep(new RegExp(`[A-Za-z]:[\\\\/]+Users[\\\\/]+(?!(?:Public|Default)\\b)${SEG}(?:[\\\\/]+(?:${SEG}(?: ${SEG})*(?=[\\\\/])|${SEG}(?: ${SEG})*\\.[A-Za-z0-9]{1,6}(?![\\w.])|${SEG})?)*`, 'gi'),
+  // the user folder's own name may have spaces or an apostrophe (C:\Users\Sam Smith, C:\Users\O'Brien): all of it goes,
+  // not its first word (31 Oct 2026: "%USERPROFILE% Smith\Pictures\Mum.jpg" passed every check)
+  rep(new RegExp(`[A-Za-z]:[\\\\/]+Users[\\\\/]+(?!(?:Public|Default)\\b)(?:[^\\\\/"\`:*?<>|\\r\\n]+?(?=[\\\\/])|${SEG}(?:[ '’]${SEG})*)(?:[\\\\/]+(?:${SEG}(?: ${SEG})*(?=[\\\\/])|${SEG}(?: ${SEG})*\\.[A-Za-z0-9]{1,6}(?![\\w.])|${SEG})?)*`, 'gi'),
     (m) => (/^[A-Za-z]:[\\/]+Users[\\/]+[^\\/]+$/i.test(m) ? '%USERPROFILE%' : '%USERPROFILE%\\<path>'), 'your Windows user folder');
   rep(/\/(?:Users|home)\/[A-Za-z0-9._-]+(?:\/[^/'"`\s]*)*/g, (m) => (/^\/(?:Users|home)\/[^/]+$/.test(m) ? '/<user folder>' : '/<user folder>/<path>'), 'your user folder');
-  rep(/(VID_[0-9A-F]{4}&PID_[0-9A-F]{4})(?:&MI_[0-9A-F]{2})?[\\#]+[^\s'"`\\#]{4,}/gi, (m, a) => `${a} (instance id removed)`, 'a device serial number');
+  // (31 Oct 2026) with &COLnn too; a Bluetooth instance id holds the device's address; a MAC written without colons
+  rep(/(VID_[0-9A-F]{4}&PID_[0-9A-F]{4})(?:&MI_[0-9A-F]{2})?(?:&COL[0-9A-F]{2})?[\\#]+[^\s'"`\\#]{4,}/gi, (m, a) => `${a} (instance id removed)`, 'a device serial number');
+  rep(/BTH(?:LE)?ENUM[\\#]\S+/gi, 'BTHENUM (instance id removed)', 'a Bluetooth address');
+  rep(/(&0&|address\s*[:=]?\s*)[0-9A-F]{12}\b/gi, (m, a) => `${a}<address>`, 'a MAC address');
   rep(/(serial(?:\s*(?:number|no|#))?['"`]?\s*[:=]\s*['"`]?)[A-Za-z0-9-]{4,}/gi, (m, a) => `${a}<removed>`, 'a serial number');
   rep(/\b(?:[0-9A-F]{2}[:-]){5}[0-9A-F]{2}\b/gi, '<address>', 'a MAC address');
   rep(/[A-Za-z0-9._%+-]+@(?!(?:example\.(?:com|org)|localhost)\b)[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '<e-mail>', 'an e-mail address');
   rep(IPV4, '<IP address>', 'an IP address');
   rep(IPV6, '<IP address>', 'an IP address');
+  // cut short at the end before it got here (31 Oct 2026): "name@gma…", "AA:BB:CC:DD:E…", "192.168.1.…"
+  rep(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]*…/g, '<e-mail>…', 'an e-mail address');
+  rep(/\b(?:[0-9A-F]{2}[:-]){2,5}[0-9A-F]?…/gi, '<address>…', 'a MAC address');
+  rep(/(?<![\w.])(?:25[0-5]|2[0-4]\d|1?\d?\d)\.(?:25[0-5]|2[0-4]\d|1?\d?\d)\.[\d.]*…/g, '<IP address>…', 'an IP address');
   for (const n of names) rep(new RegExp(`(^|[^A-Za-z0-9])${esc(n)}(?=[^A-Za-z0-9]|$)`, 'gim'), (m, a) => `${a}<name>`, "this PC's user or computer name");
   return { text: t, removed };
 }
@@ -354,6 +363,12 @@ async function gatherFacts(id, deps = {}) {
   };
   f.title = `Help: ${f.device.title}${profile.usb[0] ? ` (${profile.usb[0].id})` : ''}, ${snap.status === 'connected' ? 'connected' : snap.status === 'asleep' ? 'asleep' : 'not connected'}`;
   f.findings = (dg?.findings || []).map((x) => ({ problem: x.problem, why: x.why, fix: x.fix }));
+  // paired Bluetooth devices' names go from the findings too (31 Oct 2026; they were only out of the log)
+  {
+    const bt = await bluetoothNames(deps);
+    const one = (t) => (Array.isArray(bt) ? dropBluetooth([String(t ?? '')], bt)[0] : String(t ?? '').replace(/^.* is paired but not connected$/, 'A paired Bluetooth device is not connected'));
+    f.findings = f.findings.map((x) => ({ problem: one(x.problem), why: one(x.why), fix: one(x.fix) }));
+  }
   if (!dg) f.findings = [{ problem: 'The checks did not finish', why: 'DeviceHub could not finish looking for the cause in time.', fix: 'Try Get help again in a minute.' }];
   f.log = dropBluetooth(relevantLog(deps.log ? await deps.log() : logTail(root), { id, plugin: a.plugin, title: a.title, vids: profile.vids }), await bluetoothNames(deps));
   return f;
@@ -625,7 +640,7 @@ export async function report(id, deps = {}, how = {}) {
   const relay = makeIssue(f, { names, maxBody: RELAY_BODY });
   const where = area && area !== 'device' ? { area, device: area === LIGHTS ? null : id || null }
     : id === LIGHTS ? { area: LIGHTS, device: null } : id ? { area: 'device', device: id } : { area: 'devicehub', device: null };
-  return { ...r, relayLength: relay.ok ? relay.body.length : null, canSend: deps.canSend ? await deps.canSend() : await canSend(), token: remember(r.url, null, { title: r.title, body: relay.ok ? relay.body : r.body, ...where }) };
+  return { ...r, relayLength: relay.ok ? relay.body.length : null, relayBody: relay.ok ? relay.body : null, relayRemoved: relay.ok ? relay.removed : null, canSend: deps.canSend ? await deps.canSend() : await canSend(), token: remember(r.url, null, { title: r.title, body: relay.ok ? relay.body : r.body, ...where }) };
 }
 
 // only a link this module made, to GitHub's new-issue page, within the limit, plain URL characters, checked again

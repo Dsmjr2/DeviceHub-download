@@ -48,6 +48,8 @@ const post = async (url, body = {}) => {
   if (!r.ok || j.error) throw new Error(j.error || r.statusText);
   return j;
 };
+// told to the window's idle close (app.js): Set it all up or one of the actions is running
+env.setupBusy = () => !!st.all?.busy || Object.keys(st.busy).length > 0;
 const get = (url) => env.api(url);
 
 // one summary read at a time (26 Oct 2026, idle CPU: while the first read was slow, every redraw notice started load()

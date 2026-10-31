@@ -88,7 +88,7 @@ export function getHelp(key, deviceId = () => key, { label = 'Get help', request
   // the report itself, folded away: most people only need to know it is safe; it opens for anyone who wants to read it
   const reportBox = (r) => h('details', { class: 'gh-report' },
     h('summary', {}, 'Show report'),
-    h('pre', { class: 'json' }, `${r.title}\n\n${r.body}`));
+    h('pre', { class: 'json' }, `${r.title}\n\n${r.canSend && r.relayBody ? r.relayBody : r.body}`));
   function draw() {
     // sent through the relay: one plain line where the button was
     if (s.stage === 'sent') return box.replaceChildren(h('div', { class: `gh-note ${s.good ? 'good' : ''}` }, s.good ? icon('check') : null, s.msg));
@@ -97,7 +97,8 @@ export function getHelp(key, deviceId = () => key, { label = 'Get help', request
     if (s.stage === 'error') return box.replaceChildren(h('div', { class: 'gh-card' }, h('div', { class: 'gh-note bad' }, s.msg), acts(button('Try again', start, { kind: 'small' }), button('Close', close, { kind: 'ghost small' }))));
     const r = s.r;
     const where = r.canSend ? 'to Shawn' : 'on GitHub';
-    const removed = r.removed?.length ? `Removed: ${r.removed.map((x) => `${x.why} (${x.count})`).join(', ')}.` : 'Nothing personal found.';
+    const gone = r.canSend && r.relayRemoved ? r.relayRemoved : r.removed;
+    const removed = gone?.length ? `Removed: ${gone.map((x) => `${x.why} (${x.count})`).join(', ')}.` : 'Nothing personal found.';
     const fit = r.logLeftOut ? ` ${r.logLeftOut} older log line${r.logLeftOut === 1 ? ' was' : 's were'} left out to fit.` : '';
     let parts;
     if (!r.ok) {

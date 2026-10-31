@@ -98,5 +98,15 @@ try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
   core.driverFault('nobody', new Error('x'));   // an id DeviceHub does not have: nothing happens
 }
 
+// the real reply timer (31 Oct 2026): its error is made in public/devices/hid.js, so its stack names no driver folder;
+// the guard still counts it as a device's (it missed this very crash before)
+{
+  const { HidChannel } = await import('../public/devices/hid.js');
+  const quiet = { opened: true, addEventListener() {}, removeEventListener() {}, sendReport: async () => {} };
+  let err = null;
+  try { await new HidChannel(quiet, { length: 8 }).request([1, 2, 3], { timeoutMs: 20 }); } catch (e) { err = e; }
+  check(err && /no reply/.test(err.message) && guard.driverOf(err) === 'a device', `a real "no reply" from hid.js is a device's error (${err && guard.driverOf(err)})`);
+}
+
 console.log(fails.length ? `driver-guard: FAILED:\n  ${fails.join('\n  ')}` : "driver-guard (a driver's late timeout, a throw from its timer: logged, its device marked, DeviceHub keeps running; DeviceHub's own errors still exit 1): all good");
 process.exitCode = fails.length ? 1 : 0;
