@@ -521,13 +521,15 @@ export function guard(a, folder, mark, deps = null) {
     const st = a.settings.find((x) => x.key === key);
     if (st && !writable(st)) throw new Error(`${st.label} is a reading: DeviceHub never writes it`);
     const w = allowed(key);
-    if (!w.ok) throw new Error(`${key} is read-only: ${w.why}`);
+    // the setting's own name in every message (31 Oct 2026: "actuationLeft was not written")
+    const name = st?.label || key;
+    if (!w.ok) throw new Error(`${name} is read-only: ${w.why}`);
     // the maker's app before EVERY guarded write (final audit, 22 Oct 2026): the driver's own tasklist may answer "no
     // app" when it failed, so DeviceHub's own list is asked too (makerAppOf). Only "none open" is kept (MAKER_CACHE_MS); an
     // open app or "could not check" is asked again on the next write.
     const m = await makerNow();
-    if (m.unknown) throw Object.assign(new Error(`${key} was not written: DeviceHub could not check whether the maker's app is open (${m.unknown}); it checks again on the next change`), { waiting: true });
-    if (m.app) throw Object.assign(new Error(`${key} was not written: ${m.app} (the maker's app) is running: close it first`), { waiting: true });
+    if (m.unknown) throw Object.assign(new Error(`${name} was not written: DeviceHub could not check whether the maker's app is open (${m.unknown}); it checks again on the next change`), { waiting: true });
+    if (m.app) throw Object.assign(new Error(`${name} was not written: ${m.app} (the maker's app) is running: close it first`), { waiting: true });
     return write.call(this, key, value);
   };
   // one self-check run: only = the keys to check (null = all); the result laid over what was known. Settings still

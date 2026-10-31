@@ -28,6 +28,7 @@
 // { kind, id?, page?, app?, confirm? }. server.js passes both to handle() (docs/handoff/diagnose.md).
 import fs from 'node:fs';
 import path from 'node:path';
+import { closedByWindows, crashLineIn } from './auto-report.mjs';
 import { execFile, spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -85,8 +86,10 @@ export function parseLog(text, now = Date.now()) {
     let m;
     if ((m = /^\[launcher\] (.+?) server exited with code (-?\d+)/.exec(l))) {
       const at = new Date(m[1]).getTime(), code = Number(m[2]);
-      // -1 is a stop from outside (a restart), not a crash (the same rule as Settings > Health)
-      if (code !== -1 && Number.isFinite(at) && now - at < 24 * 3600e3) out.crashes.push({ at, code });
+      // not a crash (the same rule as Settings > Health and the problem reports, helpers/auto-report.mjs crashBefore):
+      // -1 a stop from outside, Windows shutting down or signing out (closedByWindows), code 1 with no crash line before it
+      const outside = code === -1 || closedByWindows(code) || (code === 1 && !crashLineIn(lines, -1, i));
+      if (!outside && Number.isFinite(at) && now - at < 24 * 3600e3) out.crashes.push({ at, code });
     }
     if ((m = /^\[launcher\] (.+?) the new version stopped with code (-?\d+)/.exec(l))) {
       const at = new Date(m[1]).getTime();

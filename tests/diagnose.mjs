@@ -45,6 +45,9 @@ check(L.watchdog.length === 1 && /heartbeat/.test(L.watchdog[0].why), `one helpe
 const L2 = parseLog('DeviceHub on http://localhost:5577\n[helper] could not be built: error CS0246: missing type\n[launcher] 10/22/2026 11:00:00 the new version stopped with code 1 on start; going back to abc', NOW);
 check(L2.helperBuild === 'error CS0246: missing type' && L2.rollback?.code === 1, 'build failure in this run and an update rollback read');
 check(parseLog('', NOW).crashes.length === 0, 'empty log -> nothing');
+// Windows shutting down or signing out (0x40010004) and code 1 with no crash line are not crashes (support #22 #23 #26)
+check(parseLog('[launcher] 10/22/2026 08:00:00 server exited with code 1073807364; restart 1 of 5\n[launcher] 10/22/2026 09:00:00 server exited with code 1; restart 1 of 5', NOW).crashes.length === 0, 'a Windows shutdown and a stop from outside are not crashes');
+check(parseLog('TypeError: x is undefined\n[launcher] 10/22/2026 09:00:00 server exited with code 1; restart 1 of 5', NOW).crashes.length === 1, 'code 1 after an error line is a crash');
 
 // ---- device states and profiles
 const dev = (id, status, more = {}) => ({ id, status, info: {}, battery: null, values: {}, error: null, adapter: { id, title: { mouse: 'Pulsar X-Lite', headset: 'Corsair HS80', keyboard: 'Epomaker P75' }[id] || 'Thing', kind: { mouse: 'Mouse', headset: 'Headset', keyboard: 'Keyboard' }[id] || 'Light' }, ...more });

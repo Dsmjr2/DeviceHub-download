@@ -208,6 +208,11 @@ const STATUS = {
     return { online: true, charging: null, percent: m.noBattery ? null : Math.min(at(bat, 2), 100), chat: { game: pctA7(at(mix, 2)), chat: pctA7(at(mix, 3)) } };
   } },
 };
+const ALL_SETTINGS = Object.entries(DEFS).map(([key, d]) => {
+  const s = { key, label: d.label, type: d.type, hint: d.hint };
+  for (const k of ['min', 'max', 'step', 'unit', 'options', 'selfCheck']) if (d[k] !== undefined) s[k] = d[k];
+  return s;
+});
 const SIDETONE_READ = [0x20];  // sheet s3 Sidetone / Nova 7 Gen 2 (0x227E) only: 00 20, reply 20 ?? <0-3>, byte 2 = level
 
 // the only command bytes each family ever sends (sheet s3 rows above); nothing else leaves this file
@@ -268,11 +273,9 @@ export default {
   // one channel per model's pid, each with its family's collection (HID LAYER 1-2)
   hid: { vid: '1038', pid: '2202', page: 'FFC0', usage: '0001', len: 63, reportId: 0, replyMs: 800, productName: 'SteelSeries Arctis Nova 7',
     pids: MODELS.map((m) => h4(m.pid).toUpperCase()), byPid: Object.fromEntries(MODELS.map((m) => [h4(m.pid).toUpperCase(), channelOf(m)])) },
-  settings: Object.entries(DEFS).map(([key, d]) => {
-    const s = { key, label: d.label, type: d.type, hint: d.hint };
-    for (const k of ['min', 'max', 'step', 'unit', 'options', 'selfCheck']) if (d[k] !== undefined) s[k] = d[k];
-    return s;
-  }),
+  // only the settings the connected model reports back (31 Oct 2026, support #24: a Nova 3 has none, yet Turn on
+  // settings was offered for it); before a headset is found, every setting the driver knows
+  get settings() { return this.model ? ALL_SETTINGS.filter((x) => this.keys().includes(x.key)) : ALL_SETTINGS; },
   unsupported: ['firmware updates', 'saving settings to the headset',
     'settings the headset cannot report back (sidetone except on the Nova 7 Gen 2, auto-off, EQ, mic volume, mic light, volume limiter, lights): no source has a read for them',
     'ANC and transparency', 'the base station screen', 'Nova Pro ChatMix'],

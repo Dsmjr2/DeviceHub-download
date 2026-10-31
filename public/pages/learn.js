@@ -69,8 +69,11 @@ async function autoApi(step = '', body) {
   } catch { return { ok: false, error: 'DeviceHub did not answer.' }; }
 }
 async function startAuto(d) {
-  st.error = null; st.why = null; auto.finish = null;
-  const r = await autoApi('', { vid: d.vid, pid: d.pid, ...(st.kindFor[`${d.vid}:${d.pid}`] ? { kind: st.kindFor[`${d.vid}:${d.pid}`] } : {}) });
+  // one press at a time (31 Oct 2026): a double click started a second session that failed with "Already learning"
+  if (st.busy) return;
+  st.error = null; st.why = null; auto.finish = null; st.busy = true; redrawPage();
+  let r;
+  try { r = await autoApi('', { vid: d.vid, pid: d.pid, ...(st.kindFor[`${d.vid}:${d.pid}`] ? { kind: st.kindFor[`${d.vid}:${d.pid}`] } : {}) }); } finally { st.busy = false; }
   if (r.ok === false) { st.error = r.error; redrawPage(); return; }
   auto.s = r; auto.dev = d; st.step = 'auto'; redrawPage(); pollAuto();
 }
@@ -259,9 +262,11 @@ function pickStep() {
   // that can be learned, a short line of what already works (its fixes are on its own page), the rest folded away; no
   // USB ids, no "settings channel", no separate checks step
   const learnable = list.filter((d) => !d.refused && !works(d));
-  const working = list.filter((d) => works(d) && (d.ready || d.driver));
+  // a brand DeviceHub has a driver for but whose copy is not loaded here (no page yet): working, pointed to Setup
+  const brandOf = (d) => /No learning needed for ([^:]+):/.exec(d.refused || '')?.[1] || null;
+  const working = list.filter((d) => works(d) && (d.ready || d.driver || brandOf(d) || d.library));
   const cannot = list.filter((d) => !learnable.includes(d) && !working.includes(d));
-  const nameOf = (d) => devices[runningCopy(d)?.id]?.adapter?.title || d.title || d.name;
+  const nameOf = (d) => devices[runningCopy(d)?.id]?.adapter?.title || (brandOf(d) && !d.ready && !d.driver ? `${d.title || d.name} (${brandOf(d)}: set it up in Setup)` : d.title || d.name);
   const why = (d) => (genericDongle({ ...d, name: /^USB device /.test(d.name) ? null : d.name })?.line || (d.asIs || !d.vendor ? 'Nothing on it to set.' : String(d.refused || '').split(/(?<=\.)\s/)[0]));
   const learnRow = (d) => row(d.title || d.name, [d === wanted ? 'the one you picked' : null, kindOf(d) ? `you said: a ${kindOf(d)}` : d.seems ? `looks like a ${d.seems}` : null, d.note || null].filter(Boolean).join(' · ') || null,
     // its USB interfaces say both a keyboard and a mouse: asked once, before anything is learned
@@ -637,7 +642,7 @@ function autoStep() {
       a.sent ? h('div', { class: a.sent.sent || a.sent.queued ? 'learn-check' : 'learn-problem', role: 'status' }, p(a.sent.line)) : null,
       checkResult(),
       h('div', { class: 'actions', style: { marginTop: '12px' } },
-        d ? button('Try again', () => startAuto(d), { kind: unknownApp ? 'ghost small' : 'primary', ic: 'refresh' }) : null,
+        d ? button(st.busy ? 'Starting…' : 'Try again', () => startAuto(d), { kind: unknownApp ? 'ghost small' : 'primary', ic: 'refresh', disabled: st.busy }) : null,
         d ? button('Choose the settings myself', choose, { kind: unknownApp ? 'primary' : 'ghost small' }) : null,
         isDemo() || !listening || bad.some((x) => x.action === 'check') ? null : button(st.check === 'running' ? 'Testing…' : 'Test my learning setup', () => checkSetup(), { kind: 'ghost small', disabled: st.check === 'running' }),
         button('Back', () => { auto.s = null; st.step = 'pick'; st.devices = null; redrawPage(); }, { kind: 'ghost small' })));

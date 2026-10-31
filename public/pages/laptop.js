@@ -33,6 +33,8 @@ async function load() {
     if (j?.ok) { st.info = j; st.error = null; } else if (r.status !== 409) st.error = j?.why || 'no answer';
   } catch (e) { st.error = e.message; }
   st.at = Date.now();
+  if (!st.info && !st.error) setTimeout(() => { if (location.hash === '#/laptop' && !st.info) load(); else st.loading = false; }, 3000);
+  else st.loading = false;
   rerender();
 }
 function keepFresh() {

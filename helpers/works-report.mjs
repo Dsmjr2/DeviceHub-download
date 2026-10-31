@@ -67,7 +67,8 @@ export function buildRecord(snap, { root = options.root } = {}) {
   const name = (k) => clip(passed.find((s) => s.key === k)?.label || k, 60);
   if (t.no.length) return no(`${t.no.map(name).join(', ')} did not change for you, so it cannot be reported as working. Use Get help instead.`);
   if (t.untried.length) return no(`Press Test it with me first (${t.untried.length} setting${t.untried.length === 1 ? '' : 's'} not tried yet).`);
-  if (!t.yes.length) return no('You did not see any of its settings change, so it cannot be reported as working yet.');
+  // nothing testable (zone colours, remaps, readings): nothing could be seen, so no "yes" is asked for (31 Oct 2026)
+  if (!t.yes.length && t.unsure.length) return no('You did not see any of its settings change, so it cannot be reported as working yet.');
   const model = clip(snap.info?.Model, 80) || clip(a.title, 80) || mark.name;
   const record = {
     kind: KIND, format: FORMAT, driver: mark.name, driverSha: sha, date: String(v.checkedAt).slice(0, 10),

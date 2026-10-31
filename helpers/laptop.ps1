@@ -50,7 +50,7 @@ if ($bat) {
   $cycles = Safely { (@(Get-CimInstance -Namespace root\wmi -ClassName BatteryCycleCount)[0]).CycleCount }
   $out.battery = [ordered]@{
     percent = $bat.EstimatedChargeRemaining
-    charger = ($bat.BatteryStatus -in 2, 6, 7, 8, 9)
+    charger = ($bat.BatteryStatus -in 2, 3, 6, 7, 8, 9)
     minutesLeft = if ($bat.EstimatedRunTime -and $bat.EstimatedRunTime -lt 71582788) { $bat.EstimatedRunTime } else { $null }
     designMWh = $design; fullMWh = $full; cycles = $cycles
     health = if ($design -and $full -and $design -gt 0) { [math]::Round(100 * $full / $design) } else { $null }

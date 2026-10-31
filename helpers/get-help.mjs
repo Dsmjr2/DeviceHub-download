@@ -208,9 +208,9 @@ function logTail(root) {
   return lines;
 }
 // the lines about this device (its id, its added folder, its title, its USB vendor ids) and DeviceHub's own problems
-const NOISE = /no cable change|^\[agent\] running$|^DeviceHub on http|^\[setup\] auto setup: 0 installed, 0 offered|^\[launcher\] .* exited with code -1;|^\[backups\]/;
-const PROBLEM = /^\[(helper|watchdog)\]|\b(error|fail(ed|s)?|cannot|could not|refused|crash(ed)?|timed out)\b|exited with code (?!-1;)/i;
-const WIDE = /^\[(helper|watchdog)\]|^\[launcher\] .* exited with code (?!-1;)|^\[launcher\] .* the new version stopped/;
+const NOISE = /no cable change|^\[agent\] running$|^DeviceHub on http|^\[setup\] auto setup: 0 installed, 0 offered|^\[launcher\] .* exited with code (-1|1073807364|-1073741510|3221225786);|^\[backups\]/;
+const PROBLEM = /^\[(helper|watchdog)\]|\b(error|fail(ed|s)?|cannot|could not|refused|crash(ed)?|timed out)\b|exited with code (?!(-1|1073807364|-1073741510|3221225786);)/i;
+const WIDE = /^\[(helper|watchdog)\]|^\[launcher\] .* exited with code (?!(-1|1073807364|-1073741510|3221225786);)|^\[launcher\] .* the new version stopped/;
 export function relevantLog(lines, d) {
   const terms = [];
   if (d) {

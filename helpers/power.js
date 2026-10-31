@@ -4,7 +4,7 @@
 // instant response. Off with settings.json "batterySaver": false. Checked every 30 s.
 const fs = require('fs');
 
-let call = null, settingsFile = null, onBattery = false, hasBattery = false, percent = null, timer = null, told = false;
+let call = null, settingsFile = null, onBattery = false, hasBattery = false, percent = null, timer = null, told = false, toldBattery = false;
 const listeners = new Set();
 const enabled = () => { try { return JSON.parse(fs.readFileSync(settingsFile, 'utf8')).batterySaver !== false; } catch { return true; } };
 const saving = () => onBattery && enabled();
@@ -16,7 +16,9 @@ async function check() {
     hasBattery = !!r.hasBattery; onBattery = !!r.onBattery && hasBattery; percent = r.percent ?? null;
     // against the last answer told, so the saver switched on or off in Settings is told too (27 Oct 2026: the window's
     // live stream pushes this instead of the window asking every 30 s)
-    if (saving() !== told) { told = saving(); for (const f of listeners) { try { f(told); } catch {} } }
+    // a battery found is told as well (31 Oct 2026: on a laptop left on the charger the saver never switches, so the
+    // window, which shows the Laptop page only where there is a battery, would never hear of it)
+    if (saving() !== told || hasBattery !== toldBattery) { told = saving(); toldBattery = hasBattery; for (const f of listeners) { try { f(told); } catch {} } }
   } catch { /* the helper is restarting */ }
 }
 

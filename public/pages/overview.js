@@ -98,7 +98,7 @@ function firstRun(go, redraw) {
   // shimmering lines where their readings will be (21 Oct 2026, Shawn: a splash that shows the tiles loading)
   if (stillLooking()) {
     setTimeout(redraw, 12500);
-    return h('div', { class: 'bays', style: { gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' } }, ...[['mouse', 'Mouse'], ['headset', 'Headset'], ['keyboard', 'Keyboard']].map(([id, kind]) =>
+    return h('div', { class: 'bays', style: { '--bays': 3 } }, ...[['mouse', 'Mouse'], ['headset', 'Headset'], ['keyboard', 'Keyboard']].map(([id, kind]) =>
       h('div', { class: 'bay ghost', 'aria-label': `Looking for the ${kind.toLowerCase()}` },
         h('div', { class: 'bay-top' }, h('span', { class: 'bay-kind' }, kind), h('span', { class: 'ghost-pill' }, h('i'), 'Looking')),
         // a plain outline of the kind of device, not a particular model (Shawn: "generic so anyone with any device just sees it")
@@ -173,6 +173,7 @@ function supportedNow(redraw, fresh) {
   const forget = () => fetch('/api/help/supported-now/forget', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: x.id }) }).catch(() => {});
   const notNow = () => { arrivedList = arrivedList.slice(1); redraw(); forget(); };
   const install = async () => {
+    if (arrivedNote[x.id] === 'Installing…') return;   // one press at a time (31 Oct 2026)
     arrivedNote[x.id] = 'Installing…'; redraw();
     try {
       const r = await fetch('/api/library/install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: x.entry }) });
@@ -187,7 +188,7 @@ function supportedNow(redraw, fresh) {
   return h('div', { class: 'banner info' }, icon('plug'),
     h('div', { class: 'grow' }, h('b', {}, `Your ${x.name} is supported now`),
       h('small', {}, arrivedNote[x.id] || `You asked for it, and DeviceHub now has a driver (${x.product}${x.status === 'untested' ? ', new: not yet tried on a real one' : ''}).`)),
-    h('div', { class: 'actions' }, done
+    arrivedNote[x.id] === 'Installing…' ? null : h('div', { class: 'actions' }, done
       ? button('OK', () => { arrivedList = arrivedList.slice(1); redraw(); }, { kind: 'ghost small' })
       : [button('Install', install, { kind: 'primary small' }), button('Not now', notNow, { kind: 'ghost small' })]));
 }
@@ -422,7 +423,7 @@ export default {
       supportedNow(redraw, fresh),
       setupCard(redraw),
       noDevicesYet() ? firstRun(go, redraw)
-        : h('div', { class: 'bays', style: { gridTemplateColumns: `repeat(${list.length}, minmax(0, 1fr))` } }, ...list.map((d) => bay(d, go, redraw))),
+        : h('div', { class: 'bays', style: { '--bays': list.length } }, ...list.map((d) => bay(d, go, redraw))),
       batteries(redraw),
       h('div', { class: 'grid ov-bottom' },
         card([h('h2', {}, 'Profiles'), h('span', { class: 'spacer' }), gameModeLine() ? h('span', { class: 'pill accent' }, gameModeLine()) : null, button('Manage', () => go('profiles'), { kind: 'ghost small' })],

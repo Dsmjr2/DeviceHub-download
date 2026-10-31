@@ -104,7 +104,9 @@ export async function gather(deps = {}) {
   }
   for (const d of devs) {
     const a = d.adapter;
-    if (!a.plugin) continue;
+    // a driver that stepped aside (found nothing of its own: a keyboard driver on a receiver with only a mouse) is not a
+    // claim on the device; the driver that runs it is (31 Oct 2026, support #26)
+    if (!a.plugin || d.absent) continue;
     const ids = idsOfFolder(path.join(root, 'my-devices', a.plugin));
     if (a.usbId) ids.add(String(a.usbId).toLowerCase());
     const mark = readJson(path.join(root, 'my-devices', a.plugin, 'library.json'));

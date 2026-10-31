@@ -163,6 +163,7 @@ const adapter = {
   },
 
   async info() {
+    if (mode === 'generic' && generic.bt === 'only') return { Model: generic.device, Connection: 'Bluetooth', Control: 'Windows sound' };
     if (mode === 'generic' && isJack(generic.usb)) return { Model: generic.device, Connection: 'Wired (headphone jack)', Control: 'Windows sound' };
     if (mode === 'generic') return { Model: generic.device, 'USB id': generic.usb.replace('VID_', '').replace('&PID_', ':').toLowerCase(), Control: 'Windows sound (any USB headset)' };
     if (mode === 'direct') {

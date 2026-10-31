@@ -269,7 +269,7 @@ h1 { margin: 0; font-size: clamp(26px, 3vw, 36px); line-height: 1.1; letter-spac
 .page.ov { height: 100%; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; padding-bottom: 22px; }
 .page.ov > * { flex: none; }
 .page.ov .topbar { margin-bottom: 16px; }
-.page.ov .bays { flex: 0 0 clamp(310px, 60vh, 640px); min-height: 0; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.page.ov .bays { flex: 0 0 clamp(310px, 60vh, 640px); min-height: 0; grid-template-columns: repeat(var(--bays, 3), minmax(0, 1fr)); }
 .page.ov .bay { min-height: 0; padding: 16px 18px; }
 /* the drawing always fits the space left in its tile; mouse and headset matched by eye, the keyboard by width */
 .page.ov .bay-art { flex: 1 1 0; min-height: 0; height: auto; padding: 8px 0; overflow: hidden; display: flex; align-items: center; justify-content: center; }
@@ -955,7 +955,7 @@ pre.json { margin: 0; max-height: 50vh; overflow: auto; font: 12px/1.5 var(--mon
   .hero { grid-template-columns: 1fr; }
   .srow { flex-wrap: wrap; }
   .page.ov { height: auto; overflow: visible; }
-  .page.ov .bays { grid-template-columns: 1fr; }
+  .page.ov .bays { grid-template-columns: 1fr; flex: none; }
 }
 /* Printing (the Fn cheat-sheet): only the open dialog, black on white. */
 @media print {

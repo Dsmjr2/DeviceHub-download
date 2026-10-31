@@ -9,6 +9,11 @@ import { devices, write, isDemo } from '../core/devices.js';
 import { testable, testValue } from '../core/guided-values.js';
 
 export const PUT_BACK_MS = 60 * 1000;
+// a value changed for a test and not put back yet (31 Oct 2026): kept across a window close or reload, so the next time the
+// page draws it is put back. { [id]: { key, from } }
+const PENDING = 'dh-guided-pending';
+const pendingAll = () => { try { return JSON.parse(localStorage.getItem(PENDING) || '{}') || {}; } catch { return {}; } };
+const setPending = (id, v) => { try { const all = pendingAll(); if (v) all[id] = v; else delete all[id]; localStorage.setItem(PENDING, JSON.stringify(all)); } catch {} };
 const state = {};   // device id -> { tried: {key: {answer}} | null, stage: 'idle'|'ready'|'asked'|'busy', key, from, to, msg, timer }
 
 async function getJson(url, opts) {
@@ -55,6 +60,15 @@ export function guidedTest(d, { after = () => null, redraw = () => {} } = {}) {
   // the page redraws on every device change, so each change of step redraws it too (a new box drawn from the same state)
   const set = (x) => { Object.assign(s, x); draw(); redraw(); };
   const setting = (key) => (devices[id]?.adapter?.settings || []).find((x) => x.key === key);
+  // left changed by a window that closed mid-question: put back first, once
+  const left = !isDemo() && s.stage === 'idle' ? pendingAll()[id] : null;
+  if (left && devices[id]?.status === 'connected') {
+    s.stage = 'ready';
+    const x = setting(left.key);
+    write(id, left.key, left.from, { label: x?.label || left.key, display: x ? shown(x, left.from) : String(left.from), silent: true, noUndo: true })
+      .then(() => { setPending(id, null); set({ msg: `${x?.label || left.key} was put back to ${x ? shown(x, left.from) : left.from} (the window closed during the test).` }); })
+      .catch((e) => { s.stuck = { key: left.key, from: left.from }; set({ msg: `${x?.label || left.key} was left at its test value and could not be put back (${e.message}). Set it on this page.` }); });
+  }
   const load = () => {
     if (isDemo()) return set({ tried: {} });
     getJson(`/api/help/tried?id=${encodeURIComponent(id)}`).then((j) => set({ tried: j.keys || {} })).catch((e) => set({ tried: {}, msg: `Answers not read: ${e.message}` }));
@@ -67,16 +81,18 @@ export function guidedTest(d, { after = () => null, redraw = () => {} } = {}) {
   const putBack = async () => {
     clearTimeout(s.timer);
     const x = setting(s.key);
-    try { await write(id, s.key, s.from, { label: x?.label || s.key, display: x ? shown(x, s.from) : String(s.from), silent: true, noUndo: true }); return true; }
-    catch (e) { set({ stage: 'ready', msg: `${x?.label || s.key} was not put back (${e.message}). Set it on this page.` }); return false; }
+    try { await write(id, s.key, s.from, { label: x?.label || s.key, display: x ? shown(x, s.from) : String(s.from), silent: true, noUndo: true }); setPending(id, null); s.stuck = null; return true; }
+    catch (e) { s.stuck = { key: s.key, from: s.from }; set({ stage: 'ready', msg: `${x?.label || s.key} was not put back (${e.message}). Set it on this page.` }); return false; }
   };
   const tryIt = async (x) => {
-    const from = devices[id]?.values?.[x.key];
+    // after a put-back that failed, the device still holds the test value: the original is the one kept
+    const from = s.stuck?.key === x.key ? s.stuck.from : devices[id]?.values?.[x.key];
     const to = testValue(x, from);
     if (to === undefined) return answer(x.key, 'unsure');
     set({ stage: 'busy', key: x.key, from, to, msg: '' });
+    if (!isDemo()) setPending(id, { key: x.key, from });
     try { await write(id, x.key, to, { label: x.label, display: shown(x, to), silent: true, noUndo: true }); }
-    catch (e) { return set({ stage: 'ready', msg: `${x.label} could not be changed: ${e.message}` }); }
+    catch (e) { if (!s.stuck) setPending(id, null); return set({ stage: 'ready', msg: `${x.label} could not be changed: ${e.message}` }); }
     s.timer = setTimeout(async () => { if (s.stage === 'asked' && s.key === x.key && (await putBack())) set({ stage: 'ready', msg: `No answer, so ${x.label} was put back.` }); }, PUT_BACK_MS);
     set({ stage: 'asked' });
   };
@@ -99,6 +115,7 @@ export function guidedTest(d, { after = () => null, redraw = () => {} } = {}) {
     if (s.stage === 'asked' || (s.stage === 'busy' && s.key)) {
       const x = setting(s.key);
       if (s.stage === 'busy') return box.replaceChildren(small('One moment…'));
+      if (!x) return box.replaceChildren(small('The device went away during the test. Plug it back in, then try again.'));
       return box.replaceChildren(h('div', { class: 'works-invite' },
         h('p', {}, h('b', {}, `${x.label}: ${shown(x, s.from)} → ${shown(x, s.to)}. `), 'Did you notice it change?'),
         small(`${lookFor(x, kind)} It goes back to ${shown(x, s.from)} when you answer.`),

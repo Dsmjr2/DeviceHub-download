@@ -1,7 +1,7 @@
 {
-  "version": "1.23",
-  "commit": "9718c52e7232",
+  "version": "1.24",
+  "commit": "333a286d00ff",
   "notes": [
-    "Learn a device: one button per device, no extra steps"
+    "Small fixes and improvements"
   ]
 }
