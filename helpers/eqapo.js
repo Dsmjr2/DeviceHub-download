@@ -136,7 +136,10 @@ function text(s, stages, name, ctx) {
   const activeChain = chain.filter(([t, , g]) => !(t === 'PK' && Math.abs(g) < 0.005));
   out.push(`# Headset: ${name}${x.correction && model === 'HS80' ? ' + HS80 correction' : ''}${model !== 'HS80' ? ` (${model})` : ''}`, `Device: ${ctx.headset.length ? ctx.headset.join('; ') : '*HS80*'}`);
   if (activeChain.length || x.loudness || x.balance) {
-    out.push(`Preamp: ${fmt(s.headroom !== false && activeChain.length ? -peak(activeChain) : 0)} dB`, ...activeChain.map((f, i) => line(f, i + 1)));
+    // with "Prevent distortion" off the boost still stops at +12 dB in all (31 Oct 2026: 20 extra filters at one
+    // frequency could add up to over +200 dB)
+    const pk = activeChain.length ? peak(activeChain) : 0;
+    out.push(`Preamp: ${fmt(!activeChain.length ? 0 : s.headroom !== false ? -pk : Math.min(0, 12 - pk))} dB`, ...activeChain.map((f, i) => line(f, i + 1)));
     if (x.loudness) out.push('LoudnessCorrection: State 1 ReferenceLevel 75 ReferenceOffset 0 Attenuation 1');
     if (x.balance) out.push(`Channel: ${x.balance > 0 ? 'L' : 'R'}`, `Preamp: ${fmt(-Math.abs(x.balance))} dB`, 'Channel: all');
   } else {
