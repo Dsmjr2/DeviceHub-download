@@ -426,6 +426,18 @@ export default {
     return out;
   },
 
+  // asleep (switched off, out of range): one read asked before the whole set (31 Oct 2026: every look at a switched-off
+  // headset waited on every read's timeout, about 9 s, and the log filled with them); only a read on the safe list
+  async awake() {
+    try {
+      const m = this.model();
+      const k = KEYS.find((x) => Object.hasOwn(m.reads, x));
+      if (!k) return true;
+      await this.link.get(k);
+      return true;
+    } catch { return false; }
+  },
+
   async read() {
     const m = this.model();
     const out = {};
@@ -434,7 +446,8 @@ export default {
       if (!Object.hasOwn(m.reads, k)) continue;
       try { const v = await this.link.get(k); out[k] = v; got++; if (this.first[k] === undefined && v !== null) this.first[k] = v; } catch (e) { last = e; }
     }
-    if (!got && last) throw last;
+    // 31 Oct 2026 (support #16-#26): "no reply to 06 ff bb 07" named only the last of the reads; the dongle answered none
+    if (!got && last) throw Object.assign(new Error(`the headset did not answer: switched off or out of range of its dongle (${last.message})`), { cause: last });
     return out;
   },
 

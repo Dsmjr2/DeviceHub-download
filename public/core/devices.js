@@ -394,7 +394,7 @@ export async function undo(id) {
   devices[id].undo = undoTop(id);
   emit(id);
   if (!c) throw new Error('nothing to undo');
-  try { await write(id, c.key, c.before, { label: c.label, display: 'as before', noUndo: true }); }
+  try { await write(id, c.key, c.before, { label: c.label, display: 'as before', noUndo: true, silent: true }); }
   catch (e) { undoStack[id].push(c); devices[id].undo = undoTop(id); emit(id); throw e; }
   return { label: c.label };
 }

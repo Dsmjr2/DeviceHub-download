@@ -152,27 +152,37 @@ function send(res, code, body, type = 'application/json') {
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = '';
-    req.on('data', (c) => { data += c; if (data.length > 5e6) reject(new Error('too large')); });
-    req.on('end', () => { try { resolve(data ? JSON.parse(data) : {}); } catch (e) { reject(e); } });
+    // a body cut off (the window closed mid-save) settles too (31 Oct 2026: the EQ save's busy flag stayed set for good)
+    const bad = (msg, status) => reject(Object.assign(new Error(msg), { status }));
+    req.on('data', (c) => { data += c; if (data.length > 5e6) bad('too large', 413); });
+    req.on('end', () => { try { resolve(data ? JSON.parse(data) : {}); } catch (e) { bad(`not JSON: ${e.message}`, 400); } });
+    req.on('error', (e) => bad(e.message, 400));
+    req.on('close', () => { if (!req.complete) bad('the request was cut off', 400); });
   });
 }
 
 // tasklist is fast (~0.1 s); with windows=true, PowerShell also returns window titles (for the picker).
+// The window-title list is one PowerShell at a time, and kept 5 s (31 Oct 2026: each ask started a new PowerShell, with no
+// limit)
+let windowsList = null;
 function runningPrograms(withWindows) {
+  if (withWindows) {
+    if (windowsList && (windowsList.busy || Date.now() - windowsList.at < 5000)) return windowsList.p;
+    const p = new Promise((resolve) => execFile('powershell', ['-NoProfile', '-Command', 'Get-Process | Where-Object { $_.MainWindowTitle } | ForEach-Object { "$($_.ProcessName).exe`t$($_.MainWindowTitle)" }'], { windowsHide: true, timeout: 8000 }, (err, out) => {
+      resolve((out || '').split(/\r?\n/).filter(Boolean).map((l) => { const [exe, title] = l.split('\t'); return { exe, title }; }));
+    }));
+    windowsList = { p, busy: true, at: 0 };
+    p.then(() => { windowsList.busy = false; windowsList.at = Date.now(); });
+    return p;
+  }
   return new Promise((resolve) => {
-    if (withWindows) {
-      execFile('powershell', ['-NoProfile', '-Command', 'Get-Process | Where-Object { $_.MainWindowTitle } | ForEach-Object { "$($_.ProcessName).exe`t$($_.MainWindowTitle)" }'], { windowsHide: true, timeout: 8000 }, (err, out) => {
-        resolve((out || '').split(/\r?\n/).filter(Boolean).map((l) => { const [exe, title] = l.split('\t'); return { exe, title }; }));
-      });
-    } else {
-      // from the helper that already runs (26 Oct 2026, idle CPU: auto-switch looks every 10 s, and each tasklist cost
-      // ~170 ms of CPU); tasklist only when the helper cannot answer (it is restarting, or an older helper)
-      if (corsair) {
-        corsair.handle('procs', {}).then((r) => { if (Array.isArray(r.names)) resolve(r.names); else throw new Error('no names'); }).catch(() => tasklist());
-        return;
-      }
-      tasklist();
+    // from the helper that already runs (26 Oct 2026, idle CPU: auto-switch looks every 10 s, and each tasklist cost
+    // ~170 ms of CPU); tasklist only when the helper cannot answer (it is restarting, or an older helper)
+    if (corsair) {
+      corsair.handle('procs', {}).then((r) => { if (Array.isArray(r.names)) resolve(r.names); else throw new Error('no names'); }).catch(() => tasklist());
+      return;
     }
+    tasklist();
     function tasklist() {
       execFile('tasklist', ['/fo', 'csv', '/nh'], { windowsHide: true, timeout: 8000 }, (err, out) => {
         resolve([...new Set((out || '').split(/\r?\n/).map((l) => l.split('","')[0]?.replace(/^"/, '')).filter(Boolean))]);
@@ -286,6 +296,9 @@ async function api(req, res, url) {
   // state must be a POST (a page can make a browser send a GET, e.g. with an <img>, without an Origin header).
   const origin = req.headers.origin;
   if (origin && origin !== `http://localhost:${PORT}` && origin !== `http://127.0.0.1:${PORT}`) return send(res, 403, { error: 'origin' });
+  // and a GET sent by another site's page with no Origin (an <img>, a link) is marked cross-site by the browser (31 Oct
+  // 2026: GET /api/diag?watchdog-test froze the helper from any web page); DeviceHub's own window is same-origin
+  if (req.headers['sec-fetch-site'] === 'cross-site') return send(res, 403, { error: 'cross-site' });
   if (req.method !== 'GET' && req.method !== 'POST') return send(res, 405, { error: 'method' });
   if (ISOLATED && isolatedApi(req, res, url)) return;
 
@@ -439,6 +452,7 @@ async function api(req, res, url) {
     // a watchdog test: freezes the helper's heartbeat channel on purpose, then runs a heartbeat (the watchdog restarts
     // the helper about 10 s later; helpers/native.js)
     if (url.searchParams.has('watchdog-test')) {
+      if (req.method !== 'POST') return send(res, 405, { error: 'use POST' });
       const n = require('./helpers/native');
       n.request('watchdog', 'HANG-TEST', 2000); setTimeout(() => n.heartbeat(), 500);
       return send(res, 200, { started: true });
@@ -656,8 +670,8 @@ async function api(req, res, url) {
       if (sub === '/plan' && req.method === 'POST') return send(res, 200, setupExtras().plan(await readBody(req)));
       if (sub === '/apply' && req.method === 'POST') {
         const chunks = []; let size = 0, big = false;
-        await new Promise((resolve, reject) => { req.on('data', (c) => { size += c.length; if (size > 1024 * 1024 * 1024) big = true; else chunks.push(c); }); req.on('end', resolve); req.on('error', reject); });
-        if (big) return send(res, 413, { error: 'That setup file is over 1 GB.' });
+        await new Promise((resolve, reject) => { req.on('data', (c) => { size += c.length; if (size > 400 * 1024 * 1024) big = true; else chunks.push(c); }); req.on('end', resolve); req.on('error', reject); req.on('close', () => { if (!req.complete) reject(new Error('the setup file upload was cut off')); }); });
+        if (big) return send(res, 413, { error: 'That setup file is over 400 MB.' });
         const x = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
         const r = setupExtras().apply(x);
         if (typeof x.headsetPick === 'string') { try { await agent?.op('headset-pick', { pick: x.headsetPick }); } catch {} }
@@ -732,8 +746,10 @@ async function api(req, res, url) {
   if (url.pathname === '/api/eq' && req.method === 'GET') { const r = await icueEq.read(); return send(res, 200, r.available ? r : { ...r, needsApo: true }); }
   if (url.pathname === '/api/eq/save' && req.method === 'POST') {
     if (eqBusy) return send(res, 409, { error: 'an equalizer save is already running' });
+    const body = await readBody(req);
+    if (eqBusy) return send(res, 409, { error: 'an equalizer save is already running' });
     eqBusy = true;
-    try { return send(res, 200, await icueEq.save(await readBody(req), BACKUPS)); } finally { eqBusy = false; }
+    try { return send(res, 200, await icueEq.save(body, BACKUPS)); } finally { eqBusy = false; }
   }
   // Mic test (helpers/mic-rec.cs): records the headset mic through Windows' normal path (its filters included) into
   // the helper's memory; playback is built here in memory and sent with no-store, never written to a file.
@@ -830,7 +846,7 @@ async function api(req, res, url) {
       if (url.searchParams.has('check')) return send(res, 200, { picture: !!cur });
       if (!cur) return send(res, 404, { error: 'no background picture' });
       res.writeHead(200, { 'Content-Type': cur.type, 'Cache-Control': 'no-store' });
-      return fs.createReadStream(cur.file).pipe(res);
+      return fs.createReadStream(cur.file).on('error', () => { try { res.destroy(); } catch {} }).pipe(res);
     }
     if (req.method === 'POST') {
       const chunks = []; let size = 0, big = false;
@@ -1125,9 +1141,11 @@ async function api(req, res, url) {
 }
 
 http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://localhost:${PORT}`);
   // DNS rebinding guard: a page on another name that resolves to 127.0.0.1 still sends its own Host.
   if (!HOSTS.has(String(req.headers.host).toLowerCase())) return send(res, 421, 'wrong host', 'text/plain');
+  // a request line URL() cannot read ("GET //:99999") is refused, not thrown: it stopped the server (31 Oct 2026)
+  let url;
+  try { url = new URL(req.url, `http://localhost:${PORT}`); } catch { return send(res, 400, 'bad request', 'text/plain'); }
   try {
     if (url.pathname.startsWith('/api/')) return await api(req, res, url);
     const rel = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname).replace(/^\/+/, '');
@@ -1137,6 +1155,10 @@ http.createServer(async (req, res) => {
     if (ISOLATED && file === path.join(PUBLIC, 'index.html')) return send(res, 200, fs.readFileSync(file, 'utf8').replace('<script type="module" src="app.js"></script>', '<script>window.DEVICEHUB_DEMO = true; window.DEVICEHUB_ISOLATED = true;</script>\n  <script type="module" src="app.js"></script>'), 'text/html');
     send(res, 200, fs.readFileSync(file), TYPES[path.extname(file)] || 'application/octet-stream');
   } catch (e) {
+    // an answer already started (the live stream) cannot get a second one: writeHead again threw and stopped the server
+    if (res.headersSent) { try { res.destroy(); } catch {} return; }
+    if (e instanceof URIError) return send(res, 400, { error: 'bad address' });
+    if (e?.status === 400 || e?.status === 413) return send(res, e.status, { error: e.message });
     console.error(e);
     send(res, 500, { error: e.message });
   }

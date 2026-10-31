@@ -70,7 +70,9 @@ export function slider({ value, min, max, step = 1, onCommit, live, grab, disabl
   if (accent) el.style.setProperty('--accent', accent);
   const paint = () => el.style.setProperty('--p', `${((input.value - min) / (max - min)) * 100}%`);
   paint();
-  let busy = null, next = null, sent = value, moved = false;
+  // cur: the value last committed, so a drag back to where it started is still sent (31 Oct 2026: Lighting brightness
+  // 80 -> 40 -> 80 left the keyboard at 40%; toggle and segmented got this on 23-24 Oct)
+  let busy = null, next = null, sent = value, moved = false, cur = value;
   const pump = () => {
     if (busy || next == null || next === sent) return;
     const v = next; next = null; sent = v; moved = true;
@@ -84,8 +86,8 @@ export function slider({ value, min, max, step = 1, onCommit, live, grab, disabl
     if (busy) await busy;
     // after live steps the release is always sent: it is the one that is confirmed (and a drag back to the start may
     // have left the device on a step in between)
-    if (v === value && !moved) return;
-    moved = false;
+    if (v === cur && !moved) return;
+    moved = false; cur = v;
     run(el, () => onCommit(v));
   });
   return el;
@@ -95,16 +97,18 @@ export function slider({ value, min, max, step = 1, onCommit, live, grab, disabl
 export function stepper({ value, min, max, step = 1, onCommit, disabled, unit, big, label }) {
   const input = h('input', { type: 'number', min, max, step, value: value ?? '', disabled, inputmode: 'numeric', 'aria-label': label });
   const el = h('div', { class: `stepper${big ? ' big' : ''}` });
+  let cur = value;   // the value last committed (as the slider)
   const commit = (v) => {
     v = clamp(Math.round(v / step) * step, min, max);
     input.value = v;
-    if (v === value) return;
+    if (v === cur) return;
+    cur = v;
     run(el, () => onCommit(v));
   };
   const minus = h('button', { class: 'step', disabled, 'aria-label': 'decrease', onclick: () => commit(Number(input.value) - step) }, '−');
   const plus = h('button', { class: 'step', disabled, 'aria-label': 'increase', onclick: () => commit(Number(input.value) + step) }, '+');
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
-  input.addEventListener('blur', () => { if (input.value !== '' && Number(input.value) !== value) commit(Number(input.value)); });
+  input.addEventListener('blur', () => { if (input.value !== '' && Number(input.value) !== cur) commit(Number(input.value)); });
   el.append(...[minus, input, unit ? h('span', { class: 'unit' }, unit) : null, plus].filter(Boolean));
   return el;
 }
@@ -240,9 +244,10 @@ export function offSwatch({ on = false, onclick, label = 'Lights', disabled = fa
 export const COLOR_SWATCHES = [['#ffffff', 'White'], ['#ff0000', 'Red'], ['#ff8000', 'Orange'], ['#ffff00', 'Yellow'], ['#00ff00', 'Green'],
   ['#00ffff', 'Cyan'], ['#0000ff', 'Blue'], ['#ff00ff', 'Magenta'], ['#000000', 'Off']];
 export function colorRow({ value, onCommit, label = 'color', disabled }) {
-  const cur = typeof value === 'string' ? value.toLowerCase() : null;
+  let cur = typeof value === 'string' ? value.toLowerCase() : null;
   const el = h('div', { class: 'theme-row kind-color' });
   const pick = (hex) => {
+    cur = hex;
     for (const b of el.querySelectorAll('.theme-swatch')) { const on = b.dataset.hex === hex; b.classList.toggle('sel', on); b.setAttribute('aria-pressed', String(on)); }
     box.value = hex;
     dot.style.setProperty('--s', hex);

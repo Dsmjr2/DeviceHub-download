@@ -222,6 +222,8 @@ function eqCard(redraw) {
           button('Save as…', async () => {
             const name = await promptText('New EQ preset', 'Preset name');
             if (!name) return;
+            // a name another preset has is refused, as Rename does (31 Oct 2026)
+            if (ui.eq.presets.some((x) => x.name.toLowerCase() === name.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 40).toLowerCase())) { toast('That name is taken', 'bad'); return; }
             const ok = await persist([...ui.eq.presets, { id: null, name, stages: draftStages() }], `"${name}" added`);
             const made = ok && APO() && ui.eq.presets.find((x) => x.name === name.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 40));
             if (made) { ui.sel = made.id; await activate(made.id); }

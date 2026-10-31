@@ -1,7 +1,8 @@
 {
-  "version": "1.24",
-  "commit": "333a286d00ff",
+  "version": "1.25",
+  "commit": "8a35293c280b",
   "notes": [
-    "Small fixes and improvements"
+    "UI fixes: key tester, sliders back to start, dropdowns, dialogs, key…",
+    "Server hardening, daily check, HyperX off, narrow Overview"
   ]
 }

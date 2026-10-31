@@ -39,11 +39,13 @@ export function findSetups(json) {
       name: typeof o.name === 'string' && o.name.trim() ? o.name.trim().slice(0, 60) : ctx.name,
       slot: typeof o.slotId === 'string' ? o.slotId : typeof o.id === 'string' && /mouse/i.test(o.id) ? o.id : ctx.slot,
     };
-    const stages = Array.isArray(o.dpiStages) ? o.dpiStages.map(dpiOf).filter(okDpi) : [];
+    // the default stage is G HUB's index into its own list, so it is looked up before stages it cannot read are left out
+    const raw = Array.isArray(o.dpiStages) ? o.dpiStages.map(dpiOf) : [];
+    const stages = raw.filter(okDpi);
     const rate = Number(o.reportRate);
     if (stages.length || okRate(rate)) {
       const at = Number.isInteger(o.defaultDpiIndex) ? o.defaultDpiIndex : Number.isInteger(o.defaultDpiStage) ? o.defaultDpiStage : 0;
-      const s = { name: here.name || 'G HUB setup', model: modelOf(here.slot), dpis: stages.slice(0, 8), dpi: stages[at] ?? stages[0] ?? null, reportRate: okRate(rate) ? rate : null };
+      const s = { name: here.name || 'G HUB setup', model: modelOf(here.slot), dpis: stages.slice(0, 8), dpi: okDpi(raw[at]) ? raw[at] : stages[0] ?? null, reportRate: okRate(rate) ? rate : null };
       const key = JSON.stringify(s);
       if (!seen.has(key)) { seen.add(key); out.push(s); }
     }

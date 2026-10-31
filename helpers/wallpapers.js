@@ -351,7 +351,7 @@ function create(opts = {}) {
         const tag = `"${f.st.size.toString(36)}-${Math.round(f.st.mtimeMs).toString(36)}"`;
         if (req.headers['if-none-match'] === tag) { res.writeHead(304, { ETag: tag }); return res.end(); }
         res.writeHead(200, { 'Content-Type': f.type, 'Content-Length': f.st.size, 'Cache-Control': 'no-cache', ETag: tag, 'X-Content-Type-Options': 'nosniff' });
-        return fs.createReadStream(f.full).pipe(res);
+        return fs.createReadStream(f.full).on('error', () => { try { res.destroy(); } catch {} }).pipe(res);
       }
       if (!POST) return p.startsWith('/api/wallpapers') ? send(res, 405, { error: 'POST' }) : false;
       if (p === '/api/wallpapers/add') {

@@ -277,7 +277,7 @@ function pickStep() {
   return h('div', {},
     card([h('h2', {}, learnable.length ? 'Pick the device to learn' : 'Nothing to learn')],
       learnable.length ? faint('Open its maker\'s app first if you have it. DeviceHub changes a few settings there and watches what the device is sent. It only listens.')
-        : p(working.length ? 'Every device here already works with DeviceHub. Learn a device is only for one it cannot control yet: plug it in, then press Look again.' : 'No mouse, keyboard or headset to learn is plugged in. Plug one in, then press Look again.'),
+        : p(working.length ? 'Every device here already works with DeviceHub. Learn a device is only for one it cannot control yet: plug it in, then press Look again.' : 'Everything plugged in already works with DeviceHub, or has nothing to set. Learn a device is only for a mouse, keyboard or headset it cannot control yet: plug it in, then press Look again.'),
       st.want && !wanted ? faint('The device you picked is not plugged in, or there is nothing on it to learn.') : null,
       ...learnable.map(learnRow),
       problems(),

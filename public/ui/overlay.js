@@ -35,13 +35,30 @@ export function toast(msg, kind = 'info', { detail, ms = 3800, action = null } =
 // ---------- modal ----------
 export function modal(title, body, actions = []) {
   return new Promise((resolve) => {
-    const done = (v) => { back.classList.remove('in'); setTimeout(() => back.remove(), 220); resolve(v); };
+    // 31 Oct 2026: Escape closes it wherever focus is, Tab stays inside it, and focus goes back to what opened it
+    const opener = document.activeElement;
+    const keys = (e) => {
+      if (!back.isConnected) return;
+      if (e.key === 'Escape') { e.preventDefault(); done(null); return; }
+      if (e.key !== 'Tab') return;
+      const all = [...box.querySelectorAll('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')].filter((x) => !x.disabled && x.offsetParent !== null);
+      if (!all.length) return;
+      const first = all[0], last = all[all.length - 1];
+      if (!box.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+      else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', keys, true);
+    const done = (v) => {
+      document.removeEventListener('keydown', keys, true);
+      back.classList.remove('in'); setTimeout(() => back.remove(), 220); resolve(v);
+      try { if (opener?.isConnected) opener.focus(); } catch {}
+    };
     const box = h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
       h('header', {}, h('h2', {}, title), h('button', { class: 'icon-btn', 'aria-label': 'close', onclick: () => done(null) }, icon('x'))),
       h('div', { class: 'modal-body' }, body),
       h('footer', {}, ...actions.map((a) => h('button', { class: `btn ${a.kind || ''}`, onclick: () => done(a.value) }, a.label))));
     const back = h('div', { class: 'modal-back', onclick: (e) => { if (e.target === back) done(null); } }, box);
-    back.addEventListener('keydown', (e) => { if (e.key === 'Escape') done(null); });
     document.body.append(back);
     setTimeout(() => { back.classList.add('in'); (box.querySelector('input, .btn.primary') || box.querySelector('button'))?.focus(); }, 10);
   });

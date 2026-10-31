@@ -93,7 +93,12 @@ export function dropdown({ options = [], value, onChange, label, disabled, cls =
     list.addEventListener('pointermove', (e) => { const o = e.target.closest?.('.dd-opt'); if (o && !o.classList.contains('off')) { const i = Number(o.dataset.i); if (i !== active) setActive(i, false); } });
     list.addEventListener('click', (e) => { const o = e.target.closest?.('.dd-opt'); if (o && !o.classList.contains('off')) pick(Number(o.dataset.i)); });
     document.body.append(list);
+    // opened from the keyboard while scrolled out of sight: brought into view first; and if it still closed at once, it
+    // stays closed (31 Oct 2026: it went on as open, and the page stopped redrawing while "a list was open")
+    const r0 = el.getBoundingClientRect();
+    if (r0.bottom < 0 || r0.top > innerHeight) el.scrollIntoView({ block: 'nearest' });
     place();
+    if (!list) return;
     el.setAttribute('aria-expanded', 'true');
     el.classList.add('open');
     const chosen = opts.findIndex((o) => o.value === cur);

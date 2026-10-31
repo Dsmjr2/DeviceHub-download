@@ -19,14 +19,21 @@ const save = (r) => { memo = r; try { writeAtomic(file, JSON.stringify(r, null, 
 async function checkDevice(d) {
   const a = d.adapter;
   const one = await core.readNow(d.id), two = await core.readNow(d.id);
-  const unstable = Object.keys(one).filter((k) => JSON.stringify(one[k]) !== JSON.stringify(two[k]) && !/^vol:|batteryLevel/.test(k));
+  // a read cut short (31 Oct 2026: the Pulsar dozed off between the two reads, its second read came back without most of its
+  // settings, and the check said 30 settings "changed between two reads"): only settings both reads have are compared,
+  // and a second read missing half of them is a device that went to sleep, checked again when it is next connected
+  const has = (o, k) => o && o[k] !== undefined && o[k] !== null;
+  const keys = Object.keys(one || {}).filter((k) => has(one, k));
+  const both = keys.filter((k) => has(two, k));
+  if (keys.length && both.length < keys.length / 2) return { ok: null, text: 'not checked: it went to sleep during the check; checked when it is next connected' };
+  const unstable = both.filter((k) => JSON.stringify(one[k]) !== JSON.stringify(two[k]) && !/^vol:|batteryLevel/.test(k));
   const notes = [];
   if (d.id === 'mouse' && a.trusted) {
     const bad = ['pollingRate', 'dpiStage', 'liftOff', 'debounce', 'motionSync', 'angleSnap', 'ripple'].filter((k) => !a.trusted(k));
     if (bad.length) notes.push(`${bad.join(', ')} failed their check and stay locked`);
   }
   if (unstable.length) notes.push(`changed between two reads: ${unstable.join(', ')}`);
-  return { ok: !notes.length, text: notes.length ? notes.join('; ') : `${Object.keys(one).length} settings read twice, identical` };
+  return { ok: !notes.length, text: notes.length ? notes.join('; ') : `${both.length} settings read twice, identical` };
 }
 
 // run: everything (all: true), or only the devices not checked in the last day that are connected now

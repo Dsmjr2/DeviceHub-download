@@ -321,7 +321,7 @@ h1 { margin: 0; font-size: clamp(26px, 3vw, 36px); line-height: 1.1; letter-spac
 .page.ov .ov-bottom > .panel { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .page.ov .ov-bottom > .panel > :not(.panel-head) { min-height: 0; overflow-y: auto; }
 .page.ov .ov-bottom .feed { flex: 1 1 0; max-height: none; }
-.page.ov .feed-item { grid-template-columns: 92px 70px 1fr; }
+.page.ov .feed-item { grid-template-columns: 92px 70px minmax(0, 1fr); }
 .ov-profiles { display: grid; gap: 6px; }
 .ov-profiles .btn { justify-content: flex-start; }
 @media (max-width: 1180px) { .page.ov .bay .bcell { margin-left: 0; } }
@@ -956,6 +956,9 @@ pre.json { margin: 0; max-height: 50vh; overflow: auto; font: 12px/1.5 var(--mon
   .srow { flex-wrap: wrap; }
   .page.ov { height: auto; overflow: visible; }
   .page.ov .bays { grid-template-columns: 1fr; flex: none; }
+  .page.ov .ov-bottom { grid-template-columns: minmax(0, 1fr); flex: none; }
+  .page.ov .ov-bottom .feed { max-height: 320px; }
+  .page.ov .feed-item { grid-template-columns: 62px 70px minmax(0, 1fr); }
 }
 /* Printing (the Fn cheat-sheet): only the open dialog, black on white. */
 @media print {

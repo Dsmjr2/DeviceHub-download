@@ -92,7 +92,8 @@ check(/Set-Location -LiteralPath \$env:TEMP/.test(un) && /-WorkingDirectory \$en
 const ctl = fs.readFileSync(path.join(ROOT, 'public/ui/controls.js'), 'utf8');
 // (23 Oct 2026: the switch keeps its own state, so the side it moves to is `next`)
 check(/show\(next\);\s*try \{ await run\(el/.test(ctl), 'a switch moves at once on a click');
-check(/if \(v === value && !moved\) return;/.test(ctl) &&/if \(busy \|\| next == null \|\| next === sent\) return;/.test(ctl), 'a live slider sends one step at a time and its release after a drag back');
+// (31 Oct 2026: compared with the value last committed, so a slider moved back to where it was drawn is sent too)
+check(/if \(v === cur && !moved\) return;\s*moved = false; cur = v;/.test(ctl) &&/if \(busy \|\| next == null \|\| next === sent\) return;/.test(ctl), 'a live slider sends one step at a time and its release after a drag back');
 check(/if \(holding\) heldRender = true; else render\(false\)/.test(fs.readFileSync(path.join(ROOT, 'public/app.js'), 'utf8')), 'a slider being dragged is not redrawn under the pointer');
 check(/Date\.now\(\) - \(lastBackupAt\[id\] \|\| 0\) < BACKUP_REUSE_MS/.test(fs.readFileSync(path.join(ROOT, 'public/core/devices.js'), 'utf8')), 'changes seconds apart share one device backup');
 // 11. Updates for zip installs (21 Oct 2026): checked against size and SHA-256, the new version's checks run first,

@@ -48,7 +48,7 @@ async function assign(code) {
 async function undoLast() {
   const u = ui.undo.pop();
   if (!u) return;
-  try { await write('keyboard', u.key, u.from, { label: `Undo ${u.where}`, display: keyName(u.from) }); } catch { ui.undo.push(u); }
+  try { await write('keyboard', u.key, u.from, { label: `Undo ${u.where}`, display: keyName(u.from), noUndo: true }); } catch { ui.undo.push(u); }
 }
 
 function keyboardView(s) {
@@ -95,9 +95,14 @@ function picker(s) {
   };
   const search = h('input', { class: 'text', placeholder: 'Search keys…', value: ui.query, 'aria-label': 'search keys' });
   search.addEventListener('input', () => { ui.query = search.value; fill(); });
-  const raw = h('input', { class: 'text mono', placeholder: '0x0004', style: { width: '120px' }, 'aria-label': 'raw keycode' });
+  // 31 Oct 2026: Search is focused when a key is picked, not on every redraw (one moved focus out of the raw box and
+  // emptied it), and what was typed in the raw box stays
+  const pickedKey = `${ui.layer}:${t.type}:${t.r ?? ''}:${t.c ?? ''}:${t.cw ? 1 : 0}`;
+  if (ui.pickedKey !== pickedKey) { ui.pickedKey = pickedKey; ui.rawDraft = ''; queueMicrotask(() => search.focus({ preventScroll: true })); }
+  const raw = h('input', { class: 'text mono', placeholder: '0x0004', value: ui.rawDraft || '', style: { width: '120px' }, 'aria-label': 'raw keycode' });
+  raw.addEventListener('input', () => { ui.rawDraft = raw.value; });
+  if (document.activeElement?.getAttribute?.('aria-label') === 'raw keycode') queueMicrotask(() => { raw.focus({ preventScroll: true }); raw.setSelectionRange(raw.value.length, raw.value.length); });
   fill();
-  queueMicrotask(() => search.focus({ preventScroll: true }));
   return h('div', { class: 'picker' },
     h('div', { class: 'picker-cur' }, h('div', { class: 'bigcap' }, t.type === 'key' ? shortName(code) : icon('knob')), h('div', { class: 'meta' }, h('b', {}, title), `Now: ${keyName(code)}`)),
     search, listEl,
@@ -208,12 +213,16 @@ function macroPanel(s) {
       h('div', { class: 'macro-chips' }, ...MACRO_TOKENS.map(([label, tok]) => h('button', { class: 'pk macro-chip', type: 'button', title: `Insert ${tok}`, onclick: () => insertToken(tok) }, label)))),
     h('div', { class: 'macro-list' }, ...show.map(([text, i]) => {
       const locked = m.editable && !m.editable[i] && !!text;
-      const input = h('input', { class: 'text macro-input', value: text, placeholder: text ? '' : 'Type text or click a key above (e.g. gg{Enter})', 'aria-label': `macro ${i}`, disabled: locked, title: locked ? 'Made in another app; edit it there' : null });
+      const draft = ui.macroDraft?.[i];
+      const input = h('input', { class: 'text macro-input', value: draft ?? text, placeholder: text ? '' : 'Type text or click a key above (e.g. gg{Enter})', 'aria-label': `macro ${i}`, disabled: locked, title: locked ? 'Made in another app; edit it there' : null });
       inputs.push(input);
-      input.addEventListener('focus', () => { activeMacroInput = input; });
+      input.addEventListener('focus', () => { activeMacroInput = input; ui.macroFocus = i; });
       const save = button('Save', () => write('keyboard', `macro:${i}`, input.value, { label: `Macro ${i}`, display: input.value ? `"${input.value}"` : 'empty' }).catch(() => {}), { kind: 'primary small' });
-      save.disabled = true;
-      input.addEventListener('input', () => { save.disabled = input.value === text; });
+      save.disabled = draft == null || draft === text;
+      input.addEventListener('input', () => { (ui.macroDraft ||= {})[i] = input.value; save.disabled = input.value === text; });
+      if (draft != null && draft === text) delete ui.macroDraft[i];   // saved: the device now has it
+      if (ui.macroFocus === i) queueMicrotask(() => { input.focus({ preventScroll: true }); input.setSelectionRange(input.value.length, input.value.length); });
+      input.addEventListener('blur', () => { if (ui.macroFocus === i) ui.macroFocus = null; });
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !save.disabled) save.click(); });
       return h('div', { class: 'macro' },
         h('span', { class: 'mname' }, h('b', {}, `Macro ${i + 1}`), h('small', { class: 'faint' }, `M${i}`)),
@@ -273,10 +282,13 @@ function onKey(e) {
   if (!ui.tester || location.hash !== '#/keyboard' || /input|textarea|select/i.test(document.activeElement?.tagName)) return;
   const hid = CODE_TO_HID[e.code];
   if (hid == null) return;
-  e.preventDefault();
+  // marked, but Tab still moves focus and Enter or Space still press the focused button (31 Oct 2026), so the tester
+  // never traps the keyboard
+  const onControl = /button|a|summary/i.test(document.activeElement?.tagName || '') || document.activeElement?.getAttribute?.('role');
+  if (!(e.code === 'Tab' || (onControl && /^(Enter|Space|NumpadEnter)$/.test(e.code)))) e.preventDefault();
   const down = e.type === 'keydown';
   if (down) ui.tested.add(String(hid));
-  for (const el of $$(`.key[data-phys="${hid}"]`)) { el.classList.toggle('down', down); el.classList.add('tested'); }
+  for (const el of document.querySelectorAll(`.key[data-phys="${hid}"]`)) { el.classList.toggle('down', down); el.classList.add('tested'); }
   const n = document.querySelector('.tester-count');
   if (n) n.textContent = testerCount();
 }
