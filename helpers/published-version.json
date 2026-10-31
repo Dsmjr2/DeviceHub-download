@@ -1,8 +1,7 @@
 {
-  "version": "1.32",
-  "commit": "92d9867e6968",
+  "version": "1.33",
+  "commit": "0392cdc06cfa",
   "notes": [
-    "Demo never writes Game mode, Learn Stop ends cleanly, small wording…",
-    "Logitech mouse shows only its own settings; Arctis waits for GG"
+    "Review fixes: wake reads, laptop battery, guard cache, demo wording"
   ]
 }

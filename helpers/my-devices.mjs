@@ -653,6 +653,13 @@ export function stepAside(a, { now = () => Date.now(), log = (t) => console.log(
   a.read = async function (...args) {
     try { const r = await read.apply(this, args); a.strayed = false; return r; } catch (e) { if (e?.notMine) note(e); throw e; }
   };
+  // the quick minute read too (31 Oct 2026: a library driver's wakeRead could find "not mine" and leave a tile behind)
+  if (typeof a.wakeRead === 'function') {
+    const wake = a.wakeRead;
+    a.wakeRead = async function (...args) {
+      try { return await wake.apply(this, args); } catch (e) { if (e?.notMine) note(e); throw e; }
+    };
+  }
   // a Windows device change (something plugged in or out) is worth one look at once
   a.notMineRetry = () => { if (a.notMine) a.notMine.retry = true; };
   return a;

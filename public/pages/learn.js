@@ -213,7 +213,7 @@ const nothingNote = () => (st.nothing ? h('div', { class: 'learn-problem', role:
 
 // at the end: the recordings to Shawn, by themselves
 async function sendToShawn(why) {
-  if (st.sent?.sent || isDemo()) { if (isDemo()) st.sent = { sent: true, line: SENT_DONE }; return st.sent; }
+  if (st.sent?.sent || isDemo()) { if (isDemo()) st.sent = { sent: true, line: 'Demo: nothing was sent. On a real PC the recordings go to Shawn and the driver usually arrives within a day.' }; return st.sent; }
   const r = await api('send', { why });
   st.sent = r.sent || r.queued ? { sent: !!r.sent, queued: !!r.queued, line: r.line || SENT_DONE } : r.why === 'nothing was heard to send' ? null : { sent: false, line: r.line || r.error || 'Not sent. Use Get help, top right.' };
   return st.sent;
@@ -699,7 +699,7 @@ function demoAuto(step, body) {
   if (step === '' && body) { demoA.t0 = Date.now(); demoA.dev = { vid: body.vid, pid: body.pid, name: DEMO_DEV.name }; demoA.skip = false; return Promise.resolve({ ok: true, phase: 'start', device: demoA.dev, steps: [], items: [] }); }
   if (step === 'finish') return Promise.resolve({ ok: true, ran: true, on: true, counts: { checked: 2, passed: 2 } });
   if (step === 'stop') { demoA.t0 = 0; return Promise.resolve({ ok: true, phase: 'stopped', device: demoA.dev, steps: [], items: [] }); }
-  if (step === '' && !body && demoA.t0 && (Date.now() - demoA.t0) / 1000 >= 14) return Promise.resolve({ phase: 'done', device: demoA.dev, app: { name: 'Corsair iCUE' }, steps: [], items: [], sent: { sent: true, line: SENT_DONE }, result: { saved: { name: 'kite-mouse', id: null }, learned: ['DPI', 'Polling rate'], skipped: [], leftAt: [], appOpen: true, app: 'Corsair iCUE' } });
+  if (step === '' && !body && demoA.t0 && (Date.now() - demoA.t0) / 1000 >= 14) return Promise.resolve({ phase: 'done', device: demoA.dev, app: { name: 'Corsair iCUE' }, steps: [], items: [], sent: { sent: true, line: 'Demo: nothing was sent. On a real PC the recordings go to Shawn and the driver usually arrives within a day.' }, result: { saved: { name: 'kite-mouse', id: null }, learned: ['DPI', 'Polling rate'], skipped: [], leftAt: [], appOpen: true, app: 'Corsair iCUE' } });
   if (step === 'skip' || step === 'done') { demoA.skip = true; return Promise.resolve({ ok: true }); }
   if (!demoA.t0) return Promise.resolve({ phase: 'idle' });
   const t = (Date.now() - demoA.t0) / 1000;

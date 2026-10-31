@@ -438,6 +438,7 @@ export default {
       const k = KEYS.find((x) => Object.hasOwn(m.reads, x));
       if (!k) return true;
       await this.link.get(k);
+      this.awakeAskedAt = 0;
       return true;
     } catch { return false; }
   },

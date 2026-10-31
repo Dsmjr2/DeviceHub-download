@@ -191,7 +191,9 @@ async function refreshUnlocked(id, { quiet, first, full, dpi } = {}) {
     // A background look at a wireless device (waking, the minute check) reads only what can change on the device
     // itself (21 Oct 2026, battery: every request is radio traffic it answers): the mouse's DPI stage, its battery, and
     // the rest as last read. A full read at least every 10 minutes, at connect, and on Re-read.
-    const quick = quiet && !first && !full && d.adapter.wakeRead && d.info && Object.keys(d.info).length && Date.now() - (fullReadAt[id] || 0) < FULL_READ_MS;
+    // (31 Oct 2026) a library driver waking from asleep gets a full read: a replug or another mouse kept the old info;
+    // DeviceHub's own mouse, asleep every 20 s, keeps its quick wake read
+    const quick = quiet && !first && !full && !(d.status === 'asleep' && d.adapter.plugin) && d.adapter.wakeRead && d.info && Object.keys(d.info).length && Date.now() - (fullReadAt[id] || 0) < FULL_READ_MS;
     const info = quick ? d.info : await d.adapter.info();
     // while the mouse's own DPI announcements are heard (env.dpiEvents, helpers/agent.mjs), the minute check reads only
     // the battery; a press (dpi), a wake and the 10-minute full read still read the mouse

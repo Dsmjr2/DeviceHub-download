@@ -590,7 +590,7 @@ const adapter = {
     }
     // SUPERSTRIKE lift-off: the LOD byte's meaning differs between sources (S: 0 low / 1 medium / 2 high and the CLI doc
     // offers LOW / HIGH; X: G HUB sends LOD 1 / 2 / 3), and it is written with the 0x2202 DPI write: not offered.
-    if (this.superstrike) this.shownOnly.add('liftOff');
+    // (lift-off is left out of its settings: has.liftOff below)
 
     // HITS (0x1B0C) caps fn 0x00 -> [flags, buttons, act<<2, rt<<2, hap<<2, ...] (S AnalogButtonTuning.build, O
     // AnalogCaps, X ss2k_hits_caps). Offered only when every maximum is on the << 2 grid and within the documented range.

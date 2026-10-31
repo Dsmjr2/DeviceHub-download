@@ -140,7 +140,7 @@ async function yesDevice() {
   rerender();
   try {
     const { done, failed } = await writeBatch(id, plan.map((p) => ({ key: p.key, value: p.to, label: p.label, display: p.show })), `before restoring ${f.name}`);
-    note(key, failed ? `Problems: ${done} put back, ${failed} not (see Activity).` : `Done. Your ${d.adapter.title} is back to how it was ${when} (${plural(done, 'setting')}).`, failed ? 'bad' : 'good');
+    note(key, failed ? `Problems: ${done} put back, ${failed} not (see Activity).` : `${isDemo() ? 'Demo: ' : 'Done. '}Your ${d.adapter.title} is back to how it was ${when} (${plural(done, 'setting')})${isDemo() ? ', pretend only' : ''}.`, failed ? 'bad' : 'good');
   } catch (e) { note(key, `Not finished: ${e.message}.`, 'bad'); }
   ui.busy = null;
   load();

@@ -15,7 +15,7 @@ let weMuted = false, test = null;  // test: { prev } the mute it had before the 
 
 let enabledAt = -1, enabledWas = false;
 const enabled = () => {
-  try { const m = fs.statSync(settingsFile).mtimeMs; if (m !== enabledAt) { enabledAt = m; enabledWas = JSON.parse(fs.readFileSync(settingsFile, 'utf8')).ankerGuard === true; } return enabledWas; } catch { return false; }
+  try { const m = fs.statSync(settingsFile).mtimeMs; if (m !== enabledAt) { enabledWas = JSON.parse(fs.readFileSync(settingsFile, 'utf8')).ankerGuard === true; enabledAt = m; } return enabledWas; } catch { return false; }
 };
 const findMic = async () => (await call('audio-list', { match: '(' })).endpoints.find((e) => e.flow === 'recording' && ANKER.test(e.name));
 

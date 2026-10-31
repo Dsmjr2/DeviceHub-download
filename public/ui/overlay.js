@@ -43,7 +43,7 @@ export function modal(title, body, actions = []) {
       const open = document.querySelectorAll('.modal-back');
       if (open[open.length - 1] !== back) return;
       // the search (Ctrl+K) open over it answers its own keys
-      if (document.querySelector('.palette-back')) return;
+      if (document.querySelector('.palette-back.in')) return;
       if (e.key === 'Escape') { e.preventDefault(); done(null); return; }
       if (e.key !== 'Tab') return;
       const all = [...box.querySelectorAll('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')].filter((x) => !x.disabled && x.offsetParent !== null);
