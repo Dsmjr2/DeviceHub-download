@@ -1,7 +1,7 @@
 {
-  "version": "1.38",
-  "commit": "5ae14c6a1bc4",
+  "version": "1.39",
+  "commit": "16a3148441c8",
   "notes": [
-    "Every library driver dated, so its fixes reach PCs that already have…"
+    "Update pop-up at every start when an update is needed"
   ]
 }

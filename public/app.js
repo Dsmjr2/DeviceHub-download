@@ -427,16 +427,16 @@ everyVisible(async () => {
   try { sawVersion((await (await fetch('/api/version')).json()).version); } catch {}
 }, 20000);
 // A new version is ready (24 Oct 2026, Shawn: "I do want you to provide a pop up that says there is an update"): DeviceHub
-// checks once, 2 minutes after it starts (server.js, helpers/update-notice.mjs); the window asks once per version per
-// start, Update or Later. Update runs the same path as Settings' Update button.
-// The notice comes on the live stream (hello, or notice the moment the check finds one; 27 Oct 2026, it was asked at
-// 130 s and 300 s): never in the window's first 130 s, as before, and asked again a minute later while a change runs.
+// checks at start (server.js, helpers/update-notice.mjs); the window asks once per version each time it opens, Update or
+// Later. Update runs the same path as Settings' Update button.
+// The notice comes on the live stream (hello, or notice the moment the check finds one). Asked at once (1 Nov 2026,
+// Shawn: "appear on app startup as a pop up no matter what"; it used to wait 130 s), a few seconds later only while a
+// device change runs.
 if (!DEMO) {
   let asked = null, later = null;
   const ask = async (n) => {
     if (!n || asked === n.version) return;
-    const wait = Math.max(130000 - performance.now(), isBusy() ? 60000 : 0);
-    if (wait > 0) { clearTimeout(later); later = setTimeout(() => ask(n), wait); return; }
+    if (isBusy()) { clearTimeout(later); later = setTimeout(() => ask(n), 3000); return; }
     asked = n.version;
     const { modal } = await import('./ui/overlay.js');
     // "DeviceHub 1.5 is ready" and what's new, up to 5 short lines (27 Oct 2026; an older release has only the text)

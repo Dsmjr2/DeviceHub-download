@@ -1250,19 +1250,37 @@ http.createServer(async (req, res) => {
   // just updated: a minute running well keeps the new version (else the keep-running loop goes back, self-update.js)
   const justUpdated = require('./helpers/self-update').confirm(serverLog);
   // A NEW VERSION IS READY (helpers/update-notice.mjs, 24 Oct 2026, Shawn: no updates by themselves and no checks every
-  // 6 hours, but a pop-up that says there is an update): one check 2 minutes after start, never on the owner's PC; the
-  // window then asks once, Update or Later. Updating stays the person's click. Not on the start right after an update
-  // (24 Oct 2026, Shawn: no second update offered straight after one); the next start checks as usual.
+  // 6 hours, but a pop-up that says there is an update): one check at start, never on the owner's PC; the window then
+  // asks, Update or Later. Updating stays the person's click. Not on the start right after an update (24 Oct 2026,
+  // Shawn: no second update offered straight after one); the next start checks as usual.
+  // At every start, only when this PC is behind (1 Nov 2026, Shawn: "I need it to appear on app startup as a pop up no
+  // matter what ... Just if they require an update"): checked 5 s after start instead of 2 minutes; a check that failed
+  // (no internet yet at Windows start) tries again every 2 minutes for 30 minutes; and when DeviceHub started without a
+  // window (Start with Windows) the window is opened to ask. Up to date: nothing opens.
   if (justUpdated) console.log('[update] just updated: no update check this start');
   else if (process.env.DEVICEHUB_TEST !== '1') {
-    const t = setTimeout(async () => {
+    const started = Date.now();
+    const check = async () => {
       try {
         const owner = await import('./helpers/auto-report.mjs').then((m) => m.isOwnerPc(ROOT)).catch(() => true);
-        updateNotice = (await import('./helpers/update-notice.mjs')).notice({ owner, status: await require('./helpers/self-update').status() });
-        if (updateNotice) hub.push('notice', { notice: updateNotice });   // an open window asks at once (app.js)
+        if (owner) return;
+        const status = await require('./helpers/self-update').status();
+        if (status?.error) {
+          if (Date.now() - started < 30 * 60000) setTimeout(check, 120000).unref?.();
+          return console.log(`[update] check failed (${status.error}): trying again in 2 minutes`);
+        }
+        updateNotice = (await import('./helpers/update-notice.mjs')).notice({ owner, status });
+        if (!updateNotice) return;
+        hub.push('notice', { notice: updateNotice });   // an open window asks at once (app.js)
+        // no window: the launcher opening one (DeviceHub.vbs) may still be starting it, so wait 20 s before opening one
+        setTimeout(() => {
+          if (!updateNotice || openWindows > 0 || quitting) return;
+          console.log('[update] a new version is ready and no window is open: opening the window to ask');
+          require('child_process').spawn('wscript.exe', [path.join(ROOT, 'DeviceHub.vbs')], { cwd: ROOT, detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
+        }, 20000).unref?.();
       } catch (e) { console.error('[update] check:', e.message); }
-    }, 120000);
-    t.unref?.();
+    };
+    setTimeout(check, 5000).unref?.();
   }
   // The agent owns the devices (set DEVICEHUB_AGENT=0 to fall back to the browser's own WebHID connection).
   if (AGENT_ON) {

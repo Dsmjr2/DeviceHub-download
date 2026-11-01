@@ -26,6 +26,18 @@ check(old.name === null && old.notes.length === 0 && /^A new version of DeviceHu
 check(notice({ owner: false, status: { ...zip, versionName: '1.5"><b>', notes: ['x'] } }).name === null, 'a version that is not a plain number is not shown');
 check(notice({ owner: false, status: { ...zip, versionName: '1.5', notes: [1, '', 'a', 'b', 'c', 'd', 'e', 'f'] } }).notes.join() === 'a,b,c,d,e', 'notes: plain lines only, at most 5');
 
+// at every start, only when behind (1 Nov 2026, Shawn): checked 5 s after start, retried while offline, the window
+// opened when none is, and asked at once
+{
+  const fsm = await import('node:fs');
+  const server = fsm.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+  const app = fsm.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  check(/setTimeout\(check, 5000\)/.test(server), 'the update check runs 5 s after start');
+  check(/status\?\.error\)[\s\S]{0,120}setTimeout\(check, 120000\)/.test(server), 'a failed check tries again every 2 minutes');
+  check(/if \(!updateNotice\) return;/.test(server) && /openWindows > 0[\s\S]{0,300}spawn\('wscript\.exe', \[path\.join\(ROOT, 'DeviceHub\.vbs'\)\]/.test(server), 'with no window open, the window is opened only when a version is ready');
+  check(!/130000 - performance\.now\(\)/.test(app), 'the window asks at once, not after 130 s');
+}
+
 const { nextVersion, notesFrom, shortLine, plan, readPublished } = await import('../helpers/release-notes.mjs');
 check(nextVersion('1.4') === '1.5' && nextVersion('1.9') === '1.10' && nextVersion('2.0') === '2.1', 'each publish adds 1 after the dot');
 check(nextVersion(undefined) === '1.0' && nextVersion('v7') === '1.0', 'no known version starts at 1.0');
