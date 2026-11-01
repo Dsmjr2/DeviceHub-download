@@ -104,8 +104,14 @@ Function StillStarting()
   StillStarting = False
   f = LogPath()
   If f = "" Then Exit Function
-  If DateDiff("s", fs.GetFile(f).DateLastModified, Now) > 10 Then Exit Function
   base = logStart
+  ' nothing written since this start yet (antivirus holding node.exe before its first line, a review 1 Nov 2026): still
+  ' starting; once it writes, only while it keeps writing
+  If fs.GetFile(f).Size = base Then
+    StillStarting = True
+    Exit Function
+  End If
+  If DateDiff("s", fs.GetFile(f).DateLastModified, Now) > 10 Then Exit Function
   ' moved to server.old.log by the launcher loop: all of it is this start's
   If fs.GetFile(f).Size < base Then base = 0
   Set t = fs.OpenTextFile(f, 1)

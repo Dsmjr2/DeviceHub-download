@@ -14,7 +14,10 @@ const reg = [
   '    My Pictures    REG_EXPAND_SZ    %USERPROFILE%\\OneDrive\\Pictures',
   '    Desktop    REG_EXPAND_SZ    %USERPROFILE%\\Desktop',
 ].join('\r\n');
-const known = parse(reg, { USERPROFILE: 'C:\\Users\\José' });
+const known = parse(reg, { USERPROFILE: 'C:\\Users\\José' }, () => true);
+// reg's old code page garbles a name outside it ("Imágenes"), and a folder that is not there is never used (a review)
+check(Object.keys(parse('    My Pictures    REG_EXPAND_SZ    C:\\Users\\a\\OneDrive\\Im\uFFFDgenes', {}, () => true)).length === 0, 'a garbled folder name is not used');
+check(Object.keys(parse(reg, { USERPROFILE: 'C:\\Users\\José' }, () => false)).length === 0, 'a folder that does not exist is not used');
 check(known.documents === 'C:\\Users\\José\\OneDrive\\Documents' && known.pictures === 'C:\\Users\\José\\OneDrive\\Pictures', `OneDrive's folders read and expanded (${JSON.stringify(known)})`);
 check(Object.keys(parse('    Personal    REG_EXPAND_SZ    %NOPE%\\Docs', {})).length === 0, 'a path that does not expand is not used');
 check(Object.keys(parse('', {})).length === 0, 'nothing read: nothing claimed');

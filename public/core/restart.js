@@ -15,6 +15,8 @@ export async function restartHub() {
   for (let i = 0; i < 20 && (await answers()); i++) await sleep(500);
   let ok = 0;
   for (let i = 0; i < 60 && ok < 2; i++) { await sleep(1000); ok = (await answers()) ? ok + 1 : 0; }
+  // never reloaded onto a page that is not there (a review, 1 Nov 2026)
+  if (ok < 2) { toast('DeviceHub did not come back', 'bad', { detail: 'Open DeviceHub again from Start.', ms: 0 }); return false; }
   location.reload();
   return true;
 }
