@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-01T18:56:09Z",
+  "updated": "2026-11-01T20:48:24Z",
   "id": "keychron-via",
   "vendor": "Keychron",
   "product": "Keychron QMK keyboards: Keychron's own settings on top of VIA",
@@ -8,8 +8,8 @@
   "pids": ["0100", "0101", "0102", "0103", "0106", "0107", "0108", "0109", "010a", "010b", "0610", "0611", "0612", "0810", "0811", "0812",
     "0b10", "0b11", "0b12", "0220", "0221", "0222", "0223", "0224", "0225", "0a20", "0a21", "0a22", "0a23", "0a24", "0a25", "0e20", "0e21", "0e22",
     "0280", "0281", "0282", "0283", "0284", "0285", "0310", "0311", "0312", "0313", "0314", "0315", "0317", "0913", "0914", "0915", "0f10",
-    "0160", "0161", "0162", "0163", "0860", "0861", "0110", "0111", "0120", "0121", "0150", "0151", "0830", "0330", "0331", "0933", "0360", "0361"],
-  "models": ["Q1 (v1)", "Q1 (v2)", "Q1 Pro", "Q1 Max", "Q1 HE", "K2 Pro", "K2 Max", "K2 HE", "K8 Pro", "V1", "V1 Max", "V1 8K", "Q6", "Q6 Max", "Q2", "Q3", "Q5", "Q3 Max", "V3", "V3 Max", "V6"],
+    "0160", "0161", "0162", "0163", "0860", "0861", "0110", "0111", "0120", "0121", "0150", "0151", "0830", "0330", "0331", "0933", "0360", "0361", "0350", "0351", "0352", "0353"],
+  "models": ["Q1 (v1)", "Q1 (v2)", "Q1 Pro", "Q1 Max", "Q1 HE", "K2 Pro", "K2 Max", "K2 HE", "K8 Pro", "V1", "V1 Max", "V1 8K", "Q6", "Q6 Max", "Q2", "Q3", "Q5", "Q3 Max", "V3", "V3 Max", "V6", "V5"],
   "works": [
     "written from docs/brands/keychron.md (Keychron's QMK fork) and checked against a simulated keyboard only (tests/sim-keychron-via.mjs)",
     "a driver.json: DeviceHub's safety check (helpers/declarative-driver.mjs validate) passes it",

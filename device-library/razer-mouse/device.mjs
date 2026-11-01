@@ -175,6 +175,8 @@ export const MODELS = {
   '007B': m('Viper Ultimate', 'dongle', { wait: VIPER, dpiMax: 20000, leds: [0x04] }),
   '00A1': m('DeathAdder V2 Lite', 'wired', { dpiMax: 8500, leds: [0x04] }),
   '0091': m('Viper 8K', 'wired', { dpiMax: 20000, leds: [0x04] }),
+  // Orochi V2 receiver (support #27): openrazer RazerOrochiV2Receiver, RAZER_ATHERIS_RECEIVER_WAIT_US 400000 us
+  '0094': m('Orochi V2', 'dongle', { wait: 400, power: 'aa', dpiMax: 18000, light: false }),
   '006E': m('DeathAdder Essential', 'wired', { tid: 0xff, poll: 'classic', dpiMax: 6400, stages: false, tids: { brightness: 0x3f }, leds: [0x04, 0x01] }),
   '0071': m('DeathAdder Essential White Edition', 'wired', { tid: 0xff, poll: 'classic', dpiMax: 6400, stages: false, tids: { brightness: 0x3f }, leds: [0x04, 0x01] }),
   '0098': m('DeathAdder Essential (2021)', 'wired', { tid: 0xff, poll: 'classic', dpiMax: 6400, stages: false, tids: { brightness: 0x3f }, leds: [0x04] }),

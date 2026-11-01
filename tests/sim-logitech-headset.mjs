@@ -427,5 +427,22 @@ function simG522({ addr = 0x23, bridge = 3, direct = false, percent = 58, charge
   check(PIDS.every((p) => { const n = parseInt(p, 16); return n < 0xc500 || n > 0xc5ff; }) && !PIDS.some((p) => [...mouseRx, ...kbRx].includes(parseInt(p, 16))), 'no headset id is a receiver id (C539 and the rest stay with the mouse and keyboard drivers)');
 }
 
+// a PRO X (0AAA) that answers the ping and refuses getFeature with "invalid feature index" (1 Nov 2026,
+// Dsmjr2/DeviceHub-support#27): connected with nothing to set, not an error
+{
+  const prox = simHidpp({ features: {}, state: {} });
+  const send = prox.sendReport.bind(prox);
+  prox.sendReport = async (rid, data) => {
+    const b = Array.from(data);
+    if (b[1] === 0 && (b[2] & 0xf0) === 0x00) { prox.sent.push(b); prox.emit(0x11, [0xff, 0xff, 0x00, b[2], 0x06, ...Array(14).fill(0)]); return; }
+    return send(rid, data);
+  };
+  const d = make('0AAA', prox);
+  let ok = null, err = null;
+  try { ok = await d.connect(); } catch (e) { err = e.message; }
+  check(ok === true && !err, `a PRO X that refuses getFeature still connects (${err})`);
+  check(Object.keys(d.features || {}).length === 0, 'with no features, so nothing is offered to set');
+}
+
 console.log(fails.length ? `sim-logitech-headset: FAILED: ${fails.join('; ')}` : 'sim-logitech-headset (Logitech HID++ / Centurion headset driver, simulated): all good');
 process.exit(fails.length ? 1 : 0);

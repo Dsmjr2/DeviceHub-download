@@ -239,8 +239,11 @@ export function createLogitechHeadset({ open = defaultOpen, vendorApp = defaultV
       const p = await this.hidpp(F.ROOT, 0x10, [0, 0, 0x5a], { retry: false });
       this.protocol = `${p[0]}.${p[1]}`;
       for (const id of [F.UNIFIED_BATTERY, F.BATTERY_STATUS, F.ADC, F.SIDETONE, F.EQUALIZER, F.MIC_MUTE]) {
-        const r = await this.hidpp(F.ROOT, 0x00, [id >> 8, id & 0xff]);   // getFeature: b0 index (0 = absent), b1 flags, b2 version
-        if (r[0]) this.features[id] = { index: r[0], flags: r[1], version: r[2] };
+        // a getFeature the headset refuses (1 Nov 2026, Dsmjr2/DeviceHub-support#27: a PRO X 0AAA answered the ping, then
+        // "invalid feature index" to getFeature) is that feature not there, not a fault: the headset is run with what it has
+        let r;
+        try { r = await this.hidpp(F.ROOT, 0x00, [id >> 8, id & 0xff]); } catch (e) { if (e instanceof HidppError) continue; throw e; }
+        if (r[0]) this.features[id] = { index: r[0], flags: r[1], version: r[2] };   // getFeature: b0 index (0 = absent), b1 flags, b2 version
       }
       const c = this.caps;
       if (this.features[F.SIDETONE]) c.sidetone = { max: 100 };   // Solaar Sidetone min_value 0, max_value 100

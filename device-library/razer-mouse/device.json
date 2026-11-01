@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-01T18:56:09Z",
+  "updated": "2026-11-01T20:48:24Z",
   "id": "razer-mouse",
   "vendor": "Razer",
   "product": "Razer mice (90-byte report)",
@@ -42,6 +42,7 @@
     "007b",
     "00a1",
     "0091",
+    "0094",
     "006e",
     "0071",
     "0098",
@@ -87,7 +88,8 @@
     "Basilisk V2",
     "Viper Ultimate",
     "DeathAdder V2 Lite",
-    "Viper 8K"
+    "Viper 8K",
+    "Orochi V2"
   ],
   "works": [
     "written from docs/brands/razer.md and checked against a simulated mouse only (tests/sim-razer.mjs)",
