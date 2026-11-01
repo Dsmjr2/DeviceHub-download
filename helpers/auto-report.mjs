@@ -302,8 +302,14 @@ export function selfCheckResult(a, r) {
 // the agent's 30 s error retry: a device in 'error' (plugged in: unplugged is 'missing') for over ERROR_MINUTES with
 // an error that is a fault. Asleep, missing, connected or idle ends the episode; one report per episode.
 const episodes = new Map();   // id -> { since, reported }
+let lastTick = null;
 export function checkDevices(list, now = options.now()) {
   const fired = [];
+  // asked every 30 s: a much longer gap is a sleep, and its hours are not time in an error (1 Nov 2026, a new-setup
+  // audit: the first tick after a night's sleep filed "in an error for over 10 minutes" before the wake reconnect ran;
+  // a wall-clock gap also catches a Modern Standby wake that sends no wake message)
+  if (lastTick != null && now - lastTick > 2 * 60e3) for (const e of episodes.values()) if (!e.reported) e.since = now;
+  lastTick = now;
   for (const d of list || []) {
     if (!d?.id) continue;
     if (d.status === 'connecting') continue;

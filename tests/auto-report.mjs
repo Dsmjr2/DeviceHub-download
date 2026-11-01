@@ -95,15 +95,22 @@ try {
   const dev = (status, error) => [{ id: 'acme-mouse', status, error, adapter: { title: 'Acme Glide' } }];
   ok(ar.checkDevices(dev('error', 'HID read failed (code 31)'), t).length === 0, 'an error just now: nothing');
   ok(ar.checkDevices(dev('connecting', null), t + 30e3).length === 0, 'a retry (connecting) keeps the clock');
-  ok(ar.checkDevices(dev('error', 'HID read failed (code 31)'), t + 9 * 60e3).length === 0, 'nine minutes: nothing');
-  ok(ar.checkDevices(dev('error', 'HID read failed (code 31)'), t + 10.5 * 60e3).length === 1, 'over ten minutes: reported');
+  // asked every 30 s, as helpers/agent.mjs does (a longer gap is a sleep: below)
+  const tick = (from, to) => { let n = 0; for (let x = from; x <= to; x += 30e3) n += ar.checkDevices(dev('error', 'HID read failed (code 31)'), x).length; return n; };
+  ok(tick(t + 60e3, t + 9 * 60e3) === 0, 'nine minutes: nothing');
+  ok(tick(t + 9.5 * 60e3, t + 10.5 * 60e3) === 1, 'over ten minutes: reported');
   await ar.settle();
   ok(calls.length === 1 && calls[0].payload.fingerprint === 'device-error:acme-mouse' && calls[0].payload.title === 'Acme Glide: in an error for over 10 minutes', `device error report (${calls[0]?.payload.title})`);
   ok(checkReport(calls[0]?.payload) === null, 'device report passes the relay check');
   ok(/### The device/.test(calls[0]?.payload.body) && !/zorblax|SN0001/.test(calls[0]?.payload.body), 'the device report is about the device, stripped');
-  ok(ar.checkDevices(dev('error', 'HID read failed (code 31)'), t + 30 * 60e3).length === 0, 'one report per episode');
-  ar.checkDevices(dev('connected', null), t + 31 * 60e3);
+  ok(tick(t + 11 * 60e3, t + 14 * 60e3) === 0, 'one report per episode');
+  ar.checkDevices(dev('connected', null), t + 14.5 * 60e3);
   ok(!ar._episodes.has('acme-mouse'), 'connected again ends the episode');
+  // a night's sleep (1 Nov 2026): an error at 23:55, the next tick 8 hours later, is not 8 hours in an error
+  ok(tick(t + 15 * 60e3, t + 17 * 60e3) === 0, 'an error before the sleep: nothing yet');
+  ok(ar.checkDevices(dev('error', 'HID read failed (code 31)'), t + 8 * 3600e3).length === 0, 'the first tick after a long sleep restarts the clock: nothing');
+  ok(tick(t + 8 * 3600e3 + 30e3, t + 8 * 3600e3 + 9 * 60e3) === 0, 'and nine minutes after the wake: still nothing');
+  ar.checkDevices(dev('connected', null), t + 9 * 3600e3);
 
   // ---- never: asleep, off, unplugged, the maker's app, battery, waiting
   root = folder(); fresh(root);

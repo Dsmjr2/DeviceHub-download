@@ -44,5 +44,23 @@ check(g.find((d) => d.pid === '0311')?.settable === false && g.find((d) => d.pid
   u2 = [{ vid: '1532', pid: '0085', name: 'plain' }, { vid: '1532', pid: '0086', name: 'gaming' }, { vid: '1532', pid: '0087', name: 'not listed yet' }];
   await w2.check();
   check(sent2.map((x) => x.pid).join() === '0086,0087', `plug-in: the plain one is left alone, one not listed yet is still offered (${sent2.map((x) => x.pid)})`); }
+// an auto setup that failed is tried again at the next device change, and a first read that failed is read again (1 Nov 2026)
+{
+  let u3 = [{ vid: '1532', pid: '0001', name: 'old' }], fail = true, n = 0, reads = 0;
+  const sent3 = [];
+  const w3 = watcher({ root: '/x', pcMap: { get: async () => { if (reads++ === 0) throw new Error('not ready'); return { usb: u3 }; } }, send: (t, d) => sent3.push(d), brands: () => brands, owned: () => ({ mine: [], copies: [] }),
+    setup: async () => { n++; if (fail) throw new Error('library not read'); return { lastRun: { installed: [] } }; }, hid: async () => ({ collections: [] }) });
+  const started = w3.start();
+  await new Promise((r) => setTimeout(r, 10100));
+  await started;
+  u3 = [...u3, { vid: '1532', pid: '0086', name: 'gaming' }];
+  await w3.check();
+  check(n === 1 && sent3.length === 0, `a setup that fails says nothing yet (${n}, ${sent3.length})`);
+  fail = false;
+  await w3.check();
+  check(n === 2 && sent3.map((x) => x.pid).join() === '0086', `the next device change tries it again and says it (${n}, ${sent3.map((x) => x.pid)})`);
+  check(!sent3.some((x) => x.pid === '0001'), 'the device there before (first read failed, read again) is not said as new');
+}
+
 if (fails.length) { console.log(`plug-watch: FAILED:\n- ${fails.join('\n- ')}`); process.exit(1); }
 console.log('plug-watch (a device plugged in: library driver said installed, a known brand offered Learn it for me, the rest left alone, once each): all good');

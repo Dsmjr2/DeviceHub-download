@@ -231,6 +231,10 @@ function powerPlan(f) {
   const name = cur?.name || 'Balanced';
   const fast = fastPlan(t);
   if (fast) return result('power-plan', 'Power plan', 'warn', `${name}: the CPU slows down to save power. ${fast.name} keeps it fast in games.`, { text: `Switch to ${fast.name}`, fix: 'power-plan' });
+  // Windows 10 has no Power mode on a desktop: its Power Options instead (1 Nov 2026, a new-setup audit: the button
+  // opened a page without the control)
+  const build = Number(String(require('os').release()).split('.')[2]) || 0;
+  if (build && build < 22000) return result('power-plan', 'Power plan', 'warn', `${name}: pick a faster power plan (High performance) for games.`, { text: 'Power Options', settings: 'power-options' });
   return result('power-plan', 'Power plan', 'warn', `${name}: set Power mode to Best performance for games.`, { text: 'Power mode', settings: 'power' });
 }
 function gameMode(f) {

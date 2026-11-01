@@ -68,7 +68,9 @@ export function watcher({ root, pcMap, log = () => {}, send = () => {}, setup = 
       if (!fresh.length) return [];
       fresh.forEach((k) => seen.add(k));
       let rec = null;
-      try { rec = await setup({ root, pcMap, log }); } catch (e) { console.error('[plug] auto setup:', e.message); }
+      // a setup that failed is tried again at the next device change, not skipped until a restart (1 Nov 2026, a
+      // new-setup audit: the device was plugged in and nothing ever said why no tile came)
+      try { rec = await setup({ root, pcMap, log }); } catch (e) { console.error('[plug] auto setup:', e.message); for (const k of fresh) { seen.delete(k); prev?.delete(k); } return []; }
       let own = { mine: [], copies: [] };
       try { own = owned(root); } catch {}
       // every collection by id (not only the writable ones); an id not listed yet (Windows still adding it) is unknown
@@ -95,7 +97,14 @@ export function watcher({ root, pcMap, log = () => {}, send = () => {}, setup = 
     }
   };
   return {
-    start: async () => { try { prev = newIds(null, (await pcMap.get(true)).usb || []).now; } catch {} },
+    // the list as DeviceHub found it; a first read that failed is tried again (up to 3 times, 10 s apart), else the
+    // list Windows gave later became the starting point and the first device plugged in was never said (1 Nov 2026)
+    start: async () => {
+      for (let i = 0; i < 3 && !prev; i++) {
+        try { prev = newIds(null, (await pcMap.get(true)).usb || []).now; } catch {}
+        if (!prev && i < 2) await new Promise((r) => setTimeout(r, 10000).unref?.());
+      }
+    },
     check,
   };
 }

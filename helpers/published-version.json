@@ -1,7 +1,7 @@
 {
-  "version": "1.44",
-  "commit": "3b90ba40504d",
+  "version": "1.45",
+  "commit": "b87fda317198",
   "notes": [
-    "Windows in other languages: folders, names, errors and speakers read…"
+    "No false report after sleep"
   ]
 }
