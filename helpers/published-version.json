@@ -1,7 +1,8 @@
 {
-  "version": "1.42",
-  "commit": "983b83419139",
+  "version": "1.43",
+  "commit": "72e15c2c3d86",
   "notes": [
-    "Review fixes: P75 header, garbled folder names, Restart that never…"
+    "A maker's service is not its app: no read-only for good",
+    "Finished update downloads are removed from TEMP"
   ]
 }

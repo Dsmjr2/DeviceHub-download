@@ -115,7 +115,7 @@
     "mice with only 0x2202: DPI is shown, not written (the paged 0x2202 DPI list is not read)"
   ],
   "status": "read-only",
-  "updated": "2026-11-01T15:27:04Z",
+  "updated": "2026-11-01T16:24:33Z",
   "tested": [
     {
       "by": "DeviceHub (simulation only)",

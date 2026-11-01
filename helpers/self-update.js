@@ -345,6 +345,22 @@ async function mergeUpdate(s, { overwrite = false } = {}) {
   return { updated: true, count: s.behind, latest: s.latest };
 }
 
+// The download folders a zip or Setup.exe update leaves in TEMP (1 Nov 2026, a new-setup check: 169 MB after one update,
+// one more every update, never removed; the installer runs from there, so it cannot remove its own). Called a few
+// minutes after start: every devicehub-update-* folder over 10 minutes old goes, except the newest one's install.log
+// (kept beside them as devicehub-update-last.log, for Get help).
+function cleanDownloads({ tmp = require('os').tmpdir(), now = Date.now(), log = () => {} } = {}) {
+  let dirs = [];
+  try { dirs = fs.readdirSync(tmp, { withFileTypes: true }).filter((d) => d.isDirectory() && /^devicehub-update-/.test(d.name)).map((d) => ({ p: path.join(tmp, d.name), at: fs.statSync(path.join(tmp, d.name)).mtimeMs })); } catch { return 0; }
+  const old = dirs.filter((d) => now - d.at > 10 * 60000).sort((a, b) => b.at - a.at);
+  if (!old.length) return 0;
+  try { const l = path.join(old[0].p, 'install.log'); if (fs.existsSync(l)) fs.copyFileSync(l, path.join(tmp, 'devicehub-update-last.log')); } catch {}
+  let n = 0;
+  for (const d of old) { try { fs.rmSync(d.p, { recursive: true, force: true }); n++; } catch {} }
+  if (n) log({ kind: 'info', text: `Removed ${n} finished update download folder${n === 1 ? '' : 's'} from TEMP` });
+  return n;
+}
+
 // called once the new version has run well for a minute: it is kept
 // true when this start is the one right after an update (server.js then skips its update check: 24 Oct 2026, Shawn:
 // "when someone updates it doesnt check for another update right after")
@@ -356,4 +372,4 @@ function confirm(log) {
   return true;
 }
 
-module.exports = { status, update, confirm, getProgress, releaseInfo, _test: { changedFiles, keepChanged, blockedText, verifyRelease, ownVersion, named } };
+module.exports = { status, update, confirm, getProgress, releaseInfo, cleanDownloads, _test: { changedFiles, keepChanged, blockedText, verifyRelease, ownVersion, named } };

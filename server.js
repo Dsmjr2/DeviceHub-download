@@ -1258,6 +1258,8 @@ http.createServer(async (req, res) => {
   } catch (e) { console.error('[report] not started:', e.message); }
   // just updated: a minute running well keeps the new version (else the keep-running loop goes back, self-update.js)
   const justUpdated = require('./helpers/self-update').confirm(serverLog);
+  // finished update downloads out of TEMP, 3 minutes in (helpers/self-update.js cleanDownloads)
+  if (process.env.DEVICEHUB_TEST !== '1') setTimeout(() => { try { require('./helpers/self-update').cleanDownloads({ log: serverLog }); } catch {} }, 180000).unref();
   // A NEW VERSION IS READY (helpers/update-notice.mjs, 24 Oct 2026, Shawn: no updates by themselves and no checks every
   // 6 hours, but a pop-up that says there is an update): one check at start, never on the owner's PC; the window then
   // asks, Update or Later. Updating stays the person's click. Not on the start right after an update (24 Oct 2026,

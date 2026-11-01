@@ -113,6 +113,9 @@ export function buildPlan({ dir, key = 'DeviceHub', facts, exists = fs.existsSyn
   if (facts?.apps && same(facts.apps.location, full)) remove.push({ kind: 'apps', what: `Settings > Apps entry "${facts.apps.key || key}"`, key: facts.apps.key || key });
   const tmp = e.TEMP || os.tmpdir();
   for (const n of TEMP_ITEMS) { const p = path.join(tmp, n); if (exists(p)) remove.push({ kind: 'temp', what: p, path: p }); }
+  // update downloads (helpers/self-update.js cleanDownloads keeps the last install.log; 1 Nov 2026)
+  let tmpNames = []; try { tmpNames = Array.isArray(facts?.tempNames) ? facts.tempNames : fs.readdirSync(tmp); } catch {}
+  for (const n of tmpNames.filter((x) => /^devicehub-update-/i.test(x))) { const p = path.join(tmp, n); remove.push({ kind: 'temp', what: p, path: p }); }
   remove.push({ kind: 'dir', what: `${full} (DeviceHub itself, its window profile, its Node and OpenRGB, its logs)`, path: full });
   // 3. kept
   const docs = facts?.folders?.documents || path.join(e.USERPROFILE || os.homedir(), 'Documents');

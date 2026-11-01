@@ -119,7 +119,7 @@ async function defaultVendorApp() {
   if (typeof process === 'undefined' || !process.versions?.node || process.platform !== 'win32') return null;
   const { execFile } = await import('node:child_process');
   const out = await new Promise((res) => execFile('tasklist', ['/FO', 'CSV', '/NH'], { windowsHide: true, timeout: 5000 }, (e, so) => res(e ? '' : so)));
-  for (const line of out.split(/\r?\n/)) { const name = line.split('","')[0].replace(/^"/, ''); if (VENDOR_APPS.some((re) => re.test(name))) return name; }
+  for (const line of out.split(/\r?\n/)) { const name = line.split('","')[0].replace(/^"/, ''); if (VENDOR_APPS.some((re) => re.test(name)) && !/service|updater|crash/i.test(name)) return name; }   // a service or updater is not the app (1 Nov 2026: Synapse's service kept the device read-only, nothing to close)
   return null;
 }
 async function defaultOpen(pid) {

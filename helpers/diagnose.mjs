@@ -48,11 +48,11 @@ export const MAKER_APPS = {
   gg: { name: 'SteelSeries GG', detect: [/^steelseries(gg|engine)/i], vids: ['1038'] },
   ngenuity: { name: 'HyperX NGENUITY', detect: [/^ngenuity/i], vids: ['0951', '03f0'] },
   armoury: { name: 'Armoury Crate', detect: [/^armourycrate/i, /^lightingservice\.exe$/i], vids: ['0b05'] },
-  swarm: { name: 'Swarm II', detect: [/swarm\s*ii/i, /^roccat swarm/i], vids: ['1e7d', '10f5'] },
+  swarm: { name: 'Swarm II', detect: [/swarm\s*ii/i, /^roccat swarm/i, /^swarm/i], vids: ['1e7d', '10f5'] },   // /^swarm/ as the ROCCAT driver (1 Nov 2026)
   glorious: { name: 'Glorious CORE', detect: [/^glorious/i], vids: ['258a', '320f'] },
   pulsar: { name: 'the Pulsar app', detect: [/^pulsar\.exe$/i], vids: ['3710'] },
   epomaker: { name: 'the Epomaker driver', detect: [/epomaker/i], vids: ['342d'] },
-  wootility: { name: 'Wootility', detect: [/^wootility/i], vids: ['31e3', '03eb'] },
+  wootility: { name: 'Wootility', detect: [/^wootility/i, /^wooting/i], vids: ['31e3', '03eb'] },   // /^wooting/ as the Wooting driver (1 Nov 2026)
 };
 export const BACKGROUND = /updater|update\.exe$|crashpad|crash_?handler|crashreport/i;
 const NEVER_CLOSE = /service|updater|crashpad|^lightingservice\.exe$/i;
@@ -67,7 +67,9 @@ export function runningMakers(images) {
   for (const [key, app] of Object.entries(MAKER_APPS)) {
     // an updater or crash reporter is not the app (23 Oct 2026, a friend's PC: lghub_updater.exe, a service that runs
     // with G HUB closed, held a Logitech mouse's settings read-only for good)
-    const hit = images.filter((i) => app.detect.some((re) => re.test(i)) && !BACKGROUND.test(i));
+    // nor a maker's Windows service, except Armoury Crate's LightingService (it holds the devices): the drivers skip them
+    // too, so "running" and Close agree (1 Nov 2026, Synapse's service: "close it first", then "Nothing to close")
+    const hit = images.filter((i) => app.detect.some((re) => re.test(i)) && !BACKGROUND.test(i) && !(/service/i.test(i) && !/^lightingservice\.exe$/i.test(i)));
     if (hit.length) out.push({ key, name: app.name, images: hit, closable: hit.filter((i) => !NEVER_CLOSE.test(i)) });
   }
   return out;
@@ -468,7 +470,9 @@ export async function action(b, { port = PORT } = {}) {
     if (!hit) return { ok: true, closed: [], note: `${app.name} is not running` };
     for (const image of hit.closable) await run('taskkill', ['/IM', image, '/F'], 10000);
     const still = runningMakers(parseTasklist(await run('tasklist', ['/fo', 'csv', '/nh'], 8000))).find((m) => m.key === b.app)?.closable || [];
-    return { ok: !still.length, closed: hit.closable.filter((i) => !still.includes(i)), still, ...(still.length ? { error: `${app.name} is still running (it may run as administrator)` } : {}) };
+    // said once it is closed: it comes back at the next Windows start, and where that is turned off (1 Nov 2026, a
+    // new-setup audit: the same "close it first" after every restart, with nothing saying why)
+    return { ok: !still.length, closed: hit.closable.filter((i) => !still.includes(i)), still, ...(still.length ? { error: `${app.name} is still running (it may run as administrator)` } : { note: `Closed. ${app.name} opens again when Windows starts; to stop that, turn it off under Start-up apps on the PC page.` }) };
   }
   throw new Error('unknown action');
 }
