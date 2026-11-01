@@ -250,10 +250,11 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
 // ---- 2b. a G915 on its second receiver C547 (OpenRGB LogitechControllerDetect.cpp; docs/brands/logitech.md section 1) ----
 {
   check(PIDS.includes(0xc547), 'C547 is one of the product ids of the driver');
-  const kb = simKeyboard({ pid: 0xc547, slot: 1, features: { [F.UNIFIED_BATTERY]: 2, [F.DISABLE_KEYS]: 8, [F.NEW_FN_INVERSION]: 9 },
+  // shared with the mouse driver since 1 Nov 2026 (the original PRO X SUPERLIGHT's receiver): claimed by DEVICE_NAME kind, software id 0x0C
+  const kb = simKeyboard({ pid: 0xc547, slot: 1, swid: 0x0c, kind: 0, features: { [F.DEVICE_NAME]: 7, [F.UNIFIED_BATTERY]: 2, [F.DISABLE_KEYS]: 8, [F.NEW_FN_INVERSION]: 9 },
     state: { percent: 55, charge: 1, disabled: 0x00, fnSwap: 1 }, rateMask: 0, profiles: 0, disableMask: 0x1f, bright: {} });
   const d = make(kb);
-  check(await d.connect() && d.index === 1 && /G915 receiver C547/.test((await d.info()).Model), 'a G915 on receiver C547 connects on slot 1');
+  check(await d.connect() && d.index === 1 && /G915 \/ LIGHTSPEED receiver C547/.test((await d.info()).Model), 'a G915 on receiver C547 connects on slot 1');
   check((await d.write('lockWinKey', true)) === true && (await d.write('lockWinKey', false)) === false && kb.state.disabled === 0, 'and writes and puts back on C547');
 }
 
@@ -279,7 +280,7 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
   const mouse = simKeyboard({ pid: 0xc545, slot: 2, features: { [F.ADJUSTABLE_DPI]: 3 }, state: {}, rateMask: 0, profiles: 0, disableMask: 0, bright: {} });
   const e = await refusal(() => make(mouse).connect());
   check(/mouse/.test(e?.message || ''), `a mouse is left to the mouse driver (${e?.message})`);
-  const m547 = simKeyboard({ pid: 0xc547, slot: 1, features: { [F.ADJUSTABLE_DPI]: 3 }, state: {}, rateMask: 0, profiles: 0, disableMask: 0, bright: {} });
+  const m547 = simKeyboard({ pid: 0xc547, slot: 1, swid: 0x0c, kind: 3, features: { [F.DEVICE_NAME]: 2, [F.ADJUSTABLE_DPI]: 3 }, state: {}, rateMask: 0, profiles: 0, disableMask: 0, bright: {} });
   const e2 = await refusal(() => make(m547).connect());
   check(/mouse/.test(e2?.message || ''), `a mouse on C547 is refused too (${e2?.message})`);
 }
@@ -292,8 +293,8 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
   check(validateMeta(meta) === null && (meta.status === 'untested' || meta.status === 'read-only') && meta.tested.length === 0, `device.json well formed and untested (${validateMeta(meta)})`);
   check(meta.pids.map((p) => parseInt(p, 16)).sort().join() === [...PIDS].sort().join() && meta.id === d.id, 'device.json lists exactly the driver\'s ids');
   const mouse = JSON.parse(fs.readFileSync(path.join(ROOT, 'device-library', 'logitech-hidpp-mouse', 'device.json'), 'utf8'));
-  // 23 Oct 2026: only the three shared LIGHTSPEED receivers (SHARED) are in both drivers
-  check(meta.pids.filter((p) => mouse.pids.includes(p)).sort().join() === 'c539,c53f,c54d' && Object.keys(SHARED).map((p) => Number(p).toString(16)).sort().join() === 'c539,c53f,c54d', `only C539 / C53F / C54D are shared with the mouse driver (${meta.pids.filter((p) => mouse.pids.includes(p))})`);
+  // 23 Oct 2026: only the shared LIGHTSPEED receivers (SHARED) are in both drivers; C547 since 1 Nov 2026
+  check(meta.pids.filter((p) => mouse.pids.includes(p)).sort().join() === 'c539,c53f,c547,c54d' && Object.keys(SHARED).map((p) => Number(p).toString(16)).sort().join() === 'c539,c53f,c547,c54d', `only C539 / C53F / C54D are shared with the mouse driver (${meta.pids.filter((p) => mouse.pids.includes(p))})`);
   check(PIDS.includes(0xc33a) && WIRED[0xc33a] === 'G413' && meta.models.includes('G413'), 'C33A is the wired G413 (libratbag logitech-g413.device)');
 }
 

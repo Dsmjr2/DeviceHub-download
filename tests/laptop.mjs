@@ -29,7 +29,8 @@ ok(/Windows power mode → \$\{mode\}/.test(server), 'a change is logged with wh
 
 const app = src('public/app.js');
 ok(/page\('laptop', 'Laptop', 'bolt', \(\) => import\('\.\/pages\/laptop\.js'\), \{ laptopOnly: true \}\)/.test(app) && /p\?\.hasBattery && !isLaptop/.test(app) && /onEvent\('hello', \(p\) => \{ paintSaving\(p\); seeBattery\(p\); \}\)/.test(app) && /hasBattery: !!power\.hasBattery/.test(server) && /const shown = \(p\) => !p\.laptopOnly \|\| isLaptop;/.test(app), 'in the sidebar only on a PC with a battery');
-ok(/pages: PAGES\.filter\(shown\)/.test(app), 'and in Search only then');
+// Search: PAGES.filter(reachable), which starts with shown (1 Nov 2026: device pages only for devices here too)
+ok(/pages: PAGES\.filter\(reachable\)/.test(app) && /const reachable = \(p\) => shown\(p\)/.test(app), 'and in Search only then');
 const page = src('public/pages/laptop.js').replace(/\/\/.*$/gm, '').replace("id: 'laptop', title: 'Laptop'", '');   // the page's own name is not a tooltip
 ok(!/toast\(|modal\(|\btitle:|alert\(|confirm\(/.test(page), 'no pop-ups or tooltips');
 ok(/onCommit: setMode/.test(page) && (page.match(/\/api\/laptop\/mode/g) || []).length === 1, 'the mode changes only from its own switch');

@@ -1153,6 +1153,15 @@ async function api(req, res, url) {
     setTimeout(shutdown, 200);
     return;
   }
+  // Restart DeviceHub (1 Nov 2026, a new-setup audit: "Restart DeviceHub to show its keys" had no way to do it): the same
+  // clean stop as Quit, then code 3, which the keep-running loop starts again at once (helpers/keep-running.bat, as
+  // after an update); the window waits for it and reloads (public/core/restart.js)
+  if (url.pathname === '/api/restart' && req.method === 'POST') {
+    send(res, 200, { ok: true });
+    serverLog({ kind: 'info', text: 'Restarting DeviceHub (asked from the window)' });
+    setTimeout(() => shutdown(3), 200);
+    return;
+  }
   if (url.pathname.startsWith('/api/corsair/')) {
     if (!corsair) return send(res, 503, { error: 'Corsair helper not available' });
     const action = url.pathname.slice('/api/corsair/'.length);
@@ -1362,7 +1371,9 @@ let agent = null, agentTried = false;
 let tray = false;
 let quitting = false;
 let laptopBusy = false;   // /api/laptop: one read or power-mode change at a time
-async function shutdown() {
+// code: 0 to quit, 3 to be started again (Restart); a signal's name (SIGINT) is a quit
+async function shutdown(code) {
+  code = code === 3 ? 3 : 0;
   if (ISOLATED) process.exit(0);   // isolated test mode started nothing to stop (helpers/openrgb.js stop() would remove the real copy's pid file)
   // an AnkerCamera test running: muted again first (at most 1.5 s), while the audio helper is still there
   try { await Promise.race([ankerGuard.shutdown(), new Promise((r) => setTimeout(r, 1500))]); } catch {}
@@ -1375,6 +1386,6 @@ async function shutdown() {
   try { await (await import('./helpers/wifi-pause.mjs')).onQuit(); } catch {}
   try { require('./helpers/native').stop(); } catch {}
   quitting = true;
-  process.exit(0);
+  process.exit(code);
 }
 process.on('SIGINT', shutdown);

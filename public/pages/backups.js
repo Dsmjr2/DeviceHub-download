@@ -368,7 +368,9 @@ export default {
       topbar('Safety net', 'Backups', null, null, helpHere('backups')),
       h('p', { class: 'lede bk-intro' }, 'Saved before every change.'),
       h('div', { class: 'bk-top' }, setupCard()),
-      files === null ? h('div', { class: 'faint' }, 'Reading…') : h('div', { class: 'grid three top bk-grid' }, ...cards),
+      // a new PC with no devices and no backups yet: said, not an empty grid (1 Nov 2026, a new-setup audit)
+      files === null ? h('div', { class: 'faint' }, 'Reading…') : cards.length ? h('div', { class: 'grid three top bk-grid' }, ...cards)
+        : h('div', { class: 'feed-empty' }, 'No backups yet. One is saved by itself before DeviceHub changes a device setting.'),
       null);
   },
 };

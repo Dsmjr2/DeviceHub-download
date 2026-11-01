@@ -108,7 +108,10 @@ function refreshTargets() {
 }
 
 export default {
-  id: 'lighting', title: 'Lighting', icon: 'lighting', accent: 'var(--signal)', watches: ['keyboard', 'headset'],
+  id: 'lighting', title: 'Lighting', icon: 'lighting', accent: 'var(--signal)',
+  // every device this PC has, added ones too (1 Nov 2026, a new-setup audit: a library mouse that connected while this
+  // page was open stayed Not connected until the page was opened again)
+  get watches() { return ['keyboard', 'headset', ...shownDevices().map((x) => x.id)]; },
   // a device reading or a connect redraws only the Apply to card: the picker, the PC lights and their scroll stay
   keepAlive() { if (!targetsEl?.isConnected) return false; refreshTargets(); return true; },
   render() {

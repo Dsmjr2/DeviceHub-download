@@ -25,6 +25,7 @@ import { env } from '../core/env.js';
 import { topbar, checkAnswer } from './common.js';
 import { genericDongle } from '../core/generic-dongle.js';
 import { getHelp, helpHere } from '../ui/get-help.js';
+import { restartButton } from '../core/restart.js';
 import { shareAsk } from '../ui/driver-share.js';
 
 // the state of the page (kept across redraws)
@@ -215,7 +216,9 @@ const nothingNote = () => (st.nothing ? h('div', { class: 'learn-problem', role:
 async function sendToShawn(why) {
   if (st.sent?.sent || isDemo()) { if (isDemo()) st.sent = { sent: true, line: 'Demo: nothing was sent. On a real PC the recordings go to Shawn and the driver usually arrives within a day.' }; return st.sent; }
   const r = await api('send', { why });
-  st.sent = r.sent || r.queued ? { sent: !!r.sent, queued: !!r.queued, line: r.line || SENT_DONE } : r.why === 'nothing was heard to send' ? null : { sent: false, line: r.line || r.error || 'Not sent. Use Get help, top right.' };
+  st.sent = r.sent || r.queued ? { sent: !!r.sent, queued: !!r.queued, line: r.line || SENT_DONE } 
+    // nothing recorded (every setting skipped or never heard): said, never "Sending…" for good (1 Nov 2026, a new-setup audit)
+    : r.why === 'nothing was heard to send' ? { sent: false, nothing: true, line: 'Nothing was recorded, so nothing was sent.' } : { sent: false, line: r.line || r.error || 'Not sent. Use Get help, top right.' };
   return st.sent;
 }
 const sentNote = () => (st.sent ? h('div', { class: st.sent.sent || st.sent.queued ? 'learn-check' : 'learn-problem', role: 'status' }, p(st.sent.line)) : null);
@@ -867,7 +870,7 @@ function overAgain() { st.found = null; if (st.queue) { runItem(); return; } st.
 
 // recordings only (A setting is missing?): the person's part ends here
 function sentStep() {
-  return card([h('h2', {}, st.sent?.sent || st.sent?.queued ? 'Sent' : 'Sending to Shawn…'), h('span', { class: 'spacer' })],
+  return card([h('h2', {}, st.sent?.sent || st.sent?.queued ? 'Sent' : st.sent?.nothing ? 'Nothing to send' : st.sent ? 'Not sent' : 'Sending to Shawn…'), h('span', { class: 'spacer' })],
     sentNote() || faint('Sending the recordings…'),
     ...st.log.filter((x) => !x.ok).map((x) => faint(`Not recorded: ${x.label}. ${x.why === 'skipped' ? 'Skipped.' : x.why}`)),
     h('div', { class: 'actions', style: { marginTop: '12px' } },
@@ -928,6 +931,7 @@ function savedStep() {
     ...otherWay,
     h('div', { class: 'actions' },
       sv.loaded && sv.id ? button('Open its page', () => { location.hash = `#/${sv.id}`; }, { kind: 'primary' }) : null,
+      !sv.loaded && !sv.note && !isDemo() ? restartButton({ kind: 'primary' }) : null,
       sv.canSecond ? button('Learn again', again, { kind: 'ghost' }) : null,
       button('Learn another device', () => { fresh(); redrawPage(); }, { kind: 'ghost' })));
 }

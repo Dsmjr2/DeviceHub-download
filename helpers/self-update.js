@@ -76,6 +76,8 @@ function changedFiles(root = ROOT) {
   // helpers/bin is built output (the pre-built helper, rebuilt here if its sources change; helpers/native.js): an
   // update always replaces it, so it is never "changed on this PC" (22 Oct 2026, docs/handoff/prebuilt-helper.md)
   return Object.entries(prints).filter(([f]) => !f.startsWith('helpers/bin/')).filter(([f, h]) => {
+    // a missing file holds no change to keep (1 Nov 2026, a new-setup audit; helpers/install.ps1 the same)
+    if (!fs.existsSync(path.join(root, f))) return false;
     let now; try { now = crypto.createHash('sha256').update(fs.readFileSync(path.join(root, f))).digest('hex'); } catch { return true; }
     return now !== h && !(shipped[f] || []).includes(now.slice(0, 16));
   }).map(([f]) => f);

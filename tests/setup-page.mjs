@@ -62,7 +62,7 @@ check(by(after, 'demo-razer')?.status === 'done', 'settings turned on: the row i
 // a waiting driver that is not connected and has no maker's app: needs you, no button
 check(by(L.deviceRows(KINDS, { live: LIVE, isVia }), 'demo-aerox')?.action === undefined, 'not connected, no app: no button');
 // the layout file already there: restart, no button
-check(by(L.deviceRows(KINDS, { live: LIVE, layouts: { '3434:0610': { source: true, have: true } }, isVia }), '3434:0610')?.action === undefined, 'layout file there: no button');
+check(by(L.deviceRows(KINDS, { live: LIVE, layouts: { '3434:0610': { source: true, have: true } }, isVia }), '3434:0610')?.action?.kind === 'restart', 'layout file there: a Restart DeviceHub button (1 Nov 2026)');
 // no summary: the window's own devices still show
 const noSum = L.deviceRows(null, { live: { mouse: { title: 'Mouse X', kind: 'Mouse', status: 'connected', seen: true }, keyboard: { title: 'K', status: 'idle' }, mine: { title: 'Mine', plugin: true, status: 'connected' } } });
 check(by(noSum, 'mouse') && !by(noSum, 'keyboard') && by(noSum, 'mine')?.driver === 'own', 'without the summary: seen built-ins and added devices');

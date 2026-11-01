@@ -74,7 +74,7 @@ await new Promise((resolve) => {
 const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
 check(/fs\.existsSync\(VENDOR_APPS\[app\]\)/.test(srv) && /p\.on\('error', \(e\) => console\.log\(`\[open\]/.test(srv), 'Open iCUE / Open the Pulsar app checks the app is there and handles a failed start (it crashed the server)');
 check(/const q = \(s\) => s\.replace\(\/'\/g, "''"\)/.test(srv) && /WorkingDirectory='\$\{q\(ROOT\)\}'/.test(srv), 'start-with-Windows shortcut quotes paths with an apostrophe (O\'Brien)');
-check(/try \{ build\(\); buildFailedAt = 0; \} catch/.test(nat), 'native.js: a helper that cannot be built does not throw up into the request');
+check(/try \{\s*build\(\); buildFailedAt = 0;[\s\S]*?\} catch \(e\) \{ buildFailedAt = Date\.now\(\);/.test(nat), 'native.js: a helper that cannot be built does not throw up into the request');
 check(/req\[1\] == "CLOSE"\) lock \(channels\)/.test(fs.readFileSync(path.join(ROOT, 'helpers/native/helper.cs'), 'utf8')), 'helper.cs ends a channel\'s thread after CLOSE (one leaked per headset retry)');
 check(!/h\.stop\(\);\s*\}\s*startStandby\(\);/.test(fs.readFileSync(path.join(ROOT, 'helpers/hs80-direct.js'), 'utf8')), 'hs80-direct.js starts no cable standby when no headset was found (it searched every second forever)');
 check(/function sample\(\) \{ try \{/.test(fs.readFileSync(path.join(ROOT, 'helpers/battery-history.js'), 'utf8')), 'battery-history.js: the 5-minute sample never throws out of its timer');

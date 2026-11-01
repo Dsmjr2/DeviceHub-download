@@ -36,6 +36,16 @@ check(/Update anyway keeps a copy of it/.test(t) && !/Claude/.test(t) && /1 of D
 const kept = su.keepChanged(c, root);
 check(fs.readFileSync(path.join(kept, 'public/style.css'), 'utf8') === '.a { color: hotpink; }\n' && kept.startsWith(path.join(root, 'backups')), 'Update anyway keeps a copy in backups first');
 
+// a missing file holds no change to keep (1 Nov 2026, a new-setup audit: a reinstall after a partial uninstall stopped
+// with "changed on this PC" and pointed at Settings > Update in an app that was gone); install.ps1 the same
+fs.rmSync(path.join(root, 'public/style.css'));
+check(su.changedFiles(root).length === 0, `a missing file is not a change (${su.changedFiles(root)})`);
+fs.rmSync(path.join(root, 'server.js'));
+check(su.changedFiles(root).length === 0, `nothing left at all is not a change (${su.changedFiles(root)})`);
+const ins = fs.readFileSync(new URL('../helpers/install.ps1', import.meta.url), 'utf8');
+check(/if \(-not \(Test-Path -LiteralPath \$p\)\) \{ return \$false \}/.test(ins), 'install.ps1 does not count a missing file as changed');
+check(/-not \$Overwrite -and \(Test-Path -LiteralPath \$prints\) -and \(Test-Path -LiteralPath \(Join-Path \$Target 'server\.js'\)\)/.test(ins), 'install.ps1 skips the check when the target has no server.js');
+
 fs.rmSync(root, { recursive: true, force: true });
 if (fails.length) { console.log(`update-changed: FAILED:\n- ${fails.join('\n- ')}`); process.exit(1); }
 console.log('update-changed (a shipped version is not a change; a real change is named, kept and updated over with Update anyway): all good');

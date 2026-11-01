@@ -132,7 +132,8 @@ function firstRun(go, redraw) {
       button('Open Setup', () => go('setup'), { kind: 'primary small', ic: 'check' }),
       button('Learn a device', () => go('learn'), { kind: 'ghost small', ic: 'plug' }),
       button('Monitors', () => go('monitors'), { kind: 'ghost small', ic: 'monitor' }),
-      button('Open folder', () => fetch('/api/reveal', { method: 'POST' }), { kind: 'ghost small', ic: 'external' })));
+      // DeviceHub's own folder (1 Nov 2026, a new-setup audit: "Open folder" alone did not say which)
+      button('Open DeviceHub folder', () => fetch('/api/reveal', { method: 'POST' }), { kind: 'ghost small', ic: 'external', title: 'Where DeviceHub is installed on this PC' })));
 }
 
 // The Set up card (22 Oct 2026; helpers/auto-setup.mjs, GET /api/setup): on a PC where DeviceHub installed something

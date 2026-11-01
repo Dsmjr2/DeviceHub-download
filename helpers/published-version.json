@@ -1,7 +1,7 @@
 {
-  "version": "1.39",
-  "commit": "16a3148441c8",
+  "version": "1.40",
+  "commit": "b59baed464e2",
   "notes": [
-    "Update pop-up at every start when an update is needed"
+    "New-setup fixes: Superlight receiver, install and launcher on a new…"
   ]
 }

@@ -60,11 +60,19 @@ const onProblem = (fn) => { problemHandlers.add(fn); for (const [c, t] of proble
 // a build that failed (no C# compiler, a compile error, antivirus) is tried again at most every 10 minutes; until
 // then an older helper, if there is one, runs, and without one every request answers GONE (20 Oct 2026: the throw
 // went up through the first request and took the server down, five times, and then the launcher gave up)
-let buildFailedAt = 0;
+let buildFailedAt = 0, goneLogged = false;
 function start() {
   if (proc) return;
   if (Date.now() - buildFailedAt > 600000) {
-    try { build(); buildFailedAt = 0; } catch (e) { buildFailedAt = Date.now(); console.log(e.fallback ? `[helper] ${e.message}` : `[helper] could not be built: ${String(e.message).split('\n')[0]}`); problem('helper-build', e.fallback ? e.message : `could not be built: ${String(e.message).split('\n')[0]}`); }
+    try {
+      build(); buildFailedAt = 0;
+      // still no exe after a build (1 Nov 2026, a new-setup audit: antivirus removes it): without this every request
+      // built again, holding the whole server up to 120 s each time; now the 10-minute wait above applies
+      if (!fs.existsSync(EXE)) {
+        buildFailedAt = Date.now();
+        if (!goneLogged) { goneLogged = true; console.log('[helper] the helper was removed after it was built (antivirus?); trying again in 10 minutes'); problem('helper-build', 'the helper was removed after it was built (antivirus?)'); }
+      }
+    } catch (e) { buildFailedAt = Date.now(); console.log(e.fallback ? `[helper] ${e.message}` : `[helper] could not be built: ${String(e.message).split('\n')[0]}`); problem('helper-build', e.fallback ? e.message : `could not be built: ${String(e.message).split('\n')[0]}`); }
   }
   if (!fs.existsSync(EXE)) return;
   const p = spawn(EXE, CUE_DLL ? [CUE_DLL] : [], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });

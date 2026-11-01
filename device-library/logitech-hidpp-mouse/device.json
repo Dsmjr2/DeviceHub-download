@@ -10,6 +10,7 @@
     "c53d",
     "c53f",
     "c54d",
+    "c547",
     "c548",
     "c07d",
     "c07e",
@@ -103,7 +104,7 @@
     "mouse name and firmware version (0x0005 / 0x0003 function codes not in the sheet)",
     "which model is on a receiver: the pairing table (HID++ 1.0 register 0xB5, Solaar receiver.py / libratbag hidpp10.c / Linux hid-logitech-dj.c) is requested with a SHORT report on the receiver's short-report collection, which this driver does not open, and the never list names receiver pairing registers; an empty slot and a sleeping mouse both read as asleep",
     "firmware updates, DFU, resets and pairing (never: they stay in Logitech's own app)",
-    "receivers C541 / C545 / C547: the sheet names them G915 keyboard receivers (OpenRGB), so they are not offered for a mouse",
+    "receivers C541 / C545: the sheet names them G915 keyboard receivers (OpenRGB), so they are not offered for a mouse; C547 (the original PRO X SUPERLIGHT's receiver, Linux hid-logitech-dj) is, shared with the keyboard driver",
     "editing onboard profiles (the DPI of each stage, buttons, sleep timer, lights): profile memory writes rewrite flash and are never sent",
     "lighting: 0x8071 has no read-back; 0x8070 effect parameter layouts are not in the sheet",
     "button remapping: 0x1B04 remap targets and its read reply layout are not in the sheet",
@@ -114,7 +115,7 @@
     "mice with only 0x2202: DPI is shown, not written (the paged 0x2202 DPI list is not read)"
   ],
   "status": "read-only",
-  "updated": "2026-10-31T16:10:26Z",
+  "updated": "2026-11-01T15:27:04Z",
   "tested": [
     {
       "by": "DeviceHub (simulation only)",

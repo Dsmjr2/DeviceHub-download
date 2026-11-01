@@ -93,6 +93,14 @@ function fake(F, pid, slot, features, kind) {
   ok(r === true && kb2.asleep && kb2.pid === 0xc541, `keyboard driver: a quiet receiver alone is still asleep (${e?.message})`);
 }
 
+// a PRO X SUPERLIGHT on its own receiver C547 (1 Nov 2026, a new-setup audit: C547 was left to the keyboard driver)
+{
+  const rx547 = fake(MF, 0xc547, 1, { [MF.ADJUSTABLE_DPI]: 3, [MF.DEVICE_NAME]: 2 }, 3);
+  setDeviceProvider(async (filters) => (filters[0].productId === 0xc547 ? rx547 : null));
+  let r, e; try { r = await mouse.connect(false); } catch (x) { e = x; }
+  ok(r === true && mouse.pid === 0xc547 && !mouse.asleep && mouse.index === 1, `mouse driver: a SUPERLIGHT on receiver C547 is found (${e ? e.message : mouse.pid?.toString(16)})`);
+}
+
 if (fails.length) { console.log(`logitech-order: ${fails.length} failed`); for (const f of fails) console.log(`  FAIL ${f}`); process.exit(1); }
 console.log('logitech-order (every id tried in turn: a receiver holding the other kind of device hides nothing): all good');
 process.exit(0);

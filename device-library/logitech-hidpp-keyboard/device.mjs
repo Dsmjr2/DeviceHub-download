@@ -43,8 +43,11 @@ const hex2 = (b) => b.toString(16).padStart(2, '0');
 //   - never closes the receiver when it steps aside (the mouse driver may be using the same handle), and
 //   - never waits "asleep" on it: no keyboard answering = stepped aside quietly (notMine), looked at again on a plug, a
 //     Connect click or after the rest, so a mouse-only receiver never shows a keyboard tile.
-export const SHARED = { 0xc539: 'LIGHTSPEED receiver', 0xc53f: 'LIGHTSPEED receiver', 0xc54d: 'LIGHTSPEED receiver' };
-export const RECEIVERS = { 0xc541: 'G915 receiver', 0xc547: 'G915 receiver', 0xc545: 'G915 TKL receiver', ...SHARED };
+// C547 shared too (1 Nov 2026, a new-setup audit): it is also the original PRO X SUPERLIGHT's receiver (Linux
+// hid-logitech-dj), so the mouse driver looks at it as well; here a G915 on it is claimed by its DEVICE_NAME kind, and
+// one that is off shows when it answers (a Connect click, a plug) instead of as a waiting tile
+export const SHARED = { 0xc539: 'LIGHTSPEED receiver', 0xc53f: 'LIGHTSPEED receiver', 0xc54d: 'LIGHTSPEED receiver', 0xc547: 'G915 / LIGHTSPEED receiver' };
+export const RECEIVERS = { 0xc541: 'G915 receiver', 0xc545: 'G915 TKL receiver', ...SHARED };
 // G413 C33A (23 Oct 2026): libratbag data/devices/logitech-g413.device @ 8235b5bb6032dea15901ab58a8218956f4494d08
 // ("DeviceMatch=usb:046d:c33a", "DeviceType=keyboard", "Driver=hidpp20"); MatMoul/g810-led src/classes/Keyboard.h
 // @ efa3c35e74f01a2ed2346320da8bad411bfe8ed8 ("{ 0x46d, 0xc33a, ... g413 }") sends it HID++ long reports 0x11 to device

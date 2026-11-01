@@ -160,6 +160,8 @@ try {
     check(/filter\(\(\[f\]\) => !f\.startsWith\('helpers\/bin\/'\)\)/.test(su), 'self-update never counts helpers/bin as changed on the PC');
     const nat = fs.readFileSync(path.join(HELPERS, 'native.js'), 'utf8');
     check(/console\.log\(e\.fallback \? `\[helper\] \$\{e\.message\}`/.test(nat), 'native.js start() logs the fallback in one line');
+    // an exe gone right after its build (antivirus) waits the 10 minutes too, instead of building on every request (1 Nov 2026)
+    check(/build\(\); buildFailedAt = 0;\s*\/\/[^\n]*\n(\s*\/\/[^\n]*\n)*\s*if \(!fs\.existsSync\(EXE\)\) \{\s*buildFailedAt = Date\.now\(\);/.test(nat), 'native.js start() backs off when the exe is missing after a build');
   }
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });

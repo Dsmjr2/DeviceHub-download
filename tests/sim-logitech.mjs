@@ -377,7 +377,7 @@ driver.vendorApp = async () => null;
   const { SHARED_WITH_KEYBOARD } = await import('../device-library/logitech-hidpp-mouse/device.mjs');
   const { SHARED: KB_SHARED } = await import('../device-library/logitech-hidpp-keyboard/device.mjs');
   const sharedHex = SHARED_WITH_KEYBOARD.map(hx);
-  check(sharedHex.sort().join() === 'c539,c53f,c54d' && Object.keys(KB_SHARED).map(hx).sort().join() === sharedHex.join() && SHARED_WITH_KEYBOARD.every((p) => RECEIVERS.includes(p)), `the mouse and keyboard drivers name the same shared receivers (${sharedHex})`);
+  check(sharedHex.sort().join() === 'c539,c53f,c547,c54d' && Object.keys(KB_SHARED).map(hx).sort().join() === sharedHex.join() && SHARED_WITH_KEYBOARD.every((p) => RECEIVERS.includes(p)), `the mouse and keyboard drivers name the same shared receivers (${sharedHex})`);
   check(others.length > 0 && all.filter((p) => others.includes(p)).sort().join() === sharedHex.join() && !Object.keys(WPIDS).map(hx).some((p) => others.includes(p)), `no other mouse id is claimed by another library entry (${all.filter((p) => others.includes(p))})`);
   check(Object.keys(WPIDS).every((p) => !all.includes(hx(p))), 'receiver wpids (40xx) are never opened as channels');
   check([0xc08b, 0xc332, 0xb024].every((p) => PROFILE_READ_1BASED.includes(p)), 'libratbag INDEX_OFFSET ids read their profile 1-based');

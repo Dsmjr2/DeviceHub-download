@@ -44,9 +44,10 @@ check(mb['acme-pro-mouse']?.installable === true && mb['acme-pro-mouse'].matched
 check(mb['acme-reader'] && mb['acme-reader'].installable === false && /read-only/.test(mb['acme-reader'].why), 'a read-only entry is found but not installable');
 check(!mb['broken-one'] && list({ root }).find((e) => e.name === 'broken-one')?.error, 'a broken device.json is listed with its problem, never matched');
 check(m.length === 2 && match([{ vid: '9999', pid: '0001' }], { root }).length === 0, 'devices with no entry match nothing');
-// the example's unclaimed receiver is unclaimed in the real library too; C547 belongs to the G915 keyboard driver (22 Oct 2026)
+// the example's unclaimed receiver is unclaimed in the real library too; C547 is both drivers' (1 Nov 2026: the original
+// PRO X SUPERLIGHT's receiver and a G915's)
 check(match([{ vid: '046d', pid: 'c5ff' }], { root: REAL }).length === 0, '046d:c5ff (the unclaimed example) matches no real library entry');
-check(match([{ vid: '046d', pid: 'c547' }], { root: REAL }).map((x) => x.name).join() === 'logitech-hidpp-keyboard', `046d:c547 matches only logitech-hidpp-keyboard (${match([{ vid: '046d', pid: 'c547' }], { root: REAL }).map((x) => x.name)})`);
+check(match([{ vid: '046d', pid: 'c547' }], { root: REAL }).map((x) => x.name).sort().join() === 'logitech-hidpp-keyboard,logitech-hidpp-mouse', `046d:c547 matches both Logitech drivers (${match([{ vid: '046d', pid: 'c547' }], { root: REAL }).map((x) => x.name)})`);
 check(/status/.test(validateMeta(JSON.parse(meta({ status: 'works' }))) || ''), 'an unknown status is refused');
 // untested entries (22 Oct 2026): installable only when asked (the person's click), guarded like read-only ones
 write('device-library/acme-new/device.mjs', driver('acme-new'));

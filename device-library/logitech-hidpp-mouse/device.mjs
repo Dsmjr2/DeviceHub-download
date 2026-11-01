@@ -63,14 +63,17 @@ import { HidChannel, getDevice, hex } from '../../public/devices/hid.js';
 
 const VID = 0x046d;
 // sheet section 1 "Lightspeed receivers" (Solaar base_usb.py): Lightspeed and Bolt receivers, HID++ interface 2
-// C541 / C545 / C547 are left out: the sheet (OpenRGB) names them G915 keyboard receivers
-export const RECEIVERS = [0xc539, 0xc53a, 0xc53d, 0xc53f, 0xc54d, 0xc548];
+// C541 / C545 are left out: the sheet (OpenRGB) names them G915 keyboard receivers. C547 is in (1 Nov 2026, a new-setup
+// audit): it is the original PRO X SUPERLIGHT's receiver (Linux hid-logitech-dj, USB_DEVICE_ID_LOGITECH_NANO_RECEIVER_
+// LIGHTSPEED_1_1; the C54D patch of Nov 2025 says the SUPERLIGHT 2's receiver "behaves like" C547) as well as a G915's
+// second one (OpenRGB), so it is shared with the keyboard driver like C539 / C53F / C54D
+export const RECEIVERS = [0xc539, 0xc53a, 0xc53d, 0xc53f, 0xc54d, 0xc547, 0xc548];
 // SHARED_WITH_KEYBOARD (23 Oct 2026): device-library/logitech-hidpp-keyboard also runs these three LIGHTSPEED receivers
 // (its SHARED: a keyboard paired to one, a PRO X TKL or G515, is found there by its DEVICE_NAME kind). Both drivers then
 // get the same HID handle (helpers/hid-host.mjs provider() gives the first host for the vid / pid / usage page), so on
 // these the mouse driver never closes the receiver when it steps aside; the keyboard driver uses its own HID++ software
 // id there (0x0C), so neither takes the other's replies.
-export const SHARED_WITH_KEYBOARD = [0xc539, 0xc53f, 0xc54d];
+export const SHARED_WITH_KEYBOARD = [0xc539, 0xc53f, 0xc54d, 0xc547];
 // sheet section 1 "Mice": wired / USB product ids
 export const WIRED = {
   0xc09b: 'PRO X SUPERLIGHT 2', 0xc094: 'PRO X SUPERLIGHT', 0xc09a: 'PRO 2 LIGHTSPEED', 0xc098: 'G502 X LIGHTSPEED',

@@ -39,6 +39,22 @@ check((vbs.match(/sh\.Run /g) || []).length === 1 && !/sh\.AppActivate\("DeviceH
   }
 }
 
+// a new-setup audit (1 Nov 2026): the launcher and the browser start in the app's folder, not the installer's temp folder
+check(/^sh\.CurrentDirectory = dir\r?$/m.test(vbs), 'DeviceHub.vbs works in its own folder (sh.CurrentDirectory = dir)');
+check((inst.match(/Start-Process "\$env:WINDIR\\System32\\wscript\.exe" -WorkingDirectory \$Target /g) || []).length === 2, 'install.ps1 starts DeviceHub.vbs in the app folder both times');
+// 32-bit Chrome and Edge under Program Files, in the launcher and the installer's check alike
+for (const p of ['\\Google\\Chrome\\Application\\chrome.exe', '\\Microsoft\\Edge\\Application\\msedge.exe']) {
+  check(vbs.includes(`pf86 & "${p}"`) && vbs.includes(`pf & "${p}"`), `DeviceHub.vbs looks for ${p} under both Program Files`);
+  check(inst.includes(`"\${env:ProgramFiles(x86)}${p}"`) && inst.includes(`"$env:ProgramFiles${p}"`), `install.ps1 looks for ${p} under both Program Files`);
+}
+check(vbs.includes('DeviceHub needs Google Chrome or Microsoft Edge to show its window. Install one, then open DeviceHub again.'), 'DeviceHub.vbs says so in plain words when there is no browser');
+// Install DeviceHub.bat opened inside the zip (only it is unpacked): says to extract first
+{
+  const bat = fs.readFileSync(path.join(ROOT, 'Install DeviceHub.bat'), 'utf8');
+  const at = bat.indexOf('if not exist "%~dp0helpers\\install.ps1"');
+  check(at > 0 && at < bat.indexOf('-File "%~dp0helpers\\install.ps1"') && bat.includes('Right-click the zip and choose Extract All first, then run Install DeviceHub.bat from the extracted folder.'), 'Install DeviceHub.bat says to extract the zip first when helpers\\install.ps1 is not beside it');
+}
+
 if (process.platform === 'win32' && fs.existsSync(path.join(process.env.WINDIR || 'C:\\Windows', 'System32', 'cscript.exe'))) {
   const parse = spawnSync('powershell.exe', ['-NoProfile', '-Command', `$e = $null; [void][System.Management.Automation.Language.Parser]::ParseFile('${path.join(ROOT, 'helpers', 'install.ps1').replace(/'/g, "''")}', [ref]$null, [ref]$e); if ($e.Count) { $e | ForEach-Object { $_.Message }; exit 1 }`], { encoding: 'utf8', windowsHide: true, timeout: 60000 });
   check(parse.status === 0, `install.ps1 parses (${(parse.stdout || '').trim()})`);
@@ -48,7 +64,17 @@ if (process.platform === 'win32' && fs.existsSync(path.join(process.env.WINDIR |
   fs.writeFileSync(path.join(dir, 'settings.json'), '{ "lightWindow": false }');
 
   // a fake DeviceHub: down for upMs, then answering; its window count turns 1 at windowMs (null = never)
-  async function scenario(name, { args = [], upMs = 0, windowMs = null, wait = 4, settings = '{ "lightWindow": false }', oldRoot = false, extraEnv = {} }) {
+  // log: { before, during }: logs\server.log as it was before this start, and a line added every second while it runs
+  async function scenario(name, { args = [], upMs = 0, windowMs = null, wait = 4, settings = '{ "lightWindow": false }', oldRoot = false, extraEnv = {}, log: serverLog = null }) {
+    const logFile = path.join(dir, 'logs', 'server.log');
+    fs.rmSync(logFile, { force: true });
+    let logTimer = null;
+    if (serverLog) {
+      fs.mkdirSync(path.dirname(logFile), { recursive: true });
+      fs.writeFileSync(logFile, serverLog.before || '');
+      let n = 0;
+      logTimer = setInterval(() => fs.appendFileSync(logFile, serverLog.during(++n)), 1000);
+    }
     // data\settings.json (27 Oct 2026); oldRoot: beside the app, where a copy that has not moved it yet keeps it
     const sf = path.join(dir, 'data', 'settings.json'), old = path.join(dir, 'settings.json');
     fs.mkdirSync(path.dirname(sf), { recursive: true });
@@ -70,6 +96,8 @@ if (process.platform === 'win32' && fs.existsSync(path.join(process.env.WINDIR |
     const p = spawn('cscript.exe', ['//nologo', '//T:60', path.join(dir, 'DeviceHub.vbs'), ...args], { env, windowsHide: true, stdio: 'pipe' });
     let err = ''; p.stderr.on('data', (d) => { err += d; }); p.stdout.on('data', (d) => { err += d; });
     const code = await new Promise((r) => p.on('close', r));
+    if (logTimer) clearInterval(logTimer);
+    fs.rmSync(logFile, { force: true });
     server.close();
     const lines = fs.existsSync(log) ? fs.readFileSync(log, 'utf8').split(/\r?\n/).filter(Boolean) : [];
     check(code === 0, `${name}: the launcher ended with code ${code} (${err.trim().slice(0, 300)})`);
@@ -116,6 +144,19 @@ if (process.platform === 'win32' && fs.existsSync(path.join(process.env.WINDIR |
   const h = await scenario('reopen-from-tray', { upMs: 0, windowMs: null });
   check(h.windows === 1 && h.own === 1 && !h.activated, `reopened from the tray: one own window (${h.lines})`);
   check(Date.now() - t8 < 2500, `reopened from the tray within 2.5 s (${Date.now() - t8} ms)`);
+
+  // 9. (1 Nov 2026, a new-setup audit) neither Chrome nor Edge: plain words (here a note), no script error
+  const nb = await scenario('no-browser', { upMs: 0, windowMs: null, extraEnv: { DEVICEHUB_TEST_NO_BROWSER: '1' } });
+  check(nb.windows === 0 && nb.lines.includes('no browser'), `no browser: says so instead of a script error (${nb.lines})`);
+  // 10. a first start slowed by antivirus: the log is still being written with no "[start]" line from this start (an
+  // old one from before does not count), so the launcher keeps waiting past 20 s, and opens the window at ~25 s
+  const t10 = Date.now();
+  const sl = await scenario('slow-first-start', { upMs: 25000, windowMs: null, log: { before: '[start] Port 5577 is used by another program, so DeviceHub cannot start.\r\n', during: (n) => `[helper] still starting ${n}\r\n` } });
+  check(sl.windows === 1 && !sl.lines.includes('could not start'), `a slow first start still opens the window (${sl.lines}, ${Date.now() - t10} ms)`);
+  // 11. this start wrote its "[start]" reason: no longer waiting past the first 20 s
+  const t11 = Date.now();
+  const st = await scenario('start-reason', { upMs: 120000, windowMs: null, log: { during: (n) => (n === 3 ? '[start] Port 5577 is used by another program, so DeviceHub cannot start.\r\n' : `[helper] line ${n}\r\n`) } });
+  check(st.windows === 0 && st.lines.includes('could not start') && Date.now() - t11 < 30000, `a "[start]" reason from this start ends the wait at ~20 s (${st.lines}, ${Date.now() - t11} ms)`);
 
   fs.rmSync(dir, { recursive: true, force: true });
 } else console.log('update-window: not on Windows; the launcher run was skipped');

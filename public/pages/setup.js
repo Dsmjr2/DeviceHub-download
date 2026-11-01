@@ -19,6 +19,7 @@ import { devices, isDemo, connect } from '../core/devices.js';
 import { topbar, checkAnswer } from './common.js';
 import { brandForUsb, isViaKeyboard } from '../core/brands.js';
 import { getHelp, helpHere } from '../ui/get-help.js';
+import { restartButton } from '../core/restart.js';
 import { worksReport, offersWorks } from '../ui/works-report.js';
 import { installerInline, installerStatus } from '../ui/installer-button.js';
 import { boardLights, boardLightsStatus } from '../ui/board-lights.js';
@@ -143,7 +144,7 @@ async function runOne(r) {
     if (a.kind === 'install') {
       noteOf(k, 'Installing…');
       if (isDemo()) return demoDone(k, 'installed.');
-      try { const j = await post('/api/library/install', { name: a.name }); noteOf(k, j.loaded ? (j.note || 'Installed.') : 'Installed. Restart DeviceHub.'); }
+      try { const j = await post('/api/library/install', { name: a.name }); noteOf(k, j.loaded ? (j.note || 'Installed.') : 'Installed. Restart DeviceHub.'); if (!j.loaded) st.over[k] = { ...st.over[k], action: { kind: 'restart' } }; }
       catch (e) { noteOf(k, `Not installed: ${e.message}`); }
       loadSummary();
     } else if (a.kind === 'turn-on' || a.kind === 'check-again') {
@@ -156,6 +157,7 @@ async function runOne(r) {
       if (isDemo()) return demoDone(k, 'layout saved.');
       const j = await post('/api/via-fetch', { vid: a.vid, pid: a.pid }).catch((e) => ({ error: e.message }));
       noteOf(k, j.ok ? `Saved. Restart DeviceHub to show its keys.` : `Not saved. ${j.error || ''}`.trim());
+      if (j.ok) st.over[k] = { ...st.over[k], action: { kind: 'restart' } };
       if (j.ok) { delete st.layoutAsked[k]; askLayouts(st.summary); }
     } else if (a.kind === 'close-app') {
       noteOf(k, 'Closing…');
@@ -292,6 +294,7 @@ function control(r) {
     case 'works': return worksReport(devices[a.id] || { id: a.id, adapter: {} });
     case 'settings': return button(a.label || 'Open', () => runOne(r), { kind: 'ghost small', ic: 'external' });
     case 'eq-on': return button('Turn it on', () => runOne(r), { kind: 'primary small' });
+    case 'restart': return isDemo() ? button('Restart DeviceHub', () => noteOf(k, 'Demo: DeviceHub restarts and the window reloads.'), { kind: 'ghost small', ic: 'refresh' }) : restartButton();
     case 'find-lights': return button('Find lights', () => runOne(r), { kind: 'small', ic: 'refresh', disabled: busy });
     case 'tool': return installerInline(a.id, { redraw, onDone: () => loadTools(true) });
     case 'board-lights': return boardLights({ redraw, onDone: () => { boardLightsStatus(true).then((b) => { st.board = b; redraw(); }); if (!isDemo()) get('/api/openrgb').then((o) => { st.orgb = o; redraw(); }, () => {}); } });

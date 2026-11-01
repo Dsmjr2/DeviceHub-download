@@ -375,7 +375,10 @@ export default {
     const dev = d();
     const a = dev.adapter;
     rerender = () => { const el = document.querySelector('#main .page'); if (el) el.replaceWith(Object.assign(this.render(), { className: 'page no-anim' })); };
-    const head = topbar('Epomaker · 75% wireless keyboard', a.title, null, h('div', { class: 'chips' }, undoButton(dev), statusPill(dev)), deviceHelp(dev));
+    // the P75's line only for the P75 (1 Nov 2026, a new-setup audit: a Keychron's page said "Epomaker"); before the
+    // keyboard has answered its layout is not known yet
+    const lay = a.session?.layout;
+    const head = topbar(!lay ? 'Keyboard' : lay === P75 ? 'Epomaker · 75% wireless keyboard' : 'VIA keyboard', a.title, null, h('div', { class: 'chips' }, undoButton(dev), statusPill(dev)), deviceHelp(dev));
     if ((dev.status !== 'connected' && !isAway(dev)) || !a.session) {
       return h('div', {}, head, connectState(dev, 'Plug in its USB cable, press Connect. Close VIA and the maker\'s app first.'), viaHelp());
     }

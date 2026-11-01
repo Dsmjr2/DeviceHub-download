@@ -84,7 +84,7 @@ export function deviceRows(summary, { live = {}, diag = {}, layouts = {}, isVia 
     const { vid, pid } = splitUsb(i.usb);
     if (i.what === 'packet-size') { rows.push({ key: i.usb, title: i.title, status: 'optional', line: 'Not supported yet.', action: { kind: 'request', vid, pid, name: i.title } }); continue; }
     const L = layouts[String(i.usb || '').toLowerCase()];
-    if (isVia(i.usb, i.title) && L?.have) rows.push({ key: i.usb, title: i.title, device: true, kind: 'keyboard', status: 'needs', line: 'Restart DeviceHub to show its keys.' });
+    if (isVia(i.usb, i.title) && L?.have) rows.push({ key: i.usb, title: i.title, device: true, kind: 'keyboard', status: 'needs', line: 'Restart DeviceHub to show its keys.', action: { kind: 'restart' } });
     else if (isVia(i.usb, i.title) && L?.source) rows.push({ key: i.usb, title: i.title, device: true, kind: 'keyboard', status: 'needs', line: 'Needs its layout file.', action: { kind: 'get-layout', vid, pid } });
     else rows.push({ key: i.usb, title: i.title, device: true, status: 'needs', line: 'No driver yet. Learn it.', action: { kind: 'learn', vid, pid } });
   }

@@ -18,7 +18,8 @@ $prebuilt = Test-Path (Join-Path $Source 'helpers\bin\helper-sources.sha256')
 if (Test-Path $csc) { Write-Host '   Windows'' C# compiler found (DeviceHub builds its device helper with it)' }
 elseif ($prebuilt) { Write-Host '   the device helper comes ready-built (Windows'' C# compiler is only needed if DeviceHub''s own code is changed on this PC)' }
 else { Write-Host '   Windows'' C# compiler (.NET Framework 4.8) is missing, so DeviceHub cannot reach your devices. Turn on ".NET Framework 4.8 Advanced Services" in Windows Features.' -ForegroundColor Yellow }
-$browser = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe", "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+# the same list as DeviceHub.vbs; 32-bit Chrome and Edge under Program Files too (1 Nov 2026, a new-setup audit)
+$browser = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe", "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe", "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
 if ($browser) { Write-Host "   window: $(if ($browser -match 'msedge') { 'Microsoft Edge' } else { 'Google Chrome' })" } else { Write-Host '   Neither Chrome nor Edge was found: DeviceHub needs one of them for its window.' -ForegroundColor Yellow }
 $owner = Get-NetTCPConnection -LocalPort 5577 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($owner) {
@@ -54,8 +55,10 @@ if ($shared -and -not $Overwrite -and (Get-Command git -ErrorAction SilentlyCont
 # Never over this PC's own changes (21 Oct 2026): an installed copy carries release-files.json, a fingerprint of every app
 # file as it was installed. A file that no longer matches was changed on this PC (by its owner or their Claude); copying
 # the new version would undo it, so nothing is copied and the files are named. -Overwrite installs anyway.
+# A folder without server.js is not an app left to keep (1 Nov 2026, a new-setup audit: what a partial uninstall leaves),
+# so it is not checked at all.
 $prints = Join-Path $Target 'release-files.json'
-if (-not $Overwrite -and (Test-Path -LiteralPath $prints) -and -not (Test-Path -LiteralPath (Join-Path $Target '.git'))) {
+if (-not $Overwrite -and (Test-Path -LiteralPath $prints) -and (Test-Path -LiteralPath (Join-Path $Target 'server.js')) -and -not (Test-Path -LiteralPath (Join-Path $Target '.git'))) {
   $was = Get-Content -LiteralPath $prints -Raw | ConvertFrom-Json
   # a file matching any version DeviceHub ever shipped (release-history.json, 23 Oct 2026) was not changed on this PC
   $shipped = $null
@@ -66,7 +69,9 @@ if (-not $Overwrite -and (Test-Path -LiteralPath $prints) -and -not (Test-Path -
   # helpers/bin is built output (the pre-built helper, rebuilt on this PC if its sources change): always replaced
   $changed = @($was.PSObject.Properties | Where-Object { -not $_.Name.StartsWith('helpers/bin/') } | Where-Object {
     $p = Join-Path $Target ($_.Name -replace '/', '\')
-    if (-not (Test-Path -LiteralPath $p)) { return $true }
+    # a missing file holds no change to keep (1 Nov 2026, a new-setup audit: a reinstall after a partial uninstall
+    # stopped with exit 3 and pointed at Settings > Update in an app that was gone)
+    if (-not (Test-Path -LiteralPath $p)) { return $false }
     $now = (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLower()
     $now -ne $_.Value -and -not ($shipped -and @($shipped.($_.Name)) -contains $now.Substring(0, 16))
   } | ForEach-Object { $_.Name })
@@ -149,7 +154,9 @@ if ($same) { Write-Host '   already in place' } else {
       }
     }
   } catch {
-    if ($wasRunning -and -not $NoLaunch) { Start-Process "$env:WINDIR\System32\wscript.exe" -ArgumentList @('"' + (Join-Path $Target 'DeviceHub.vbs') + '"') }
+    # started in the app's folder (1 Nov 2026, a new-setup audit): it and the browser it opens kept this script's own
+    # folder (the download or IExpress temp folder) open, so it could not be deleted
+    if ($wasRunning -and -not $NoLaunch) { Start-Process "$env:WINDIR\System32\wscript.exe" -WorkingDirectory $Target -ArgumentList @('"' + (Join-Path $Target 'DeviceHub.vbs') + '"') }
     throw "$($_.Exception.Message). DeviceHub was started again; run the update again once nothing holds its files"
   }
   $global:LASTEXITCODE = 0
@@ -277,7 +284,8 @@ Step 'Done'
 Write-Host '   Open DeviceHub from the Desktop or Start. Plug in your devices; they are found by themselves.'
 # -Background: comes back in the tray only. Nothing passes it since updates stopped installing by themselves (24 Oct 2026);
 # kept because a copy from that morning still passes it when it updates. A window that was open reloads (/afterupdate).
-if (-not $NoLaunch) { Start-Process "$env:WINDIR\System32\wscript.exe" -ArgumentList (@('"' + (Join-Path $Target 'DeviceHub.vbs') + '"') + $(if ($hadWindow) { @('/afterupdate') } elseif ($Background) { @('/background') } else { @() })) }
+# in the app's folder, not this script's (1 Nov 2026, a new-setup audit: the temp folder stayed held open)
+if (-not $NoLaunch) { Start-Process "$env:WINDIR\System32\wscript.exe" -WorkingDirectory $Target -ArgumentList (@('"' + (Join-Path $Target 'DeviceHub.vbs') + '"') + $(if ($hadWindow) { @('/afterupdate') } elseif ($Background) { @('/background') } else { @() })) }
 # a clean end says so (31 Oct 2026): robocopy and git leave their own codes behind (robocopy 1 = files copied), and
 # Setup.exe reads this one to tell an installer that refused from one that finished
 exit 0

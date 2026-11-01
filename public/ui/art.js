@@ -10,7 +10,10 @@
 // .glaze (a soft light over the main bodies) and .grain (Titanium's brushed grain) copy the main body shapes; both are
 // hidden unless a look shows them (22 Oct 2026, style.css "The drawn looks, made beautiful").
 import { svgEl } from './dom.js';
-import { ART_STYLES } from '../core/theme.js';
+import { ART_STYLES, photosHere } from '../core/theme.js';
+// the makers' photos are only on the publisher's PC (helpers/make-installer.ps1): a copy without them never asks for
+// them (1 Nov 2026, a fresh install: 3 missing-file requests on every redraw)
+const photo = (src, attrs) => (photosHere() ? `<image class="photo" href="${src}" ${attrs}/>` : '');
 import { isDemo } from '../core/devices.js';
 const ART_LOOKS = ART_STYLES.map(([k]) => k);
 
@@ -103,7 +106,7 @@ export function mouseArt() {
     <text class="lq-text" x="50" y="128" text-anchor="middle"><tspan class="lq-n"></tspan><tspan class="lq-u" dx="1">%</tspan></text>
     <g class="bp">${dimV(-3, 2, 181)}${dimH(186, 2, 98)}${callout(50, 28)}${callout(50, 94)}${callout(4.4, 70)}</g>
   </g>
-    <image class="photo" href="/img/xlite.png" x="0" y="0" width="100" height="183" preserveAspectRatio="xMidYMid meet"/>
+    ${photo('/img/xlite.png', 'x="0" y="0" width="100" height="183" preserveAspectRatio="xMidYMid meet"')}
   </svg>`);
 }
 
@@ -167,7 +170,7 @@ export function headsetArt() {
     <text class="lq-text" x="122" y="158" text-anchor="middle"><tspan class="lq-n"></tspan><tspan class="lq-u" dx="1">%</tspan></text>
     <g class="bp">${callout(4, 211)}${callout(133, 128)}${callout(82.8, 23)}${callout(75.5, 99)}</g>
   </g>
-    <image class="photo" href="/img/hs80.png" x="0" y="0" width="160" height="220" preserveAspectRatio="xMidYMid meet"/>
+    ${photo('/img/hs80.png', 'x="0" y="0" width="160" height="220" preserveAspectRatio="xMidYMid meet"')}
   </svg>`);
 }
 
@@ -235,7 +238,7 @@ export function keyboardArt() {
     <rect class="scan" x="1" y="1" width="${f(W - 2)}" height="${f(H - 2)}" rx="9" pathLength="100"/>
     <g class="bp">${callout(+f(cx), +f(cy))}${callout(pad + 5.3, pad + 5.3)}${dimH(+f(H + 6), 1, +f(W - 1))}</g>
   </g>
-    <image class="photo" href="/img/p75.png" x="0" y="0" width="${f(W)}" height="${f(H)}" preserveAspectRatio="xMidYMid meet"/>
+    ${photo('/img/p75.png', `x="0" y="0" width="${f(W)}" height="${f(H)}" preserveAspectRatio="xMidYMid meet"`)}
   </svg>`);
 }
 

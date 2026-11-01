@@ -9,6 +9,9 @@
 Set sh = CreateObject("WScript.Shell")
 Set fs = CreateObject("Scripting.FileSystemObject")
 dir = fs.GetParentFolderName(WScript.ScriptFullName)
+' in the app's folder (1 Nov 2026, a new-setup audit): started from the installer, this script and the browser it opens
+' kept the download or IExpress temp folder open, so it could not be deleted
+sh.CurrentDirectory = dir
 background = False
 serve = False
 afterUpdate = False
@@ -85,6 +88,35 @@ Function WindowsOpen()
   Err.Clear
 End Function
 
+' logs\server.log (27 Oct 2026); beside the app on a version from before that; "" when there is none
+Function LogPath()
+  Dim f
+  f = dir & "\logs\server.log"
+  If Not fs.FileExists(f) Then f = dir & "\server.log"
+  If Not fs.FileExists(f) Then f = ""
+  LogPath = f
+End Function
+' Still starting (1 Nov 2026, a new-setup audit): the log was written in the last 10 s and has no "[start]" line (the
+' reason it stopped) from this start. logStart is the log's size before this start, so only this start's lines count.
+Function StillStarting()
+  Dim f, t, s, base
+  On Error Resume Next
+  StillStarting = False
+  f = LogPath()
+  If f = "" Then Exit Function
+  If DateDiff("s", fs.GetFile(f).DateLastModified, Now) > 10 Then Exit Function
+  base = logStart
+  ' moved to server.old.log by the launcher loop: all of it is this start's
+  If fs.GetFile(f).Size < base Then base = 0
+  Set t = fs.OpenTextFile(f, 1)
+  If base > 0 Then t.Skip base
+  s = ""
+  If Not t.AtEndOfStream Then s = t.ReadAll
+  t.Close
+  If Err.Number = 0 And InStr(vbLf & s, vbLf & "[start]") = 0 Then StillStarting = True
+  Err.Clear
+End Function
+
 ' Node.js: the copy shipped in runtime\ when there is one (the hand-off installer), else the one installed on the PC
 nodeExe = "node"
 If fs.FileExists(dir & "\runtime\node.exe") Then nodeExe = """" & dir & "\runtime\node.exe"""
@@ -97,6 +129,10 @@ If serve Then
   WScript.Quit
 End If
 
+' when this start began, and the log's size then (StillStarting above)
+startedAt = Now
+logStart = 0
+If LogPath() <> "" Then logStart = fs.GetFile(LogPath()).Size
 Launch keep, 0
 If background Then WScript.Quit
 
@@ -115,8 +151,15 @@ For i = 1 To 19
   If Running() Then Exit For
   WScript.Sleep 1000
 Next
+' A brand-new PC's antivirus scans node.exe on its first run, which can take longer (1 Nov 2026, a new-setup audit):
+' while the server is still writing its log with no "[start]" line from this start, keep waiting, up to 60 s in all
+Do While DateDiff("s", startedAt, Now) < 60
+  If Running() Then Exit Do
+  If Not StillStarting() Then Exit Do
+  WScript.Sleep 1000
+Loop
 If Not Running() Then
-  reason = "It did not start within 20 seconds."
+  reason = "It did not start within " & DateDiff("s", startedAt, Now) & " seconds."
   ' logs\server.log (27 Oct 2026); beside the app on a version from before that
   logFile = dir & "\logs\server.log"
   If Not fs.FileExists(logFile) Then logFile = dir & "\server.log"
@@ -154,11 +197,27 @@ End If
 If WindowsOpen() > 0 Then
   If Activate() Then WScript.Quit
 End If
-chrome =sh.ExpandEnvironmentStrings("%ProgramFiles%") & "\Google\Chrome\Application\chrome.exe"
+' 32-bit Chrome under Program Files (x86) and Edge under Program Files too (1 Nov 2026, a new-setup audit); Chrome first
+pf = sh.ExpandEnvironmentStrings("%ProgramFiles%")
+pf86 = sh.ExpandEnvironmentStrings("%ProgramFiles(x86)%")
+chrome = pf & "\Google\Chrome\Application\chrome.exe"
+If Not fs.FileExists(chrome) Then chrome = pf86 & "\Google\Chrome\Application\chrome.exe"
 If Not fs.FileExists(chrome) Then chrome = sh.ExpandEnvironmentStrings("%LocalAppData%") & "\Google\Chrome\Application\chrome.exe"
 ' a test (tests/update-window.mjs, with DEVICEHUB_LAUNCH_LOG) can pretend Chrome is not installed, to check the Edge fallback
 If launchLog <> "" And penv("DEVICEHUB_TEST_NO_CHROME") = "1" Then chrome = ""
-If Not fs.FileExists(chrome) Then chrome = sh.ExpandEnvironmentStrings("%ProgramFiles(x86)%") & "\Microsoft\Edge\Application\msedge.exe"
+If Not fs.FileExists(chrome) Then chrome = pf86 & "\Microsoft\Edge\Application\msedge.exe"
+If Not fs.FileExists(chrome) Then chrome = pf & "\Microsoft\Edge\Application\msedge.exe"
+' ... or that neither is
+If launchLog <> "" And penv("DEVICEHUB_TEST_NO_BROWSER") = "1" Then chrome = ""
+' neither: plain words instead of a script error (1 Nov 2026, a new-setup audit)
+If Not fs.FileExists(chrome) Then
+  If launchLog <> "" Then
+    Launch "no browser", 0
+  Else
+    MsgBox "DeviceHub needs Google Chrome or Microsoft Edge to show its window. Install one, then open DeviceHub again.", vbExclamation, "DeviceHub"
+  End If
+  WScript.Quit
+End If
 ' Opens maximized (Shawn, 19 Oct 2026: "opens full screen").
 ' Its own small Chrome profile (window-profile\): an app window in the main profile takes the title bar colour from
 ' Shawn's Chrome theme (blue). Installed as an app there (one click, 19 Oct 2026), the window uses the app's exact
@@ -179,6 +238,11 @@ If fs.FileExists(settingsFile) Then
   txt = fs.OpenTextFile(settingsFile, 1).ReadAll
   If InStr(txt, """lightWindow"": false") > 0 Or InStr(txt, """lightWindow"":false") > 0 Then light = False
 End If
+' a browser never opened on this PC (a new PC, 1 Nov 2026, a new-setup audit): in the person's own profile its welcome and
+' sign-in screens would come before DeviceHub, so this start uses DeviceHub's own window (no first-run screens there)
+userData = sh.ExpandEnvironmentStrings("%LocalAppData%") & "\Google\Chrome\User Data"
+If InStr(LCase(chrome), "msedge") > 0 Then userData = sh.ExpandEnvironmentStrings("%LocalAppData%") & "\Microsoft\Edge\User Data"
+If light And Not fs.FileExists(userData & "\Local State") Then light = False
 If light Then
   Launch """" & chrome & """" & " --app=http://localhost:" & port & "/ --start-maximized", 1
   WScript.Quit

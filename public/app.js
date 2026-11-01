@@ -123,6 +123,9 @@ const SETUP = ['fans', 'laptop', 'lighting', 'monitors', 'wallpapers'];
 let isLaptop = DEMO && new URLSearchParams(location.search).has('laptop');
 const seeBattery = (p) => { if (!DEMO && p?.hasBattery && !isLaptop) { isLaptop = true; buildRail(); } };
 const shown = (p) => !p.laptopOnly || isLaptop;
+// a device page only for a device this PC has, as in the sidebar (1 Nov 2026, a new-setup audit: Search and Alt+3 opened
+// the Pulsar mouse page, "Close the Pulsar app first", on a PC with no such mouse)
+const reachable = (p) => shown(p) && (!p.device || shownDevices().some((d) => d.id === p.device));
 function buildRail() {
   const rail = $('#rail');
   // its name for a screen reader too (31 Oct 2026: on a narrow window only the icon shows)
@@ -339,12 +342,17 @@ window.addEventListener('hashchange', () => render(true));
 // swaps a card's drawing in place, and the new one showed no level)
 new MutationObserver((list) => { if (list.some((m) => [...m.addedNodes].some((n) => n.nodeType === 1 && (n.matches?.('.art') || n.querySelector?.('.art'))))) paintLive(); }).observe($('#main'), { childList: true, subtree: true });
 window.addEventListener('keydown', (e) => {
-  if (e.altKey && /^[1-8]$/.test(e.key)) { e.preventDefault(); go(PAGES[Number(e.key) - 1].id); }
+  // Alt+1 to 8: the sidebar's entries as shown, in order (a hidden device page is skipped, not opened)
+  if (e.altKey && /^[1-8]$/.test(e.key)) {
+    e.preventDefault();
+    const nth = [...document.querySelectorAll('#rail .nav[data-page]')].filter((n) => !n.hidden && n.offsetParent !== null)[Number(e.key) - 1];
+    if (nth) go(nth.dataset.page);
+  }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); }  // Search, from anywhere
 });
 
 await loadArtStyle();  // the chosen drawing style and theme (Settings > Appearance)
-setCommands((q) => commands(q, { go, pages: PAGES.filter(shown) }));   // the Laptop page only on a laptop
+setCommands((q) => commands(q, { go, pages: PAGES.filter(reachable) }));   // the Laptop page only on a laptop, device pages only for devices here
 buildRail();
 setGlow();
 // the first time the window opens on this PC: Setup instead of the Overview (core/first-run.js; never on a PC with
