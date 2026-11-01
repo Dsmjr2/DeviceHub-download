@@ -1,7 +1,10 @@
 {
-  "version": "1.40",
-  "commit": "b59baed464e2",
+  "version": "1.41",
+  "commit": "06414a7490b5",
   "notes": [
-    "New-setup fixes: Superlight receiver, install and launcher on a new…"
+    "Headset names without Windows' duplicate number",
+    "Wallpapers toolbar wraps on small laptop screens",
+    "Wallpapers and backups in the real Documents and Pictures…",
+    "A missing file is not a change: reinstall and Update put it back"
   ]
 }

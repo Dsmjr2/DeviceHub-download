@@ -230,7 +230,8 @@ async function statusNow() {
         behind = (await git(['merge-base', '--is-ancestor', target, 'HEAD']).then(() => true, () => false)) ? 0 : Number(await git(['rev-list', '--count', `HEAD..${target}`])) || 1;
       }
     } else behind = Number(await git(['rev-list', '--count', 'HEAD..@{u}'])) || 0;
-    const changed = (await git(['status', '--porcelain', '--untracked-files=no'])).split('\n').filter(Boolean).length;
+    // a missing file is not a change (Update puts it back, mergeUpdate; 1 Nov 2026)
+    const changed = (await git(['status', '--porcelain', '--untracked-files=no'])).split('\n').filter((l) => l && !/^( D|D |DD) /.test(l)).length;
     const latest = behind ? await git(['log', '-1', '--format=%s', target]) : null;
     const at = await git(['log', '-1', '--format=%cI', 'HEAD']);
     // the newest version already crashed on start here once (helpers/keep-running.bat wrote update-failed.txt): not
@@ -308,7 +309,12 @@ const ME = ['-c', 'user.name=DeviceHub', '-c', 'user.email=devicehub@localhost']
 async function mergeUpdate(s, { overwrite = false } = {}) {
   if (!s.behind) return { updated: false };
   step('Keeping the changes made on this PC');
-  if (s.changed) await git([...ME, 'commit', '-q', '-a', '-m', 'Changes made on this PC']);
+  // a file that went missing (a partial uninstall, an antivirus) is put back, never kept as a deletion: committed, it
+  // would stay deleted through every later update (1 Nov 2026, a new-setup audit)
+  const gone = (await git(['ls-files', '--deleted']).catch(() => '')).split(/\r?\n/).map((f) => f.trim()).filter(Boolean);
+  if (gone.length) await git(['checkout', '--', ...gone]).catch(() => {});
+  const still = gone.length ? (await git(['status', '--porcelain', '--untracked-files=no'])).split('\n').filter(Boolean).length : s.changed;
+  if (still) await git([...ME, 'commit', '-q', '-a', '-m', 'Changes made on this PC']);
   const before = await git(['rev-parse', 'HEAD']);
   step('Bringing them together with the new version');
   // exactly the signed version (status), never the branch tip

@@ -89,7 +89,10 @@ async function handle(action, body) {
     // plus wired headsets on the PC's jack (helpers/wired-headsets.js; used only when picked), and the names the person
     // gave any headset on the Headset page (settings.json "headsetNames")
     const names = headsetNames();
-    const usbList = (r.headsets || []).map((x) => (names[String(x.usb).toUpperCase()] ? { ...x, device: names[String(x.usb).toUpperCase()] } : x));
+    // Windows numbers a second sound device of the same name ("2- Arctis Nova 3"): shown without it (1 Nov 2026,
+    // Dsmjr2/DeviceHub-support#24, a friend's laptop)
+    const plain = (n) => (typeof n === 'string' ? n.replace(/^\d{1,2}-\s+(?=\S)/, '') : n);
+    const usbList = (r.headsets || []).map((x) => (names[String(x.usb).toUpperCase()] ? { ...x, device: names[String(x.usb).toUpperCase()] } : { ...x, device: plain(x.device) }));
     let wired = [], list = usbList;
     try {
       const wh = require('./wired-headsets');

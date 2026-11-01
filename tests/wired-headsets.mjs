@@ -65,6 +65,9 @@ check(/!\/\^JACK_\/\.test\(x\.usb\)/.test(server), 'the EQ never takes a wired h
   check(folded.headsets.length === 2 && folded.headsets[0].bluetooth?.playback?.length === 2 && !folded.headsets[1].bluetooth, 'the Nova on its dongle gets its Bluetooth side; the HS80 does not');
   check(folded.bluetooth.length === 1 && folded.bluetooth[0].device === 'WH-1000XM4', 'a headset on Bluetooth only stays a choice of its own');
   check(!usbNova.bluetooth, 'the USB list given in is not changed');
+  // Windows' number for a second device of the same name is not shown (1 Nov 2026, Dsmjr2/DeviceHub-support#24)
+  const two = bluetoothHeadsets([E('playback', 'n1', 'Headphones (2- Arctis Nova 3)')], new Set(['n1']), {});
+  check(two[0]?.device === 'Arctis Nova 3', `"2- Arctis Nova 3" is shown as Arctis Nova 3 (${two[0]?.device})`);
   const named = bluetoothHeadsets(everything, new Set(ids), { [sony.usb]: 'Sony headphones' });
   check(named.some((x) => x.device === 'Sony headphones'), 'the name the person gave it');
   const corsair = fs.readFileSync(new URL('../helpers/corsair.js', import.meta.url), 'utf8');

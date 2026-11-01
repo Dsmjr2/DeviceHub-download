@@ -47,5 +47,15 @@ check(/if \(-not \(Test-Path -LiteralPath \$p\)\) \{ return \$false \}/.test(ins
 check(/-not \$Overwrite -and \(Test-Path -LiteralPath \$prints\) -and \(Test-Path -LiteralPath \(Join-Path \$Target 'server\.js'\)\)/.test(ins), 'install.ps1 skips the check when the target has no server.js');
 
 fs.rmSync(root, { recursive: true, force: true });
+// a missing file (a partial uninstall, an antivirus) is put back by Update, never committed as a deletion, and is no
+// "change made on this PC" for the installer either (1 Nov 2026, measured on a fresh install)
+{
+  const su = fs.readFileSync(new URL('../helpers/self-update.js', import.meta.url), 'utf8');
+  const inst = fs.readFileSync(new URL('../helpers/install.ps1', import.meta.url), 'utf8');
+  check(/'ls-files', '--deleted'[\s\S]{0,200}'checkout', '--', \.\.\.gone/.test(su), 'Update puts a missing file back before keeping this PC\'s changes');
+  check(/filter\(\(l\) => l && !\/\^\( D\|D \|DD\) \/\.test\(l\)\)/.test(su), 'a missing file is not counted as changed');
+  check(/status --porcelain --untracked-files=no 2>\$null \| Where-Object \{ \$_ -notmatch '\^\( D\|D \|DD\) ' \}/.test(inst), 'the installer\'s git check skips missing files');
+}
+
 if (fails.length) { console.log(`update-changed: FAILED:\n- ${fails.join('\n- ')}`); process.exit(1); }
 console.log('update-changed (a shipped version is not a change; a real change is named, kept and updated over with Update anyway): all good');

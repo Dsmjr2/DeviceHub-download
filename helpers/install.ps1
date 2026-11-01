@@ -42,7 +42,8 @@ if ((Test-Path -LiteralPath $gitDir) -and -not $shared) {
 # update) are never copied over; Settings > Update merges them with a new version instead
 if ($shared -and -not $Overwrite -and (Get-Command git -ErrorAction SilentlyContinue)) {
   $ErrorActionPreference = 'Continue'
-  $dirty = @(& git -C $Target status --porcelain --untracked-files=no 2>$null)
+  # a deleted file is nothing to keep (1 Nov 2026: a partial uninstall left a copy with files gone, and this refused it)
+  $dirty = @(& git -C $Target status --porcelain --untracked-files=no 2>$null | Where-Object { $_ -notmatch '^( D|D |DD) ' })
   $own = [int](& git -C $Target rev-list --count HEAD --not --remotes 2>$null)
   $ErrorActionPreference = 'Stop'
   if ($dirty.Count -or $own) {

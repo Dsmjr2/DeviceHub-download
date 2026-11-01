@@ -74,8 +74,8 @@ function safeFileName(original, ext) {
 }
 
 function create(opts = {}) {
-  const DIR = path.resolve(opts.dir || process.env.DEVICEHUB_WALLPAPERS_DIR || path.join(os.homedir(), 'Pictures', 'DeviceHub Wallpapers'));
-  const BACKUPS = path.resolve(opts.backupsDir || process.env.DEVICEHUB_WALLPAPER_BACKUPS_DIR || path.join(os.homedir(), 'Documents', 'DeviceHub backups'));
+  const DIR = path.resolve(opts.dir || process.env.DEVICEHUB_WALLPAPERS_DIR || require('./known-folders').place('pictures', 'DeviceHub Wallpapers'));   // the real Pictures (OneDrive's when it moved it)
+  const BACKUPS = path.resolve(opts.backupsDir || process.env.DEVICEHUB_WALLPAPER_BACKUPS_DIR || require('./known-folders').place('documents', 'DeviceHub backups'));   // the real Documents, as the uninstaller's
   const ROOT = path.resolve(opts.root || path.join(__dirname, '..'));   // DeviceHub's own folder (the background picture)
   const STARTERS = path.resolve(opts.startersDir || path.join(ROOT, 'wallpapers-starter'));   // the six that ship with DeviceHub
   const MARKER = path.join(DIR, '.devicehub-starters');

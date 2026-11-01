@@ -1700,7 +1700,7 @@ html[data-skin="old-school"][data-picture] body::before {
 .wp-tools { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; margin-bottom: 12px; overflow-x: auto; padding-bottom: 2px; }
 .wp-tools .spacer { flex: 1 1 8px; }
 .wp-search { width: 190px; min-width: 130px; max-width: 220px; padding: 6px 12px; font-size: 13px; flex: 0 1 190px; }
-@media (max-width: 960px) { .wp-tools { flex-wrap: wrap; } .wp-search { flex: 1 1 180px; max-width: none; } }
+@media (max-width: 1100px) { .wp-tools { flex-wrap: wrap; } .wp-search { flex: 1 1 180px; max-width: none; } }
 .wp-line { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 12px; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .wp-line.bad { color: var(--bad); }
 .wp-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }

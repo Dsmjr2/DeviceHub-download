@@ -36,7 +36,8 @@ function bluetoothHeadsets(endpoints, btIds, names) {
     const key = keyOf(`bluetooth:${base}`);
     const own = typeof names?.[key] === 'string' && names[key].trim() ? names[key].trim().slice(0, 40) : null;
     const inner = (n) => { const m = /\((.*)\)\s*$/.exec(String(n || '')); return m ? m[1].trim() : String(n || '').trim(); };
-    const shown = inner((outs[0] || list[0]).name).replace(/\s*(hands-?free( ag audio)?|stereo)\s*$/i, '').trim();
+    // without Windows' number for a second device of the same name ("2- ", 1 Nov 2026, Dsmjr2/DeviceHub-support#24)
+    const shown = inner((outs[0] || list[0]).name).replace(/\s*(hands-?free( ag audio)?|stereo)\s*$/i, '').replace(/^\d{1,2}-\s+(?=\S)/, '').trim();
     return { usb: key, device: own || shown, base, wired: false, bluetooth: true, headphones: true,
       playback: outs.map((o) => ({ id: o.id, name: o.name })),
       recording: list.filter((e) => e.flow === 'recording').map((m) => ({ id: m.id, name: m.name })) };
