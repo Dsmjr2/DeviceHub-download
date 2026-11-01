@@ -8,7 +8,12 @@
 
 // not a headset: the audio a graphics card sends to a monitor over HDMI or DisplayPort, digital outputs, virtual devices
 const NOT_HEADPHONES = /nvidia|amd high definition|intel\(r\) display|hdmi|displayport|digital|s\/pdif|spdif|optical|virtual|cable input|voicemeeter|steam streaming|oculus|nahimic mirror/i;
-const NOT_A_MIC = /stereo mix|what u hear|wave out|line in|cable output|voicemeeter|virtual/i;
+// Windows' own names in other languages too (1 Nov 2026, a review of other languages): Stereomix (de), Mezcla estéreo (es),
+// Mixage stéréo (fr), Mixagem estéreo / Mix estéreo (pt), Missaggio stereo (it), Стерео микшер (ru)
+const NOT_A_MIC = /stereo ?mix|mezcla est[eé]reo|mixage st[eé]r[eé]o|mixagem est[eé]reo|mix est[eé]reo|missaggio stereo|стерео ?микшер|what u hear|wave out|line in|cable output|voicemeeter|virtual/i;
+// "Speakers (...)" as Windows names it in other languages: Lautsprecher, Altavoces, Haut-parleurs, Alto-falantes,
+// Altoparlanti, Luidsprekers, Głośniki, Динамики, 扬声器 / 揚聲器, スピーカー, 스피커
+const SPEAKERS = /^(speakers|lautsprecher|altavoces|haut-parleurs|alto-falantes|altoparlanti|luidsprekers|g[lł]o[sś]niki|динамики|扬声器|揚聲器|スピーカー|스피커)(?=\s|\(|$)/i;
 
 const keyOf = (endpointId) => {
   let h = 2166136261;
@@ -68,7 +73,7 @@ function wiredHeadsets(endpoints, usbIds = [], names = {}, btIds = []) {
     const own = typeof names?.[key] === 'string' && names[key].trim() ? names[key].trim().slice(0, 40) : null;
     // an output Windows calls "Speakers (...)" is the PC's or laptop's own speakers, or headphones on a jack Windows does
     // not tell apart (29 Oct 2026: a laptop's "Speakers (Realtek(R) Audio)" beside an Arctis read as a second headset)
-    const plainName = /^speakers\b/i.test(o.name) ? 'PC speakers or jack' : o.name;
+    const plainName = SPEAKERS.test(o.name) ? 'PC speakers or jack' : o.name;
     return { usb: key, device: own || plainName, wired: true, headphones: true,
       playback: [{ id: o.id, name: o.name }],
       recording: card ? mics.filter((m) => cardOf(m.name) === card).map((m) => ({ id: m.id, name: m.name })) : [] };

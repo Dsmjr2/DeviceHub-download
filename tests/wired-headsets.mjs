@@ -26,6 +26,17 @@ check(keyOf('{0.0.0.00000000}.{aaa}') === hp.usb && /^JACK_[0-9A-F]{8}$/.test(hp
 w = wiredHeadsets(all, ['{0.0.0.00000000}.{usb}'], { [hp.usb]: 'Audio-Technica ATH-M50x' });
 check(w.some((x) => x.device === 'Audio-Technica ATH-M50x'), 'the name the person gave it');
 check(cleanPick(hp.usb) === hp.usb && cleanPick('JACK_12') === null && cleanPick('jack_0000abcd') === 'JACK_0000ABCD', 'the picker accepts JACK_ keys, and nothing malformed');
+// a German Windows (1 Nov 2026, a review of other languages): its speakers named as such, its Stereomix not a mic
+{
+  const de = [
+    E('playback', '{0.0.0.00000000}.{de1}', 'Lautsprecher (Realtek(R) Audio)'),
+    E('recording', '{0.0.1.00000000}.{de2}', 'Mikrofon (Realtek(R) Audio)'),
+    E('recording', '{0.0.1.00000000}.{de3}', 'Stereomix (Realtek(R) Audio)'),
+  ];
+  const g = wiredHeadsets(de, []);
+  check(g.length === 1 && g[0].device === 'PC speakers or jack', `"Lautsprecher" is the PC's speakers (${g.map((x) => x.device)})`);
+  check(g[0]?.recording.length === 1 && /Mikrofon/.test(g[0].recording[0].name), 'Stereomix is not taken as its mic');
+}
 const list = [...w];
 check(genericFor(list, null) === null, 'with nothing picked, wired speakers or headphones are never taken for a headset');
 check(genericFor(list, hp.usb)?.usb === hp.usb && chosenOther(list, hp.usb)?.usb === hp.usb, 'picked: the wired headset runs');

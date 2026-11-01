@@ -1,8 +1,7 @@
 {
-  "version": "1.43",
-  "commit": "72e15c2c3d86",
+  "version": "1.44",
+  "commit": "3b90ba40504d",
   "notes": [
-    "A maker's service is not its app: no read-only for good",
-    "Finished update downloads are removed from TEMP"
+    "Windows in other languages: folders, names, errors and speakers read…"
   ]
 }

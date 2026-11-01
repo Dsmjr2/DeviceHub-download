@@ -75,7 +75,7 @@ async function makerApps() {
   const run = (file, args, ms) => new Promise((resolve) => execFile(file, args, { windowsHide: true, timeout: ms, maxBuffer: 4 * 1024 * 1024 }, (e, o) => resolve(String(o || ''))));
   const [tl, un] = await Promise.all([
     run('tasklist', ['/fo', 'csv', '/nh'], 10000),
-    run('powershell.exe', ['-NoProfile', '-Command', "Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' -ErrorAction SilentlyContinue | ForEach-Object { $_.DisplayName } | Where-Object { $_ }"], 20000),
+    run('powershell.exe', ['-NoProfile', '-Command', "[Console]::OutputEncoding = [Text.Encoding]::UTF8; Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' -ErrorAction SilentlyContinue | ForEach-Object { $_.DisplayName } | Where-Object { $_ }"], 20000),
   ]);
   const running = dg.runningMakers(dg.parseTasklist(tl)).map((m) => m.name);
   const names = un.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);

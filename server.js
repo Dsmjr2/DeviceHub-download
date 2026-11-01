@@ -168,7 +168,7 @@ let windowsList = null;
 function runningPrograms(withWindows) {
   if (withWindows) {
     if (windowsList && (windowsList.busy || Date.now() - windowsList.at < 5000)) return windowsList.p;
-    const p = new Promise((resolve) => execFile('powershell', ['-NoProfile', '-Command', 'Get-Process | Where-Object { $_.MainWindowTitle } | ForEach-Object { "$($_.ProcessName).exe`t$($_.MainWindowTitle)" }'], { windowsHide: true, timeout: 8000 }, (err, out) => {
+    const p = new Promise((resolve) => execFile('powershell', ['-NoProfile', '-Command', '[Console]::OutputEncoding = [Text.Encoding]::UTF8; Get-Process | Where-Object { $_.MainWindowTitle } | ForEach-Object { "$($_.ProcessName).exe`t$($_.MainWindowTitle)" }'], { windowsHide: true, timeout: 8000 }, (err, out) => {
       resolve((out || '').split(/\r?\n/).filter(Boolean).map((l) => { const [exe, title] = l.split('\t'); return { exe, title }; }));
     }));
     windowsList = { p, busy: true, at: 0 };

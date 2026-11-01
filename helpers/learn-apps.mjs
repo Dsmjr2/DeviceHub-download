@@ -82,7 +82,7 @@ const hasExe = (dir, depth = 2) => {
 
 // Windows' installed-programs list (display names only), read-only
 function uninstallNames() {
-  const ps = "$k=@('HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'); Get-ItemProperty $k -ErrorAction SilentlyContinue | ForEach-Object { $_.DisplayName } | Where-Object { $_ }; Get-AppxPackage -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }";
+  const ps = "[Console]::OutputEncoding = [Text.Encoding]::UTF8; $k=@('HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'); Get-ItemProperty $k -ErrorAction SilentlyContinue | ForEach-Object { $_.DisplayName } | Where-Object { $_ }; Get-AppxPackage -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }";
   return new Promise((resolve) => execFile('powershell.exe', ['-NoProfile', '-Command', ps], { windowsHide: true, timeout: 20000, maxBuffer: 4 * 1024 * 1024 }, (e, out) => resolve(String(out || '').split(/\r?\n/).map((s) => s.trim()).filter(Boolean))));
 }
 const tasklist = () => new Promise((resolve) => execFile('tasklist', ['/fo', 'csv', '/nh'], { windowsHide: true, timeout: 15000, maxBuffer: 4 * 1024 * 1024 }, (e, out) => resolve(String(out || ''))));
@@ -301,7 +301,7 @@ export function pickStartApp(apps, m) {
   const hits = (apps || []).filter((a) => a?.Name && a?.AppID && want.test(a.Name) && !NOT_THE_APP.test(a.Name));
   return hits.sort((a, b) => a.Name.length - b.Name.length)[0] || null;
 }
-const startApps = () => new Promise((resolve) => execFile('powershell.exe', ['-NoProfile', '-Command', 'Get-StartApps | ConvertTo-Json -Compress'], { windowsHide: true, timeout: 20000, maxBuffer: 4 * 1024 * 1024 }, (e, out) => {
+const startApps = () => new Promise((resolve) => execFile('powershell.exe', ['-NoProfile', '-Command', '[Console]::OutputEncoding = [Text.Encoding]::UTF8; Get-StartApps | ConvertTo-Json -Compress'], { windowsHide: true, timeout: 20000, maxBuffer: 4 * 1024 * 1024 }, (e, out) => {
   try { const j = JSON.parse(String(out || '').trim() || '[]'); resolve(Array.isArray(j) ? j : [j]); } catch { resolve([]); }
 }));
 // { opened: true, name } or { opened: false, why }

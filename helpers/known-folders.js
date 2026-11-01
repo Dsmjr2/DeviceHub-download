@@ -26,8 +26,19 @@ function parse(text, env = process.env, exists = fs.existsSync) {
 }
 
 let cache = null;
+// Windows' own answer first, as UTF-8 (a review of other languages, 1 Nov 2026: reg prints in the console's old code page,
+// so OneDrive's "Imágenes" or "Документы" came back garbled and the home folder was used); reg only if that fails
+function fromWindows(run = execFileSync) {
+  const out = run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+    "[Console]::OutputEncoding = [Text.Encoding]::UTF8; [Environment]::GetFolderPath('MyDocuments'); [Environment]::GetFolderPath('MyPictures')"],
+  { encoding: 'utf8', windowsHide: true, timeout: 10000 });
+  const [documents, pictures] = String(out).split(/\r?\n/).map((l) => l.trim());
+  const ok = (p) => p && !p.includes('�') && path.isAbsolute(p) && fs.existsSync(p);
+  return { ...(ok(documents) ? { documents } : {}), ...(ok(pictures) ? { pictures } : {}) };
+}
 function read() {
   if (process.platform !== 'win32') return {};
+  try { const w = fromWindows(); if (w.documents && w.pictures) return w; } catch {}
   try { return parse(execFileSync('reg', ['query', KEY], { encoding: 'utf8', windowsHide: true, timeout: 5000 })); } catch { return {}; }
 }
 

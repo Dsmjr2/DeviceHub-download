@@ -6,7 +6,9 @@ $ErrorActionPreference = 'Stop'
 $out = [ordered]@{ volumes = @(); disks = @(); reliability = @(); video = @(); ram = @(); board = $null; devices = @(); events = $null; restart = $null; denied = @(); errors = @() }
 function Note($part, $e) {
   $m = $e.Exception.Message
-  if ($m -match 'denied|not available to the client|Unauthorized|privilege') { $script:out.denied += $part } else { $script:out.errors += "${part}: $m" }
+  # by its kind or code too (0x80070005 access denied, 0x80041003 WMI access denied): the words are translated (1 Nov 2026)
+  $denied = $e.Exception -is [UnauthorizedAccessException] -or $e.Exception.HResult -in @(-2147024891, -2147217405) -or $e.FullyQualifiedErrorId -like '*UnauthorizedAccess*' -or $e.FullyQualifiedErrorId -like 'HRESULT 0x80041003*'
+  if ($denied -or $m -match 'denied|not available to the client|Unauthorized|privilege') { $script:out.denied += $part } else { $script:out.errors += "${part}: $m" }
 }
 
 try { $out.volumes = @(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | ForEach-Object { [ordered]@{ drive = $_.DeviceID; label = $_.VolumeName; size = [double]$_.Size; free = [double]$_.FreeSpace } }) } catch { Note 'volumes' $_ }
@@ -25,8 +27,8 @@ try {
 try {
   $since = (Get-Date).AddDays(-30)
   $ev = [ordered]@{ bugchecks = @(); whea = @() }
-  try { $ev.bugchecks = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; Id = 1001; ProviderName = 'Microsoft-Windows-WER-SystemErrorReporting'; StartTime = $since } -ErrorAction Stop | ForEach-Object { [ordered]@{ at = $_.TimeCreated.ToString('o'); param = [string]$_.Properties[0].Value } }) } catch { if ($_.Exception.Message -notmatch 'No events were found') { Note 'events' $_ } }
-  try { $ev.whea = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Microsoft-Windows-WHEA-Logger'; StartTime = $since; Level = 1, 2, 3 } -ErrorAction Stop | ForEach-Object { [ordered]@{ at = $_.TimeCreated.ToString('o'); id = $_.Id; level = $_.Level } }) } catch { if ($_.Exception.Message -notmatch 'No events were found') { Note 'events' $_ } }
+  try { $ev.bugchecks = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; Id = 1001; ProviderName = 'Microsoft-Windows-WER-SystemErrorReporting'; StartTime = $since } -ErrorAction Stop | ForEach-Object { [ordered]@{ at = $_.TimeCreated.ToString('o'); param = [string]$_.Properties[0].Value } }) } catch { if ($_.FullyQualifiedErrorId -notlike 'NoMatchingEventsFound*' -and $_.Exception.Message -notmatch 'No events were found') { Note 'events' $_ } }
+  try { $ev.whea = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Microsoft-Windows-WHEA-Logger'; StartTime = $since; Level = 1, 2, 3 } -ErrorAction Stop | ForEach-Object { [ordered]@{ at = $_.TimeCreated.ToString('o'); id = $_.Id; level = $_.Level } }) } catch { if ($_.FullyQualifiedErrorId -notlike 'NoMatchingEventsFound*' -and $_.Exception.Message -notmatch 'No events were found') { Note 'events' $_ } }
   $out.events = $ev
 } catch { Note 'events' $_ }
 try {

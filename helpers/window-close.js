@@ -69,10 +69,13 @@ function connectionOwner(text, clientPort, serverPort) {
 
 const deps = {
   async procs() {
-    const out = await run('wmic', ['process', 'where', "name='chrome.exe' or name='msedge.exe'", 'get', 'CommandLine,Name,ParentProcessId,ProcessId', '/format:csv'], 15000);
+    // a folder with letters outside the console's old code page ("José", "Иван"): wmic prints it garbled and the
+    // window-profile path never matches, so PowerShell's list, as UTF-8, first (1 Nov 2026, a review of other languages)
+    const wide = /[^\x00-\x7f]/.test(path.join(__dirname, '..'));
+    const out = wide ? null : await run('wmic', ['process', 'where', "name='chrome.exe' or name='msedge.exe'", 'get', 'CommandLine,Name,ParentProcessId,ProcessId', '/format:csv'], 15000);
     if (out != null) return parseWmicCsv(out);
     // a Windows without wmic: the same list from PowerShell, once (only when a window is about to be closed)
-    const ps = "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe' or Name='msedge.exe'\" | ForEach-Object { 'x,' + ($_.CommandLine -replace '[\\r\\n]', ' ') + ',' + $_.Name + ',' + $_.ParentProcessId + ',' + $_.ProcessId }";
+    const ps = "[Console]::OutputEncoding = [Text.Encoding]::UTF8; Get-CimInstance Win32_Process -Filter \"Name='chrome.exe' or Name='msedge.exe'\" | ForEach-Object { 'x,' + ($_.CommandLine -replace '[\\r\\n]', ' ') + ',' + $_.Name + ',' + $_.ParentProcessId + ',' + $_.ProcessId }";
     return parseWmicCsv(await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], 15000));
   },
   netstat: () => run('netstat', ['-ano', '-p', 'TCP'], 10000),

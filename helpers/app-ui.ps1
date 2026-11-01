@@ -31,6 +31,8 @@ param(
   [switch]$UseKeys
 )
 $ErrorActionPreference = 'Stop'
+# control names as UTF-8 (1 Nov 2026, a review of other languages: a maker's app in Spanish or Russian came back garbled)
+try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, UIAutomationProvider, WindowsBase, System.Windows.Forms
 # .NET's own client-side stand-in for WinForms windows shows every WinForms control as a nameless "Pane" with nothing
 # to set (measured 22 Oct 2026 on the test's stand-in window). Telling it "no stand-in" for WinForms class names lets
