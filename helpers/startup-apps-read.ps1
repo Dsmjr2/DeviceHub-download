@@ -92,7 +92,8 @@ try {
   }
 } catch {
   # no events at all is readable and empty; anything else (access) is not readable
-  if ($_.FullyQualifiedErrorId -like 'NoMatchingEventsFound*' -or $_.Exception.Message -match 'No events were found') { $impact.readable = $true }   # its id: the words are translated (1 Nov 2026) else { $impact.why = [string]$_.Exception.Message }
+  # by its id too: the words are translated (1 Nov 2026)
+  if ($_.FullyQualifiedErrorId -like 'NoMatchingEventsFound*' -or $_.Exception.Message -match 'No events were found') { $impact.readable = $true } else { $impact.why = [string]$_.Exception.Message }
 }
 
 $out = @{ items = $items; approvedKeys = @{}; impact = $impact }

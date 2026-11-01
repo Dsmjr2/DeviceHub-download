@@ -225,5 +225,9 @@ try {
 
 fs.rmSync(root, { recursive: true, force: true });
 fs.rmSync(startupDir, { recursive: true, force: true });
+// no line comment ahead of code on a line of the reader script (1 Nov 2026: a comment swallowed an else)
+for (const [i, l] of fs.readFileSync(new URL('../helpers/startup-apps-read.ps1', import.meta.url), 'utf8').split(/\r?\n/).entries()) {
+  const c = l.indexOf(' # '); if (c > 0 && /[{}]/.test(l.slice(c))) check(false, `startup-apps-read.ps1 line ${i + 1}: code after a # comment`);
+}
 console.log(fails.length ? `startup-apps: FAILED: ${fails.join('; ')}` : 'startup-apps (Start-up apps on the PC page): all good');
 process.exit(fails.length ? 1 : 0);

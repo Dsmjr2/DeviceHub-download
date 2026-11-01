@@ -1,7 +1,7 @@
 {
-  "version": "1.45",
-  "commit": "b87fda317198",
+  "version": "1.46",
+  "commit": "c1c685837658",
   "notes": [
-    "No false report after sleep"
+    "Review fixes: start-up reader else, quick folder lookup"
   ]
 }

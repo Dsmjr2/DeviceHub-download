@@ -38,8 +38,14 @@ function fromWindows(run = execFileSync) {
 }
 function read() {
   if (process.platform !== 'win32') return {};
+  // reg first (about 30 ms): plain-letter paths cannot be garbled; PowerShell (a second or so, the server waits) only
+  // for a name outside them (a review, 1 Nov 2026)
+  let fromReg = {};
+  try { fromReg = parse(execFileSync('reg', ['query', KEY], { encoding: 'utf8', windowsHide: true, timeout: 5000 })); } catch {}
+  const plain = (p) => p && /^[\x20-\x7e]+$/.test(p);
+  if (plain(fromReg.documents) && plain(fromReg.pictures)) return fromReg;
   try { const w = fromWindows(); if (w.documents && w.pictures) return w; } catch {}
-  try { return parse(execFileSync('reg', ['query', KEY], { encoding: 'utf8', windowsHide: true, timeout: 5000 })); } catch { return {}; }
+  return fromReg;
 }
 
 // kind: 'documents' or 'pictures'
