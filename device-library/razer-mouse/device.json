@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-01T16:24:33Z",
+  "updated": "2026-11-01T18:56:09Z",
   "id": "razer-mouse",
   "vendor": "Razer",
   "product": "Razer mice (90-byte report)",
@@ -36,6 +36,12 @@
     "00a7",
     "00a8",
     "00b3",
+    "008a",
+    "0085",
+    "007a",
+    "007b",
+    "00a1",
+    "0091",
     "006e",
     "0071",
     "0098",
@@ -76,7 +82,12 @@
     "DeathAdder V2 X HyperSpeed",
     "Viper V2 Pro",
     "Viper V3 HyperSpeed",
-    "Naga V2 HyperSpeed"
+    "Naga V2 HyperSpeed",
+    "Viper Mini",
+    "Basilisk V2",
+    "Viper Ultimate",
+    "DeathAdder V2 Lite",
+    "Viper 8K"
   ],
   "works": [
     "written from docs/brands/razer.md and checked against a simulated mouse only (tests/sim-razer.mjs)",

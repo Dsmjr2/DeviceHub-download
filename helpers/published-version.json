@@ -1,7 +1,7 @@
 {
-  "version": "1.46",
-  "commit": "c1c685837658",
+  "version": "1.47",
+  "commit": "5cfa8f2d7a5e",
   "notes": [
-    "Review fixes: start-up reader else, quick folder lookup"
+    "More popular devices recognized: Wooting modes, Keychron Q/V models…"
   ]
 }

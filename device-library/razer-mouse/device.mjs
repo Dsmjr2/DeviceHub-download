@@ -167,6 +167,14 @@ export const MODELS = {
   // razer_get_report (rmd.c:49-99); a model not named there gets RAZER_MOUSE_WAIT_US. ----
   // DeathAdder Essential family: tid FF for firmware, DPI, polling (rmd.c:914-922, 2676-2684, 2860-2868, 2073-2268);
   // brightness 0x3F (read_led_brightness rmd.c:4335-4337, write 4447-4449). No battery, no stages (mouse.py:873-903).
+  // 1 Nov 2026 (a new-setup check), openrazer master mouse.py: RazerViperMini, RazerBasiliskV2, RazerViperUltimateWired /
+  // Wireless (razermouse_driver.c: RAZER_VIPER_MOUSE_RECEIVER_WAIT_US for both), RazerDeathAdderV2Lite, RazerViper8KHz
+  '008A': m('Viper Mini', 'wired', { dpiMax: 8500, leds: [0x04] }),
+  '0085': m('Basilisk V2', 'wired', { dpiMax: 20000, stages: false, leds: [0x04, 0x01] }),
+  '007A': m('Viper Ultimate', 'wired', { wait: VIPER, power: 'rechargeable', dpiMax: 20000, leds: [0x04] }),
+  '007B': m('Viper Ultimate', 'dongle', { wait: VIPER, dpiMax: 20000, leds: [0x04] }),
+  '00A1': m('DeathAdder V2 Lite', 'wired', { dpiMax: 8500, leds: [0x04] }),
+  '0091': m('Viper 8K', 'wired', { dpiMax: 20000, leds: [0x04] }),
   '006E': m('DeathAdder Essential', 'wired', { tid: 0xff, poll: 'classic', dpiMax: 6400, stages: false, tids: { brightness: 0x3f }, leds: [0x04, 0x01] }),
   '0071': m('DeathAdder Essential White Edition', 'wired', { tid: 0xff, poll: 'classic', dpiMax: 6400, stages: false, tids: { brightness: 0x3f }, leds: [0x04, 0x01] }),
   '0098': m('DeathAdder Essential (2021)', 'wired', { tid: 0xff, poll: 'classic', dpiMax: 6400, stages: false, tids: { brightness: 0x3f }, leds: [0x04] }),

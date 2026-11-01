@@ -75,8 +75,11 @@ export const LAYOUTS = { 0: 'ANSI', 1: 'ISO', 2: 'JIS', 3: 'ANSI split', 4: 'ISO
 const SIZES = { 1: 'TKL', 2: 'full size', 3: '60%', 4: '3-key pad', 5: '80%' };              // §1 "Device type per RGB"
 
 // §1 Models with ids, vendor 31E3 (the new-firmware boards; protocol v2). The original One / Two (vendor 03EB, protocol
-// v1) and the low-nibble "mode" ids (base | 1, base | 2: meaning unconfirmed) are not here.
-export const MODELS = {
+// v1) are not here. Each board also answers on base | 1 and base | 2 (1 Nov 2026, a new-setup check): the same board with
+// Wootility's controller emulation set to DirectInput or off (OpenRGB WootingKeyboardControllerDetect.cpp @ master,
+// XINP_PID / DINP_PID / NONE_PID: "Classic DirectInput emulation enabled", "Controller emulation disabled"), so a board
+// with emulation off was not recognized; they are added below the table, same model.
+const BASE = {
   '1100': { name: 'Wooting One', type: 1 },
   '1200': { name: 'Wooting Two', type: 2 },
   '1210': { name: 'Wooting Two Lekker Edition', type: 2 },
@@ -90,6 +93,7 @@ export const MODELS = {
   '1500': { name: 'Wooting UwU', type: 4 },
   '1510': { name: 'Wooting UwU RGB', type: 4 },
 };
+export const MODELS = Object.fromEntries(Object.entries(BASE).flatMap(([pid, m]) => [0, 1, 2].map((mode) => [(parseInt(pid, 16) | mode).toString(16).padStart(4, '0'), { ...m, ...(mode ? { mode: mode === 1 ? 'DirectInput' : 'no controller' } : {}) }])));
 export const PIDS = Object.keys(MODELS);
 // §4 "Never": running beside Wootility (it holds the same channel; assume yes, step back). Process names unconfirmed.
 export const VENDOR_APPS = [/^wootility/i, /^wooting/i];
