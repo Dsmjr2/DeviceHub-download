@@ -32,9 +32,17 @@ async function definitionFor(vid, pid, opts = {}) {
   const file = path.join(deps.dir, `${vid}${pid}.json`.toUpperCase().replace('.JSON', '.json'));
   try { if (fs.existsSync(file)) return { def: JSON.parse(fs.readFileSync(file, 'utf8')), from: `via-definitions\\${path.basename(file)}` }; }
   catch (e) { throw new Error(`via-definitions\\${path.basename(file)} is not valid JSON (${e.message})`); }
-  if (typeof opts.vial === 'function' && `${vid}${pid}`.toUpperCase() !== P75_FILE) {
+  // a keyboard that answered "not Vial" once is not asked again (a review, 1 Nov 2026: every start asked it FE 00);
+  // a read that failed half way (a timeout in a block) is tried again next time
+  const notVialFile = path.join(deps.dir, 'not-vial.json');
+  const id = `${vid}:${pid}`.toUpperCase();
+  let notVial = []; try { notVial = JSON.parse(fs.readFileSync(notVialFile, 'utf8')); } catch {}
+  if (typeof opts.vial === 'function' && `${vid}${pid}`.toUpperCase() !== P75_FILE && !(Array.isArray(notVial) && notVial.includes(id))) {
     let got = null;
-    try { got = await opts.vial(); } catch (e) { if (opts.log) opts.log(`not read from the keyboard (Vial): ${e.message}`); }
+    try { got = await opts.vial(); } catch (e) {
+      if (opts.log) opts.log(`not read from the keyboard (Vial): ${e.message}`);
+      if (e?.name === 'NotVial') { try { fs.mkdirSync(deps.dir, { recursive: true }); writeAtomic(notVialFile, JSON.stringify([...new Set([...(Array.isArray(notVial) ? notVial : []), id])].slice(-200), null, 2) + '\n'); } catch {} }
+    }
     if (got?.def) {
       const own = fromVial(got, vid, pid, opts.name);
       fs.mkdirSync(deps.dir, { recursive: true });

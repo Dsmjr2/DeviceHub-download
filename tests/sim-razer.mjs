@@ -533,6 +533,10 @@ check(allSims.every((s) => !s.bad.length), `reports well formed: ${allSims.flatM
 const meta = JSON.parse(fs.readFileSync(path.join(ROOT, 'device-library', 'razer-mouse', 'device.json'), 'utf8'));
 check(meta.id === createRazerMouse().id && meta.vid === '1532' && meta.status === 'read-only' && Array.isArray(meta.tested) && meta.tested.length === 0 && meta.source === 'docs/brands/razer.md', 'device.json: id, vid 1532, read-only, tested [], source');
 check(meta.pids.join() === PIDS.map((p) => p.toLowerCase()).join(), 'device.json pids = the driver\'s model table');
+// every row, the 53 from openrazer (1 Nov 2026) included, is a whole model description; poll false = never probed
+// (openrazer sends the Mamba TE 0046 and Diamondback Chroma 004C no polling command: a review)
+check(Object.entries(MODELS).every(([, x]) => typeof x.model === 'string' && x.model && ['wired', 'dongle'].includes(x.link) && Number.isFinite(x.dpiMax) && x.dpiMax >= 1000 && Number.isFinite(x.wait) && [null, false, 'classic', 'rate2'].includes(x.poll)), 'every model row is complete (name, link, DPI maximum, wait, polling kind)');
+check(MODELS['0046'].poll === false && MODELS['004C'].poll === false && /const kinds = this\.model\.poll === false \? \[\] :/.test(fs.readFileSync(path.join(ROOT, 'device-library', 'razer-mouse', 'device.mjs'), 'utf8')), 'Mamba TE and Diamondback Chroma: no polling probe, no polling setting');
 check(validateMeta({ ...meta, tested: [{ by: '-', date: '-', devicehub: '-' }] }) === null, `device.json is otherwise well formed (${validateMeta({ ...meta, tested: [{ by: '-', date: '-', devicehub: '-' }] })})`);
 for (const want of ['DeathAdder V3', 'DeathAdder V3 Pro', 'DeathAdder V4 Pro', 'Viper V3 Pro', 'Basilisk V3', 'Basilisk V3 Pro', 'Cobra', 'Naga V2 Pro', 'HyperPolling Wireless Dongle', ...new Set(ADDED.map((r) => r[1]))]) check(meta.models.includes(want), `device.json lists ${want}`);
 const src = fs.readFileSync(path.join(ROOT, 'device-library', 'razer-mouse', 'device.mjs'), 'utf8');

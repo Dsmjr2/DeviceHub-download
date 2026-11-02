@@ -76,14 +76,21 @@ check(!problem(drv), `the driver passes the my-devices check (${problem(drv)})`)
 check(!validateMeta(meta) && (meta.status === 'untested' || meta.status === 'read-only') && meta.tested.length === 0 && meta.id === drv.id && meta.vid === '1038' && meta.source === 'docs/brands/steelseries.md', `device.json: untested or read-only, tested [], id, vid, source (${validateMeta(meta)})`);
 check(JSON.stringify([...meta.pids].sort()) === JSON.stringify(MODELS.map((m) => h4(m.pid).toLowerCase()).sort()), 'device.json pids are the table\'s');
 const IF0 = ['182E', '183C'];   // rivalcfg prime.py / rival5.py "endpoint": 0
+// added 1 Nov 2026: the rest of rivalcfg's mice, every one "endpoint": 0 (rivalcfg/devices/*.py @ 779ea52)
+const FW10 = [0x1702, 0x170a, 0x170b, 0x170c, 0x1814, 0x1384, 0x1392, 0x1710, 0x1712, 0x171c, 0x1394, 0x171a, 0x1716, 0x1714, 0x1718, 0x170e, 0x1700, 0x1730];
+const AA650 = [0x172b, 0x1726];
+const NAMED_NOV = [0x182a, 0x1856, 0x182c, 0x183e, 0x1724, 0x172e, 0x1729, 0x1816, 0x1810, 0x1706, 0x1707, 0x1704, 0x1708, 0x1369, 0x1362, 0x136d, 0x136f, 0x1380, 0x1390, 0x137a, 0x1366, 0x1378, 0x1720, 0x171e, 0x1736, 0x1722, 0x1832, 0x1834];
+IF0.push(...[...FW10, ...AA650, ...NAMED_NOV].map(h4));
+check(FW10.every((p) => MODELS.find((m) => m.pid === p)?.firmware === true) && AA650.every((p) => MODELS.find((m) => m.pid === p)?.battery === 'aa') && NAMED_NOV.every((p) => MODELS.find((m) => m.pid === p)?.named === true), 'the rivalcfg mice added 1 Nov 2026: firmware 10 00, Rival 650 AA 01, the rest named only');
+check(JSON.stringify(drv.hid.pids.slice(0, 28)) === JSON.stringify(['183A', '1838', '187A', '1878', '1854', '1852', '185E', '185C', '1862', '1860', '185A', '1858', '1876', '1874', '1842', '1840', '1824', '184C', '184A', '1848', '1830', '1872', '1836', '1850', '1870', '182E', '184D', '183C']), 'the earlier models keep their order');
 check(JSON.stringify(drv.hid.pids) === JSON.stringify(MODELS.map((m) => h4(m.pid))) && MODELS.every((m) => drv.hid.byPid[h4(m.pid)].iface === (IF0.includes(h4(m.pid)) ? 0 : 3) && drv.hid.byPid[h4(m.pid)].reportId === 0), 'one channel per pid, interface 3 (Prime, Rival 5: 0), report id 0');
 check(drv.hid.byPid['1838'].page === 'FFC0' && drv.hid.byPid['1840'].page === '*' && drv.hid.byPid['1824'].page === '*', 'Aerox on FFC0, Prime Wireless and Rival 3 on any page (not in the sheet)');
 check(['1830', '1836', '1850', '183C'].every((p) => drv.hid.byPid[p].page === 'FFC0') && ['1872', '1870', '182E', '184D', '184A', '1848'].every((p) => drv.hid.byPid[p].page === '*'), 'OpenRGB\'s FFC0 where it gives one (1830, 1836, 1850, 183C), any page elsewhere');
 const NEW = [0x184a, 0x1848, 0x1830, 0x1872, 0x1836, 0x1850, 0x1870, 0x182e, 0x184d, 0x183c];
 check(NEW.every((p) => MODELS.some((m) => m.pid === p)), 'the rivalcfg models added 23 Oct 2026 are in the table');
-check(MODELS.filter((m) => m.named).map((m) => m.pid).sort().join() === [0x1836, 0x1850, 0x1870, 0x182e, 0x184d, 0x183c].sort().join() && MODELS.filter((m) => m.named).every((m) => !m.battery && !m.firmware), 'the wired mice with no read are named only');
+check(MODELS.filter((m) => m.named).map((m) => m.pid).sort().join() === [0x1836, 0x1850, 0x1870, 0x182e, 0x184d, 0x183c, ...NAMED_NOV].sort().join() && MODELS.filter((m) => m.named).every((m) => !m.battery && !m.firmware), 'the wired mice with no read are named only');
 check(drv.settings.length === 0, 'no settings: every documented mouse setting is write-only');
-check(!MODELS.some((m) => [0x1890, 0x1724, 0x172e].includes(m.pid)), 'mice without a documented id or read are left out');
+check(!MODELS.some((m) => [0x1890].includes(m.pid)), 'the Aerox 3 Gen 2 (OpenRGB only, no rivalcfg profile) is left out');
 check(String(VENDOR_APPS) === String(ARCTIS_APPS) && VENDOR_APPS.test('SteelSeriesGG.exe') && VENDOR_APPS.test('SteelSeriesEngine3.exe') && !VENDOR_APPS.test('steam.exe'), 'the GG names are the Arctis driver\'s');
 for (const [b, p, c] of [[0x00, 0, false], [0x01, 0, false], [0x15, 100, false], [0x7f, 100, false], [0x8d, 60, true]]) {
   const r = parseBattery(b);

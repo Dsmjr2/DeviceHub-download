@@ -24,7 +24,8 @@ import { fromDefinition } from './via-layout.js';
 export const PREFIX = 0xfe;
 export const CMD = { keyboardId: 0x00, size: 0x01, definition: 0x02 };
 const READS = new Set([CMD.keyboardId, CMD.size, CMD.definition]);
-export const MAX_COMPRESSED = 64 * 1024;   // real vial.json files compress to a few KB
+export const MAX_COMPRESSED = 16 * 1024;   // real vial.json files compress to a few KB (64 KB at 500 ms a block could hold the start ~17 min: a review)
+export const READ_DEADLINE_MS = 10000;     // the whole read, whatever the keyboard declares
 export const MAX_JSON = 1024 * 1024;
 const MAX_VERSION = 0x40;                  // Vial is at protocol 6; a reply far above that is not Vial
 const P75 = { vendorId: 0x342d, productId: 0xe479 };   // DeviceHub's own keyboard: never asked anything Vial
@@ -44,7 +45,8 @@ export function allowed(bytes) {
 // device: a WebHID-like device on the FF60 collection (the agent: a raw channel, helpers/hid-host.mjs vialChannel).
 // -> { def, protocol, uid, size, blocks }. Throws NotVial when the keyboard is not Vial (nothing more is sent), or an
 // Error naming what was wrong with a Vial answer.
-export async function readVialDefinition(device, { timeoutMs = 300, blockMs = 500 } = {}) {
+export async function readVialDefinition(device, { timeoutMs = 300, blockMs = 500, deadlineMs = READ_DEADLINE_MS, now = () => Date.now() } = {}) {
+  const until = now() + deadlineMs;
   if (device?.vendorId === P75.vendorId && device?.productId === P75.productId) throw new NotVial('the Epomaker P75 has its own built-in layout and is never asked Vial questions');
   if (!device.opened) await device.open();
   const ch = new HidChannel(device, { reportId: 0, length: 32, match: () => true });
@@ -63,6 +65,7 @@ export async function readVialDefinition(device, { timeoutMs = 300, blockMs = 50
   const blocks = Math.ceil(size / 32);
   const data = new Uint8Array(blocks * 32);
   for (let page = 0; page < blocks; page++) {
+    if (now() > until) throw new Error(`its definition took over ${Math.round(deadlineMs / 1000)} s to read, so it was left`);
     r = await ask([PREFIX, CMD.definition, page & 0xff, (page >>> 8) & 0xff, 0, 0], blockMs);
     if (r.length < 32) throw new Error(`block ${page} of its definition came back short`);
     data.set(r.slice(0, 32), page * 32);

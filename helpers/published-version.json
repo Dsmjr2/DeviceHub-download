@@ -1,10 +1,8 @@
 {
-  "version": "1.52",
-  "commit": "928dd9326ee1",
+  "version": "1.53",
+  "commit": "1878fa3c91eb",
   "notes": [
-    "Vial keyboards give DeviceHub their own layout",
-    "Razer mouse driver knows 53 more mice from openrazer",
-    "Headset twin settings in groups too",
-    "Supported page names the device families"
+    "SteelSeries mouse driver knows 48 more mice from rivalcfg",
+    "Review fixes: Vial asked once and time-limited, two Razer mice…"
   ]
 }

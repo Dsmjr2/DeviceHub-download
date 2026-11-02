@@ -43,6 +43,18 @@
 //  - Wired-only mice with no read in any source, named from their product id and nothing sent at all (`named`):
 //    Aerox 3 1836 and Aerox 5 1850 (endpoint 3; OpenRGB interface 3, FFC0 / 1), Rival 3 Gen 2 1870 (endpoint 3),
 //    Prime 182E (endpoint 0), Prime Mini 184D (endpoint 3), Rival 5 183C (endpoint 0; OpenRGB interface 0, FFC0 / 1).
+//
+// Added 1 Nov 2026, the rest of rivalcfg's mice (same commit 779ea52, rivalcfg/devices/<file>.py, every one "endpoint": 0,
+// no usage page in rivalcfg, so any page on interface 0; cited per row below):
+//  - firmware 10 00, output report, response_length 2, byte for byte the Rival 3's read (`firmware`): Rival 100 / 105
+//    (rival100.py), Rival / Rival 300 and editions (rival300.py), Rival 500 (rival500.py), Rival 700 / 710 (rival700.py).
+//  - battery AA 01, output report, response_length 3, level = data[0], is_charging = bool(data[2]), the same profile for
+//    the cable and the receiver (no 0x40 patch): the Rival 650 Wireless (rival650.py), so battery 'aa' on both ids.
+//  - named only, nothing sent: profiles with no read (prime.py editions, prime_plus.py, rival5.py Destiny, rival600.py,
+//    rival110.py, rival300s.py, rival95.py, sensei_raw.py, kanav2.py, kinzuv2.py) and profiles whose only read is the
+//    firmware 90 00 (rival310.py, sensei310.py, sensei_ten.py): 0x90 is in the range the sheet's section 4 says to send
+//    only when the sheet lists it, so it is not sent (as for the Rival 3 Wireless).
+//  UNCONFIRMED for these older mice as for the rest: the 64-byte output length and which collection interface 0 opens.
 import { getDevice } from '../../public/devices/hid.js';
 
 const VID = 0x1038;
@@ -64,7 +76,7 @@ const SENDABLE = { battery: [CMD.battery], firmware: [CMD.firmware], batteryAA: 
 // The models (sheet s1 "Mice"). link: 'cable' (the mouse on its USB cable) or 'dongle' (its 2.4 GHz receiver).
 //  battery: the battery row lists the model (s3: "Aerox 3/5/9 Wireless, Prime Wireless"); firmware: the Rival 3 row.
 //  page: the usage page where the sheet gives one (HID LAYER 1). iface: the USB interface when it is not 3.
-//  battery: 'aa' = the Rival 3 Wireless AA 01 read. named: no read in any source; the mouse is only named, nothing is sent.
+//  battery: 'aa' = the Rival 3 Wireless AA 01 read. named: no read this driver may send (none in the profile, or only 90 00); the mouse is only named, nothing is sent.
 export const MODELS = [
   { pid: 0x183a, name: 'Aerox 3 Wireless', link: 'cable', battery: true, page: 0xffc0 },
   { pid: 0x1838, name: 'Aerox 3 Wireless', link: 'dongle', battery: true, page: 0xffc0 },
@@ -99,6 +111,61 @@ export const MODELS = [
   { pid: 0x182e, name: 'Prime', link: 'cable', named: true, page: null, iface: 0 },
   { pid: 0x184d, name: 'Prime Mini', link: 'cable', named: true, page: null },
   { pid: 0x183c, name: 'Rival 5', link: 'cable', named: true, page: 0xffc0, iface: 0 },
+  // added 1 Nov 2026 (see the top), all rivalcfg "endpoint": 0. Firmware 10 00: rivalcfg rival100.py
+  { pid: 0x1702, name: 'Rival 100', link: 'cable', firmware: true, page: null, iface: 0 },
+  { pid: 0x170a, name: 'Rival 100 (Dell China)', link: 'cable', firmware: true, page: null, iface: 0 },
+  { pid: 0x170b, name: 'Rival 100 Dota 2 Edition', link: 'cable', firmware: true, page: null, iface: 0 },
+  { pid: 0x170c, name: 'Rival 100 Dota 2 Edition (Lenovo)', link: 'cable', firmware: true, page: null, iface: 0 },
+  { pid: 0x1814, name: 'Rival 105', link: 'cable', firmware: true, page: null, iface: 0 },
+  // rivalcfg rival300.py
+  { pid: 0x1384, name: 'Rival', link: 'cable', firmware: true, page: null, iface: 0 },
+  { pid: 0x1392, name: 'Rival Dota 2 Edition', link: 'cable', firmware: true, page: null, iface: 0 },
+  { pid: 0x1710, name: 'Rival 300', link: 'cable', firmware: true, page: null, iface: 0 },
+  { pid: 0x1712, name: 'Rival 300 Fallout 4 Edition', link: 'cable', firmware: true, page: null, iface: 0 },
+  { pid: 0x171c, name: 'Rival 300 Evil Geniuses Edition', link: 'cable', firmware: true, page: null, iface: 0 },
+  { pid: 0x1394, name: 'Rival 300 CS:GO Fade Edition', link: 'cable', firmware: true, page: null, iface: 0 },
+  { pid: 0x171a, name: 'Rival 300 CS:GO Hyper Beast Edition', link: 'cable', firmware: true, page: null, iface: 0 },
+  { pid: 0x1716, name: 'Rival 300 CS:GO Fade Edition (stm32)', link: 'cable', firmware: true, page: null, iface: 0 },
+  { pid: 0x1714, name: 'Rival 300 Acer Predator Edition', link: 'cable', firmware: true, page: null, iface: 0 },
+  { pid: 0x1718, name: 'Rival 300 HP OMEN Edition', link: 'cable', firmware: true, page: null, iface: 0 },
+  // rivalcfg rival500.py, rival700.py
+  { pid: 0x170e, name: 'Rival 500', link: 'cable', firmware: true, page: null, iface: 0 },
+  { pid: 0x1700, name: 'Rival 700', link: 'cable', firmware: true, page: null, iface: 0 },
+  { pid: 0x1730, name: 'Rival 710', link: 'cable', firmware: true, page: null, iface: 0 },
+  // battery AA 01 on the cable and the receiver: rivalcfg rival650.py (one profile, both ids)
+  { pid: 0x172b, name: 'Rival 650 Wireless', link: 'cable', battery: 'aa', page: null, iface: 0 },
+  { pid: 0x1726, name: 'Rival 650 Wireless', link: 'dongle', battery: 'aa', page: null, iface: 0 },
+  // named only, no read in the profile: rivalcfg prime.py, prime_plus.py, rival5.py, rival600.py, rival110.py,
+  // rival300s.py, rival95.py, sensei_raw.py, kanav2.py, kinzuv2.py
+  { pid: 0x182a, name: 'Prime Rainbow 6 Siege Black Ice Edition', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x1856, name: 'Prime CS:GO Neo Noir Edition', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x182c, name: 'Prime+', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x183e, name: 'Rival 5 Destiny Edition', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x1724, name: 'Rival 600', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x172e, name: 'Rival 600 Dota 2 Edition', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x1729, name: 'Rival 110', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x1816, name: 'Rival 106', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x1810, name: 'Rival 300S', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x1706, name: 'Rival 95', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x1707, name: 'Rival 95 MSI Edition', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x1704, name: 'Rival 95 PC Bang', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x1708, name: 'Rival 100 PC Bang', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x1369, name: 'Sensei [RAW]', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x1362, name: 'Sensei [RAW] Diablo III Edition', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x136d, name: 'Sensei [RAW] Guild Wars 2 Edition', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x136f, name: 'Sensei [RAW] CoD Black Ops II Edition', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x1380, name: 'Sensei [RAW] World of Tanks Edition', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x1390, name: 'Sensei [RAW] Heroes of the Storm Edition', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x137a, name: 'Kana v2', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x1366, name: 'Kinzu v2', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x1378, name: 'Kinzu v2', link: 'cable', named: true, page: null, iface: 0 },
+  // named only, their one read (firmware 90 00) not sent (see the top): rivalcfg rival310.py, sensei310.py, sensei_ten.py
+  { pid: 0x1720, name: 'Rival 310', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x171e, name: 'Rival 310 CS:GO Howl Edition', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x1736, name: 'Rival 310 PUBG Edition', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x1722, name: 'Sensei 310', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x1832, name: 'Sensei TEN', link: 'cable', named: true, page: null, iface: 0 },
+  { pid: 0x1834, name: 'Sensei TEN CS:GO Neon Rider Edition', link: 'cable', named: true, page: null, iface: 0 },
 ];
 const IFACE = 3;  // sheet s1 "Interface" column (rivalcfg "endpoint") for every row above without its own iface
 const LEN = 64;   // UNCONFIRMED (see the top)
@@ -174,7 +241,8 @@ export default {
   unsupported: ['firmware updates', 'saving settings to the mouse',
     'DPI, polling rate, sleep and dim timers, lights and button mapping: every source only writes them and none reads them back, so DeviceHub does not change them (SteelSeries GG does)',
     'battery on the Aerox 3 Gen 2 (no source has its read)',
-    'the wired Aerox 3, Aerox 5, Rival 3 Gen 2, Prime, Prime Mini and Rival 5: no source has a read for them, so DeviceHub only names them'],
+    'the wired Aerox 3, Aerox 5, Rival 3 Gen 2, Prime, Prime Mini and Rival 5: no source has a read for them, so DeviceHub only names them',
+    'the Prime+, Rival 600, Rival 95 / 106 / 110 / 300S, Sensei [RAW], Kana v2 and Kinzu v2 (no read in rivalcfg), and the Rival 310, Sensei 310 and Sensei TEN (their firmware read 90 00 is not sent): named only'],
   MODELS, WRITE_ONLY, VENDOR_APPS,
 
   // the vendor-app check (replaceable in tests); resolves with the running app's name, or null
@@ -222,7 +290,7 @@ export default {
     this.need();
     const m = this.model;
     const out = { Model: `SteelSeries ${m.name}`, 'USB id': `1038:${h4(m.pid)}`, Connection: m.link === 'dongle' ? 'wireless (2.4 GHz receiver)' : 'USB cable',
-      Driver: m.named ? 'untested library driver: names this mouse only (no source has a read for it); nothing is sent' : 'untested library driver: reads only (battery, firmware); nothing is ever written' };
+      Driver: m.named ? 'untested library driver: names this mouse only (no read it may send for it); nothing is sent' : 'untested library driver: reads only (battery, firmware); nothing is ever written' };
     if (m.firmware) {
       const r = await this.link.ask('firmware').catch(() => null);
       out.Firmware = r ? `${r[0]}.${r[1]} (raw bytes)` : 'no reply';   // s3 "2 raw bytes"; their meaning is not documented

@@ -110,7 +110,8 @@ export const VENDOR_APPS = [/^razer synapse/i, /^razerappengine\.exe$/i];
 //   RAZER_NEW_MOUSE_RECEIVER_WAIT_US, 59.9 = RAZER_VIPER_MOUSE_RECEIVER_WAIT_US; a model the sheet does not list gets the
 //   default and the busy poll below covers the rest.
 // poll: 'rate2' where §3 lists the model as a polling_rate2 user, 'classic' where it says classic, null = whichever of
-//   the two reads answers (reads only; rate2 first, since only its users have 0xC0).
+//   the two reads answers (reads only; rate2 first, since only its users have 0xC0), false = none: not even probed (a
+//   review, 1 Nov 2026: openrazer sends the Mamba TE and Diamondback Chroma no polling command at all).
 // iface: §2 Transport (3 for Basilisk V3 and V3 35K, else 0). power: 'rechargeable' | 'aa' (§3 Charging: skipped on AA
 //   mice) | null (wired only: no battery). lowBatTid: §2 0xFF row ("Basilisk V3 Pro low-battery threshold").
 // dpiMax: the maker's published sensor maximum, NOT in the sheet (unconfirmed); never above the sheet's 45000 clamp.
@@ -268,7 +269,7 @@ export const MODELS = {
   '0072': m('Mamba Wireless', 'dongle', { tid: 0x3f, wait: NEW, poll: 'classic', dpiMax: 16000, stages: false, tids: { idle: 0xff, lowBattery: 0xff }, leds: [0x04, 0x01] }),
   '0044': m('Mamba Chroma', 'wired', { tid: 0xff, poll: 'classic', power: 'rechargeable', dpiMax: 16000, stages: false, setTids: { poll: 0x3f }, light: false }),
   '0045': m('Mamba Chroma', 'dongle', { tid: 0xff, poll: 'classic', dpiMax: 16000, stages: false, setTids: { poll: 0x3f }, light: false }),
-  '0046': m('Mamba Tournament Edition', 'wired', { tid: 0xff, dpiMax: 16000, stages: false, light: false }),
+  '0046': m('Mamba Tournament Edition', 'wired', { tid: 0xff, poll: false, dpiMax: 16000, stages: false, light: false }),
   '0024': m('Mamba (2012)', 'wired', { tid: 0xff, poll: 'classic', power: 'rechargeable', dpiMax: 6400, stages: false, light: false }),
   '0025': m('Mamba (2012)', 'dongle', { tid: 0xff, poll: 'classic', dpiMax: 6400, stages: false, light: false }),
   // Abyssus Elite D.Va Edition 006A / Essential 006B: FF, brightness 3F. Abyssus V2 005B, Abyssus 2000 005E: FF.
@@ -292,7 +293,7 @@ export const MODELS = {
   '0032': m('Ouroboros', 'wired', { tid: 0xff, poll: 'classic', power: 'rechargeable', dpiMax: 8200, stages: false, light: false }),
   '0048': m('Orochi Chroma', 'wired', { tid: 0xff, poll: 'classic', dpiMax: 8200, stages: false, light: false }),
   '0034': m('Taipan', 'wired', { tid: 0xff, poll: 'classic', dpiMax: 8200, stages: false, light: false }),
-  '004C': m('Diamondback Chroma', 'wired', { tid: 0xff, dpiMax: 16000, stages: false, light: false }),
+  '004C': m('Diamondback Chroma', 'wired', { tid: 0xff, poll: false, dpiMax: 16000, stages: false, light: false }),
   // Not added (openrazer master): DeathAdder 3.5G 0016 / 3.5G Black 0029 (old control message, not this report); Orochi
   // 2011 0013 (its own poll+DPI command, no firmware read); Naga 0015, Naga 2012 002E, Naga Hex 0041, Naga Hex Red 0036,
   // Naga Epic 001F, Abyssus 1800 0020, DeathAdder 2013 0037, DeathAdder 1800 0038 (one-byte DPI, get_dpi_xy_byte);
@@ -436,7 +437,7 @@ export function createRazerMouse({ sleep = sleepReal, open = defaultOpen, vendor
       const tries = async (fn) => { try { await fn(); return true; } catch (e) { if (e.status === 4 || e.gone) throw e; return false; } };
       if (await tries(() => this.get('dpi', [NOSTORE]))) has.add('dpi');
       // polling: the sheet's kind, else whichever read answers with a code the sheet maps
-      const kinds = this.model.poll ? [this.model.poll] : ['rate2', 'classic'];
+      const kinds = this.model.poll === false ? [] : this.model.poll ? [this.model.poll] : ['rate2', 'classic'];
       for (const k of kinds) {
         let code = null;
         if (k === 'rate2' && (await tries(async () => { code = (await this.get('poll2', [0x00, 0x00]))[1]; }))) { if (codeToHz(POLL_RATE2, code)) { this.pollKind = 'rate2'; break; } }

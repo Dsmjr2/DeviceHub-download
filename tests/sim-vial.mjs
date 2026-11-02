@@ -146,6 +146,19 @@ for (const mode of ['via', 'silent', 'echo', 'random', 'size0', 'huge', 'notxz',
   onlyReads(d, mode);
   ok(ms < 1500, `${mode}: decided in ${ms} ms`);
   fs.rmSync(path.join(tmp, 'FEED2002.json'));
+  // a "not Vial" answer is remembered: the next start asks the keyboard nothing (a review, 1 Nov 2026); a read that
+  // failed half way is not remembered, so it is tried again
+  const before = d.sent.length;
+  await viaDefs.definitionFor('FEED', '2002', { vial: () => readVialDefinition(d), log: () => {} });
+  const remembered = mode !== 'damaged';
+  ok(remembered ? d.sent.length === before : true, `${mode}: ${remembered ? 'not asked again on the next start' : 'tried again'} (${d.sent.length - before} more)`);
+  try { fs.rmSync(path.join(tmp, 'FEED2002.json')); } catch {}
+  try { fs.rmSync(path.join(tmp, 'not-vial.json')); } catch {}
+}
+// the whole read has one deadline, whatever size the keyboard declares (a review: 64 KB at just under 500 ms a block)
+{
+  const { READ_DEADLINE_MS, MAX_COMPRESSED } = await import('../public/devices/vial.js');
+  ok(READ_DEADLINE_MS <= 10000 && MAX_COMPRESSED <= 16 * 1024, `one deadline (${READ_DEADLINE_MS} ms) and a 16 KB cap (${MAX_COMPRESSED})`);
 }
 {
   // a NotVial answer is a plain "not Vial", told apart from a Vial board with a broken definition
