@@ -1,6 +1,6 @@
 // Overview: one bay per device, quick profiles and the activity feed.
 import { h, icon, fmt, dateTime } from '../ui/dom.js';
-import { tileOrder } from '../core/tile-order.js';
+import { tileOrder, dpiInUse } from '../core/tile-order.js';
 import { env } from '../core/env.js';
 import { button, card, pill, batteryCell, loadBatteryEstimates, skeleton } from '../ui/controls.js';
 import { devices, activity, connect, isDemo, isRemote, shownDevices, noDevicesYet, stillLooking } from '../core/devices.js';
@@ -53,7 +53,7 @@ const colorFor = (dOrId) => {
 function pluginReadouts(d) {
   const v = { ...(d.values || {}) }, settings = d.adapter?.settings || [];
   // no DPI of its own, but stages and the one in use: that stage's DPI is the mouse's DPI now
-  if (v.dpi == null && Number.isFinite(Number(v.dpiStage))) { const x = v[`dpiStage${Number(v.dpiStage)}`] ?? v[`dpi${Number(v.dpiStage)}`]; if (x != null) v.dpi = x; }
+  if (v.dpi == null) { const x = dpiInUse(v); if (x != null) v.dpi = x; }
   const ordered = tileOrder(d.adapter?.kind || '', v.dpi != null && !settings.some((s) => s.key === 'dpi') ? [{ key: 'dpi', label: 'DPI', type: 'slider' }, ...settings] : settings);
   const out = [];
   for (const s of ordered) {

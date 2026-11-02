@@ -43,6 +43,8 @@ check(describe(['1532:0084'], { usb: [{ vid: '1532', pid: '0084', name: 'x' }], 
   check(unknown({ usages: { mouse: true }, pages: ['FF01:0001'] }, null).length === 0, 'its channel not read yet: not offered (a known brand is, an unknown one waits for proof)');
   check(unknown({ usages: { mouse: false, keyboard: false }, pages: ['FF01:0001'] }, true).length === 0, 'not a mouse or keyboard to Windows (a webcam, a controller): not offered');
   check(unknown({ usages: { keyboard: true }, pages: [] }, true).length === 0, 'no private channel (a plain keyboard): not offered');
+  // the chip makers the brand guide warns about but lists under no brand (Sonix 0c45, QinHeng 1a86): never offered (a review)
+  check(describe(['0C45:0001'], { usb: [{ vid: '0c45', pid: '0001', usages: { keyboard: true }, pages: ['FF01:0001'] }], brands, shared: new Set(['0c45', '1a86']), canSet: () => true }).length === 0, 'a Sonix chip keyboard: never offered');
   check(describe(['258A:0001'], { usb: [{ vid: '258a', pid: '0001', usages: { mouse: true }, pages: ['FF01:0001'] }], brands, canSet: () => true }).length === 0, 'a shared chip maker\'s id: never offered');
 }
 const g = groupDevices({ collections: [{ vid: '3434', pid: '0311', page: '0001', usage: '0006', outLen: 2 }, { vid: '1532', pid: '0084', page: 'FF00', usage: '0001', featLen: 91 }] });

@@ -112,6 +112,12 @@ export async function startup({ root = ROOT, pcMap, log = () => {} } = {}) {
 
 // ---------- the summary ----------
 
+// the chip makers' vendor ids the brand guide warns about (docs/brands.json meta.sharedVidWarning: 0c45 Sonix, 1a86
+// QinHeng ...), listed under a brand or not (1 Nov 2026, helpers/plug-watch.mjs)
+export function sharedVids(root) {
+  const j = readJson(path.join(root, 'docs', 'brands.json'), {}) || {};
+  return new Set(((j.meta?.sharedVidWarning || '').match(/\b[0-9a-f]{4}\b/g)) || []);
+}
 // vendor id -> brand, for the device kinds a driver is written for (docs/brands.json)
 export function brandsByVid(root) {
   const j = readJson(path.join(root, 'docs', 'brands.json'), {}) || {};

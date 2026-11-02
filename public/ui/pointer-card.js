@@ -6,13 +6,15 @@ import { card, row, toggle, slider } from './controls.js';
 import { isDemo } from '../core/devices.js';
 import { toast } from './overlay.js';
 
-let pointer = null, pointerLoading = false;
+// every page that asked while the read ran is redrawn when it lands (a review, 1 Nov 2026: a page opened meanwhile
+// stayed on "Reading…")
+let pointer = null, waiting = null;
 async function loadPointer(redraw) {
-  if (pointerLoading) return;
-  pointerLoading = true;
+  if (waiting) { waiting.add(redraw); return; }
+  waiting = new Set([redraw]);
   try { pointer = await (await fetch('/api/pointer')).json(); } catch { pointer = { ok: false, error: 'DeviceHub did not answer' }; }
-  pointerLoading = false;
-  redraw();
+  const all = waiting; waiting = null;
+  for (const r of all) r();
 }
 async function setPointer(key, value, label, display, redraw) {
   // demo mode changes only its pretend values, never this PC's real Windows pointer settings (20 Oct 2026)

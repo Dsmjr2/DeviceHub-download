@@ -14,6 +14,10 @@ import { worksReport, offersWorks } from '../ui/works-report.js';
 import { guidedTest } from '../ui/guided-test.js';
 import { pollingTest, pollHzOf } from '../ui/polling-test.js';
 import { pointerCard } from '../ui/pointer-card.js';
+import { batteryCell } from '../ui/controls.js';
+import { dots, signal } from '../ui/gauges.js';
+import { fmt } from '../ui/dom.js';
+import { tileOrder, dpiInUse } from '../core/tile-order.js';
 import { loadBatteryEstimates, batteryLeft } from '../ui/controls.js';
 import { batteryChart } from '../ui/battery-chart.js';
 import { showAdded } from '../core/profiles.js';
@@ -253,6 +257,36 @@ function settingsList(d, list) {
   return GROUPS.filter(([g]) => by.has(g)).map(([g, title]) => h('div', { class: 'set-group' }, h('h3', {}, title), ...by.get(g).map((s) => settingRow(d, s))));
 }
 
+// The figures at the top of an added device's page, as the Pulsar's page leads with its battery, DPI, polling and
+// lift-off (1 Nov 2026, Shawn: "show the proper buttons"): the battery, then up to four readings in the order its tile
+// uses (core/tile-order.js), DPI with its stage dots and polling with its bars. Nothing to show: no row.
+export function heroStats(d) {
+  const v = d.values || {}, a = d.adapter || {}, settings = a.settings || [];
+  const out = [];
+  const bat = d.battery;
+  if (bat?.percent != null) out.push(batteryCell({ id: d.id, percent: bat.percent, charging: bat.charging, big: true, reported: bat.reported }));
+  const stageN = Number(v.dpiStage);
+  const dpiNow = dpiInUse(v);
+  const stages = settings.filter((x) => /^(?:dpiStage|dpi)[1-9]$/.test(x.key)).length;
+  // no dpi setting of its own (ASUS, ROCCAT): the DPI in use still leads
+  const list = dpiNow != null && !settings.some((x) => x.key === 'dpi') ? [{ key: 'dpi', label: 'DPI', type: 'slider' }, ...settings] : settings;
+  for (const x of tileOrder(a.kind || '', list)) {
+    if (out.length >= 5) break;
+    if (x.key === 'dpiStage' || x.key === 'stageCount') continue;
+    const val = x.key === 'dpi' ? dpiNow : v[x.key];
+    if (val == null || val === '') continue;
+    if (x.key === 'dpi' && Number.isFinite(Number(val))) {
+      out.push(stages >= 2 && Number.isFinite(stageN) ? dots({ n: stageN, of: stages, value: fmt(Number(val)), label: `DPI · stage ${stageN}`, big: true })
+        : h('div', { class: 'stat' }, h('b', {}, fmt(Number(val))), h('span', {}, 'DPI')));
+    } else if (/^(pollingRate|polling|reportRate)$/i.test(x.key) && Number.isFinite(Number(val))) out.push(signal({ hz: Number(val), big: true }));
+    else if (x.type === 'display' || x.type === 'slider' || x.type === 'choice' || x.type === 'toggle') {
+      const shown = x.type === 'toggle' ? (val ? 'On' : 'Off') : x.type === 'choice' ? String((x.options || []).find((o) => o.value === val)?.label ?? val) : `${val}${unitOf(x)}`;
+      out.push(h('div', { class: 'stat' }, h('b', {}, shown), h('span', {}, String(x.label || x.key).toLowerCase())));
+    }
+  }
+  return out.length ? h('section', { class: 'hero' }, h('div', {}, h('div', { class: 'hero-stats' }, ...out))) : null;
+}
+
 function control(d, s, off = false) {
   const v = d.values?.[s.key];
   const set = (x) => off ? undefined : write(d.id, s.key, x, { label: s.label, display: s.type === 'choice' ? (s.options.find((o) => o.value === x)?.label ?? String(x)) : `${x}${unitOf(s)}` });
@@ -295,9 +329,9 @@ export function devicePage(id) {
       }
       const shown = (a.settings || []).filter((s) => d.values?.[s.key] !== undefined);
       const staged = stageKeys(shown);
-      return h('div', {}, head, awayBanner(d), turnOnBanner(d, () => ctx.redraw?.()),
+      return h('div', {}, head, awayBanner(d), heroStats(d), turnOnBanner(d, () => ctx.redraw?.()),
         h('div', { class: 'grid two top' },
-          card([h('h2', {}, 'Settings'), batteryPill(d)],
+          card([h('h2', {}, 'Settings'), d.battery?.percent != null ? null : batteryPill(d)],   // the battery is in the figures at the top (heroStats)
             shown.length ? settingsList(d, shown.filter((s) => !staged.has(s.key))) : h('p', { class: 'faint', style: { margin: 0 } }, 'No settings reported yet.'),
             a.unsupported?.length ? h('p', { class: 'faint', style: { marginTop: '12px' } }, icon('external'), ` Maker's app only: ${a.unsupported.join(', ')}.`) : null,
             careLine(d),

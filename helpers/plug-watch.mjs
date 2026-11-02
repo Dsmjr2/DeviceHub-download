@@ -9,7 +9,7 @@
 // Ids that were there when DeviceHub started are never announced; each new id once per run.
 import fs from 'node:fs';
 import path from 'node:path';
-import { brandsByVid, startup } from './auto-setup.mjs';
+import { brandsByVid, sharedVids, startup } from './auto-setup.mjs';
 import { vendorRefusal, deps as wizardDeps, settable } from './learn-wizard.mjs';
 
 const idOf = (u) => `${String(u.vid).toUpperCase().padStart(4, '0')}:${String(u.pid).toUpperCase().padStart(4, '0')}`;
@@ -31,7 +31,7 @@ export const metaOnlyIfFound = (root) => (name, id) => {
 };
 // canSet(id): true / false from the device's own HID collections (learn-wizard settable: a settings channel), null when
 // not read; a device with nothing to set is never offered Learn (24 Oct 2026: a plain keyboard or a G HUB virtual device)
-export function describe(added, { usb = [], rec = null, brands = {}, own = { mine: [], copies: [] }, onlyIfFound = () => false, canSet = () => null } = {}) {
+export function describe(added, { usb = [], rec = null, brands = {}, shared = new Set(), own = { mine: [], copies: [] }, onlyIfFound = () => false, canSet = () => null } = {}) {
   const out = [];
   const mine = new Set([...(own.mine || []), ...(own.copies || []).flatMap((c) => c.ids || [])].map((x) => String(x).toUpperCase()));
   for (const k of added) {
@@ -49,6 +49,7 @@ export function describe(added, { usb = [], rec = null, brands = {}, own = { min
     // mouse or keyboard on it, it has a private settings channel (a vendor page), and that channel can carry settings;
     // a webcam, a controller or a plain keyboard is never offered
     if (!b) {
+      if (shared.has(vid.toLowerCase())) continue;   // a chip maker's id the brand guide warns about (Sonix, QinHeng ...)
       const vendorPage = (u.pages || []).some((p) => /^FF/i.test(String(p)));
       if (!(u.usages?.mouse || u.usages?.keyboard) || !vendorPage || canSet(k) !== true) continue;
       out.push({ vid, pid, name, brand: null, learn: true });
@@ -94,7 +95,7 @@ export function watcher({ root, pcMap, log = () => {}, send = () => {}, setup = 
         }
       } catch { cols = null; }
       const canSet = (k) => (cols?.has(k.toUpperCase()) ? settable(cols.get(k.toUpperCase())) : null);
-      const said = describe(fresh, { usb, rec, brands: brands(), own, onlyIfFound: metaOnlyIfFound(root), canSet });
+      const said = describe(fresh, { usb, rec, brands: brands(), shared: sharedVids(root), own, onlyIfFound: metaOnlyIfFound(root), canSet });
       for (const x of said) {
         console.log(`[plug] ${x.vid}:${x.pid} ${x.name}: ${x.installed ? `library driver ${x.installed.name} installed` : 'can be learned'}`);
         send('newdevice', x);

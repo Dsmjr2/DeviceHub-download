@@ -6,6 +6,14 @@ const TILE_FIRST = {
   keyboard: [/^(reportRate|pollingRate|polling)$/i, /^(brightness|lights|backlight)/i, /^gameMode$/i],
   headset: [/^sidetone(Level)?$/i, /^chatmix$/i, /^autoOff$/i],
 };
+// The DPI a mouse uses now (a review, 1 Nov 2026: an ASUS tile showed no DPI): its own dpi, else the stage in use
+// (dpiStage n -> dpiStage<n> or dpi<n>), else its first stage. null when it reports none.
+export function dpiInUse(v = {}) {
+  if (v.dpi != null && v.dpi !== '') return v.dpi;
+  const n = Number(v.dpiStage);
+  if (Number.isFinite(n)) { const x = v[`dpiStage${n}`] ?? v[`dpi${n}`]; if (x != null) return x; }
+  return v.dpiStage1 ?? v.dpi1 ?? null;
+}
 export function tileOrder(kind, settings) {
   const k = /mouse/i.test(kind) ? 'mouse' : /keyboard/i.test(kind) ? 'keyboard' : /headset/i.test(kind) ? 'headset' : null;
   // a stage's own slider is never a tile reading; the DPI in use is (pages/overview.js pluginReadouts)

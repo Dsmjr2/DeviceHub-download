@@ -1,11 +1,8 @@
 {
-  "version": "1.50",
-  "commit": "c1824bd4f205",
+  "version": "1.51",
+  "commit": "5a8873a32796",
   "notes": [
-    "Learned settings wait for Save and stay on their own USB id",
-    "A setting is missing? adds learned settings beside code drivers",
-    "New Corsair models recognized read-only by their Bragi channel",
-    "Unknown brand on plug-in: Learn it opens with the device picked",
-    "Plus 2 more fixes and improvements"
+    "Review fixes: DPI in use for ASUS, shared chip ids, pointer card read",
+    "Added device pages lead with their figures"
   ]
 }
