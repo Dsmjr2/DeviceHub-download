@@ -96,7 +96,8 @@ function addedDemo() {
   if (!q.has('added')) return null;
   const pct = Math.max(0, Math.min(100, Number(q.get('pct') ?? 42) || 0)), charging = q.get('charging') === '1';
   const kind = String(q.get('kind') || 'Mouse').slice(0, 20);
-  const v = { lights: true, dpi: 1600, signal: 'Strong' };
+  // the settings a library mouse has (1 Nov 2026: shows the DPI stages card and the setting groups of an added device)
+  const v = { lights: true, dpi: 1600, signal: 'Strong', pollingRate: 1000, dpiStage: 2, dpiStage1: 800, dpiStage2: 1600, dpiStage3: 3200, idle: 300, brightness: 180 };
   // a week of readings every 5 minutes, ending at the level asked for: about 1.5% an hour down, a charge each evening
   const history = (days) => {
     const now = Date.now(), step = 5 * 60 * 1000, rows = [];
@@ -114,6 +115,11 @@ function addedDemo() {
     settings: [
       { key: 'lights', label: 'Lights', type: 'toggle' },
       { key: 'dpi', label: 'DPI', type: 'slider', min: 400, max: 3200, step: 400 },
+      { key: 'pollingRate', label: 'Polling rate', type: 'choice', options: [125, 500, 1000].map((hz) => ({ value: hz, label: `${hz} Hz` })) },
+      { key: 'dpiStage', label: 'Active DPI stage', type: 'slider', min: 1, max: 3, step: 1 },
+      ...[1, 2, 3].map((i) => ({ key: `dpiStage${i}`, label: `DPI stage ${i}`, type: 'slider', min: 400, max: 6400, step: 100, unit: 'DPI' })),
+      { key: 'idle', label: 'Sleep after', type: 'slider', min: 60, max: 900, step: 30, unit: 's' },
+      { key: 'brightness', label: 'Brightness', type: 'slider', min: 0, max: 255, step: 1, unit: '/255' },
       { key: 'signal', label: 'Signal', type: 'display' },
     ],
     batteryCare: { lowBattery: { key: 'lights', value: false }, charging: { key: 'lights', value: false } },

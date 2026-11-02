@@ -13,6 +13,7 @@ import { isDemo } from '../core/devices.js';
 import { worksReport, offersWorks } from '../ui/works-report.js';
 import { guidedTest } from '../ui/guided-test.js';
 import { pollingTest, pollHzOf } from '../ui/polling-test.js';
+import { pointerCard } from '../ui/pointer-card.js';
 import { loadBatteryEstimates, batteryLeft } from '../ui/controls.js';
 import { batteryChart } from '../ui/battery-chart.js';
 import { showAdded } from '../core/profiles.js';
@@ -177,7 +178,7 @@ function settingRow(d, s) {
   const off = readOnlyOf(s);
   const desc = descOf(s);
   const send = (x, label, display) => (off ? Promise.resolve() : write(d.id, s.key, x, { label, display }).catch(() => {}));
-  if (s.type === 'display') return row(s.label, s.hint || null, readout({ value: v, unit: s.unit || '' }));
+  if (s.type === 'display') return row(s.label, s.hint || null, readout({ value: v, unit: unitOf(s) }));
   if (s.type === 'color' && !s.zones) return row(s.label, desc, colorRow({ value: v, label: s.label, disabled: off, onCommit: (x) => send(x, s.label, x) }));
   if (s.type === 'color' || s.type === 'remap') {
     const obj = v && typeof v === 'object' ? v : {};
@@ -197,12 +198,67 @@ function settingRow(d, s) {
   return r;
 }
 
+// DPI stages together, as on the Pulsar's page (1 Nov 2026, Shawn: "show the proper buttons"): a driver's dpiStage1..N
+// (each stage's DPI) and dpiStage (the one in use) were separate sliders in a flat list (the Razer driver's five
+// "DPI stage n" sliders and an "Active DPI stage" slider). Now one card: each stage's DPI, the one in use marked, Use on
+// the others. The same settings and writes as before; only where they are drawn changed.
+const unitOf = (s) => (s.unit && /^[A-Za-z]/.test(s.unit) ? ` ${s.unit}` : s.unit || '');
+const STAGE_DPI = /^(?:dpiStage|dpi)([1-9])$/;   // dpiStage1.. (Razer), dpi1.. (ASUS)
+export function stageKeys(shown) {
+  const per = shown.filter((s) => STAGE_DPI.test(s.key) && s.type === 'slider');
+  return per.length >= 2 ? new Set([...per.map((s) => s.key), ...['dpiStage', 'stageCount'].filter((k) => shown.some((s) => s.key === k))]) : new Set();
+}
+function stagesCard(d, shown) {
+  const per = shown.filter((s) => STAGE_DPI.test(s.key) && s.type === 'slider');
+  if (per.length < 2) return null;
+  const active = shown.find((s) => s.key === 'dpiStage');
+  const cur = Number(d.values?.dpiStage);
+  // how many stages the DPI button cycles through (ASUS "DPI stages in use"): its row first, the rest marked
+  const count = shown.find((s) => s.key === 'stageCount');
+  const inUse = Number(d.values?.stageCount);
+  const valueFor = (i) => (active?.type === 'choice' ? (active.options || []).find((o) => Number(o.value) === i)?.value ?? i : i);
+  return card([h('h2', {}, 'DPI stages'), h('span', { class: 'sub' }, active || count ? "the mouse's DPI button steps through them" : 'saved on the mouse')],
+    count ? settingRow(d, count) : null,
+    ...per.map((s) => {
+      const i = Number(STAGE_DPI.exec(s.key)[1]);
+      const on = !!active && cur === i;
+      const use = active && !on ? button('Use', () => write(d.id, 'dpiStage', valueFor(i), { label: active.label, display: `stage ${i}` }).catch(() => {}), { kind: 'ghost small', disabled: readOnlyOf(active) }) : null;
+      const out = count && Number.isFinite(inUse) && i > inUse;
+      const r = row(`Stage ${i}`, out ? 'Not in the cycle.' : null, h('div', { class: 'stage-line' }, control(d, s, readOnlyOf(s)), on ? pill('in use', 'accent') : use));
+      if (on) r.classList.add('stage-on');
+      return r;
+    }));
+}
+
+// Settings in groups, as the built-in pages split Tracking from Power & light (1 Nov 2026, Shawn: "show the proper
+// buttons"): a driver may name a setting's group (group: 'tracking' | 'keys' | 'sound' | 'power' | 'lights'); without
+// one it is told by its key, the names the library drivers use. Headings only when there is more than one group.
+export const GROUPS = [['tracking', 'Performance'], ['keys', 'Keys'], ['sound', 'Sound'], ['power', 'Power'], ['lights', 'Lights'], ['other', 'More']];
+const BY_KEY = [
+  ['tracking', /^(dpi|polling|pollingRate|reportRate|liftOff|angleSnap|smartReel|scrollAccel|stageCount|onboardProfile|profile|mode|motionSync|ripple)/i],
+  ['keys', /^(lock|gameMode|fnSwap|debounce|remap|keys?\b|nkro|macro(?!Led))/i],
+  ['sound', /^(sidetone|mic|chatmix|noiseGate|eq|voicePrompts|silentMode|volume)/i],
+  ['power', /^(autoOff|sleep|idle|lowBattery|docked|battery|charging|powerSave)/i],
+  ['lights', /^(brightness|lights?|logo|dongleLed|macroLed|backlight|color|colour|effect|rgb)/i],
+];
+export function groupOf(s) {
+  if (GROUPS.some(([g]) => g === s.group)) return s.group;
+  if (s.type === 'color') return 'lights';
+  return (BY_KEY.find(([, re]) => re.test(s.key)) || ['other'])[0];
+}
+function settingsList(d, list) {
+  const by = new Map();
+  for (const s of list) { const g = groupOf(s); if (!by.has(g)) by.set(g, []); by.get(g).push(s); }
+  if (by.size <= 1) return list.map((s) => settingRow(d, s));
+  return GROUPS.filter(([g]) => by.has(g)).map(([g, title]) => h('div', { class: 'set-group' }, h('h3', {}, title), ...by.get(g).map((s) => settingRow(d, s))));
+}
+
 function control(d, s, off = false) {
   const v = d.values?.[s.key];
-  const set = (x) => off ? undefined : write(d.id, s.key, x, { label: s.label, display: s.type === 'choice' ? (s.options.find((o) => o.value === x)?.label ?? String(x)) : `${x}${s.unit || ''}` });
+  const set = (x) => off ? undefined : write(d.id, s.key, x, { label: s.label, display: s.type === 'choice' ? (s.options.find((o) => o.value === x)?.label ?? String(x)) : `${x}${unitOf(s)}` });
   if (s.type === 'toggle') return toggle({ value: !!v, label: s.label, disabled: off, onCommit: set });
   if (s.type === 'choice') return segmented({ value: v, compact: s.options.length > 3, options: s.options, disabled: off, onCommit: set });
-  return slider({ value: v ?? null, min: s.min, max: s.max, step: s.step || 1, unit: s.unit || '', label: s.label, disabled: off,
+  return slider({ value: v ?? null, min: s.min, max: s.max, step: s.step || 1, unit: unitOf(s), label: s.label, disabled: off,
     grab: () => (off ? undefined : prepare(d.id)), live: s.live && !off ? (x) => write(d.id, s.key, x, { live: true }).catch(() => {}) : null, onCommit: set });
 }
 
@@ -238,20 +294,25 @@ export function devicePage(id) {
           h('div', { class: 'actions' }, button('Look again', () => connect(id, false), { kind: 'primary', ic: 'plug' }))));
       }
       const shown = (a.settings || []).filter((s) => d.values?.[s.key] !== undefined);
+      const staged = stageKeys(shown);
       return h('div', {}, head, awayBanner(d), turnOnBanner(d, () => ctx.redraw?.()),
         h('div', { class: 'grid two top' },
           card([h('h2', {}, 'Settings'), batteryPill(d)],
-            shown.length ? shown.map((s) => settingRow(d, s)) : h('p', { class: 'faint', style: { margin: 0 } }, 'No settings reported yet.'),
+            shown.length ? settingsList(d, shown.filter((s) => !staged.has(s.key))) : h('p', { class: 'faint', style: { margin: 0 } }, 'No settings reported yet.'),
             a.unsupported?.length ? h('p', { class: 'faint', style: { marginTop: '12px' } }, icon('external'), ` Maker's app only: ${a.unsupported.join(', ')}.`) : null,
             careLine(d),
             newerLine(d),
             checkAgain(d, () => ctx.redraw?.()),
             // Test it with me first, then the Works on my device invitation (public/ui/guided-test.js)
             offersWorks(d) ? guidedTest(d, { after: () => worksReport(d, { invite: true }), redraw: () => ctx.redraw?.() }) : null),
-          card([h('h2', {}, 'Device'), h('span', { class: 'spacer' }), deviceActions(d)], kv(d.info || {}), shareButton(d, shown))),
+          h('div', { class: 'stack' },
+            card([h('h2', {}, 'Device'), h('span', { class: 'spacer' }), deviceActions(d)], kv(d.info || {}), shareButton(d, shown)),
+            staged.size ? stagesCard(d, shown) : null)),
         a.battery ? batteryChart(id, () => ctx.redraw?.(), { title: a.title, kind: a.kind }) : null,
         // any mouse: the polling rate test, against its polling setting when the driver has one (public/ui/polling-test.js)
-        /mouse/i.test(a.kind || '') ? pollingTest(pollHzOf(d), card, id) : null);
+        /mouse/i.test(a.kind || '') ? pollingTest(pollHzOf(d), card, id) : null,
+        // Windows' pointer settings, as on the Pulsar's page (1 Nov 2026, ui/pointer-card.js)
+        /mouse/i.test(a.kind || '') ? pointerCard(() => ctx.redraw?.()) : null);
     },
   };
 }

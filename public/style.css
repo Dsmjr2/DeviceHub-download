@@ -3239,3 +3239,11 @@ html[data-skin="koi-pond"] .dd-opt.active { background: rgba(240, 138, 75, .2); 
   linear-gradient(180deg, #1d5e58, #0d3533); box-shadow: inset 0 0 0 1px rgba(190, 245, 228, .3); }
 .theme-tile[data-bg="koi-pond"] .mini-card { background: linear-gradient(160deg, rgba(210, 255, 240, .16), rgba(10, 50, 46, .75)); border-color: rgba(190, 245, 228, .34); }
 .theme-tile[data-bg="koi-pond"] .mini-dot { background: #f08a4b; }
+
+/* DPI stages on an added mouse's page (pages/my-device.js stagesCard, 1 Nov 2026) */
+.stage-line { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.stage-line > :first-child { flex: 1 1 auto; min-width: 0; }
+.srow.stage-on .srow-title { color: var(--accent); }
+/* an added device's settings in groups (pages/my-device.js settingsList, 1 Nov 2026) */
+.set-group + .set-group { margin-top: 14px; }
+.set-group > h3 { margin: 0 0 4px; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }

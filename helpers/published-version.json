@@ -1,7 +1,10 @@
 {
-  "version": "1.48",
-  "commit": "8da59bf7eacf",
+  "version": "1.49",
+  "commit": "2b86730d5ae3",
   "notes": [
-    "First new PC's report: PRO X headset connects, Keychron V5, Razer…"
+    "Bluetooth headsets show the battery Windows has for them",
+    "Added device tiles lead with DPI, polling and the like",
+    "Added devices: settings in groups, stages beside Device, units spaced",
+    "Pointer card for every mouse; DPI stages card for added mice"
   ]
 }

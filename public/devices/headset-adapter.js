@@ -3,7 +3,8 @@
 //  - Windows Core Audio: headset volume and mic level / mute (iCUE not needed)
 //  - without iCUE: battery, mic flip, firmware, sleep timer straight from the receiver (helpers/hs80-direct.js)
 // Write keys: prop:<name> (only if iCUE marks it writable), vol:<flow>, mute:<flow>, led (#rrggbb)
-import { cleanPick, chosenOther, genericFor, headsetChoices, isHs80, isJack } from '../core/headset-pick.js';
+import { cleanPick, chosenOther, genericFor, headsetChoices, isHs80, isJack, btBatteryFor } from '../core/headset-pick.js';
+import { env } from '../core/env.js';
 
 let call = async (action, body) => {
   const r = await fetch(`/api/corsair/${action}`, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
@@ -57,6 +58,14 @@ async function listHeadsets(maxAge = 0) {
 const toGeneric = (h) => ({ usb: h.usb, device: h.device || h.usb, bt: h.bluetooth === true ? 'only' : h.bluetooth ? 'also' : null,
   ids: new Set([...h.playback, ...h.recording, ...(h.bluetooth?.playback || []), ...(h.bluetooth?.recording || [])].map((e) => e.id)) });
 const gone = (msg) => Object.assign(new Error(msg), { gone: true });
+// Windows' Bluetooth devices with their battery (GET /api/bluetooth, cached on the server too), at most once a minute
+let btCache = { at: 0, list: [] };
+async function btList() {
+  if (Date.now() - btCache.at < 60000) return btCache.list;
+  btCache.at = Date.now();
+  try { const l = await env.api('/api/bluetooth'); btCache.list = Array.isArray(l) ? l : []; } catch {}
+  return btCache.list;
+}
 async function findGeneric() {
   const list = await listHeadsets();
   if (!list) return null;
@@ -121,7 +130,7 @@ const adapter = {
     const vid = /VID_([0-9A-F]{4})/i.exec(generic.usb || '')?.[1];
     return { label: "its maker's app", app: vid ? `maker:${vid.toUpperCase()}` : null };
   },
-  get unsupported() { return generic ? ['lights', 'battery', 'its own settings (teach them in Learn a device)'] : ['firmware updates', 'receiver pairing']; },
+  get unsupported() { return generic ? ['lights', ...(generic.bt ? [] : ['battery']), 'its own settings (teach them in Learn a device)'] : ['firmware updates', 'receiver pairing']; },
   get generic() { return generic; },
   autoReconnect: true,
   pollRead: true,
@@ -184,7 +193,8 @@ const adapter = {
   },
 
   async battery() {
-    if (mode === 'generic') return null;
+    // a Bluetooth headset run as a generic one: the level Windows shows for it (1 Nov 2026; Windows' list at most once a minute)
+    if (mode === 'generic') return generic?.bt ? btBatteryFor(await btList(), generic.device) : null;
     const b = props.batteryLevel;
     if (!b || b.value == null) return null;
     if (mode !== 'direct') return { percent: b.value };

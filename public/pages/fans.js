@@ -11,7 +11,8 @@ import { SWATCHES } from '../core/color.js';
 import { helpHere } from '../ui/get-help.js';
 import { boardLights } from '../ui/board-lights.js';
 import { env } from '../core/env.js';
-import { isDemo } from '../core/devices.js';
+import { isDemo, shownDevices } from '../core/devices.js';
+import { pointerCard } from '../ui/pointer-card.js';
 import { topbar } from './common.js';
 import { everyVisible } from '../core/visible-timer.js';
 // Temperatures and fans, and the PC check (24 Oct 2026, docs/handoff/display-health.md): this page became "PC" so the
@@ -157,6 +158,9 @@ export default {
             : gpus.length ? gpuCard(gpus[0]) : card([h('h2', {}, 'Graphics card')], h('p', { class: 'faint' }, gpu.reason || 'Not read on this PC.')), 'pc-gpu'),
         tag(cpuCard(), 'pc-cpu'),
         tag(tempsCard(rerender, 'fans'), 'pc-temps'),
-        tag(pcCheckCard(rerender), 'pc-check')));
+        tag(pcCheckCard(rerender), 'pc-check')),
+      // no mouse page on this PC (none DeviceHub runs): Windows' pointer settings here, as they are on every mouse's page
+      // (1 Nov 2026, ui/pointer-card.js)
+      shownDevices().some((x) => x.id === 'mouse' || /mouse/i.test(x.adapter?.kind || '')) ? null : h('div', { class: 'grid two top' }, pointerCard(rerender)));
   },
 };

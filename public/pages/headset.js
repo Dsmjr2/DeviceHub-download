@@ -44,10 +44,14 @@ function ownHeadset(a) {
 // any other headset: what works now, plus its driver page (if installed) or Learn a device for USB models
 function genericCard(a, redraw) {
   const g = a.generic || {};
-  // one headset over Bluetooth (helpers/wired-headsets.js): its music and call sides are one headset
+  // one headset over Bluetooth (helpers/wired-headsets.js): its music and call sides are one headset. Its battery is the
+  // level Windows shows for it (1 Nov 2026, headset-adapter.js battery()); its own settings still need its dongle or cable.
   if (g.bt === 'only') {
-    return card([h('h2', {}, 'Bluetooth headset')],
-      h('p', { class: 'faint', style: { margin: '0' } }, 'Sound, mic and the equalizer below work now. Over Bluetooth, Windows passes on sound only, so battery and headset settings need its USB dongle or cable.'));
+    const pct = devices.headset?.battery?.percent;
+    return card([h('h2', {}, 'Bluetooth headset'), pct != null ? h('span', { class: 'pill' }, `Battery ${pct}%`) : null],
+      h('p', { class: 'faint', style: { margin: '0' } }, pct != null
+        ? 'Sound, mic and the equalizer below work now, and the battery is the level Windows shows. Over Bluetooth, Windows passes on nothing else, so headset settings need its USB dongle or cable.'
+        : 'Sound, mic and the equalizer below work now. Over Bluetooth, Windows passes on sound only, so battery and headset settings need its USB dongle or cable.'));
   }
   if (isJack(g.usb)) {
     return card([h('h2', {}, 'Wired headset')],

@@ -53,3 +53,16 @@ export function genericFor(list, pick, { asGeneric = false } = {}) {
   const all = (Array.isArray(list) ? list : []).filter((x) => x?.usb && (asGeneric || !isHs80(x.usb)));
   return chosenOther(all, pick, { asGeneric }) || all.find((x) => !isJack(x.usb)) || null;
 }
+
+// A Bluetooth headset's battery from Windows' list (GET /api/bluetooth: [{ name, connected, battery }]), 1 Nov 2026
+// (Shawn: "show the proper buttons"): the generic headset's own battery() had nothing, though Windows showed the level.
+// Matched by name the way Windows writes it on the sound devices ("Headphones (Shawn's AirPods Pro #2 - Find My)"):
+// letters and digits only, "Find My", "Hands-Free" and the like left out; one name inside the other, 5 characters at
+// least. Only a connected device with a level counts (Windows keeps the last level after it disconnects).
+const plainName = (n) => String(n || '').toLowerCase().replace(/\s+-\s+find my\b/g, '').replace(/\b(hands-?free( ag audio)?|stereo|headset|headphones)\b/g, '').replace(/[^a-z0-9]+/g, '');
+export function btBatteryFor(list, name) {
+  const want = plainName(name);
+  if (want.length < 5) return null;
+  const hit = (Array.isArray(list) ? list : []).find((d) => d?.connected && Number.isFinite(d.battery) && (() => { const n = plainName(d.name); return n.length >= 5 && (n.includes(want) || want.includes(n)); })());
+  return hit ? { percent: Math.max(0, Math.min(100, Math.round(hit.battery))) } : null;
+}

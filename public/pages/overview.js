@@ -1,5 +1,6 @@
 // Overview: one bay per device, quick profiles and the activity feed.
 import { h, icon, fmt, dateTime } from '../ui/dom.js';
+import { tileOrder } from '../core/tile-order.js';
 import { env } from '../core/env.js';
 import { button, card, pill, batteryCell, loadBatteryEstimates, skeleton } from '../ui/controls.js';
 import { devices, activity, connect, isDemo, isRemote, shownDevices, noDevicesYet, stillLooking } from '../core/devices.js';
@@ -50,9 +51,12 @@ const colorFor = (dOrId) => {
 };
 
 function pluginReadouts(d) {
-  const v = d.values || {}, settings = d.adapter?.settings || [];
+  const v = { ...(d.values || {}) }, settings = d.adapter?.settings || [];
+  // no DPI of its own, but stages and the one in use: that stage's DPI is the mouse's DPI now
+  if (v.dpi == null && Number.isFinite(Number(v.dpiStage))) { const x = v[`dpiStage${Number(v.dpiStage)}`] ?? v[`dpi${Number(v.dpiStage)}`]; if (x != null) v.dpi = x; }
+  const ordered = tileOrder(d.adapter?.kind || '', v.dpi != null && !settings.some((s) => s.key === 'dpi') ? [{ key: 'dpi', label: 'DPI', type: 'slider' }, ...settings] : settings);
   const out = [];
-  for (const s of settings) {
+  for (const s of ordered) {
     const val = v[s.key];
     if (val == null || val === '') continue;
     if (/polling|reportrate/i.test(s.key) && Number.isFinite(Number(val))) out.push([s.label || 'Polling', signal({ hz: Number(val) })]);
@@ -64,7 +68,7 @@ function pluginReadouts(d) {
       const opt = (s.options || []).find((o) => o.value === val);
       out.push([s.label || s.key, String(opt ? opt.label : val)]);
     } else if (typeof val === 'number' || typeof val === 'string') {
-      out.push([s.label || s.key, `${Number.isFinite(val) && /dpi/i.test(s.key) ? fmt(val) : val}${s.unit || ''}`]);
+      out.push([s.label || s.key, `${Number.isFinite(val) && /dpi/i.test(s.key) ? fmt(val) : val}${s.unit && /^[A-Za-z]/.test(s.unit) ? ` ${s.unit}` : s.unit || ''}`]);
     }
     if (out.length >= 3) break;
   }
