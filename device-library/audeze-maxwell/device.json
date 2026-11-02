@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-01T16:24:33Z",
+  "updated": "2026-11-02T04:54:13Z",
   "id": "audeze-maxwell",
   "vendor": "Audeze",
   "product": "Maxwell and Maxwell 2 wireless headsets",
@@ -20,12 +20,12 @@
   "works": [
     "written from HeadsetControl lib/devices/audeze_maxwell_device.hpp, audeze_maxwell.hpp and audeze_maxwell2.hpp (master a8120a6) and checked against simulated dongles only (tests/sim-audeze-astro.mjs)",
     "reads: battery %, EQ preset, sidetone level and its maximum, sidetone on/off, ChatMix (0-20), mic muted",
+    "sidetone on/off: its command toggles, so, as HeadsetControl's switchSidetone does, the state is read, 82 2C 07 00 <0/1> is sent once only when it differs, then read back",
     "writes with read-back: EQ preset (1-10) and sidetone level (1 to the headset's maximum, only while sidetone is on)",
     "replies asked for with GET_REPORT (input report 07) as HeadsetControl does, 50 ms apart, one request at a time",
     "steps back while Audeze HQ runs (it takes the replies)"
   ],
   "doesNotWork": [
-    "switching sidetone on or off (its command toggles whatever value is sent, so writing the same value back would flip it)",
     "volume limiter, voice prompts, mic noise filter (HeadsetControl only writes them; no documented read-back)",
     "auto power off (an 8-byte value whose read is not documented)",
     "custom EQ bands (stored on the headset; storage writes are never sent)",

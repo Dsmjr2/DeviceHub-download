@@ -1,8 +1,10 @@
 {
-  "version": "1.54",
-  "commit": "7bc6e3d83df0",
+  "version": "1.55",
+  "commit": "2ff305dadf3b",
   "notes": [
-    "Razer keyboard driver knows 33 more keyboards from openrazer",
-    "Never list covers the new SteelSeries mice's saves"
+    "New driver settings wait for Turn on settings",
+    "Logitech zone lights, button remaps and G522 sidetone and auto sleep",
+    "Keychron snap click and lock lights, ASUS angle, low battery and…",
+    "Turbo mode described as Pulsar does"
   ]
 }

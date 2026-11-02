@@ -17,7 +17,8 @@
 // device.json are written (temp file, then rename), a driver file of the other kind is moved to the backup (device.mjs
 // wins when both are there), verified.json moves to the backup too (the self-check runs again for the new driver,
 // only for settings already turned on), and library.json records { updatedFromLibrary: { at, from, to } } and the new
-// status. settingsOn stays: the person turned that device's settings on; every write still waits for its self-check.
+// status. settingsOn stays, with the keys it turned on: a setting the newer driver adds waits for a new press, and
+// every write still waits for its self-check.
 // The running DeviceHub keeps the driver it loaded until it restarts: swapping a loaded driver would drop its open HID
 // channel and lock mid-use (helpers/my-devices.mjs loadedDriverChanged says so on the device page).
 //
@@ -25,7 +26,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { list, loadDriver, DRIVER_FILES, driverFileOf, ROOT } from './device-library.mjs';
-import { libraryMark, LIBRARY_FILE, VERIFIED_FILE, problem, ownClash, driverShaOf, loadedYet } from './my-devices.mjs';
+import { libraryMark, LIBRARY_FILE, VERIFIED_FILE, problem, ownClash, driverShaOf, loadedYet, pressedKeys } from './my-devices.mjs';
 import { entryVersion } from './library-updates.mjs';
 
 const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8').replace(/^﻿/, '')); } catch { return null; } };
@@ -70,6 +71,7 @@ async function doRefresh({ root = ROOT, log = () => {}, now = () => new Date() }
     if (a.id !== entry.meta.id || (mark.id && a.id !== mark.id)) { skip(`the newer driver's id "${a.id}" is not the installed one's "${mark.id || entry.meta.id}"`); continue; }
     const at = now().toISOString();
     const back = path.join(root, 'backups', 'library-drivers', `${name}-${at.replace(/[:.]/g, '-')}`);
+    const pressed = mark.settingsOn?.at && !Array.isArray(mark.settingsOn.keys) ? pressedKeys(folder, mark) : null;
     try {
       fs.mkdirSync(back, { recursive: true });
       for (const f of [...DRIVER_FILES, 'device.json', LIBRARY_FILE, VERIFIED_FILE]) if (fs.existsSync(path.join(folder, f))) fs.copyFileSync(path.join(folder, f), path.join(back, f), fs.constants.COPYFILE_EXCL);
@@ -79,7 +81,11 @@ async function doRefresh({ root = ROOT, log = () => {}, now = () => new Date() }
       for (const f of DRIVER_FILES) if (f !== file && fs.existsSync(path.join(folder, f))) fs.rmSync(path.join(folder, f));   // a copy is in the backup
       if (fs.existsSync(path.join(folder, VERIFIED_FILE))) fs.rmSync(path.join(folder, VERIFIED_FILE));   // a copy is in the backup
       const last = Array.isArray(entry.meta.tested) ? entry.meta.tested.at(-1) || {} : {};
-      putFile(path.join(folder, LIBRARY_FILE), JSON.stringify({ ...readJson(path.join(folder, LIBRARY_FILE)), source: `${entry.origin || 'device-library'}/${entry.name}`, status: entry.meta.status,
+      // an older press without its keys list: the settings it turned on are written down now, from the record of the
+      // driver it was pressed for (read before verified.json moved), so a setting the newer driver adds waits for a new
+      // press and is never self-checked before it (2 Nov 2026)
+      const on = pressed ? { settingsOn: { ...mark.settingsOn, keys: pressed.keys, keysFrom: pressed.from } } : {};
+      putFile(path.join(folder, LIBRARY_FILE), JSON.stringify({ ...readJson(path.join(folder, LIBRARY_FILE)), ...on, source: `${entry.origin || 'device-library'}/${entry.name}`, status: entry.meta.status,
         libraryTested: last.date || null, libraryDevicehub: last.devicehub || null, installedSha: newSha || null, updatedFromLibrary: { at, from: from || null, to, backup: path.relative(root, back) } }, null, 2) + '\n');
     } catch (e) { skip(`it could not be written (${e.message}); the old files are in ${path.relative(root, back)}`); continue; }
     out.replaced.push({ name, from: from || null, to });

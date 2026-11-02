@@ -23,7 +23,7 @@ const h = (a) => Array.from(a, (b) => b.toString(16).padStart(2, '0')).join(' ')
 // ---- the simulated mouse (from tests/sim-asus.mjs) ----
 function simMouse({ battery = true, pct = 77 } = {}) {
   return { battery, pct, charging: 0, sleep: 0x03, low: 20, dpi: [800, 1600, 3200, 0], colors: [255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255],
-    poll: 0x03, debounce: 0x02, snap: 0, lift: 0x00, asleep: false, sticky: new Set(), saves: 0 };
+    poll: 0x03, debounce: 0x02, snap: 0, angle: 0, lift: 0x00, asleep: false, sticky: new Set(), saves: 0 };
 }
 function simDevice({ pid, m, omni = null }) {
   const listeners = new Set();
@@ -53,16 +53,17 @@ function simDevice({ pid, m, omni = null }) {
     if (m.asleep) return err();
     const raw = (d) => (d ? (d - 50) / 50 : 0);
     if (cmd.startsWith('12 07')) { if (!m.battery) return err(); r[4] = m.pct; r[5] = m.sleep; r[6] = m.low; r[9] = m.charging; return r; }
-    if (cmd === '12 04 00') { m.dpi.forEach((d, i) => { r[4 + 2 * i] = raw(d) & 0xff; r[5 + 2 * i] = raw(d) >> 8; }); r[12] = m.poll | (omni?.booster ? 0x30 : 0); r[14] = m.debounce; r[16] = m.snap; return r; }
+    if (cmd === '12 04 00') { m.dpi.forEach((d, i) => { r[4 + 2 * i] = raw(d) & 0xff; r[5 + 2 * i] = raw(d) >> 8; }); r[12] = m.poll | (omni?.booster ? 0x30 : 0); r[14] = m.debounce; r[16] = m.snap; r[18] = m.angle & 0xff; r[19] = (m.angle >> 8) & 0xff; return r; }   // sheet: Angle tuning bytes 19-20, signed
     if (cmd === '12 04 03') { m.colors.forEach((c, i) => { r[4 + i] = c; }); return r; }
     if (cmd.startsWith('12 06')) { r[7] = m.lift; return r; }
     if (p[0] === 0x51 && p[1] === 0x31 && p[3] === 0x00) {
-      if (p[2] <= 3) { if (!m.sticky.has('dpi')) m.dpi[p[2]] = (p[4] | (p[5] << 8)) * 50 + 50; if (p[6] | p[7] | p[8]) m.colors.splice(3 * p[2], 3, p[6], p[7], p[8]); return r; }
+      if (p[2] <= 3) { if (!m.sticky.has('dpi')) m.dpi[p[2]] = (p[4] | (p[5] << 8)) * 50 + 50; if ((p[6] | p[7] | p[8]) && !m.sticky.has('color')) m.colors.splice(3 * p[2], 3, p[6], p[7], p[8]); return r; }
       if (p[2] === 4) { if (p[4] > 6) return err(); if (!m.sticky.has('poll')) m.poll = p[4]; return r; }
       if (p[2] === 6) { if (!m.sticky.has('snap')) m.snap = p[4]; return r; }
+      if (p[2] === 0x0b) { if (!m.sticky.has('angle')) m.angle = ((p[4] | (p[5] << 8)) << 16) >> 16; return r; }   // sheet: Angle tuning 51 31 0B 00 <lo> <hi>
       return err();
     }
-    if (cmd === '51 37 00' && p[3] === 0) { if (!m.battery) return err(); m.sleep = p[4]; m.low = p[6]; return r; }
+    if (cmd === '51 37 00' && p[3] === 0) { if (!m.battery) return err(); m.sleep = p[4]; if (!m.sticky.has('low')) m.low = p[6]; return r; }
     if (h(p.slice(0, 5)) === '51 35 ff 00 ff') { m.lift = p[5]; return r; }
     if (p[0] === 0x50 && p[1] === 0x03) { m.saves++; return r; }
     return err();
@@ -101,6 +102,10 @@ async function script(drv, devices) {
   await plug(cable.d); await look('cable');
   await roundTrip('dpi2', 2400); await roundTrip('pollingRate', 500); await roundTrip('angleSnap', true);
   await roundTrip('liftOff', 'high'); await roundTrip('sleep', 10);
+  // 1 Nov 2026 (G-Helper): angle tuning, the low-battery warning, a DPI stage color; then the refusals and a mismatch for each
+  await roundTrip('angleTune', -30); await roundTrip('angleTune', 12); await roundTrip('lowBattery', 40); await step('refuse a stage color', () => drv.write('stage2Color', '#123456'));
+  for (const [k, v] of [['angleTune', 31], ['angleTune', 1.5], ['lowBattery', 55], ['lowBattery', 60]]) await step(`refuse ${k} ${v}`, () => drv.write(k, v));
+  for (const k of ['angle', 'low']) { ms[0].sticky.add(k); await step(`${k} write that does not stick`, () => drv.write({ angle: 'angleTune', low: 'lowBattery' }[k], { angle: 5, low: 10 }[k])); ms[0].sticky.clear(); }
   for (const [k, v] of [['pollingRate', 8000], ['pollingRate', 300], ['dpi1', 37000], ['dpi1', 825], ['dpi5', 800], ['debounce', 1], ['sleep', 4], ['angleSnap', 1], ['__proto__', 1]]) await step(`refuse ${k} ${v}`, () => drv.write(k, v));
   ms[0].sticky.add('snap'); await step('write that does not stick', () => drv.write('angleSnap', true)); ms[0].sticky.clear();
   drv.vendorApp = async () => 'ArmouryCrate.UserSessionHelper.exe'; drv.appAt = 0;
@@ -112,6 +117,7 @@ async function script(drv, devices) {
   await plug(omni.d); await look('omni');
   await roundTrip('dpi1', 1200); await roundTrip('pollingRate', 250);
   await step('refuse 8000 Hz through Omni', () => drv.write('pollingRate', 8000));
+  await roundTrip('angleTune', -20);
   ms[1].asleep = true;
   await step('asleep info', () => drv.info());
   await step('asleep awake()', () => drv.awake());
@@ -123,6 +129,7 @@ async function script(drv, devices) {
   // 3. Keris AimPoint through Omni with the booster on: polling is not a setting
   await plug(keris.d); await look('booster');
   await step('refuse polling with booster', () => drv.write('pollingRate', 1000));
+  await step('refuse an angle read outside its range', () => drv.write('angleTune', 20));
 
   // 4. Omni with nothing this driver knows paired
   await plug(unknown.d);
@@ -130,6 +137,7 @@ async function script(drv, devices) {
   // 5. Chakram X: DPI read only, 8000 Hz on its cable only
   await plug(chakram.d); await look('chakram');
   await step('refuse Chakram DPI', () => drv.write('dpi1', 800));
+  await step('refuse a Chakram stage color', () => drv.write('stage1Color', '#0000ff')); await step('refuse a Chakram angle past 20', () => drv.write('angleTune', -25)); await roundTrip('angleTune', -20);
   await roundTrip('pollingRate', 8000);
   await plug(chakramRx.d); await look('chakram receiver');
   await step('refuse 8000 Hz on the receiver', () => drv.write('pollingRate', 8000));
@@ -137,6 +145,7 @@ async function script(drv, devices) {
   // 6. Gladius III: no battery, no sleep setting, DPI up to 19000
   await plug(gladius.d); await look('gladius');
   await step('refuse 20000 DPI', () => drv.write('dpi1', 20000));
+  await step('refuse a Gladius III angle', () => drv.write('angleTune', 0)); await step('refuse a Gladius III stage color', () => drv.write('stage1Color', '#000000')); await step('refuse a Gladius III low-battery warning', () => drv.write('lowBattery', 10));
   await roundTrip('dpi1', 19000);
   ms[6].asleep = true; await step('cable refuses everything', () => drv.info()); ms[6].asleep = false;
 
@@ -153,7 +162,8 @@ async function script(drv, devices) {
 const world = () => {
   const mk = (pid, mo = {}, omni = null) => { const m = simMouse(mo); return { m, d: simDevice({ pid, m, omni }) }; };
   const lockedMouse = mk(0x197b, { battery: false }); lockedMouse.m.dpi[2] = 20000;
-  return [mk(0x1a92), mk(0x1ace, {}, { paired: [0x1a85, 0x1a94], booster: false }), mk(0x1ace, {}, { paired: [0x1a6a], booster: true }),
+  const keris = mk(0x1ace, {}, { paired: [0x1a6a], booster: true }); keris.m.angle = 25;   // past the Keris's -20..20: angle tuning read only
+  return [mk(0x1a92), mk(0x1ace, {}, { paired: [0x1a85, 0x1a94], booster: false }), keris,
     mk(0x1ace, {}, { paired: [0x1a85], booster: false }), mk(0x1a18), mk(0x1a1a), mk(0x197b, { battery: false }), lockedMouse, mk(0x197f, { pct: 0 })];
 };
 
@@ -176,7 +186,9 @@ const world = () => {
   if (process.env.SHOW) { for (const x of rb) console.log(`${x[0]}: ${x[1]} ${JSON.stringify(x[2] ?? '').slice(0, 90)}`); console.log('requests:', bytes); }
   // a few facts on their own, so a shared mistake in both drivers still shows
   const get = (label) => rb.find((x) => x[0] === label);
-  ok(JSON.stringify(get('cable read')[2]) === JSON.stringify({ dpi1: 800, dpi2: 1600, dpi3: 3200, pollingRate: 1000, angleSnap: false, liftOff: 'low', sleep: 5 }), `cable read: ${JSON.stringify(get('cable read')[2])}`);
+  ok(JSON.stringify(get('cable read')[2]) === JSON.stringify({ dpi1: 800, dpi2: 1600, dpi3: 3200, pollingRate: 1000, angleSnap: false, angleTune: 0, liftOff: 'low', sleep: 5, lowBattery: 20 }), `cable read: ${JSON.stringify(get('cable read')[2])}`);
+  ok(B[0].d.sent.includes(`0: ${h([0x51, 0x31, 0x0b, 0x00, 0xe2, 0xff, ...new Array(58).fill(0)])}`) && B[0].d.sent.includes(`0: ${h([0x51, 0x37, 0x00, 0x00, 0x03, 0x00, 40, ...new Array(57).fill(0)])}`) && get('refuse a stage color')[1] === 'refused' && !B[0].d.sent.some((x) => x.startsWith(`0: ${h([0x51, 0x31, 0x01, 0x00, 0x1f, 0x00, 0x12, 0x34, 0x56])}`)), 'angle -30 goes out as 51 31 0b 00 e2 ff, low battery 40 as 51 37 00 00 <sleep 03> 00 28; a stage color is refused and nothing is sent (not offered, 2 Nov 2026)');
+  ok(['angle', 'low'].every((k) => get(`${k} write that does not stick`)[1] === 'refused') && !get('booster settings')[2].some((s) => s.key === 'angleTune') && get('gladius settings')[2].every((s) => !/^(angleTune|lowBattery|stage\dColor)$/.test(s.key)), 'a mismatch is refused; an angle outside the model range is read only; the Gladius III has none of the three');
   ok(get('write dpi2 2400')[1] === 'ok' && B[0].d.sent.includes(`0: ${h([0x51, 0x31, 0x01, 0x00, 0x2f, 0x00, 0x00, 0xff, 0x00, ...new Array(55).fill(0)])}`), 'DPI 2400 goes out as 51 31 01 00 2f 00 + the stage color read back');
   ok(get('write that does not stick')[1] === 'refused' && get('write while Armoury Crate runs')[1] === 'refused', 'a write that does not stick and a write beside Armoury Crate are refused');
   ok(get('connect 1ace') && rb.filter((x) => x[0] === 'connect 1ace')[2][1] === 'refused', 'an Omni receiver with an unknown mouse paired is refused');

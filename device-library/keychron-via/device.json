@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-01T20:48:24Z",
+  "updated": "2026-11-02T05:34:28Z",
   "id": "keychron-via",
   "vendor": "Keychron",
   "product": "Keychron QMK keyboards: Keychron's own settings on top of VIA",
@@ -15,12 +15,14 @@
     "a driver.json: DeviceHub's safety check (helpers/declarative-driver.mjs validate) passes it",
     "reads: Keychron protocol version and feature bits, debounce method and time, wireless backlight-off and sleep timers, report rate, NKRO state",
     "writes (one at a time, read back, the old value put back on a mismatch; refused while a Keychron or VIA desktop app runs): debounce method, debounce time 0-100 ms, backlight-off 5-3600 s, sleep 60-14400 s, report rate 1000 / 4000 / 8000 Hz",
+    "snap click (SOCD), pairs 1-4: mode and both keys (A7 07-09), saved with A7 0A only after the read-back matched (Keychron QMK 2025q3 snap_click.c)",
+    "on boards with Keychron lighting (A8 01 answers): which lock keys light up, the lock light hue, saturation and brightness (A8 03 / A8 04), and the per-key effect (A8 07 / A8 08), saved with A8 02 only after the read-back matched (keychron_rgb.c)",
     "each setting is offered only when the board's own A7 01 feature bits say it has it; a board without Keychron's commands shows none"
   ],
   "doesNotWork": [
     "firmware updates (never: Keychron's own tools)",
     "keys, layers, macros and lighting here (DeviceHub's VIA keyboard page already has them)",
-    "snap click (SOCD), NKRO switching, Keychron per-key lighting (A8), HE actuation and rapid trigger (A9)",
+    "snap click pairs 5 and up, NKRO switching, Keychron per-key colours and mixed-effect regions (they need a per-key editor), HE actuation and rapid trigger (A9)",
     "battery (no raw HID command exists), the 2.4 GHz receiver and Bluetooth",
     "Lemokey boards (vendor 362D) and Keychron mice"
   ],

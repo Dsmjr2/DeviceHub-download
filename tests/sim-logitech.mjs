@@ -5,7 +5,7 @@
 // 0x30 / 0x40) and DPI slot (0xB0 / 0xC0, libratbag), the profile numbering quirk, and the G HUB refusal.
 // Checks the driver's request bytes against the sheet byte for byte, and read / write / read-back.
 // Run: node tests/sim-logitech.mjs (no hardware)
-import driver, { useDevice, F, NEVER, HidppError, BLE, BLE_HID, isReplyTo, isReplyToBle, WIRED, WPIDS, RECEIVERS, PROFILE_READ_1BASED } from '../device-library/logitech-hidpp-mouse/device.mjs';
+import driver, { useDevice, sameValue, F, NEVER, HidppError, BLE, BLE_HID, isReplyTo, isReplyToBle, WIRED, WPIDS, RECEIVERS, PROFILE_READ_1BASED } from '../device-library/logitech-hidpp-mouse/device.mjs';
 driver.vendorApp = async () => null;   // no tasklist in the test; section 5 swaps in G HUB
 driver.pingMs = 150;                   // an empty slot never answers: a short wait keeps the test quick
 
@@ -20,7 +20,10 @@ const h = (a) => Array.from(a, (b) => b.toString(16).padStart(2, '0')).join(' ')
 // hits: the HITS feature 0x1B0C (22 Oct 2026, docs/handoff/superstrike.md): { caps: [6 bytes], recs: { btn: [act, rt, hap] raw } };
 // fn 0x00 caps, fn 0x20 [btn] read, fn 0x10 [btn, act, rt, hap] write, refusing what the sources say the mouse refuses
 // (K PROTOCOL.md: out of range -> 0x02 invalid argument; S: a reserved low bit set -> INVALID_ARGUMENT; X: index 2 answers nothing)
-function simMouse({ pid, slot, features, dpiList, rateExt, rateMask, battery, mode, profiles, ext, replyIndex, kind, hits }) {
+// leds (1 Nov 2026): 0x8070 { ext, sw, zones: [{ location, effects: [ids], cur: [effect index, 10 bytes] }], layout: 'so' |
+// 'lr' (how 0xE0 answers: Solaar's [index, bytes] or libratbag's [zone, effect id, bytes]), ignoreWrites, writes: [] }
+// reprog (1 Nov 2026): 0x1B04 { keys: [{ cid, task, flags, group, gmask }], map: { cid: { flags, to } }, ignoreWrites, writes: [] }
+function simMouse({ pid, slot, features, dpiList, rateExt, rateMask, battery, mode, profiles, ext, replyIndex, kind, hits, leds, reprog }) {
   const state = { dpi: 800, defaultDpi: 800, rateIndex: 3, rateMs: 1, mode, ...battery, ...(profiles || {}), lod: ext?.lod ?? 0, y: ext?.y ?? 0 };
   const byIndex = Object.fromEntries(Object.entries(features).map(([id, i]) => [i, Number(id)]));
   const sent = [];
@@ -78,6 +81,34 @@ function simMouse({ pid, slot, features, dpiList, rateExt, rateMask, battery, mo
         if (!(bt in hits.recs) || (a & 3) || a < 0x04 || a > 0x28 || (r & 2) || (r >> 2) < 1 || (r >> 2) > 5 || (hp & 3) || hp > 0x14) return emit(err(0x02));
         if (!hits.ignoreWrites) hits.recs[bt] = [a, r, hp];   // ignoreWrites: acks but keeps the old record
         out = [bt, a, r, hp];
+      }
+      // 0x8070 (libratbag hidpp20.c / Solaar hidpp20.py layouts; the device keeps one record per zone)
+      else if (id === F.COLOR_LED && leds && fn === 0x00) out = [leds.zones.length, 0, 0, leds.ext >> 8, leds.ext & 0xff];
+      else if (id === F.COLOR_LED && leds && fn === 0x10) { const z = leds.zones[p[0]]; if (!z) return emit(err(0x02)); out = [p[0], z.location >> 8, z.location & 0xff, z.effects.length, 0]; }
+      else if (id === F.COLOR_LED && leds && fn === 0x20) { const z = leds.zones[p[0]]; if (!z || p[1] >= z.effects.length) return emit(err(0x02)); const e = z.effects[p[1]]; out = [p[0], p[1], e >> 8, e & 0xff, 0, 0, 0x13, 0x88]; }
+      else if (id === F.COLOR_LED && leds && fn === 0x30) {
+        const z = leds.zones[p[0]];
+        leds.writes.push(b.slice());
+        if (!z || p[1] >= z.effects.length) return emit(err(0x02));
+        if (!leds.ignoreWrites && leds.ignoreZone !== p[0]) z.cur = p.slice(1, 12);   // ignoreZone: that zone acks but keeps its record
+        if (p[12]) leds.flash = true;
+        out = p.slice(0, 13);
+      }
+      else if (id === F.COLOR_LED && leds && fn === 0xe0) { const z = leds.zones[p[0]]; if (!z) return emit(err(0x02)); out = leds.layout === 'lr' ? [p[0], z.effects[z.cur[0]], ...z.cur.slice(1)] : z.cur.slice(); }
+      else if (id === F.COLOR_LED && leds && fn === 0x70) out = [leds.sw];
+      else if (id === F.COLOR_LED && leds && fn === 0x80) { if (p[0] > 1) return emit(err(0x02)); leds.sw = p[0]; out = [p[0]]; }
+      // 0x1B04 (x1b04 spec packets): count, cid info, reporting get / set (remap only accepted to a cid in the key's groups)
+      else if (id === F.REPROG_V4 && reprog && fn === 0x00) out = [reprog.keys.length];
+      else if (id === F.REPROG_V4 && reprog && fn === 0x10) { const k = reprog.keys[p[0]]; if (!k) return emit(err(0x02)); out = [k.cid >> 8, k.cid & 0xff, k.task >> 8, k.task & 0xff, k.flags & 0xff, 0, k.group, k.gmask, k.flags >> 8]; }
+      else if (id === F.REPROG_V4 && reprog && fn === 0x20) { const cid = (p[0] << 8) | p[1]; const m = reprog.map[cid] || { flags: 0, to: 0 }; if (!reprog.keys.some((k) => k.cid === cid)) return emit(err(0x02)); out = [p[0], p[1], m.flags, m.to >> 8, m.to & 0xff]; }
+      else if (id === F.REPROG_V4 && reprog && fn === 0x30) {
+        const cid = (p[0] << 8) | p[1], to = (p[3] << 8) | p[4], k = reprog.keys.find((x) => x.cid === cid);
+        reprog.writes.push(b.slice());
+        const ok = k && (to === 0 || to === cid || reprog.keys.some((t) => t.group && (k.gmask & (1 << (t.group - 1))) && t.cid === to));
+        if (!ok) return emit(err(0x02));
+        const m = reprog.map[cid] || { flags: 0, to: 0 };
+        if (!reprog.ignoreWrites) reprog.map[cid] = { flags: m.flags, to: to === cid ? 0 : to || m.to };
+        out = p.slice(0, 5);
       }
       else return emit(err(0x07));                                                             // invalid function
       emit(reply(out));
@@ -279,6 +310,9 @@ driver.vendorApp = async () => null;
   useDevice(m6);
   let clock = Date.parse('2026-10-22T10:00:00Z');
   const backups = [], logs = [];
+  // the driver as it was before guard(): put back at the end of this section, so the sections after it test the driver
+  // itself (2 Nov 2026: a guard keeps only the settings turned on at the press, and later sections connect other models)
+  const unguarded = Object.fromEntries(['write', 'connect', 'settings', 'library', 'recheck', 'turnOn', 'mayWrite', 'makerAppNow'].map((k) => [k, Object.getOwnPropertyDescriptor(driver, k)]));
   driver.vendorApp = async () => 'lghub_agent.exe';
   guard(driver, folder, { status: 'read-only', source: 'device-library/logitech-hidpp-mouse' }, { backup: async (b) => backups.push(b), log: (t) => logs.push(t), now: () => new Date(clock), version: 'v1' });
   check(await driver.connect(false), 'guarded Logitech connects');
@@ -308,6 +342,7 @@ driver.vendorApp = async () => null;
   check(vf.keys.dpi?.ok === true && vf.keys.reportRate?.ok === true && m6.state.mode === 2 && m6.state.dpi === 800, `a day later the waiting settings are checked and pass; the mode the person chose stays (${JSON.stringify(vf.keys.dpi)})`);
   check(vf.keys.mode?.ok === true && vf.keys.mode.value === 'onboard', 'settings that passed keep their result (not written again)');
   driver.vendorApp = async () => null;
+  for (const [k, d] of Object.entries(unguarded)) { if (d) Object.defineProperty(driver, k, d); else delete driver[k]; }
   fs.rmSync(folder, { recursive: true, force: true });
 }
 
@@ -612,7 +647,7 @@ driver.vendorApp = async () => null;
     const before = frm().length;
     for (const [k, val] of [['dpi', 1600], ['reportRate', 8000], ['profile', 2], ['liftOff', 'high']]) {
       e = await refusal(() => driver.write(k, val));
-      check(/shown only|a reading|read-only/.test(e?.message || ''), `${tag}: ${k} write refused (${e?.message})`);
+      check(/shown only|a reading|read-only|does not have it/.test(e?.message || ''), `${tag}: ${k} write refused (${e?.message})`);
     }
     check(frm().length === before, `${tag}: no DPI, rate, profile or lift-off write was sent`);
     // what still writes as on other mice: DPI stage (0x8100 fn 0xC0) and the settings source
@@ -660,7 +695,7 @@ driver.vendorApp = async () => null;
     const { guard, readVerified } = await import('../helpers/my-devices.mjs');
     const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-logi-ss-'));
     const m = superstrike(0xc0a8, 0xff, 0x0f);
-    // a fresh, unguarded copy of the driver module (the one above is already guarded by section 6)
+    // a fresh copy of the driver module, guarded here on its own (section 6 put its guard back off the shared one)
     const fresh = await import('../device-library/logitech-hidpp-mouse/device.mjs?superstrike-selfcheck');
     const d2 = fresh.default;
     d2.vendorApp = async () => null; d2.pingMs = 150;
@@ -728,6 +763,154 @@ driver.vendorApp = async () => null;
     }
     KB_SLOTS.clear();
   }
+}
+
+// ---- 12. zone lights (0x8070) and button remap (0x1B04), 1 Nov 2026 ----
+{
+  const { selfCheck } = await import('../helpers/my-devices.mjs');
+  // a fresh copy of the driver: an earlier section wrapped the shared one in the library guard
+  const M = await import('../device-library/logitech-hidpp-mouse/device.mjs?lights-remap');
+  const driver = M.default, useDevice = M.useDevice;
+  driver.vendorApp = async () => null; driver.pingMs = 150;
+  const fx = { off: 0x00, static: 0x01, cycle: 0x03, wave: 0x04, breathe: 0x0a };
+  const ledFrames = (dev) => frames(dev).filter((b) => b[1] === 13);
+  const ledsOf = (zones, extra = {}) => ({ ext: 0x0001, sw: 1, layout: 'so', writes: [], zones, ...extra });
+  const pad = (a) => [...a, ...Array(11).fill(0)].slice(0, 11);
+  const mk = (leds, reprog) => simMouse({ pid: 0xc08b, slot: 0xff, features: { [F.ADJUSTABLE_DPI]: 5, [F.COLOR_LED]: 13, [F.REPROG_V4]: 14 },
+    dpiList: [400, 800, 1600], rateExt: false, rateMask: 0, battery: {}, mode: 0, leds, reprog });
+
+  // a G502 HERO-like mouse: Primary lists off / static / cycle / breathe, Logo off / static / wave (wave is not offered)
+  const leds = ledsOf([
+    { location: 1, effects: [fx.off, fx.static, fx.cycle, fx.breathe], cur: pad([1, 0xff, 0x00, 0x00, 0x02]) },   // static red, ramp byte 2
+    { location: 2, effects: [fx.off, fx.static, fx.wave], cur: pad([0]) },                                       // off
+  ]);
+  const keys = [
+    { cid: 0x50, task: 0x38, flags: 0x11, group: 1, gmask: 0x01 },   // Left Button: reprog, but never offered
+    { cid: 0x51, task: 0x39, flags: 0x11, group: 1, gmask: 0x01 },
+    { cid: 0x52, task: 0x3a, flags: 0x31, group: 1, gmask: 0x01 },
+    { cid: 0x53, task: 0x3c, flags: 0x31, group: 1, gmask: 0x01 },
+    { cid: 0x56, task: 0x3e, flags: 0x31, group: 1, gmask: 0x01 },
+    { cid: 0xc4, task: 0x9d, flags: 0x20, group: 0, gmask: 0x00 },   // not reprogrammable: never offered
+    { cid: 0xd7, task: 0xb4, flags: 0x90, group: 2, gmask: 0x00 },   // virtual: a target only (no group lists it here)
+  ];
+  const reprog = { keys, map: { 0x56: { flags: 0x01, to: 0 } }, writes: [] };   // Forward is diverted by someone else: kept as read
+  const m = mk(leds, reprog);
+  useDevice(m);
+  check(await driver.connect(false), 'lights + remap mouse connects');
+  const keysOf = driver.settings.map((s) => s.key);
+  check(has(m, [0xff, 13, 0x0b]) && has(m, [0xff, 13, 0x1b, 0]) && has(m, [0xff, 13, 0x1b, 1]) && has(m, [0xff, 13, 0x2b, 0, 3]) && has(m, [0xff, 13, 0x7b]), 'lights caps: 0x8070 fn 0x00, fn 0x10 [zone], fn 0x20 [zone, effect], fn 0x70');
+  const e0 = driver.settings.find((s) => s.key === 'light0Effect'), e1 = driver.settings.find((s) => s.key === 'light1Effect');
+  check(e0?.options.map((o) => o.value).join() === 'off,static,cycle,breathe' && /Primary/.test(e0.label), `zone 1 offers only the effects it reports (${e0?.options.map((o) => o.value)})`);
+  check(e1?.options.map((o) => o.value).join() === 'off,static' && /Logo/.test(e1.label), `wave (0x04) is not offered (${e1?.options.map((o) => o.value)})`);
+  const cS = driver.settings.find((s) => s.key === 'lightColor');
+  check(cS?.type === 'color' && cS.zones.map((z) => z.value).join() === '0,1', 'one color setting with both zones');
+  check(keysOf.includes('light0Period') && keysOf.includes('light0Brightness') && !keysOf.includes('light1Period') && !keysOf.includes('light2Effect'), `speed and brightness only where cycle or breathe exist (${keysOf})`);
+  check(keysOf.includes('lightControl'), 'software control offered (it read 0 or 1)');
+  // remaps: Right, Middle, Back, Forward; never Left, never the non-reprog or virtual one
+  const rKeys = keysOf.filter((k) => k.startsWith('remap'));
+  check(rKeys.join() === 'remap0051,remap0052,remap0053,remap0056', `remappable buttons: ${rKeys}`);
+  const rB = driver.settings.find((s) => s.key === 'remap0053');
+  check(rB.type === 'remap' && rB.buttons[0].label === 'Back Button' && rB.targets.map((t) => t.value).join() === '0053,0050,0051,0052,0056', `Back's targets are its own id then its group (${rB.targets.map((t) => t.value)})`);
+  check(!driver.settings.some((s) => s.key === 'remap0050'), 'left click is never remappable');
+  let v = await driver.read();
+  check(v.light0Effect === 'static' && v.light1Effect === 'off' && v.lightColor === undefined && v.lightControl === true, `read: zone 1 static, zone 2 off, no color while a zone has none (${JSON.stringify(v)})`);
+  check(v.remap0053?.['0053'] === '0053' && v.remap0056?.['0056'] === '0056', 'remap read: 0 = its own id');
+  check(has(m, [0xff, 13, 0xeb, 0]) && has(m, [0xff, 13, 0xeb, 1]) && has(m, [0xff, 14, 0x2b, 0x00, 0x53]), 'reads: 0x8070 fn 0xE0 [zone], 0x1B04 fn 0x20 [cid]');
+  let n0 = leds.writes.length;
+  e = await refusal(() => driver.write('lightColor', { 0: '#00ff00', 1: '#ff0000' }));
+  check(/Logo is on Off/.test(e?.message || '') && leds.writes.length === n0, `a color for a zone that is Off is refused, nothing sent (${e?.message})`);
+  // switch Logo to Static: the other zone's colour, RAM form
+  check((await driver.write('light1Effect', 'static')) === 'static', 'Logo set to Static and read back');
+  check(h(leds.writes.at(-1).slice(0, 16)) === 'ff 0d 3b 01 01 ff 00 00 00 00 00 00 00 00 00 00', `Logo static = [zone 1, index 1, ff 00 00, ...], byte 12 = 00 (${h(leds.writes.at(-1))})`);
+  v = await driver.read();
+  check(JSON.stringify(v.lightColor) === '{"0":"#ff0000","1":"#ff0000"}', `color read for both zones (${JSON.stringify(v.lightColor)})`);
+  n0 = leds.writes.length;
+  check(JSON.stringify(await driver.write('lightColor', { 0: '#00ff00', 1: '#ff0000' })) === '{"0":"#00ff00","1":"#ff0000"}', 'Primary set green, read back');
+  check(leds.writes.length === n0 + 1 && h(leds.writes.at(-1).slice(3, 9)) === '00 01 00 ff 00 02', `only the changed zone sent, its ramp byte kept as read (${h(leds.writes.at(-1).slice(3, 9))})`);
+  n0 = leds.writes.length;
+  await driver.write('lightColor', { 0: '#00ff00', 1: '#ff0000' });
+  check(leds.writes.length === n0 + 2, 'nothing changing: every zone sent with its own value');
+  // 2 Nov 2026: Logo fails after Primary was sent -> Logo puts itself back, and Primary goes back to its bytes as read too
+  leds.ignoreZone = 1; n0 = leds.writes.length;
+  const pBefore = h(leds.zones[0].cur), lBefore = h(leds.zones[1].cur);
+  e = await refusal(() => driver.write('lightColor', { 0: '#0000ff', 1: '#00ffff' }));
+  leds.ignoreZone = undefined;
+  check(/reads back/.test(e?.message || '') && /Primary was put back as read before/.test(e?.message || ''), `a multi-zone colour that fails says every zone already sent was put back (${e?.message})`);
+  check(h(leds.zones[0].cur) === pBefore && h(leds.zones[1].cur) === lBefore && leds.writes.length === n0 + 4, `both zones hold their bytes as read before (${h(leds.zones[0].cur)} | ${leds.writes.length - n0} sends)`);
+  // the read-back is compared zone by zone: the same colours given in the other key order are not a mismatch
+  check(sameValue({ 1: '#ff0000', 0: '#00ff00' }, { 0: '#00ff00', 1: '#ff0000' }) && sameValue({ b: '#ff0000', a: '#00ff00' }, { a: '#00ff00', b: '#ff0000' }) && !sameValue({ a: '#00ff00', b: '#ff0000' }, { a: '#00ff00', b: '#ff0001' }) && !sameValue({ a: '#00ff00' }, { a: '#00ff00', b: '#ff0000' }), 'colour read-back compared zone by zone, not by key order');
+  check(JSON.stringify(await driver.write('lightColor', { 1: '#ff0000', 0: '#00ff00' })) === '{"0":"#00ff00","1":"#ff0000"}', 'a colour given in the other zone order writes and reads back');
+  // breathe: SO's defaults where the effect had none (period 5000, intensity 100), the colour carried over
+  check((await driver.write('light0Effect', 'breathe')) === 'breathe', 'Primary set to Breathe');
+  check(h(leds.writes.at(-1).slice(3, 15)) === '00 03 00 ff 00 13 88 00 64 00 00 00', `breathe bytes: color, period 5000, form 0, intensity 100 (${h(leds.writes.at(-1).slice(3, 15))})`);
+  check((await driver.write('light0Period', 2000)) === 2000 && (await driver.write('light0Brightness', 40)) === 40, 'speed and brightness written and read back');
+  check(h(leds.zones[0].cur) === '03 00 ff 00 07 d0 00 28 00 00 00', `zone record: ${h(leds.zones[0].cur)}`);
+  n0 = leds.writes.length;
+  e = await refusal(() => driver.write('light0Brightness', 101));
+  check(/0-100/.test(e?.message || '') && leds.writes.length === n0, 'brightness 101 refused before sending');
+  e = await refusal(() => driver.write('light1Period', 2000));
+  check(/does not have it|not a setting/.test(e?.message || ''), 'no speed on a zone without cycle or breathe');
+  e = await refusal(() => driver.write('light1Effect', 'wave'));
+  check(/must be one of off, static/.test(e?.message || ''), 'an effect the driver does not offer is refused');
+  // read-back mismatch: the mouse acks and keeps the old record -> refused, the old bytes written back
+  leds.ignoreWrites = true; n0 = leds.writes.length;
+  e = await refusal(() => driver.write('light0Brightness', 50));
+  check(/reads back/.test(e?.message || '') && leds.writes.length === n0 + 2 && h(leds.writes.at(-1).slice(3, 15)) === h([0, 3, 0, 0xff, 0, 7, 0xd0, 0, 40, 0, 0, 0]), `a write that does not read back fails and the read bytes go back (${e?.message})`);
+  leds.ignoreWrites = false;
+  check((await driver.write('lightControl', false)) === false && leds.sw === 0 && has(m, [0xff, 13, 0x8b, 0]) && (await driver.write('lightControl', true)) === true, 'software control written (fn 0x80) and read back');
+  // never the flash form: every set-zone-effect has byte 12 (and the rest of the frame) 0; call() refuses a 13th byte
+  check(leds.writes.length > 5 && leds.writes.every((b) => b.slice(15).every((x) => x === 0)) && !leds.flash, 'no 0x8070 write ever carried a persistence / flash byte');
+  e = await refusal(() => driver.call(F.COLOR_LED, 0x30, [0, 1, 0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]));
+  check(/refused/.test(e?.message || ''), 'call() refuses a set-zone-effect with a persistence byte');
+  for (const fn of [0x40, 0x50, 0xa0, 0xf0]) { e = await refusal(() => driver.call(F.COLOR_LED, fn, [0])); check(/refused/.test(e?.message || ''), `call() refuses 0x8070 fn 0x${fn.toString(16)}`); }
+  // remap: Back -> Middle Button, [cid, 00, remap]
+  n0 = reprog.writes.length;
+  check(JSON.stringify(await driver.write('remap0053', { '0053': '0052' })) === '{"0053":"0052"}' && reprog.map[0x53].to === 0x52, 'Back mapped to Middle Button and read back');
+  check(h(reprog.writes.at(-1).slice(0, 8)) === 'ff 0e 3b 00 53 00 00 52', `remap bytes: ${h(reprog.writes.at(-1).slice(0, 8))}`);
+  check((await driver.read()).remap0053['0053'] === '0052', 'the remap reads back');
+  check(JSON.stringify(await driver.write('remap0053', { '0053': '0053' })) === '{"0053":"0053"}' && reprog.map[0x53].to === 0, 'Back put back to itself');
+  check(JSON.stringify(await driver.write('remap0056', { '0056': '0051' })) === '{"0056":"0051"}' && reprog.map[0x56].flags === 0x01, 'a button another program diverted keeps its flags as read');
+  await driver.write('remap0056', { '0056': '0056' });
+  n0 = reprog.writes.length;
+  e = await refusal(() => driver.write('remap0053', { '0053': '00c4' }));
+  check(/mapped only to/.test(e?.message || '') && reprog.writes.length === n0, 'a target outside its groups is refused, nothing sent');
+  e = await refusal(() => driver.write('remap0050', { '0050': '0051' }));
+  check(/does not have it|not a setting/.test(e?.message || '') && reprog.writes.length === n0, 'left click remap refused, nothing sent');
+  reprog.ignoreWrites = true;
+  e = await refusal(() => driver.write('remap0052', { '0052': '0053' }));
+  check(/reads back/.test(e?.message || '') && reprog.writes.length === n0 + 2 && h(reprog.writes.at(-1).slice(3, 8)) === '00 52 00 00 52', `a remap that does not read back fails and is put back (${e?.message})`);
+  reprog.ignoreWrites = false;
+  check(reprog.writes.every((b) => b[5] === 0x00 && ((b[6] << 8) | b[7]) !== 0 && b.slice(8).every((x) => x === 0)), 'no remap ever carried a divert / persist / raw XY bit, or remap 0');
+  for (const bad of [[0, 0x53, 0x03, 0, 0x52], [0, 0x53, 0x0c, 0, 0x52], [0, 0x53, 0x30, 0, 0x52], [0, 0x53, 0x00, 0, 0]]) { e = await refusal(() => driver.call(F.REPROG_V4, 0x30, bad)); check(/refused/.test(e?.message || ''), `call() refuses setCidReporting ${h(bad)}`); }
+  const inf = await driver.info();
+  check(/Primary \(Off, Static, Cycle, Breathe\)/.test(inf.Lights) && /Back Button/.test(inf['Button remap']), `info: ${inf.Lights} | ${inf['Button remap']}`);
+  // the library self-check: the same value written and read back for every light and remap setting, the mouse unchanged
+  const mapNow = () => JSON.stringify(keys.map((k) => reprog.map[k.cid] || { flags: 0, to: 0 }));
+  const zBefore = leds.zones.map((z) => h(z.cur)), mBefore = mapNow();
+  const sc = await selfCheck(driver, driver.write, { backup: async () => {}, makerApp: async () => null });
+  const lk = Object.entries(sc.keys || {}).filter(([k]) => /^light|^remap/.test(k));
+  check(sc.ran && lk.length === 10 && lk.every(([, r]) => r.ok), `self-check passes every light and remap setting (${lk.map(([k, r]) => `${k}:${r.ok ? 'ok' : r.why}`).join(', ')})`);
+  check(JSON.stringify(leds.zones.map((z) => h(z.cur))) === JSON.stringify(zBefore) && mapNow() === mBefore, `the self-check left the lights and remaps exactly as they were (${zBefore} -> ${leds.zones.map((z) => h(z.cur))}; ${mBefore} -> ${mapNow()})`);
+
+  // a mouse whose 0x8070 cannot read a zone back (ext caps bit 0 clear): no light settings at all
+  const m2 = mk(ledsOf([{ location: 1, effects: [fx.off, fx.static], cur: pad([1, 1, 2, 3]) }], { ext: 0x0000 }));
+  useDevice(m2);
+  check(await driver.connect(false) && !driver.settings.some((s) => s.key.startsWith('light')) && /cannot read/.test((await driver.info()).Lights), 'no read-back bit: lights not offered');
+  // a mouse answering 0xE0 in libratbag's layout: a reading the layouts disagree on is not used, and nothing is written
+  for (const [what, effects, cur] of [['a static zone listed after off', [fx.off, fx.static], pad([1, 0x00, 0xff, 0x00])], ['static listed first', [fx.static, fx.off], pad([0, 0x12, 0x34, 0x56])]]) {
+    const L = ledsOf([{ location: 1, effects, cur }], { layout: 'lr' });
+    const m3 = mk(L);
+    useDevice(m3);
+    check(await driver.connect(false), `libratbag-layout mouse (${what}) connects`);
+    const r3 = await driver.read();
+    e = await refusal(() => driver.write('light0Effect', 'off'));
+    check(r3.light0Effect === undefined && /could not be read/.test(e?.message || '') && L.writes.length === 0, `${what}: not read, not written (${JSON.stringify(r3)}; ${e?.message})`);
+  }
+  // no 0x8070 / 0x1B04: nothing new offered
+  const m4 = mk(undefined, undefined);
+  useDevice(m4);
+  check(await driver.connect(false) && !driver.settings.some((s) => /^light|^remap/.test(s.key)), 'a mouse without them offers no lights or remaps');
+  check(M.writeShapeProblem(F.COLOR_LED, 0x30, Array(12).fill(0)) === null && M.writeShapeProblem(F.REPROG_V4, 0x30, [0, 0x53, 0, 0, 0x52]) === null, 'the two write shapes the driver builds pass its own guard');
 }
 
 console.log(fails.length ? `sim-logitech: FAILED: ${fails.join('; ')}` : 'sim-logitech (Logitech HID++ mouse driver, simulated): all good');

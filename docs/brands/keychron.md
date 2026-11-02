@@ -279,5 +279,13 @@ A `driver.json` (no code), simulated only (tests/sim-keychron-via.mjs), never ru
   `A7 0B` / `A7 0C`, report rate `A7 0D` / `A7 0E` (8000, 4000, 1000 Hz only: the other dividers are unconfirmed).
 - **Read only:** protocol version, NKRO state `A7 12` (switching fails on 2025q3 firmware).
 - **Never sent:** `A7 11`, `A9`, `AA`, `AB`, language, DIP switch, NKRO set, snap click (the file's own never list).
-- Not covered: snap click, Keychron per-key lighting `A8`, HE actuation `A9`, battery, the 2.4 GHz receiver, Lemokey
-  (`362D`) boards, Keychron mice.
+- Added 1 Nov 2026 (read and write, read back, then saved): **snap click** pairs 1-4 where `A7 01` bit 3 is set (read
+  `A7 08 00 04`, write `A7 09 <start> 01 <type> <key 1> <key 2>`, which is live only, then `A7 0A` only after the
+  read-back matched; snap_click.c), keys from QMK's basic keycodes; on boards that answer `A8 01` (KEYCHRON_RGB_ENABLE,
+  the switch behind A2's FEATURE_KEYCHRON_RGB): **which lock keys light** (`A8 03` byte 4, written with `A8 04`; only
+  while the other lights' bits are 0, since the write sends the whole mask), **lock light hue, saturation and
+  brightness** (`A8 03` bytes 5-7; brightness 128-255, the firmware's floor) and the **per-key effect** (`A8 07` /
+  `A8 08`, 0-4), each then `A8 02`.
+- Not covered: snap click pairs 5-20; per-key colours `A8 09`/`0A` and mixed-effect regions `A8 0B`-`0F` (a per-LED
+  editor would be a new page kind; the mixed effect numbers are each board's own rgb_matrix list); HE actuation `A9`,
+  battery, the 2.4 GHz receiver, Lemokey (`362D`) boards, Keychron mice.

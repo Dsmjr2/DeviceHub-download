@@ -171,7 +171,7 @@ export default {
             // brightness applies to steady and speed to breathing, as in the Pulsar app
             v.dpiEffect === 'steady' ? row('Light brightness', null, slider({ value: v.effectBrightness, min: 1, max: 10, disabled: locked('effectBrightness'), grab: () => prepare('mouse'), onCommit: (n) => set('effectBrightness', n, 'DPI light brightness', `${n} of 10`) })) : null,
             v.dpiEffect === 'breathing' ? row('Breathing speed', null, slider({ value: v.effectSpeed, min: 1, max: 5, disabled: locked('effectSpeed'), grab: () => prepare('mouse'), onCommit: (n) => set('effectSpeed', n, 'DPI light speed', `${n} of 5`) })) : null,
-            row('Turbo mode', 'Hold to repeat a click.', toggle({ value: v.turbo, label: 'Turbo mode', disabled: locked('turbo'), onCommit: (on) => set('turbo', on, 'Turbo mode', on ? 'on' : 'off') })))),
+            row('Turbo mode', 'Sensor locked at 20,000 FPS for the fastest response. Uses more battery.', toggle({ value: v.turbo, label: 'Turbo mode', disabled: locked('turbo'), onCommit: (on) => set('turbo', on, 'Turbo mode', on ? 'on' : 'off') })))),
         card([h('h2', {}, 'DPI stages'), h('span', { class: 'spacer' }),
           count ? h('span', { class: 'actions', style: { alignItems: 'center', gap: '8px' } }, h('span', { class: 'faint' }, 'stages in cycle'),
             stepper({ value: count, min: 1, max: DPI_SLOTS, step: 1, disabled: locked('stageCount'), label: 'DPI stages in the cycle', onCommit: (n) => set('stageCount', n, 'DPI stages in the cycle', `${n}`) })) : null],

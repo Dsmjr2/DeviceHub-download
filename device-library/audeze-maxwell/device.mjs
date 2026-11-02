@@ -14,6 +14,7 @@
 //   read key        01 09 <key> 00        -> 5B 01 09 <key> 00 <status> <value>    keys 00, 22, 2C, 2D
 //   write key       00 09 <key> 00 <v>    -> 5B 00 09 <key> 00 00                  keys 00 (v 1-10), 2C (v 1-max)
 //   read parameter  83 2C <param> 00      -> 5B 83 2C <status> <param> 00 <value>  params 07, 0B
+//   write parameter 82 2C 07 00 <0/1>     -> 5B 82 2C <status> 07 00               sidetone on/off only, sent once (:397-418)
 //   battery         D6 0C 00              -> 5B D6 0C <status>, then 5D D6 0C 00 00 <percent>
 // (HSC audeze_maxwell_device.hpp:52-58, the key and parameter numbers :99-111.) Replies carry no sequence number, so
 // they are matched on the command and its key / parameter, and anything else in the stream is skipped (:63-65).
@@ -28,12 +29,14 @@
 //   default 31 when it reads 0 or fails, :120-121, 420-428). Written ONLY while sidetone reads on (parameter 07 not 0):
 //   writing the level while it is off switches an original Maxwell on (:59-61, 504-507). While it is off the write is
 //   refused as waiting; DeviceHub never switches sidetone on or off (below).
-// - Readings, never written: sidetone on/off (parameter 07), ChatMix (parameter 0B, 0-20, 10 = centre, HSC :594-612),
+// - Sidetone on/off, parameter 07 (1 Nov 2026, HSC :430-449 switchSidetone): its write TOGGLES whatever value is sent
+//   (:59-61, verified there on an original Maxwell), so, as HeadsetControl does, the state is read first and `82 2C 07 00
+//   <0/1>` is sent ONCE and only when it differs; then it is read back. A same-value write (DeviceHub's check) sends
+//   nothing. A read-back that did not switch fails; nothing more is sent (a second toggle could land late and flip it).
+// - Readings, never written: ChatMix (parameter 0B, 0-20, 10 = centre, HSC :594-612),
 //   mic muted (key 22: 00 = muted, FF = not, :113-114), battery % (D6 0C, :452-486; no charging flag is documented).
 //
 // LEFT OUT, and why:
-// - switching sidetone on/off (parameter 07): its write TOGGLES whatever value is sent (:59-61, 430-436), so writing
-//   the current value back, as DeviceHub's check does, would flip it;
 // - volume limiter (key 28), voice prompts (key 20), mic noise filter (key 24): HSC only writes them, never reads them
 //   back, and the read values' meaning is not documented (the limiter writes 88 / 8E);
 // - auto power off (parameter 01): an 8-byte value (:554-581) whose read layout HSC does not document;
@@ -74,6 +77,7 @@ export function frame(kind, id, value) {
   if (kind === 'readKey' && Object.values(KEY).includes(id)) return [0x01, 0x09, id, 0x00];
   if (kind === 'readParam' && Object.values(PARAM).includes(id)) return [0x83, 0x2c, id, 0x00];
   if (kind === 'battery') return [0xd6, 0x0c, 0x00];
+  if (kind === 'writeParam' && id === PARAM.sidetoneOn && (value === 0 || value === 1)) return [0x82, 0x2c, id, 0x00, value];   // HSC :55, 437-449
   if (kind === 'writeKey') {
     const ok = Number.isInteger(value) && ((id === KEY.eqPreset && value >= 1 && value <= 10) || (id === KEY.sidetoneLevel && value >= 1 && value <= 0x7f));
     if (ok) return [0x00, 0x09, id, 0x00, value];
@@ -126,7 +130,7 @@ async function defaultOpen(pid) {
   return getDevice([{ vendorId: VID, productId: parseInt(pid, 16), usagePage: 0xff13 }], { prompt: false });
 }
 
-const LABELS = { eqPreset: 'EQ preset', sidetoneLevel: 'Sidetone level' };
+const LABELS = { eqPreset: 'EQ preset', sidetoneLevel: 'Sidetone level', sidetoneOn: 'Sidetone' };
 
 export function createMaxwell({ open = defaultOpen, vendorApp = defaultVendorApp, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = () => Date.now(), timing = TIMING } = {}) {
   return {
@@ -135,8 +139,7 @@ export function createMaxwell({ open = defaultOpen, vendorApp = defaultVendorApp
     kind: 'Headset',
     vendor: 'Audeze',
     hid: { vid: '3329', pid: '4B19', pids: PIDS.map((p) => p.toUpperCase()), page: 'FF13', usage: '0001', len: LEN, reportId: OUT_ID, reply: 'raw', inputReports: true, productName: 'Audeze Maxwell' },
-    unsupported: ['switching sidetone on or off (its command toggles, so it cannot be checked by writing the same value)',
-      'volume limiter, voice prompts, mic noise filter and auto power off (HeadsetControl never reads them back)',
+    unsupported: ['volume limiter, voice prompts, mic noise filter and auto power off (HeadsetControl never reads them back)',
       'custom EQ bands (stored on the headset; never written here)', 'firmware updates (never: they stay in Audeze HQ)',
       'running beside Audeze HQ: close it first (it takes the replies)'],
     dev: null, pid: null, model: null, q: Promise.resolve(), app: null, appAt: 0, sideMax: SIDETONE_DEFAULT_MAX, raw: {},
@@ -146,7 +149,7 @@ export function createMaxwell({ open = defaultOpen, vendorApp = defaultVendorApp
         { key: 'eqPreset', label: 'EQ preset', type: 'choice', options: PRESETS.map((o) => ({ ...o })), hint: 'The headset\'s ten presets; the four custom ones keep the bands set in Audeze HQ.' },
         { key: 'sidetoneLevel', label: 'Sidetone level', type: 'slider', min: 1, max: this.sideMax, step: 1,
           hint: `1-${this.sideMax}. Changes only while sidetone is on (switch it on on the headset or in Audeze HQ).` },
-        { key: 'sidetoneOn', label: 'Sidetone', type: 'display' },
+        { key: 'sidetoneOn', label: 'Sidetone', type: 'toggle', hint: 'Hear your own voice. The headset\'s switch flips whatever it is sent, so DeviceHub sends it only when it differs, then reads it back.' },
         { key: 'chatmix', label: 'ChatMix', type: 'display', unit: ' (0 chat - 10 centre - 20 game)' },
         { key: 'micMuted', label: 'Mic', type: 'display' },
       ];
@@ -213,6 +216,11 @@ export function createMaxwell({ open = defaultOpen, vendorApp = defaultVendorApp
       const body = frame('writeKey', key, value);
       await this.request(body, (x) => isMsg(x, TYPE.response, 0x00, 0x09) && x[6] === key && x[7] === 0, 1);
     },
+    // HSC :397-418: reply 05 5B 05 00 82 2C <status> <param> 00; sent once (a second toggle would switch it back)
+    async writeParam(param, value) {
+      const m = await this.request(frame('writeParam', param, value), (x) => isMsg(x, TYPE.response, 0x82, 0x2c) && x[7] === param && x[8] === 0, 1);
+      if (m[6] !== 0) throw new Error(`the Maxwell refused writing parameter ${param.toString(16).padStart(2, '0')}`);
+    },
 
     async sidetoneMax() {
       try { const v = await this.readKey(KEY.sidetoneMax); this.sideMax = v > 0 && v <= 0x7f ? v : SIDETONE_DEFAULT_MAX; } catch { this.sideMax = SIDETONE_DEFAULT_MAX; }
@@ -226,7 +234,7 @@ export function createMaxwell({ open = defaultOpen, vendorApp = defaultVendorApp
       await take('eqPreset', async () => { const v = await this.readKey(KEY.eqPreset); return v >= 1 && v <= 10 ? v : undefined; });
       await this.sidetoneMax();
       await take('sidetoneLevel', () => this.readKey(KEY.sidetoneLevel));
-      await take('sidetoneOn', async () => ((await this.readParam(PARAM.sidetoneOn)) !== 0 ? 'on' : 'off'));
+      await take('sidetoneOn', async () => (await this.readParam(PARAM.sidetoneOn)) !== 0);
       await take('chatmix', async () => Math.min(await this.readParam(PARAM.chatmix), CHATMIX_MAX));
       await take('micMuted', async () => ((await this.readKey(KEY.micMute)) === 0x00 ? 'muted' : 'not muted'));
       if (!got && last) throw last;
@@ -239,7 +247,20 @@ export function createMaxwell({ open = defaultOpen, vendorApp = defaultVendorApp
       return out;
     },
 
+    // sidetone on/off (HSC :430-449): read, send the toggle once only when it differs, read back
+    async switchSidetone(on) {
+      if (typeof on !== 'boolean') throw new Refused(`Sidetone must be on or off (got ${JSON.stringify(on)})`);
+      const before = (await this.readParam(PARAM.sidetoneOn)) !== 0;
+      if (before === on) return on;   // nothing to send: writing it would flip it
+      let sent = null;
+      try { await this.writeParam(PARAM.sidetoneOn, on ? 1 : 0); } catch (e) { sent = e; }
+      const after = (await this.readParam(PARAM.sidetoneOn)) !== 0;
+      if (after !== on) throw new Error(`Sidetone: asked to switch it ${on ? 'on' : 'off'}, it still reads ${after ? 'on' : 'off'}${sent ? ` (${sent.message})` : ''}; nothing more was sent`);
+      return after;
+    },
+
     async write(key, value) {
+      if (key === 'sidetoneOn') return this.switchSidetone(value);
       if (key !== 'eqPreset' && key !== 'sidetoneLevel') throw new Refused(`${String(key)} cannot be changed on the Maxwell here`);
       if (key === 'eqPreset' && !PRESETS.some((p) => p.value === value)) throw new Refused(`EQ preset must be 1-10 (got ${JSON.stringify(value)})`);
       if (key === 'sidetoneLevel') {

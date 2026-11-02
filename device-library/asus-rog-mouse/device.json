@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-01T16:24:33Z",
+  "updated": "2026-11-02T05:34:28Z",
   "id": "asus-rog-mouse",
   "vendor": "ASUS",
   "product": "ROG mice (Harpe Ace, Keris Wireless AimPoint, Gladius III, Chakram X)",
@@ -36,6 +36,8 @@
     "lift-off distance low/high (also resets the surface calibration)",
     "DPI stages in use, 2-4 (written from the sheet, not yet run on a mouse)",
     "onboard profile select 1-5, read and select only (written from the sheet, not yet run on a mouse)",
+    "low-battery warning 0-50% in steps of 10 (battery models)",
+    "angle tuning: -30 to 30 degrees on the Harpe Ace, -20 to 20 on the Keris AimPoint, Gladius III AimPoint and Chakram X",
     "button response (read only)",
     "on the cable, the mouse's own receiver, or the ROG Omni receiver (the model found from its pair list)"
   ],
@@ -47,8 +49,8 @@
     "changing button response or the 8K booster (the sources disagree)",
     "Bluetooth",
     "active DPI stage (the read's numbering is not documented)",
-    "angle tuning and the low-battery warning (not yet: see docs/handoff/driver-coverage.md)",
-    "writing onboard profile contents (only selecting one)"
+    "writing onboard profile contents (only selecting one)",
+    "DPI stage colors: G-Helper and libratbag give all four stage-colour models separate X/Y DPI, read from 12 04 02 at byte 5+4i, while the colour write re-sends the raw DPI read from 12 04 00 at 5+2i; no source shows that round trip is right, so it is not offered (2 Nov 2026)"
   ],
   "status": "read-only",
   "tested": [],

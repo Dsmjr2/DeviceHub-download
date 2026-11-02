@@ -46,13 +46,13 @@ for (const [name, ids] of [['audeze-maxwell', ['3329', ['4b19', '4b18', '4b29', 
   ok(fragmentOf(Uint8Array.from([0, 0x80, 5, 0x5b])).length === 0, 'a report with length 0 carries nothing');
   const s = [0x11, 0x05, 0x5b, 0x03, 0x00, 0xd6, 0x0c, 0x00, 0x05, 0x5d, 0x05, 0x00, 0xd6, 0x0c, 0x00, 0x00, 0x3e, 0x05, 0x5b];
   ok(nextMessage(s).length === 7 && nextMessage(s).length === 9 && nextMessage(s) === null, 'the stream splits into an ack (7) and a result (9); a partial message waits');
-  for (const [k, id, v] of [['writeKey', 0x28, 0x88], ['writeKey', 0x07, 1], ['writeKey', 0x00, 0], ['writeKey', 0x00, 11], ['readParam', 0x01], ['readKey', 0x24], ['storeData', 0xef00]]) {
+  for (const [k, id, v] of [['writeKey', 0x28, 0x88], ['writeKey', 0x07, 1], ['writeKey', 0x00, 0], ['writeKey', 0x00, 11], ['readParam', 0x01], ['readKey', 0x24], ['storeData', 0xef00], ['writeParam', 0x0b, 1], ['writeParam', 0x07, 2], ['writeParam', 0x01, 0], ['writeParam', 0x07, true]]) {
     ok(!(await attempt(() => maxwellFrame(k, id, v))).ok, `frame() refuses ${k} ${id.toString(16)} ${v ?? ''}`);
   }
 }
 
 // ---- a simulated Maxwell dongle ----
-const ALLOWED_MAXWELL = /^05 5a (04 00 01 09 (00|22|2c|2d) 00|05 00 00 09 (00|2c) 00 [0-9a-f]{2}|04 00 83 2c (07|0b) 00|03 00 d6 0c 00)$/;
+const ALLOWED_MAXWELL = /^05 5a (04 00 01 09 (00|22|2c|2d) 00|05 00 00 09 (00|2c) 00 [0-9a-f]{2}|04 00 83 2c (07|0b) 00|05 00 82 2c 07 00 0[01]|03 00 d6 0c 00)$/;
 function maxwell(pid, o = {}) {
   const s = { eq: 3, level: 12, max: 24, on: 1, chatmix: 10, mic: 0xff, battery: 62, sticky: false, off: false, two: pid >= 0x4b28, ...o };
   const queue = [];
@@ -80,6 +80,10 @@ function maxwell(pid, o = {}) {
           if (b[2] === 0x2c) { s.level = b[4]; if (!s.two) s.on = 1; }   // HSC :59-61: an original Maxwell switches on
         }
         out = m(0x5b, [0x00, 0x09, b[2], 0x00, 0x00]);
+      } else if (b[0] === 0x82 && b[1] === 0x2c) {
+        if (b[2] === 0x07 && !s.sticky) s.on = s.on ? 0 : 1;   // HSC :59-61: it TOGGLES whatever value is sent
+        s.toggles = (s.toggles || 0) + 1;
+        out = m(0x5b, [0x82, 0x2c, 0x00, b[2], 0x00]);
       } else if (b[0] === 0x83 && b[1] === 0x2c) {
         out = m(0x5b, [0x83, 0x2c, 0x00, b[2], 0x00, { 0x07: s.on, 0x0b: s.chatmix }[b[2]]]);
       } else if (b[0] === 0xd6 && b[1] === 0x0c) {
@@ -111,7 +115,7 @@ for (const pid of [0x4b19, 0x4b18, 0x4b29, 0x4b28]) {
   const b = await drv.battery();
   ok(b && b.percent === 62, `${tag}: battery 62% decodes (${JSON.stringify(b)})`);
   const r = await drv.read();
-  ok(JSON.stringify(r) === JSON.stringify({ eqPreset: 3, sidetoneLevel: 12, sidetoneOn: 'on', chatmix: 10, micMuted: 'not muted' }), `${tag}: every setting reads (${JSON.stringify(r)})`);
+  ok(JSON.stringify(r) === JSON.stringify({ eqPreset: 3, sidetoneLevel: 12, sidetoneOn: true, chatmix: 10, micMuted: 'not muted' }), `${tag}: every setting reads (${JSON.stringify(r)})`);
   ok(drv.settings.find((x) => x.key === 'sidetoneLevel').max === 24, `${tag}: the sidetone slider takes the headset's maximum (key 2D)`);
   const info = await drv.info();
   ok(/Maxwell/.test(info.Model) && info['USB id'] === `3329:${tag.toUpperCase()}`, `${tag}: info (${JSON.stringify(info)})`);
@@ -127,10 +131,28 @@ for (const pid of [0x4b19, 0x4b18, 0x4b29, 0x4b28]) {
   }
   ok(d.sent.includes('05 5a 05 00 00 09 00 00 07'), `${tag}: EQ preset 7 goes out as 05 5A 05 00 00 09 00 00 07`);
 
+  // sidetone on/off (HSC switchSidetone): read, the toggle sent ONCE only when it differs, read back
+  {
+    const n = d.sent.length, t0 = d.s.toggles || 0;
+    const same = await attempt(() => drv.write('sidetoneOn', true));
+    ok(same.ok && same.v === true && d.s.on === 1 && (d.s.toggles || 0) === t0 && !d.sent.slice(n).some((x) => /^05 5a 05 00 82 2c/.test(x)), `${tag}: sidetone on while on (the self-check) sends no toggle (${same.e || ''})`);
+    const off = await attempt(() => drv.write('sidetoneOn', false));
+    ok(off.ok && off.v === false && d.s.on === 0 && d.s.toggles === t0 + 1 && d.sent.includes('05 5a 05 00 82 2c 07 00 00') && (await drv.read()).sidetoneOn === false, `${tag}: sidetone off: 05 5A 05 00 82 2C 07 00 00 once, reads back off (${off.e || ''})`);
+    const i = d.sent.lastIndexOf('05 5a 05 00 82 2c 07 00 00');
+    ok(d.sent[i - 1] === '05 5a 04 00 83 2c 07 00' && d.sent[i + 1] === '05 5a 04 00 83 2c 07 00', `${tag}: the state is read just before and just after the toggle`);
+    const on = await attempt(() => drv.write('sidetoneOn', true));
+    ok(on.ok && d.s.on === 1 && d.s.toggles === t0 + 2 && d.sent.includes('05 5a 05 00 82 2c 07 00 01'), `${tag}: and back on with 82 2C 07 00 01 (${on.e || ''})`);
+    // a toggle that does not take: failed, and no second toggle is sent
+    d.s.sticky = true;
+    const st = await attempt(() => drv.write('sidetoneOn', false));
+    ok(!st.ok && /still reads on/.test(st.e) && d.s.on === 1 && d.s.toggles === t0 + 3, `${tag}: a sidetone switch that does not take fails, one toggle only (${st.e})`);
+    d.s.sticky = false;
+  }
+
   // out of range, unknown keys, readings: refused before anything is sent
   const before = d.sent.length;
   for (const [k, v] of [['eqPreset', 0], ['eqPreset', 11], ['eqPreset', '3'], ['eqPreset', 2.5], ['sidetoneLevel', 0], ['sidetoneLevel', -1], ['sidetoneLevel', 1.5],
-    ['sidetoneOn', 'off'], ['chatmix', 5], ['micMuted', 'muted'], ['volumeLimiter', true], ['autoOff', 30], ['firmware', 1], ['__proto__', 1]]) {
+    ['sidetoneOn', 'off'], ['sidetoneOn', 0], ['chatmix', 5], ['micMuted', 'muted'], ['volumeLimiter', true], ['autoOff', 30], ['firmware', 1], ['__proto__', 1]]) {
     ok(!(await attempt(() => drv.write(k, v))).ok, `${tag}: refuses ${k} = ${JSON.stringify(v)}`);
   }
   ok(d.sent.every((x, i) => i < before || /01 09 2d/.test(x)), `${tag}: nothing but the max-level read was sent for a refused value`);
@@ -159,6 +181,28 @@ for (const pid of [0x4b19, 0x4b18, 0x4b29, 0x4b28]) {
   ok(d.bad.length === 0, `${tag}: only documented requests, never a never-list one (${d.bad.join('; ')})`);
   const bk = await drv.rawBackup();
   ok(bk.replies.battery && bk.replies['key 00'] && bk.replies['param 07'], `${tag}: raw backup holds the replies`);
+}
+// nothing is written before Turn on settings (DeviceHub's guard over the library driver); the check then passes each
+// setting, sidetone on/off without a toggle, and the headset ends as it was
+{
+  const os = await import('node:os');
+  const { guard } = await import('../helpers/my-devices.mjs');
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-maxwell-'));
+  const d = maxwell(0x4b19);
+  const g = createMaxwell({ open: async (p) => (p === '4b19' ? d : null), vendorApp: async () => null, sleep: tick, timing: { replyMs: 300, pollMs: 0, readTries: 3 } });
+  const start = JSON.stringify(d.s), backups = [];
+  guard(g, folder, { status: 'read-only', source: 'device-library/audeze-maxwell' }, { backup: async (b) => backups.push(b), log: () => {}, makerApp: async () => null, now: () => new Date('2026-11-01T18:00:00Z'), version: 'v1' });
+  ok(await g.connect(), 'guarded Maxwell connects');
+  await g.read(); await g.info();
+  const writes = () => d.sent.filter((x) => /^05 5a 05 00 (00 09|82 2c)/.test(x));
+  ok(writes().length === 0 && g.library.turnOn === true, 'guarded Maxwell: before Turn on settings nothing is written');
+  const ge = await attempt(() => g.write('sidetoneOn', false));
+  ok(!ge.ok && /Turn on settings/.test(ge.e) && writes().length === 0 && d.s.on === 1, `guarded Maxwell: a sidetone switch before Turn on settings is refused (${ge.e})`);
+  const on = await g.turnOn();
+  ok(on.on && ['eqPreset', 'sidetoneLevel', 'sidetoneOn'].every((k) => on.keys?.[k]?.ok === true) && backups.length === 1, `guarded Maxwell: after Turn on settings each setting passes its check (${JSON.stringify(on.keys || on)})`);
+  ok(JSON.stringify(d.s) === start && !d.sent.some((x) => /^05 5a 05 00 82 2c/.test(x)), 'guarded Maxwell: the headset ends as it was; the check sent no sidetone toggle');
+  ok(d.bad.length === 0, `guarded Maxwell: only documented requests (${d.bad.join('; ')})`);
+  fs.rmSync(folder, { recursive: true, force: true });
 }
 // headset switched off: the dongle stays silent, battery is unknown, a read fails without hanging
 {

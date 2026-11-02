@@ -34,7 +34,9 @@
 // OOB state (0x1805), force pairing (0x1500), receiver pairing registers and onboard-profile MEMORY (0x8100 functions
 // 0x50/0x60/0x70/0x80) are not in it, so no code path can send them. Writes: DPI (0x2201 fn 0x30), report rate
 // (0x8060 fn 0x20 / 0x8061 fn 0x30), the onboard/host switch (0x8100 fn 0x10), the active onboard profile (0x8100 fn 0x30)
-// and DPI slot (0x8100 fn 0xC0), and lift-off (0x2202 fn 0x60, DPI rewritten as read), each read back. Writes are refused
+// and DPI slot (0x8100 fn 0xC0), lift-off (0x2202 fn 0x60, DPI rewritten as read), and since 1 Nov 2026 zone lights
+// (0x8070 fn 0x30 in the RAM form, fn 0x80 software control) and button remaps (0x1B04 fn 0x30, remap only: never a
+// divert or persist bit), each read back (LIGHTS and REMAP blocks below; writeShapeProblem). Writes are refused
 // while G HUB runs (vendorApp()). DPI, rate and lift-off are
 // only written in host mode (the sheet lists them as easy to undo "in host mode"); a mouse in onboard mode says so.
 //
@@ -139,7 +141,9 @@ const SLOTS = [1, 2, 3, 4, 5, 6];             // 0x01-0x06 = paired devices (Bol
 // feature ids (sheet section 3 settings map; section 2 for 0x0000 / 0x0001; 0x0005 DEVICE_NAME from Solaar
 // hidpp20_constants.py SupportedFeature @ e7304c4c451cc9bb4f206a914844525e67856a28)
 // + 0x1B0C ANALOG_BUTTONS (S hidpp20_constants.py @ e7304c4c: "Analog button tuning (actuation point, rapid trigger, haptics)")
-export const F = { ROOT: 0x0000, FEATURE_SET: 0x0001, DEVICE_NAME: 0x0005, BATTERY_STATUS: 0x1000, BATTERY_VOLTAGE: 0x1001, UNIFIED_BATTERY: 0x1004, ANALOG_BUTTONS: 0x1b0c, ADJUSTABLE_DPI: 0x2201, EXT_ADJUSTABLE_DPI: 0x2202, REPORT_RATE: 0x8060, EXT_REPORT_RATE: 0x8061, ONBOARD_PROFILES: 0x8100 };
+// + 1 Nov 2026: 0x8070 COLOR_LED_EFFECTS and 0x1B04 REPROG_CONTROLS_V4 (Solaar hidpp20_constants.py @ e7304c4c; libratbag
+// hidpp20.h HIDPP_PAGE_COLOR_LED_EFFECTS @ 8235b5bb). See LIGHTS and REMAP below for every byte.
+export const F = { ROOT: 0x0000, FEATURE_SET: 0x0001, DEVICE_NAME: 0x0005, BATTERY_STATUS: 0x1000, BATTERY_VOLTAGE: 0x1001, UNIFIED_BATTERY: 0x1004, ANALOG_BUTTONS: 0x1b0c, REPROG_V4: 0x1b04, ADJUSTABLE_DPI: 0x2201, EXT_ADJUSTABLE_DPI: 0x2202, COLOR_LED: 0x8070, REPORT_RATE: 0x8060, EXT_REPORT_RATE: 0x8061, ONBOARD_PROFILES: 0x8100 };
 // the only (feature, function) pairs call() will send. Function = byte 3's high nibble, written as fn << 4.
 export const ALLOWED = {
   [F.ROOT]: [0x00, 0x10],                     // getFeature, ping (section 2 "Feature lookup")
@@ -163,10 +167,32 @@ export const ALLOWED = {
   [F.ONBOARD_PROFILES]: [0x00, 0x10, 0x20, 0x30, 0x40, 0xb0, 0xc0],
   // HITS (header, sources K O X S): caps 0x00, write 0x10, read 0x20. Never fn 0x30 / 0x40 (K: "other (not investigated)").
   [F.ANALOG_BUTTONS]: [0x00, 0x10, 0x20],
+  // zone lights (LIGHTS below): info 0x00, zone info 0x10, effect info 0x20, set zone effect 0x30 (RAM form only: call()
+  // refuses one with a persistence byte), software control get 0x70 / set 0x80 (Solaar LEDControl), get zone effect 0xE0
+  // (libratbag CMD_COLOR_LED_EFFECTS_GET_ZONE_EFFECT; Solaar LEDZoneSetting.build read_fnid 0xE0)
+  [F.COLOR_LED]: [0x00, 0x10, 0x20, 0x30, 0x70, 0x80, 0xe0],
+  // button remap (REMAP below): getCount 0x00, getCidInfo 0x10, getCidReporting 0x20, setCidReporting 0x30 (remap only:
+  // call() refuses any divert / persist / raw XY bit)
+  [F.REPROG_V4]: [0x00, 0x10, 0x20, 0x30],
 };
 // the memory functions of 0x8100 (sheet section 4 "Risky writes": they rewrite flash); call() refuses them even if they
 // were ever added to ALLOWED by mistake
-export const NEVER_FN = { [F.ONBOARD_PROFILES]: [0x50, 0x60, 0x70, 0x80] };
+// + 0x8070's other functions (OpenRGB LogitechProtocolCommon.h enum LOGITECH_FP8070 @ f81fd322: 0x40 SET_CFG, 0x50 GET_CFG,
+// 0x60 GET_BIN_INFO, 0x90 GET_STATUS, 0xA0 CLEAR_EFFECT, 0xB0 SET_DIR, 0xC0 GET_COLOUR, 0xD0 SYNC_CFG, 0xF0 SET_BIN_INFO):
+// the NV config and bin functions are never sent
+export const NEVER_FN = { [F.ONBOARD_PROFILES]: [0x50, 0x60, 0x70, 0x80], [F.COLOR_LED]: [0x40, 0x50, 0x60, 0x90, 0xa0, 0xb0, 0xc0, 0xd0, 0xf0] };
+// the only shapes of the two new writes call() sends (1 Nov 2026), whatever builds them:
+//   0x8070 fn 0x30: exactly 12 parameter bytes [zone, effect index, 10 effect bytes]; byte 12, the persistence byte
+//     (libratbag hidpp20_color_led_effects_set_zone_effect: "parameters[12] = 1, /* write to RAM and flash */"; OpenRGB
+//     setMode: data[12] = 0x00 on 0x8070), is never given, so it goes out as 0x00 (the frame is zero-padded)
+//   0x1B04 fn 0x30: exactly [cid hi, cid lo, 0x00, remap hi, remap lo]: the flags byte is 0 (no divert, no persist, no raw
+//     XY, and none of their "valid" bits, so the mouse keeps its own divert state: x1b04 spec setCidReporting), remap non-zero
+export function writeShapeProblem(featureId, fn, params) {
+  if (featureId === F.COLOR_LED && fn === 0x30 && params.length !== 12) return '0x8070 set zone effect must be 12 bytes (no persistence byte)';
+  if (featureId === F.COLOR_LED && fn === 0x80 && !(params.length === 1 && (params[0] === 0 || params[0] === 1))) return '0x8070 software control must be [00] or [01]';
+  if (featureId === F.REPROG_V4 && fn === 0x30 && !(params.length === 5 && params[2] === 0x00 && ((params[3] << 8) | params[4]) !== 0)) return '0x1B04 setCidReporting must be a remap only (flags 00, target not 0)';
+  return null;
+}
 // sheet section 4 "Never touch": refused even if someone adds them to ALLOWED by mistake
 // + Solaar hidpp20_constants.py BLE_PRO_PRE_PAIRING 0x1816 and LIGHTSPEED_PAIRING 0x0309 (as the keyboard and headset
 // drivers; added 22 Oct 2026 with Bluetooth, where 0x1816 is reachable on the device itself)
@@ -245,6 +271,210 @@ const hitsSetting = (key) => {
   return { key, label: `${side} button ${what}`, type: 'slider', min: HITS_DOC[f].min, max: HITS_DOC[f].max, step: 1, hint: `${more} ${HITS_HINT}` };
 };
 
+// ---- LIGHTS: zone lighting effects, feature 0x8070 COLOR_LED_EFFECTS (1 Nov 2026) ----
+// Sources, read-only, by commit:
+//   SO = pwr-Solaar/Solaar @ e7304c4c451cc9bb4f206a914844525e67856a28: lib/logitech_receiver/hidpp20.py LEDEffectsInfo,
+//        LEDZoneInfo, LEDEffectInfo, LEDEffectSetting.from_bytes / to_bytes, LEDEffects; settings_templates.py
+//        LEDControl, LEDZoneSetting.setup / build (read 0xE0, write 0x30, suffix b""); tests/logitech_receiver/
+//        test_setting_templates.py (the LEDZoneSetting fixture: read 0xE0 [00] -> "000000000000010050", write 0x30
+//        "000000000000000101500000") and test_hidpp20_complex.py test_LEDZoneInfo_to_command
+//   LR = libratbag/libratbag @ 8235b5bb6032dea15901ab58a8218956f4494d08: src/hidpp20.c hidpp20_color_led_effects_get_info,
+//        _get_zone_info, _get_zone_effect_info, _set_zone_effect, _get_zone_effect; src/hidpp20.h struct
+//        hidpp20_color_led_info / _zone_info / _zone_effect_info, struct hidpp20_internal_led (the effect byte layouts)
+//   OR = CalcProgrammer1/OpenRGB @ f81fd32259fdd1cdcf506c9797c4be3730dfa0b3: Controllers/LogitechController/
+//        LogitechProtocolCommon.cpp logitech_device::setMode (0x8070 data[12] = 0x00) and the 0x8070 enumeration
+// Reads:
+//   fn 0x00 -> [zone count, nv caps (2), ext caps (2)] (LR struct hidpp20_color_led_info; SO "!BHH"); ext caps bit 0 = the
+//     mouse can read a zone's effect back (LR HIDPP20_COLOR_LED_INFO_EXT_CAP_HAS_ZONE_EFFECT = 0x01, the gate of
+//     get_zone_effect; SO readable = capabilities & 0x1). Without it nothing is offered: a write could not be read back.
+//   fn 0x10 [zone] -> [zone, location (2, big-endian), effect count, persistency caps] (LR get_zone_info; SO "!HB" at 1..3)
+//   fn 0x20 [zone, effect index] -> [zone, effect index, effect id (2), caps (2), period (2)] (LR, SO LEDEffectInfo "!BBHHH")
+//   fn 0xE0 [zone] -> the zone's current effect: [effect index, 10 effect bytes] (SO from_bytes(reply, options): bytes[0]
+//     is the effect INDEX in the zone's list, the effect's fields at 1 + offset; its own fixture reads ID 3 period 0x100
+//     intensity 0x50 from "00 00 00 00 00 00 01 00 50")
+// Write: fn 0x30 [zone, effect index, 10 effect bytes] (SO LEDZoneInfo.to_command: int2bytes(zone) + int2bytes(i) +
+//   to_bytes()[1:], suffix b""; OR setMode data[0] = zone, data[1] = the index into the zone's effect list). Byte 12, the
+//   persistence byte, is never sent (writeShapeProblem): OR sends 0x00 there on 0x8070, LR's 1 is "write to RAM and flash".
+// WHERE THE SOURCES DISAGREE: LR puts the effect ID (not the index) in byte 1, and reads 0xE0 as [zone, effect id, ...].
+//   Two of the three (SO with a matched read and write and its own fixtures, OR's write) use the index and the layout
+//   above, so DeviceHub does. Three guards keep LR's reading from doing harm: (1) a zone's reading is used only when it is
+//   clean in SO's layout (a known effect at that index, and every byte that effect does not use is 0); (2) it is also
+//   parsed in LR's layout ([zone, effect id, 10 bytes]); when that parse is clean too and means something else, the two
+//   sources disagree about this very reading, so the zone is shown in info as unread and offered nothing (an all-off
+//   zone reads the same both ways and is used); (3) every write is read back byte for byte and, on a mismatch, the bytes
+//   read before are written back and the write fails.
+// Effect ids and field offsets (into the 10 effect bytes), where SO LEDEffects and LR struct hidpp20_internal_led agree:
+//   0x00 off (SO "Disabled", LR HIDPP20_LED_OFF): no fields
+//   0x01 static (SO "Static", LR HIDPP20_LED_ON / FIXED): colour 0-2; byte 3 kept as read (SO ramp, LR fixed.effect)
+//   0x03 cycle (SO "Cycle", LR HIDPP20_LED_CYCLE): period 5-6 (ms, big-endian), intensity 7 (SO 0-100; LR "1 - 100
+//     percent, 0 means 100")
+//   0x0A breathe (SO "Breathe", LR HIDPP20_LED_BREATHING): colour 0-2, period 3-4, byte 5 kept as read (SO form, LR
+//     waveform), intensity 6
+//   Other effect ids a mouse lists (wave 0x04, ripple 0x0B, boot 0x08 ...) are not offered: they are never written, and a
+//   zone currently on one shows its effect as "other (0x..)" in info only.
+// Ranges: period 1000-20000 ms (SO LEDZoneSetting.period_field), intensity 0-100 (SO intensity_field); a field missing
+//   when switching effect takes SO's defaults (LEDEffects: period 5000, intensity 100; ramp / form 0 = "Default").
+// Software control (SO LEDControl): read fn 0x70 -> b0, write fn 0x80 [01 / 00], 1 = the host (DeviceHub) drives the
+//   lights, 0 = the mouse; SO's description: zone effects need it on. Offered as its own toggle, read back.
+export const LED_EFFECTS = {
+  0x00: { name: 'off', label: 'Off', fields: {} },
+  0x01: { name: 'static', label: 'Static', fields: { color: 0 }, keep: [3] },
+  0x03: { name: 'cycle', label: 'Cycle', fields: { period: 5, intensity: 7 } },
+  0x0a: { name: 'breathe', label: 'Breathe', fields: { color: 0, period: 3, intensity: 6 }, keep: [5] },
+};
+const FIELD_LEN = { color: 3, period: 2, intensity: 1 };
+export const LED_PERIOD = { min: 1000, max: 20000, step: 100, def: 5000 };
+export const LED_INTENSITY = { min: 0, max: 100, def: 100 };
+// SO hidpp20.py LEDZoneLocations (= LR enum hidpp20_color_led_location)
+export const LED_LOCATIONS = { 0: 'Lights', 1: 'Primary', 2: 'Logo', 3: 'Left side', 4: 'Right side', 5: 'Combined', 6: 'Primary 1', 7: 'Primary 2', 8: 'Primary 3', 9: 'Primary 4', 10: 'Primary 5', 11: 'Primary 6' };
+const colorHex = (b, o) => '#' + [b[o], b[o + 1], b[o + 2]].map((x) => x.toString(16).padStart(2, '0')).join('');
+const used = (id) => { const e = LED_EFFECTS[id]; const s = new Set(e.keep || []); for (const [f, o] of Object.entries(e.fields)) for (let i = 0; i < FIELD_LEN[f]; i++) s.add(o + i); return s; };
+// one parse: effect id + its 10 bytes -> { id, effect, color?, period?, intensity?, bytes } or null when not clean
+function ledParse(id, p) {
+  if (!LED_EFFECTS[id]) return null;
+  const u = used(id);
+  if (p.some((x, i) => x !== 0 && !u.has(i))) return null;
+  const f = LED_EFFECTS[id].fields, out = { id, effect: LED_EFFECTS[id].name, bytes: p };
+  if ('color' in f) out.color = colorHex(p, f.color);
+  if ('period' in f) out.period = (p[f.period] << 8) | p[f.period + 1];
+  if ('intensity' in f) out.intensity = p[f.intensity];
+  return out;
+}
+const sameMeaning = (a, b) => a.id === b.id && a.color === b.color && a.period === b.period && a.intensity === b.intensity;
+// a 0xE0 reply for zone `zi` with its effect list -> { index, id, effect, color?, period?, intensity?, bytes } in SO's
+// layout, or null: not clean there, or clean in LR's layout too with another meaning (WHERE THE SOURCES DISAGREE).
+// `why` on the zone says which.
+// two setting values the same? Objects (a colour per zone, a remap) key by key, whatever order the keys come in
+export function sameValue(x, y) {
+  if (x && y && typeof x === 'object' && typeof y === 'object' && !Array.isArray(x) && !Array.isArray(y)) {
+    const kx = Object.keys(x), ky = Object.keys(y);
+    return kx.length === ky.length && kx.every((k) => Object.prototype.hasOwnProperty.call(y, k) && sameValue(x[k], y[k]));
+  }
+  return JSON.stringify(x) === JSON.stringify(y);
+}
+export function ledReading(r, zone, zi) {
+  if (!r || !zone) return null;
+  const index = r[0], eff = zone.effects[index];
+  const so = eff ? ledParse(eff.id, Array.from(r.slice(1, 11))) : null;
+  if (!so) { zone.why = 'its reading is not in the layout Solaar documents'; return null; }
+  const lr = r[0] === zi && zone.effects.some((e) => e.id === r[1]) ? ledParse(r[1], Array.from(r.slice(2, 12))) : null;
+  if (lr && !sameMeaning(so, lr)) { zone.why = `Solaar and libratbag read this zone differently (${so.effect} / ${lr.effect})`; return null; }
+  zone.why = null;
+  return { index, ...so };
+}
+// the 10 effect bytes for an effect with these fields; `keepFrom` = the bytes read just before when the effect is unchanged
+// (so a same-value write sends back exactly what was read), else the kept bytes are 0 (SO default)
+export function ledBytes(id, { color, period, intensity }, keepFrom) {
+  const e = LED_EFFECTS[id], f = e.fields;
+  const p = keepFrom ? [...keepFrom] : Array(10).fill(0);
+  if ('color' in f) { const n = parseInt(color.slice(1), 16); p[f.color] = (n >> 16) & 0xff; p[f.color + 1] = (n >> 8) & 0xff; p[f.color + 2] = n & 0xff; }
+  if ('period' in f) { p[f.period] = (period >> 8) & 0xff; p[f.period + 1] = period & 0xff; }
+  if ('intensity' in f) p[f.intensity] = intensity;
+  return p;
+}
+
+// ---- REMAP: button remap, feature 0x1B04 REPROG_CONTROLS_V4 (1 Nov 2026) ----
+// Sources, read-only, by commit:
+//   SPEC = Logitech's x1b04 SpecialKeysMseButtons v2 (lekensteyn.nl/files/logitech/x1b04_specialkeysmsebuttons.html,
+//          which Solaar cites): getCount [0], getCidInfo [1], getCidReporting [2], setCidReporting [3] and their packets
+//   SO   = Solaar @ e7304c4c: hidpp20.py KeysArrayV4._query_key (fn 0x10 "!HHBBBBB": cid, task, flags, pos, group, gmask,
+//          flags2), ReprogrammableKeyV4.remappable_to / _getCidReporting / _setCidReporting / remap, KeyFlag, MappingFlag;
+//          settings_templates.py ReprogrammableKeys (only keys with more than one target); special_keys.py CONTROL (names)
+// Reads: fn 0x00 -> b0 count; fn 0x10 [index] -> [cid (2), task (2), flags, pos, group, gmask, flags2]; fn 0x20 [cid (2)]
+//   -> [cid (2), flags (divert 0x01, persist 0x04, raw XY 0x10), remap (2)], remap 0 = mapped to itself (SPEC; SO
+//   "mapped_to if mapped_to != 0 else cid").
+// Write: fn 0x30 [cid (2), 00, remap (2)] (SO remap(): flags {} so bfield 0, struct "!HBH"; SPEC: a remap is temporary,
+//   reset to the control's own id on a HID++ configuration reset; remap 0 = keep, so 0 is never sent; "To disable the
+//   remapping, remap the control to its own control ID"). The flags byte is always 0, so no divert or persist bit nor any
+//   "valid" bit is ever sent (writeShapeProblem): DeviceHub never diverts a button to itself (it does not handle
+//   diverted-button events) and never writes a persistent mapping.
+// Buttons offered: a physical control (not virtual 0x80) with the reprog flag 0x10 (SPEC: "required for the control to
+//   appear as configurable") and more than one target (SO ReprogrammableKeys.build), never Left Button 0x0050. Targets: the
+//   button's own id, then every control whose group is in its gmask (SO remappable_to; SPEC "can be remapped to any control
+//   ID contained in the specified groups"). Names: SO special_keys.CONTROL.
+export const LEFT_CLICK = 0x0050;
+export const KEY_FLAGS = { mouse: 0x01, reprog: 0x10, divert: 0x20, persist: 0x40, virtual: 0x80 };
+export const REMAP_FLAGS = { divert: 0x01, persist: 0x04, rawXY: 0x10 };
+// Solaar special_keys.py CONTROL @ e7304c4c (NamedInts names: "__" -> "/", "_" -> " "), plus its G1-G32, M1-M8 and MR
+export const CONTROL = {
+  0x0001: 'Volume Up old', 0x0002: 'Volume Down old', 0x0003: 'Mute', 0x0004: 'Play/Pause old', 0x0005: 'Next',
+  0x0006: 'Previous', 0x0007: 'Stop', 0x0008: 'Application Switcher', 0x0009: 'Burn', 0x000a: 'Calculator',
+  0x000b: 'Calendar', 0x000c: 'Close', 0x000d: 'Eject', 0x000e: 'Mail', 0x000f: 'Help As HID', 0x0010: 'Help As F1',
+  0x0011: 'Launch Word Proc', 0x0012: 'Launch Spreadsheet', 0x0013: 'Launch Presentation', 0x0014: 'Undo As Ctrl Z',
+  0x0015: 'Undo As HID', 0x0016: 'Redo As Ctrl Y', 0x0017: 'Redo As HID', 0x0018: 'Print As Ctrl P',
+  0x0019: 'Print As HID', 0x001a: 'Save As Ctrl S', 0x001b: 'Save As HID', 0x001c: 'Preset A', 0x001d: 'Preset B',
+  0x001e: 'Preset C', 0x001f: 'Preset D', 0x0020: 'Favorites', 0x0021: 'Gadgets', 0x0022: 'My Home',
+  0x0023: 'Gadgets As Win G', 0x0024: 'Maximize As HID', 0x0025: 'Maximize As Win Shift M', 0x0026: 'Minimize As HID',
+  0x0027: 'Minimize As Win M', 0x0028: 'Media Player', 0x0029: 'Media Center Logi', 0x002a: 'Media Center Msft',
+  0x002b: 'Custom Menu', 0x002c: 'Messenger', 0x002d: 'My Documents', 0x002e: 'My Music', 0x002f: 'Webcam',
+  0x0030: 'My Pictures', 0x0031: 'My Videos', 0x0032: 'My Computer As HID', 0x0033: 'My Computer As Win E',
+  0x0034: 'FN Key', 0x0035: 'Launch Picture Viewer', 0x0036: 'One Touch Search', 0x0037: 'Preset 1',
+  0x0038: 'Preset 2', 0x0039: 'Preset 3', 0x003a: 'Preset 4', 0x003b: 'Record', 0x003c: 'Internet Refresh',
+  0x003e: 'Search', 0x003f: 'Shuffle', 0x0040: 'Sleep', 0x0041: 'Internet Stop', 0x0042: 'Synchronize',
+  0x0043: 'Zoom', 0x0044: 'Zoom In As HID', 0x0045: 'Zoom In As Ctrl Wheel', 0x0046: 'Zoom In As Cltr Plus',
+  0x0047: 'Zoom Out As HID', 0x0048: 'Zoom Out As Ctrl Wheel', 0x0049: 'Zoom Out As Ctrl Minus', 0x004a: 'Zoom Reset',
+  0x004b: 'Zoom Full Screen', 0x004c: 'Print Screen', 0x004d: 'Pause Break', 0x004e: 'Scroll Lock',
+  0x004f: 'Contextual Menu', 0x0050: 'Left Button', 0x0051: 'Right Button', 0x0052: 'Middle Button',
+  0x0053: 'Back Button', 0x0054: 'Back', 0x0055: 'Back As Alt Win Arrow', 0x0056: 'Forward Button',
+  0x0057: 'Forward As HID', 0x0058: 'Forward As Alt Win Arrow', 0x0059: 'Button 6', 0x005a: 'Left Scroll As Button 7',
+  0x005b: 'Left Tilt', 0x005c: 'Right Scroll As Button 8', 0x005d: 'Right Tilt', 0x005e: 'Button 9',
+  0x005f: 'Button 10', 0x0060: 'Button 11', 0x0061: 'Button 12', 0x0062: 'Button 13', 0x0063: 'Button 14',
+  0x0064: 'Button 15', 0x0065: 'Button 16', 0x0066: 'Button 17', 0x0067: 'Button 18', 0x0068: 'Button 19',
+  0x0069: 'Button 20', 0x006a: 'Button 21', 0x006b: 'Button 22', 0x006c: 'Button 23', 0x006d: 'Button 24',
+  0x006e: 'Show Desktop', 0x006f: 'Screen Lock', 0x0070: 'Fn F1', 0x0071: 'Fn F2', 0x0072: 'Fn F3', 0x0073: 'Fn F4',
+  0x0074: 'Fn F5', 0x0075: 'Fn F6', 0x0076: 'Fn F7', 0x0077: 'Fn F8', 0x0078: 'Fn F9', 0x0079: 'Fn F10',
+  0x007a: 'Fn F11', 0x007b: 'Fn F12', 0x007c: 'Fn F13', 0x007d: 'Fn F14', 0x007e: 'Fn F15', 0x007f: 'Fn F16',
+  0x0080: 'Fn F17', 0x0081: 'Fn F18', 0x0082: 'Fn F19', 0x0083: 'IOS Home', 0x0084: 'Android Home',
+  0x0085: 'Android Menu', 0x0086: 'Android Search', 0x0087: 'Android Back', 0x0088: 'Home Combo',
+  0x0089: 'Lock Combo', 0x008a: 'IOS Virtual Keyboard', 0x008b: 'IOS Language Switch', 0x008c: 'Mac Expose',
+  0x008d: 'Mac Dashboard', 0x008e: 'Win7 Snap Left', 0x008f: 'Win7 Snap Right', 0x0090: 'Minimize Window',
+  0x0091: 'Maximize Window', 0x0092: 'Win7 Stretch Up', 0x0093: 'Win7 Monitor Switch As Win Shift LeftArrow',
+  0x0094: 'Win7 Monitor Switch As Win Shift RightArrow', 0x0095: 'Switch Screen', 0x0096: 'Win7 Show Mobility Center',
+  0x0097: 'Analog HScroll', 0x009f: 'Metro Appswitch', 0x00a0: 'Metro Appbar', 0x00a1: 'Metro Charms',
+  0x00a2: 'Calc Vkeyboard', 0x00a3: 'Metro Search', 0x00a4: 'Combo Sleep', 0x00a5: 'Metro Share',
+  0x00a6: 'OS Settings', 0x00a7: 'Metro Devices', 0x00a9: 'Metro Start Screen', 0x00aa: 'Zoomin', 0x00ab: 'Zoomout',
+  0x00ac: 'Back Hscroll', 0x00ae: 'Show Desktop HPP', 0x00b7: 'Fn Left Click', 0x00b8: 'Second Left Click',
+  0x00b9: 'Fn Second Left Click', 0x00ba: 'Multiplatform App Switch', 0x00bb: 'Multiplatform Home',
+  0x00bc: 'Multiplatform Menu', 0x00bd: 'Multiplatform Back', 0x00be: 'Multiplatform Insert',
+  0x00bf: 'Screen Capture/Print Screen', 0x00c0: 'Fn Down', 0x00c1: 'Fn Up', 0x00c2: 'Multiplatform Lock',
+  0x00c3: 'Mouse Gesture Button', 0x00c4: 'Smart Shift', 0x00c5: 'Microphone', 0x00c6: 'Wifi',
+  0x00c7: 'Brightness Down', 0x00c8: 'Brightness Up', 0x00c9: 'Display Out/Project Screen ', 0x00ca: 'View Open Apps',
+  0x00cb: 'View All Apps', 0x00cc: 'Switch App', 0x00cd: 'Fn Inversion Change', 0x00ce: 'MultiPlatform Back',
+  0x00cf: 'MultiPlatform Forward', 0x00d0: 'MultiPlatform Gesture Button', 0x00d1: 'Host Switch Channel 1',
+  0x00d2: 'Host Switch Channel 2', 0x00d3: 'Host Switch Channel 3', 0x00d4: 'MultiPlatform Search',
+  0x00d5: 'MultiPlatform Home/Mission Control', 0x00d6: 'MultiPlatform Menu/Show/Hide Virtual Keyboard/Launchpad',
+  0x00d7: 'Virtual Gesture Button', 0x00d8: 'Cursor Button Long Press', 0x00d9: 'Next Button Shortpress',
+  0x00da: 'Next Button Long Press', 0x00db: 'Back Button Short Press', 0x00dc: 'Back Button Long Press',
+  0x00dd: 'Multi Platform Language Switch', 0x00de: 'F Lock', 0x00df: 'Switch Highlight',
+  0x00e0: 'Mission Control/Task View', 0x00e1: 'Dashboard Launchpad/Action Center', 0x00e2: 'Backlight Down',
+  0x00e3: 'Backlight Up', 0x00e4: 'Previous Track', 0x00e5: 'Play/Pause', 0x00e6: 'Next Track', 0x00e7: 'Mute Sound',
+  0x00e8: 'Volume Down', 0x00e9: 'Volume Up', 0x00ea: 'App Contextual Menu/Right Click', 0x00eb: 'Right Arrow',
+  0x00ec: 'Left Arrow', 0x00ed: 'DPI Change', 0x00ee: 'Open New Tab', 0x00ef: 'F2', 0x00f0: 'F3', 0x00f1: 'F4',
+  0x00f2: 'F5', 0x00f3: 'F6', 0x00f4: 'F7', 0x00f5: 'F8', 0x00f6: 'F1', 0x00f7: 'Next Color Effect',
+  0x00f8: 'Increase Color Effect Speed', 0x00f9: 'Decrease Color Effect Speed',
+  0x00fa: 'Load Lighting Custom Profile', 0x00fb: 'Laser Button Short Press', 0x00fc: 'Laser Button Long Press',
+  0x00fd: 'DPI Switch', 0x00fe: 'Multiplatform Home/Show Desktop', 0x00ff: 'Multiplatform App Switch/Show Dashboard',
+  0x0100: 'Multiplatform App Switch 2', 0x0101: 'Fn Inversion/Hot Key', 0x0102: 'LeftAndRightClick',
+  0x0103: 'Dictation', 0x0104: 'Emoji Smiley Heart Eyes', 0x0105: 'Emoji Crying Face', 0x0106: 'Emoji Smiley',
+  0x0107: 'Emoji Smilie With Tears', 0x0108: 'Emoji', 0x0109: 'Multiplatform App Switch/Launchpad',
+  0x010a: 'Screen Capture', 0x010b: 'Grave Accent', 0x010c: 'Tab Key', 0x010d: 'Caps Lock', 0x010e: 'Left Shift',
+  0x010f: 'Left Control', 0x0110: 'Left Option/Start', 0x0111: 'Left Command/Alt', 0x0112: 'Right Command/Alt',
+  0x0113: 'Right Option/Start', 0x0114: 'Right Control', 0x0115: 'Right Shift', 0x0116: 'Insert', 0x0117: 'Delete',
+  0x0118: 'Home', 0x0119: 'End', 0x011a: 'Page Up', 0x011b: 'Page Down', 0x011c: 'Mute Microphone',
+  0x011d: 'Do Not Disturb', 0x011e: 'Backslash', 0x011f: 'Refresh', 0x0120: 'Close Tab', 0x0121: 'Lang Switch',
+  0x0122: 'Standard Key A', 0x0123: 'Standard Key B', 0x0124: 'Standard Key C', 0x013c: 'Right Option/Start/2',
+  0x0141: 'Play/Pause mini', 0x01a0: 'Haptic', 0x01a3: 'Circle', 0x01a4: 'Triangle', 0x01a5: 'Diamond',
+  0x01a6: 'Star', 0x01a9: 'Cut', 0x01aa: 'Copy', 0x01ab: 'Paste', 0x01ac: 'Video On Off', 0x01b4: 'AI', 0x1001: 'G1',
+  0x1002: 'G2', 0x1003: 'G3', 0x1004: 'G4', 0x1005: 'G5', 0x1006: 'G6', 0x1007: 'G7', 0x1008: 'G8', 0x1009: 'G9',
+  0x100a: 'G10', 0x100b: 'G11', 0x100c: 'G12', 0x100d: 'G13', 0x100e: 'G14', 0x100f: 'G15', 0x1010: 'G16',
+  0x1011: 'G17', 0x1012: 'G18', 0x1013: 'G19', 0x1014: 'G20', 0x1015: 'G21', 0x1016: 'G22', 0x1017: 'G23',
+  0x1018: 'G24', 0x1019: 'G25', 0x101a: 'G26', 0x101b: 'G27', 0x101c: 'G28', 0x101d: 'G29', 0x101e: 'G30',
+  0x101f: 'G31', 0x1020: 'G32', 0x1101: 'M1', 0x1102: 'M2', 0x1103: 'M3', 0x1104: 'M4', 0x1105: 'M5', 0x1106: 'M6',
+  0x1107: 'M7', 0x1108: 'M8', 0x1200: 'MR',
+};
+export const controlName = (cid) => CONTROL[cid] || `unknown:${cid.toString(16).toUpperCase().padStart(4, '0')}`;
+const cidKey = (cid) => cid.toString(16).padStart(4, '0');
+
 // every setting this driver knows; `settings` (what the page shows) is this list minus the HITS ones a mouse lacks,
 // rebuilt at each connect (readCaps)
 const ALL = [
@@ -307,7 +537,7 @@ const adapter = {
     // Bluetooth ids choose their collection by report length (BLE_HID); every USB id's channel is as before
     byPid: Object.fromEntries(Object.keys(BLE).map((p) => [hex4(Number(p)), { ...BLE_HID }])) },
   settings,
-  unsupported: ['editing onboard profiles (buttons, the DPI of each slot, sleep timer, lights)', 'lighting', 'button remapping', 'angle snapping', 'surface tuning', 'firmware updates', 'pairing',
+  unsupported: ['editing onboard profiles (buttons, the DPI of each slot, sleep timer, lights)', 'lighting through 0x8071 RGB_EFFECTS (no read-back) and 0x8070 effects other than off, static, cycle and breathe', 'diverting buttons to DeviceHub, persistent remaps (0x1C00) and key remaps to keys or macros', 'angle snapping', 'surface tuning', 'firmware updates', 'pairing',
     'PRO X2 SUPERSTRIKE: writing DPI, report rate, lift-off and the profile (shown only: see docs/handoff/superstrike.md), the rapid-trigger on/off flag, gaming surface mode (0x8090) and the bunny-hop filter (0x80E0)'],
 
   // the vendor-app check (replaceable in tests): resolves with the running G HUB process name, or null
@@ -482,7 +712,7 @@ const adapter = {
     // Bluetooth: the report rate is the USB / Lightspeed polling rate; over Bluetooth the link sets it and no source
     // documents 0x8060 / 0x8061 there, so it is not looked up (and so not read, offered or written)
     const rateIds = this.ble ? [] : [F.EXT_REPORT_RATE, F.REPORT_RATE];
-    for (const id of [F.FEATURE_SET, F.UNIFIED_BATTERY, F.BATTERY_STATUS, F.BATTERY_VOLTAGE, F.ADJUSTABLE_DPI, F.EXT_ADJUSTABLE_DPI, ...rateIds, F.ONBOARD_PROFILES, F.ANALOG_BUTTONS]) {
+    for (const id of [F.FEATURE_SET, F.UNIFIED_BATTERY, F.BATTERY_STATUS, F.BATTERY_VOLTAGE, F.ADJUSTABLE_DPI, F.EXT_ADJUSTABLE_DPI, ...rateIds, F.ONBOARD_PROFILES, F.ANALOG_BUTTONS, F.COLOR_LED, F.REPROG_V4]) {
       const f = await this.getFeature(id);
       if (f) this.features[id] = f;
     }
@@ -501,6 +731,8 @@ const adapter = {
   // parameter bytes of the reply. Only ALLOWED pairs are sent. A read is retried once after no reply (a sleeping mouse).
   async call(featureId, fn, params = [], { retry = true, timeoutMs = 2600 } = {}) {
     if (NEVER.includes(featureId) || (NEVER_FN[featureId] || []).includes(fn) || !(ALLOWED[featureId] || []).includes(fn)) throw new Error(`refused: feature 0x${hex4(featureId)} function 0x${fn.toString(16)} is not one this driver sends`);
+    const shape = writeShapeProblem(featureId, fn, params);
+    if (shape) throw new Error(`refused: ${shape}`);
     const index = featureId === F.ROOT ? 0 : this.features[featureId]?.index;
     if (!index && featureId !== F.ROOT) throw new Error(`the mouse has no feature 0x${hex4(featureId)}`);
     const out = [this.index, index, (fn & 0xf0) | SW_ID, ...params];
@@ -641,7 +873,233 @@ const adapter = {
       mode: !!this.features[F.ONBOARD_PROFILES],
       liftOff: !!this.caps.ext?.lod && !this.superstrike,
     };
-    settings.splice(0, settings.length, ...ALL.filter((s) => (has[s.key] ?? true) && (!HITS[s.key] || (this.caps.hits && HITS[s.key][0] < this.caps.hits.buttons))));
+    await this.readLightCaps();
+    await this.readRemapCaps();
+    settings.splice(0, settings.length, ...ALL.filter((s) => (has[s.key] ?? true) && (!HITS[s.key] || (this.caps.hits && HITS[s.key][0] < this.caps.hits.buttons))), ...this.lightSettings(), ...this.remapSettings());
+  },
+
+  // ---- LIGHTS (header block above LED_EFFECTS) ----
+  // fn 0x00 info, fn 0x10 per zone, fn 0x20 per effect; only zones whose effect list holds one DeviceHub knows, and only
+  // when ext caps bit 0 says the zone effect reads back. A refusal (HidppError) leaves the lights out, never guessed.
+  async readLightCaps() {
+    this.caps.lights = null;
+    if (!this.features[F.COLOR_LED]) return;
+    const soft = (p) => p.catch((e) => { if (e instanceof HidppError) return null; throw e; });
+    const info = await soft(this.call(F.COLOR_LED, 0x00));
+    if (!info) return;
+    const count = info[0], ext = (info[3] << 8) | info[4];
+    const lights = { count, readable: !!(ext & 0x01), zones: [], swControl: false };
+    if (count < 1 || count > 8) { this.caps.lights = { ...lights, why: `it reports ${count} zones` }; return; }
+    for (let z = 0; z < count; z++) {
+      const zi = await soft(this.call(F.COLOR_LED, 0x10, [z]));
+      if (!zi || zi[0] !== z) continue;
+      const zone = { index: z, location: (zi[1] << 8) | zi[2], effects: [] };
+      for (let i = 0; i < zi[3] && i < 16; i++) {
+        const ei = await soft(this.call(F.COLOR_LED, 0x20, [z, i]));
+        if (!ei || ei[0] !== z || ei[1] !== i) { zone.effects = null; break; }
+        zone.effects.push({ index: i, id: (ei[2] << 8) | ei[3], caps: (ei[4] << 8) | ei[5], period: (ei[6] << 8) | ei[7] });
+      }
+      if (!zone.effects || !zone.effects.some((e) => LED_EFFECTS[e.id])) continue;
+      zone.label = LED_LOCATIONS[zone.location] || `Zone ${z + 1}`;
+      if (lights.zones.some((o) => o.label === zone.label)) zone.label = `${zone.label} ${z + 1}`;
+      lights.zones.push(zone);
+    }
+    // software control (SO LEDControl: read fn 0x70 -> b0); offered only when it reads 0 or 1
+    const sw = await soft(this.call(F.COLOR_LED, 0x70));
+    lights.swControl = !!sw && (sw[0] === 0 || sw[0] === 1);
+    this.caps.lights = lights;
+  },
+  ledZone(z) { return this.caps.lights?.zones.find((x) => x.index === z); },
+  // the page's light settings: one effect choice per zone (only the effects that zone lists), one colour with every zone
+  // that has a coloured effect, a speed (period) and brightness per zone that has cycle or breathe, and the software
+  // control toggle. None when the zone effect cannot be read back.
+  lightSettings() {
+    const L = this.caps.lights;
+    if (!L?.readable || !L.zones.length) return [];
+    const out = [];
+    if (L.swControl) out.push({ key: 'lightControl', label: 'Lights controlled by DeviceHub', type: 'toggle', hint: 'Off = the mouse runs its own lighting. Solaar: the zone effects need this on.' });
+    for (const z of L.zones) {
+      const known = z.effects.filter((e) => LED_EFFECTS[e.id]);
+      out.push({ key: `light${z.index}Effect`, label: `${z.label} effect`, type: 'choice', options: known.map((e) => ({ value: LED_EFFECTS[e.id].name, label: LED_EFFECTS[e.id].label })), hint: 'Only the effects this zone reports. Live; the mouse may load its stored lighting when it restarts.' });
+    }
+    const colored = L.zones.filter((z) => z.effects.some((e) => e.id === 0x01 || e.id === 0x0a));
+    if (colored.length) out.push({ key: 'lightColor', label: 'Light color', type: 'color', zones: colored.map((z) => ({ value: String(z.index), label: z.label })), hint: 'For zones on Static or Breathe.' });
+    for (const z of L.zones) {
+      if (!z.effects.some((e) => e.id === 0x03 || e.id === 0x0a)) continue;
+      out.push({ key: `light${z.index}Period`, label: `${z.label} speed`, type: 'slider', min: LED_PERIOD.min, max: LED_PERIOD.max, step: LED_PERIOD.step, unit: 'ms', hint: 'One cycle or breath, in milliseconds (lower = faster). Cycle and Breathe only.' });
+      out.push({ key: `light${z.index}Brightness`, label: `${z.label} brightness`, type: 'slider', min: LED_INTENSITY.min, max: LED_INTENSITY.max, step: 1, unit: '%', hint: 'Cycle and Breathe only (libratbag: 0 reads as full on some mice).' });
+    }
+    return out;
+  },
+  // fn 0xE0 [zone] -> the raw reply (12 bytes kept: index + 10 effect bytes, and the byte after for LR's layout)
+  async readLedRaw(z) { return Array.from((await this.call(F.COLOR_LED, 0xe0, [z])).slice(0, 12)); },
+  async readLights() {
+    const out = {};
+    const L = this.caps.lights;
+    if (!L?.readable || !L.zones.length) return out;
+    if (L.swControl) { const p = await this.call(F.COLOR_LED, 0x70); if (p[0] === 0 || p[0] === 1) out.lightControl = p[0] === 1; }
+    const colors = {};
+
+    for (const z of L.zones) {
+      const r = ledReading(await this.readLedRaw(z.index), z, z.index);
+      z.current = r;
+      if (!r) continue;
+      out[`light${z.index}Effect`] = r.effect;
+      if (r.color !== undefined) colors[String(z.index)] = r.color;
+      if (r.period !== undefined) { out[`light${z.index}Period`] = r.period; out[`light${z.index}Brightness`] = r.intensity; }
+    }
+    // the colour is reported only while every coloured zone shows one (a zone on Cycle or Off has no colour to read)
+    const cz = settings.find((s) => s.key === 'lightColor')?.zones || [];
+    if (cz.length && cz.every((z) => colors[z.value] !== undefined)) out.lightColor = Object.fromEntries(cz.map((z) => [z.value, colors[z.value]]));
+    return out;
+  },
+  // one zone written in the RAM form and read back byte for byte; on a mismatch the bytes read before go back
+  async writeLedZone(z, index, bytes, before) {
+    await this.call(F.COLOR_LED, 0x30, [z, index, ...bytes], { retry: false });
+    const after = await this.readLedRaw(z);
+    const want = [index, ...bytes];
+    if (want.some((b, i) => after[i] !== b)) {
+      let back = '';
+      if (before) { try { await this.call(F.COLOR_LED, 0x30, [z, before[0], ...before.slice(1, 11)], { retry: false }); back = ' (the zone was put back as read before)'; } catch { back = ' (and putting it back failed)'; } }
+      throw new Error(`lights zone ${z + 1}: sent ${hex(want)} but the mouse reads back ${hex(after.slice(0, 11))}${back}`);
+    }
+    return after;
+  },
+  async writeLight(key, value) {
+    const L = this.caps.lights;
+    if (!L?.readable) throw new Error('this mouse cannot read its lights back, so DeviceHub does not change them');
+    if (key === 'lightControl') {
+      if (typeof value !== 'boolean') throw new Error('Lights controlled by DeviceHub must be on or off');
+      // SO LEDControl: write fn 0x80 [01 / 00], read fn 0x70 -> b0
+      await this.call(F.COLOR_LED, 0x80, [value ? 1 : 0], { retry: false });
+      const p = await this.call(F.COLOR_LED, 0x70);
+      return p[0] === 1 ? true : p[0] === 0 ? false : `unknown (${p[0]})`;
+    }
+    if (key === 'lightColor') {
+      const s = settings.find((x) => x.key === 'lightColor');
+      if (!value || typeof value !== 'object' || s.zones.some((z) => !/^#[0-9a-f]{6}$/.test(value[z.value] ?? '')) || Object.keys(value).length !== s.zones.length) throw new Error(`Light color must give #rrggbb for ${s.zones.map((z) => z.label).join(', ')}`);
+      const cur = {};
+      for (const z of s.zones) {
+        const raw = await this.readLedRaw(Number(z.value));
+        const zone = this.ledZone(Number(z.value));
+        const r = ledReading(raw, zone, zone.index);
+        if (!r) throw new Error(`${z.label}: its current lighting could not be read (${zone.why}), so nothing was written`);
+        if (r.color === undefined) throw new Error(`${z.label} is on ${LED_EFFECTS[r.id].label}, which has no color: pick Static or Breathe for it first`);
+        cur[z.value] = { r, raw };
+      }
+      // only the zones that change; none changing (the self-check's same-value write) = every zone with its own value
+      let send = s.zones.filter((z) => value[z.value] !== cur[z.value].r.color);
+      if (!send.length) send = s.zones;
+      // a zone that fails puts itself back (writeLedZone); every zone already sent goes back to its bytes as read too, so
+      // a failure never leaves the mouse half changed, and the error says what was put back
+      const done = [];
+      for (const z of send) {
+        const { r, raw } = cur[z.value];
+        try { await this.writeLedZone(Number(z.value), r.index, ledBytes(r.id, { ...r, color: value[z.value] }, r.bytes), raw); }
+        catch (e) {
+          const back = [];
+          // the failing zone too when its own error did not put it back (a send that timed out may have landed)
+          const own = /put back|putting it back/.test(e.message) ? [] : [z];
+          for (const d of [...own, ...done.reverse()]) {
+            const was = cur[d.value].raw;
+            let ok = false;
+            try { await this.call(F.COLOR_LED, 0x30, [Number(d.value), was[0], ...was.slice(1, 11)], { retry: false }); const now = await this.readLedRaw(Number(d.value)); ok = was.slice(0, 11).every((b, i) => now[i] === b); } catch {}
+            back.push(`${d.label} ${ok ? 'was put back as read before' : 'could not be put back'}`);
+          }
+          throw new Error(`${e.message}${back.length ? `; ${back.join('; ')}` : ''}`);
+        }
+        done.push(z);
+      }
+      return (await this.readLights()).lightColor;
+    }
+    const m = /^light(\d+)(Effect|Period|Brightness)$/.exec(key);
+    const zone = m && this.ledZone(Number(m[1]));
+    if (!zone) throw new Error(`${key} is not a setting`);
+    const raw = await this.readLedRaw(zone.index);
+    const r = ledReading(raw, zone, zone.index);
+    if (!r) throw new Error(`${zone.label}: its current lighting could not be read (${zone.why}), so nothing was written`);
+    if (m[2] === 'Effect') {
+      const eff = zone.effects.find((e) => LED_EFFECTS[e.id]?.name === value);
+      if (!eff) throw new Error(`${zone.label} effect must be one of ${zone.effects.filter((e) => LED_EFFECTS[e.id]).map((e) => LED_EFFECTS[e.id].name).join(', ')}`);
+      // the same effect: its bytes as read (a same-value write sends back exactly what was read); another one: the fields
+      // it shares with the current effect carried over, the rest SO's defaults (period 5000, intensity 100), the colour
+      // another zone's or white
+      const other = this.caps.lights.zones.map((z) => z.current?.color).find(Boolean);
+      const fields = eff.id === r.id ? r : { color: r.color || other || '#ffffff', period: r.period ?? LED_PERIOD.def, intensity: r.intensity ?? LED_INTENSITY.def };
+      await this.writeLedZone(zone.index, eff.index, ledBytes(eff.id, fields, eff.id === r.id ? r.bytes : null), raw);
+      return (await this.readLights())[key];
+    }
+    const f = m[2] === 'Period' ? 'period' : 'intensity';
+    const lim = f === 'period' ? LED_PERIOD : LED_INTENSITY;
+    if (!Number.isInteger(value) || value < lim.min || value > lim.max) throw new Error(`${zone.label} ${f === 'period' ? 'speed' : 'brightness'} must be a whole number ${lim.min}-${lim.max}`);
+    if (r[f] === undefined) throw new Error(`${zone.label} is on ${LED_EFFECTS[r.id].label}, which has no ${f === 'period' ? 'speed' : 'brightness'}: pick Cycle or Breathe first`);
+    await this.writeLedZone(zone.index, r.index, ledBytes(r.id, { ...r, [f]: value }, r.bytes), raw);
+    return (await this.readLights())[key];
+  },
+
+  // ---- REMAP (header block above CONTROL) ----
+  async readRemapCaps() {
+    this.caps.remap = null;
+    if (!this.features[F.REPROG_V4]) return;
+    const soft = (p) => p.catch((e) => { if (e instanceof HidppError) return null; throw e; });
+    const c = await soft(this.call(F.REPROG_V4, 0x00));
+    if (!c || c[0] < 1 || c[0] > 64) return;
+    const keys = [];
+    for (let i = 0; i < c[0]; i++) {
+      const k = await soft(this.call(F.REPROG_V4, 0x10, [i]));
+      if (!k) continue;
+      keys.push({ index: i, cid: (k[0] << 8) | k[1], task: (k[2] << 8) | k[3], flags: k[4] | (k[8] << 8), pos: k[5], group: k[6], gmask: k[7] });
+    }
+    const groupCids = (g) => keys.filter((k) => k.group === g).map((k) => k.cid);
+    const buttons = [];
+    for (const k of keys) {
+      if (k.cid === LEFT_CLICK || !(k.flags & KEY_FLAGS.reprog) || (k.flags & KEY_FLAGS.virtual) || !k.gmask) continue;
+      const targets = [k.cid];
+      for (let g = 1; g <= 8; g++) if (k.gmask & (1 << (g - 1))) for (const t of groupCids(g)) if (!targets.includes(t)) targets.push(t);
+      if (targets.length > 1) buttons.push({ cid: k.cid, targets });
+    }
+    this.caps.remap = { count: c[0], keys, buttons };
+  },
+  remapSettings() {
+    return (this.caps.remap?.buttons || []).map((b) => ({
+      key: `remap${cidKey(b.cid)}`, label: `${controlName(b.cid)} button`, type: 'remap',
+      buttons: [{ value: cidKey(b.cid), label: controlName(b.cid) }],
+      targets: b.targets.map((t) => ({ value: cidKey(t), label: t === b.cid ? `${controlName(t)} (its own)` : controlName(t) })),
+      hint: 'Only the actions this mouse lists for this button. Live: the mouse goes back to its own mapping when it restarts.',
+    }));
+  },
+  // fn 0x20 [cid] -> { cid, flags, to } (remap 0 = itself), or null when the reply is for another control
+  async readRemapRaw(cid) {
+    const p = await this.call(F.REPROG_V4, 0x20, [cid >> 8, cid & 0xff]);
+    const echo = (p[0] << 8) | p[1];
+    if (echo !== cid) return null;
+    const to = (p[3] << 8) | p[4];
+    return { cid, flags: p[2], to: to || cid };
+  },
+  async readRemaps() {
+    const out = {};
+    for (const b of this.caps.remap?.buttons || []) {
+      const r = await this.readRemapRaw(b.cid);
+      if (r) out[`remap${cidKey(b.cid)}`] = { [cidKey(b.cid)]: cidKey(r.to) };
+    }
+    return out;
+  },
+  async writeRemap(key, value) {
+    const b = (this.caps.remap?.buttons || []).find((x) => `remap${cidKey(x.cid)}` === key);
+    if (!b) throw new Error(`${key} is not a setting`);
+    const want = value && typeof value === 'object' ? value[cidKey(b.cid)] : undefined;
+    const to = typeof want === 'string' && /^[0-9a-f]{4}$/.test(want) ? parseInt(want, 16) : NaN;
+    if (Object.keys(value || {}).length !== 1 || !b.targets.includes(to)) throw new Error(`${controlName(b.cid)} can be mapped only to ${b.targets.map(controlName).join(', ')}`);
+    const before = await this.readRemapRaw(b.cid);
+    if (!before) throw new Error(`${controlName(b.cid)}: the mouse answered for another control, so nothing was written`);
+    // setCidReporting [cid, 00, remap]: remap only, flags 0 (REMAP header; writeShapeProblem)
+    await this.call(F.REPROG_V4, 0x30, [b.cid >> 8, b.cid & 0xff, 0x00, to >> 8, to & 0xff], { retry: false });
+    const after = await this.readRemapRaw(b.cid);
+    if (!after || after.to !== to || after.flags !== before.flags) {
+      try { await this.call(F.REPROG_V4, 0x30, [b.cid >> 8, b.cid & 0xff, 0x00, before.to >> 8, before.to & 0xff], { retry: false }); } catch {}
+      throw new Error(`${controlName(b.cid)}: mapped to ${controlName(to)} but the mouse reads back ${after ? `${controlName(after.to)}, flags ${after.flags}` : 'another control'} (put back to ${controlName(before.to)})`);
+    }
+    return { [cidKey(b.cid)]: cidKey(after.to) };
   },
 
   // 0x1B0C fn 0x20 [btn] -> the 4-byte record [btn, act<<2, (rt<<2)|flag, hap<<2] (header)
@@ -727,6 +1185,10 @@ const adapter = {
     if (this.caps.dpi) out['DPI range'] = this.caps.dpi.ext ? 'read through 0x2202 (not listed)' : this.caps.dpi.list ? this.caps.dpi.list.join(', ') : `${this.caps.dpi.min}-${this.caps.dpi.max} in steps of ${this.caps.dpi.step}`;
     if (this.caps.hits) out['HITS buttons'] = `${this.caps.hits.buttons} (actuation 1-${this.caps.hits.act}, rapid trigger 1-${this.caps.hits.rt}, haptics 0-${this.caps.hits.hap}; 0x1B0C)`;
     else if (this.features[F.ANALOG_BUTTONS]) out['HITS buttons'] = 'present (0x1B0C), but its capabilities did not read as documented, so not offered';
+    const L = this.caps.lights;
+    if (L) out.Lights = !L.readable ? `0x8070, ${L.count} zone(s), but it cannot read a zone's effect back, so not offered` : L.why ? `0x8070: not offered (${L.why})`
+      : `0x8070: ${L.zones.map((z) => `${z.label} (${z.effects.map((e) => LED_EFFECTS[e.id]?.label || `other 0x${e.id.toString(16).padStart(2, '0')}`).join(', ')}${z.why ? `; not read: ${z.why}` : ''})`).join('; ') || 'no zone with an effect DeviceHub knows'}`;
+    if (this.caps.remap) out['Button remap'] = this.caps.remap.buttons.length ? `0x1B04: ${this.caps.remap.buttons.map((b) => controlName(b.cid)).join(', ')} (live; never diverted)` : `0x1B04: ${this.caps.remap.count} controls, none this mouse lists as remappable`;
     if (this.shownOnly?.size) out['Shown only'] = [...this.shownOnly].map((k) => byKey(k).label).join(', ');
     return out;
   },
@@ -746,6 +1208,8 @@ const adapter = {
     const stage = await this.readDpiStage();
     if (stage !== undefined) v.dpiStage = stage;
     Object.assign(v, await this.readHits());
+    Object.assign(v, await this.readLights());
+    Object.assign(v, await this.readRemaps());
     return v;
   },
 
@@ -771,6 +1235,14 @@ const adapter = {
     // self-check records it as waiting and tries again later, instead of failing it
     const app = await this.vendorApp();
     if (app) throw Object.assign(new Error(`${app} (G HUB) is running: close it first (two programs writing the mouse fight)`), { waiting: true });
+    // lights (0x8070) and button remaps (0x1B04): each is read back inside (byte for byte, put back on a mismatch), then
+    // the value read back must equal the one asked for
+    if (key === 'lightControl' || key === 'lightColor' || /^light\d+(Effect|Period|Brightness)$/.test(key) || /^remap[0-9a-f]{4}$/.test(key)) {
+      const got = key.startsWith('remap') ? await this.writeRemap(key, value) : await this.writeLight(key, value);
+      // compared field by field (a colour zone by zone): the order its keys come in is not a difference
+      if (!sameValue(got, value)) throw new Error(`${key}: wrote ${JSON.stringify(value)} but the mouse reads back ${JSON.stringify(got)}`);
+      return got;
+    }
     let back;
     if (key === 'dpi' || key === 'reportRate' || key === 'liftOff') {
       const mode = await this.readMode();
@@ -875,6 +1347,8 @@ const adapter = {
       caps: this.caps, ...dpi, reportRate: await this.readRate(), mode: await this.readMode(),
       ext: this.caps.ext ? await this.readExt() : undefined, profile: await this.readProfile(), dpiStage: await this.readDpiStage(),
       // the HITS records as raw bytes, exactly as read
+      lights: this.caps.lights?.readable ? await (async () => { const r = {}; for (const z of this.caps.lights.zones) r[z.index] = hex(await this.readLedRaw(z.index)); return r; })() : undefined,
+      remaps: this.caps.remap ? await (async () => { const r = {}; for (const b of this.caps.remap.buttons) r[cidKey(b.cid)] = await this.readRemapRaw(b.cid); return r; })() : undefined,
       hits: this.caps.hits ? await (async () => { const r = []; for (let b = 0; b < this.caps.hits.buttons; b++) r.push(hex(await this.readHitsRaw(b))); return r; })() : undefined,
     };
   },

@@ -38,12 +38,16 @@ const NEVERS = [
 ok(NEVERS.length >= 15, `never patterns loaded (${NEVERS.length})`);
 const hitsNever = (bytes) => NEVERS.find((n) => [...Array((n.within || 0) + 1).keys()].some((s) => n.p.every((p, i) => nib(p, bytes[s + i] ?? 0))));
 // every request the sheet documents for this driver (section 4 'Safe to read' + the three writes)
-const ALLOWED = /^a7 (01|05|06|0b|0c|0d|0e|12)( |$)/;
+const ALLOWED = /^(a7 (01|05|06|07|08|09|0a|0b|0c|0d|0e|12)|a8 (01|02|03|04|07|08))( |$)/;   // + snap click (snap_click.c) and Keychron lighting (keychron_rgb.c), 1 Nov 2026
 
 // ---- a simulated Keychron board ----
-// bits: A7 01 byte 5 (2 debounce, 4 LPM, 5 report rate, 7 NKRO); keychron: false = firmware without Keychron commands
+// bits: A7 01 byte 5 (2 debounce, 3 snap click, 4 LPM, 5 report rate, 7 NKRO); keychron: false = firmware without Keychron commands;
+// rgb: built with KEYCHRON_RGB_ENABLE (answers A8); osAvail: A8 03 byte 3 (bit 0 Num, 1 Caps); snapCount: SNAP_CLICK_COUNT
 function board(pid, o = {}) {
-  const s = { bits: 0x04 | 0x10 | 0x20 | 0x80, keychron: true, type: 4, time: 5, light: 30, sleep: 7200, divider: 3, nkro: 0b101, sticky: false, capOnType: false, notice: true, ...o };
+  const s = { bits: 0x04 | 0x10 | 0x20 | 0x80, keychron: true, type: 4, time: 5, light: 30, sleep: 7200, divider: 3, nkro: 0b101, sticky: false, capOnType: false, notice: true,
+    snapCount: 20, pairs: Array.from({ length: 20 }, (_, i) => (i === 0 ? [1, 0x04, 0x07] : [0, 0, 0])), snapSaves: 0, saved: null,
+    rgb: false, osAvail: 0x03, osDis: 0, hsv: [0, 0, 255], perKey: 0, rgbSaves: 0, ...o };
+  s.saved = JSON.stringify(s.pairs);
   const listeners = new Set();
   const dev = {
     vendorId: 0x3434, productId: pid, productName: 'simulated Keychron', opened: false, sent: [], bad: [], s,
@@ -65,6 +69,7 @@ function board(pid, o = {}) {
   };
   function reply(p) {
     const r = new Uint8Array(32);
+    if (s.keychron && s.rgb && p[0] === 0xa8) return rgb(p, r);
     if (!s.keychron || p[0] !== 0xa7) { r[0] = 0xff; return r; }                 // falls through to VIA: FF
     r[0] = 0xa7; r[1] = p[1];
     const has = (bit) => (s.bits & bit) !== 0;
@@ -80,7 +85,30 @@ function board(pid, o = {}) {
       case 0x0d: if (!has(0x20)) return unknown(); r[3] = s.divider; r[4] = 0x7f; return r;
       case 0x0e: if (!has(0x20)) return unknown(); if (p[2] > 6) { r[2] = 1; return r; } if (!s.sticky) s.divider = p[2]; return r;
       case 0x12: if (!has(0x80)) return unknown(); r[3] = s.nkro; return r;
+      // snap_click.c: 07 count at byte 3; 08 start, count (<= 9, start + count <= SNAP_CLICK_COUNT), pairs from byte 3;
+      // 09 start, count, pairs from byte 4 (type < 6, a type other than 0 needs both keys), live only; 0A save
+      case 0x07: if (!has(0x08)) return unknown(); r[3] = s.snapCount; return r;
+      case 0x08: { if (!has(0x08)) return unknown(); const [st, n] = [p[2], p[3]]; if (n > 9 || st + n > s.snapCount) { r[2] = 1; return r; }
+        for (let i = 0; i < n; i++) r.set(s.pairs[st + i], 3 + 3 * i); return r; }
+      case 0x09: { if (!has(0x08)) return unknown(); const [st, n] = [p[2], p[3]]; if (n > 9 || st + n > s.snapCount) { r[2] = 1; return r; }
+        for (let i = 0; i < n; i++) { const [ty, k1, k2] = p.slice(4 + 3 * i, 7 + 3 * i); if (ty >= 6 || (ty !== 0 && (!k1 || !k2))) { r[2] = 1; return r; } }
+        if (!s.sticky) for (let i = 0; i < n; i++) s.pairs[st + i] = Array.from(p.slice(4 + 3 * i, 7 + 3 * i)); return r; }
+      case 0x0a: if (!has(0x08)) return unknown(); s.snapSaves++; s.saved = JSON.stringify(s.pairs); return r;
       default: return unknown();
+    }
+  }
+  // keychron_rgb.c: 01 version 01 00 at bytes 3-4; 02 save; 03 lights at 3, disable mask 4, H S V 5-7; 04 mask, H, S, V
+  // from byte 2 (V under 128 raised to 128); 07 per-key effect at 3; 08 effect at 2 (< 5); anything else FF, fail
+  function rgb(p, r) {
+    r[0] = 0xa8; r[1] = p[1];
+    switch (p[1]) {
+      case 0x01: r[3] = 0x01; r[4] = 0x00; return r;
+      case 0x02: s.rgbSaves++; return r;
+      case 0x03: r[3] = s.osAvail; r[4] = s.osDis; r.set(s.hsv, 5); return r;
+      case 0x04: if (!s.sticky) { s.osDis = p[2]; s.hsv = [p[3], p[4], Math.max(p[5], 128)]; } return r;
+      case 0x07: r[3] = s.perKey; return r;
+      case 0x08: if (p[2] >= 5) { r[2] = 1; return r; } if (!s.sticky) s.perKey = p[2]; return r;
+      default: r[0] = 0xff; r[2] = 1; return r;
     }
   }
   return dev;
@@ -175,7 +203,7 @@ const keys = () => drv.settings.map((s) => s.key).join(',');
   ok(drv.settings.length === 0, `no settings on a board that answers FF (${keys()})`);
   ok(JSON.stringify(await drv.read()) === '{}', 'reads nothing');
   ok(!(await attempt(() => drv.write('debounceTime', 5))).ok, 'a write is refused');
-  ok(d.sent.every((x) => x.startsWith('a7 01 ')), `only the A7 01 probe was sent (${[...new Set(d.sent.map((x) => x.slice(0, 5)))]})`);
+  ok(d.sent.every((x) => /^(a7 01|a8 01|a8 03) /.test(x)), `only the A7 01, A8 01 and A8 03 probes were sent (${[...new Set(d.sent.map((x) => x.slice(0, 5)))]})`);
 }
 
 // 4. a report rate the sheet does not confirm (divider 4 = 500 Hz by formula only): not reported, never written
@@ -195,5 +223,122 @@ const keys = () => drv.settings.map((s) => s.key).join(',');
   ok(!(await attempt(() => drv.write('backlightOff', 60))).ok && d.s.light === 30, 'the backlight timer is not written then');
 }
 
-console.log(fails ? `sim-keychron-via: ${fails} FAILED` : 'sim-keychron-via (Keychron debounce, wireless timers, report rate over VIA; driver.json): all good');
+// 6. snap click and Keychron lighting (1 Nov 2026: snap_click.c, keychron_rgb.c) on a Q6 with both
+const pad32 = (b) => h([...b, ...new Array(32 - b.length).fill(0)]);
+{
+  const d = board(0x0160, { bits: 0x04 | 0x08 | 0x80, rgb: true }); plugged = d;
+  ok(await drv.connect(false), 'Q6 with snap click and Keychron lighting connects');
+  const SC = [1, 2, 3, 4].flatMap((n) => [`sc${n}Type`, `sc${n}Key1`, `sc${n}Key2`]);
+  ok(keys() === ['debounceType', 'debounceTime', ...SC, 'lockLights', 'osHue', 'osSat', 'osVal', 'perKeyType'].join(','), `snap click pairs 1-4, the lock lights and the per-key effect are offered (${keys()})`);
+  const r = await drv.read();
+  ok(r.sc1Type === 1 && r.sc1Key1 === 4 && r.sc1Key2 === 7 && r.sc2Type === 0 && r.sc2Key1 === 0 && r.lockLights === 0 && r.osHue === 0 && r.osSat === 0 && r.osVal === 255 && r.perKeyType === 0, `reads (${JSON.stringify(r)})`);
+  ok(d.sent.includes(pad32([0xa7, 0x08, 0x00, 0x04])) && d.sent.includes(pad32([0xa8, 0x03])), 'pairs read as A7 08 00 04, the lock lights as A8 03');
+  ok((await drv.info())['Snap click pairs on the board'] === '20 (the first 4 are offered here)', 'info: the board keeps 20 pairs');
+
+  // pair 1: mode, then keys; each written, read back, saved (A7 0A) only after the read-back, and put back
+  for (const [key, to, bytes] of [['sc1Type', 2, [0xa7, 0x09, 0x00, 0x01, 0x02, 0x04, 0x07]], ['sc1Key1', 0x1a, [0xa7, 0x09, 0x00, 0x01, 0x01, 0x1a, 0x07]], ['sc1Key2', 0x16, [0xa7, 0x09, 0x00, 0x01, 0x01, 0x04, 0x16]]]) {
+    const was = (await drv.read())[key], saves = d.s.snapSaves;
+    d.sent.length = 0;
+    const w = await attempt(() => drv.write(key, to)); drv.snap = null;
+    const i = d.sent.indexOf(pad32(bytes)), save = d.sent.indexOf(pad32([0xa7, 0x0a]));
+    ok(w.ok && (await drv.read())[key] === to && i >= 0 && save > i && d.sent.slice(i + 1, save).some((x) => x.startsWith('a7 08')), `${key} -> ${to}: ${h(bytes)}, read back, then A7 0A (${w.e || ''})`);
+    ok(d.s.snapSaves === saves + 1 && d.s.saved === JSON.stringify(d.s.pairs), `${key}: saved once`);
+    ok((await attempt(() => drv.write(key, was))).ok && (await drv.read())[key] === was, `${key}: ${was} put back`);
+  }
+  ok(JSON.stringify(d.s.pairs[0]) === '[1,4,7]', 'pair 1 is as it was');
+  // pair 2 is empty: the firmware refuses a mode without both keys; nothing saved
+  {
+    const saves = d.s.snapSaves; d.sent.length = 0;
+    const e = await attempt(() => drv.write('sc2Type', 1));
+    ok(!e.ok && d.s.snapSaves === saves && !d.sent.includes(pad32([0xa7, 0x0a])) && JSON.stringify(d.s.pairs[1]) === '[0,0,0]', `a mode on an empty pair is refused by the board, nothing saved (${e.e})`);
+  }
+  // a pair write that does not stick: refused, never saved
+  d.s.sticky = true; drv.snap = null; d.sent.length = 0;
+  {
+    const saves = d.s.snapSaves;
+    const st = await attempt(() => drv.write('sc1Type', 5));
+    ok(!st.ok && /written back/.test(st.e) && d.s.snapSaves === saves && !d.sent.includes(pad32([0xa7, 0x0a])), `a snap click write that does not stick is refused and not saved (${st.e})`);
+  }
+  d.s.sticky = false; drv.snap = null;
+  // values outside the lists: refused before anything is sent
+  {
+    const n = d.sent.length;
+    for (const [k, v] of [['sc1Type', 6], ['sc1Type', '1'], ['sc1Key1', 0x2d], ['sc1Key1', 300], ['sc5Type', 1], ['osVal', 127], ['osVal', 256], ['osHue', -1], ['osSat', 1.5], ['lockLights', 4], ['perKeyType', 5], ['capsLight', true]])
+      ok(!(await attempt(() => drv.write(k, v))).ok, `refuses ${k} = ${JSON.stringify(v)}`);
+    ok(d.sent.length === n, `nothing sent for a refused value (${d.sent.length - n})`);
+  }
+
+  // lock lights: A8 04 <mask> H S V (the colour sent back as read), read back, then A8 02
+  for (const [key, to, bytes] of [['lockLights', 2, [0xa8, 0x04, 0x02, 0x00, 0x00, 0xff]], ['osHue', 85, [0xa8, 0x04, 0x00, 0x55, 0x00, 0xff]], ['osSat', 200, [0xa8, 0x04, 0x00, 0x00, 0xc8, 0xff]],
+    ['osVal', 160, [0xa8, 0x04, 0x00, 0x00, 0x00, 0xa0]], ['perKeyType', 1, [0xa8, 0x08, 0x01]]]) {
+    const was = (await drv.read())[key], saves = d.s.rgbSaves;
+    d.sent.length = 0;
+    const w = await attempt(() => drv.write(key, to)); drv.snap = null;
+    const i = d.sent.indexOf(pad32(bytes)), save = d.sent.indexOf(pad32([0xa8, 0x02]));
+    ok(w.ok && (await drv.read())[key] === to && i >= 0 && save > i && d.s.rgbSaves === saves + 1, `${key} -> ${to}: ${h(bytes)}, read back, then A8 02 (${w.e || ''})`);
+    ok((await attempt(() => drv.write(key, was))).ok && (await drv.read())[key] === was, `${key}: ${was} put back`);
+  }
+  // a lock-light bit the page does not show (Scroll Lock, bit 2) is set: the mask write would clear it, so the setting
+  // is not reported and never written
+  d.s.osDis = 0x04; drv.snap = null;
+  {
+    const n = d.sent.length;
+    ok(!('lockLights' in (await drv.read())), 'another light disabled: the lock-light choice is not reported');
+    const kept = await attempt(() => drv.write('lockLights', 1));
+    ok(!kept.ok && d.s.osDis === 0x04 && !d.sent.slice(n).some((x) => x.startsWith('a8 04')), `and not written (${kept.e})`);
+  }
+  d.s.osDis = 0; drv.snap = null;
+  ok(d.bad.length === 0, `snap click and lighting: only source commands, never a never-list one (${d.bad.join('; ')})`);
+  ok(!d.sent.some((x) => /^a8 (0a|0d|0f) /.test(x)), 'per-key colour and mixed-effect writes are never sent');
+}
+
+// 7. a board with only a Caps Lock light: one on/off toggle for it; no snap click bit: no pairs, never asked
+{
+  const d = board(0x0f10, { bits: 0x04 | 0x20 | 0x80, rgb: true, osAvail: 0x02 }); plugged = d;
+  await drv.connect(false);
+  ok(keys() === 'debounceType,debounceTime,reportRate,capsLight,osHue,osSat,osVal,perKeyType', `Caps Lock only: a toggle; no snap click without its bit (${keys()})`);
+  ok((await drv.read()).capsLight === true && !d.sent.some((x) => /^a7 0[78] /.test(x)), 'the Caps Lock light reads on; A7 07 / 08 are never asked');
+  d.sent.length = 0;
+  const w = await attempt(() => drv.write('capsLight', false)); drv.snap = null;
+  ok(w.ok && d.s.osDis === 0x02 && d.sent.includes(pad32([0xa8, 0x04, 0x02, 0x00, 0x00, 0xff])) && (await drv.read()).capsLight === false, `Caps Lock light off: A8 04 02 00 00 FF (${w.e || ''})`);
+  ok((await attempt(() => drv.write('capsLight', true))).ok && d.s.osDis === 0, 'and back on');
+  ok(d.bad.length === 0, `Caps Lock board: only source commands (${d.bad.join('; ')})`);
+}
+
+// 8. a board keeping fewer than four pairs: the pair read fails, so no pair reads or writes
+{
+  const d = board(0x0160, { bits: 0x04 | 0x08, snapCount: 2 }); plugged = d;
+  await drv.connect(false);
+  const r = await drv.read();
+  ok(!('sc1Type' in r) && r.debounceType === 4, `fewer than 4 pairs: the pairs are not reported (${JSON.stringify(r)})`);
+  ok(!(await attempt(() => drv.write('sc1Type', 0))).ok && !d.sent.some((x) => x.startsWith('a7 09')), 'and never written');
+}
+
+// 9. nothing is written before Turn on settings (DeviceHub's guard over the library driver), then each setting passes
+//    its check and the board ends as it was
+{
+  const os = await import('node:os');
+  const { guard } = await import('../helpers/my-devices.mjs');
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-keychron-'));
+  const g = fromJson(path.join(DIR, 'driver.json'));
+  g.vendorApp = async () => null;
+  const d = board(0x0160, { bits: 0x04 | 0x08 | 0x80, rgb: true }); plugged = d;
+  const state = () => JSON.stringify({ ...d.s, snapSaves: 0, rgbSaves: 0 });
+  const start = state(), backups = [];
+  guard(g, folder, { status: 'read-only', source: 'device-library/keychron-via' }, { backup: async (b) => backups.push(b), log: () => {}, makerApp: async () => null, now: () => new Date('2026-11-01T18:00:00Z'), version: 'v1' });
+  ok(await g.connect(), 'guarded Q6 connects');
+  await g.read(); await g.info();
+  const writes = () => d.sent.filter((x) => /^(a7 (06|09|0a|0c|0e)|a8 (02|04|08)) /.test(x));
+  ok(writes().length === 0 && g.library.turnOn === true, 'guarded: before Turn on settings nothing is written');
+  const ge = await attempt(() => g.write('sc1Type', 2));
+  ok(!ge.ok && /Turn on settings/.test(ge.e) && writes().length === 0, `guarded: a write before Turn on settings is refused (${ge.e})`);
+  const on = await g.turnOn();
+  const want = ['debounceType', 'debounceTime', 'sc1Type', 'sc1Key1', 'sc1Key2', 'sc4Type', 'lockLights', 'osHue', 'osSat', 'osVal', 'perKeyType'];
+  ok(on.on && want.every((k) => on.keys?.[k]?.ok === true) && backups.length === 1, `after Turn on settings each setting passes its check (${JSON.stringify(on.keys || on)})`);
+  ok(state() === start, 'the board ends as it was');
+  ok(d.bad.length === 0, `guarded: only source commands (${d.bad.join('; ')})`);
+  fs.rmSync(folder, { recursive: true, force: true });
+}
+
+console.log(fails ? `sim-keychron-via: ${fails} FAILED` : 'sim-keychron-via (Keychron debounce, wireless timers, report rate, snap click, lock lights, per-key effect over VIA; driver.json): all good');
 process.exitCode = fails ? 1 : 0;

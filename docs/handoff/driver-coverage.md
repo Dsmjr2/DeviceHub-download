@@ -211,9 +211,12 @@ Source: asus-rog.md (G-Helper `AsusMouse.cs`, libratbag `asus.c`).
 **Gaps**
 - **Active DPI stage** (`51 31 09`): the write counts from 1, but the sheet does not say whether the read counts from
   0 or 1.
-- **Low-battery warning** (`51 37`, read `12 07`) and **angle tuning** (`51 31 0B`): both are documented, but
-  `tests/declarative-driver.mjs` expects exactly today's seven keys from the cable read, and this job could not edit
-  it. Angle tuning's range is also given only approximately.
+- (Done 1 Nov 2026, from G-Helper AsusMouse.cs and its model classes) **low-battery warning** (`51 37 00 00 <sleep> 00
+  <v>`, read `12 07` byte 7; 0-50 in 10s) on every battery model, **angle tuning** (`51 31 0B 00 <lo> <hi>`, read
+  bytes 19-20 signed; Harpe Ace -30..30, Keris AimPoint, Gladius III AimPoint and Chakram X -20..20; the Gladius III
+  family has none) and **DPI stage colours** (`color` kind, read `12 04 03`, written as the DPI write with the stage's
+  raw DPI sent back; on the four HasDPIColors models). Stage colours taken out again 2 Nov 2026: those four models have separate X/Y DPI
+  (`12 04 02`, 5+4i), and no source shows the `12 04 00` DPI the colour write re-sent is right (docs/brands/asus-rog.md).
 - **Lights** (`51 28`, read `12 03 <zone>`): three blockers.
   - The sheet does not say which zones each model has.
   - It does not say which models use brightness 0-4 and which use 0-100.
@@ -221,7 +224,6 @@ Source: asus-rog.md (G-Helper `AsusMouse.cs`, libratbag `asus.c`).
 
   OpenRGB covers these lights, per sheet section 5.
 - **Per-LED lights (`51 29`):** no read is documented.
-- **DPI stage colours:** there is no colour kind, so they are sent back unchanged with every DPI write.
 - **Button remap and rapid fire** (`51 21`, `51 22`, `51 23`): sheet section 4 says never, and no read is documented.
 - **Debounce:** G-Helper's and libratbag's tables disagree, so it stays read-only.
 - **8K booster:** how it is switched is not documented.

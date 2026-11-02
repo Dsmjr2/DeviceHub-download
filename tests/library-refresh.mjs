@@ -94,6 +94,50 @@ put('my-devices/acme-mouse/verified.json', { checkedAt: '2026-10-25T00:00:00.000
 guard(b, folder, JSON.parse(read('my-devices/acme-mouse/library.json')), { log: () => {}, makerApp: async () => null });
 check(!b.settings.find((s) => s.key === 'dpi').readOnly, 'a self-check after the update counts as before');
 
+// 2 Nov 2026 (safety): a setting a library update ADDS to a driver whose settings were turned on before it is not
+// turned on by that old press: it stays read-only and is never self-checked until a new press; the old ones carry on.
+{
+  const two = (id, tag, keys) => `export const writes = [];\nexport default { id: '${id}', title: 'Acme ${tag}', kind: 'Mouse', settings: [${keys.map((k) => `{ key: '${k}', label: '${k.toUpperCase()}', type: 'slider', min: 0, max: 3200 }`).join(', ')}], async connect() { return true; }, async info() { return {}; }, async read() { return { ${keys.map((k) => `${k}: 800`).join(', ')} }; }, async write(k, v) { writes.push(k); return v; } };\n// ${tag}\n`;
+  const name = 'acme-grow';
+  put(`device-library/${name}/device.mjs`, two(name, 'new', ['dpi', 'led'])); put(`device-library/${name}/device.json`, meta(name, 'aab1', '2026-10-23'));
+  copy(name, name, 'aab1', '2026-10-22', 'old');   // settingsOn { at } with no keys list: an old press
+  put(`my-devices/${name}/device.mjs`, two(name, 'old', ['dpi']));
+  const r3 = await refreshInstalled({ root, now: () => new Date('2026-10-24T09:00:00.000Z') });
+  check(r3.replaced.some((x) => x.name === name), 'the growing driver is replaced');
+  const gm = JSON.parse(read(`my-devices/${name}/library.json`));
+  check(JSON.stringify(gm.settingsOn?.keys) === '["dpi"]' && /self-check record/.test(gm.settingsOn.keysFrom || ''), `the old press is written down as the settings its driver checked (${JSON.stringify(gm.settingsOn)})`);
+  const gf = path.join(root, 'my-devices', name);
+  const mod = await import(`file:///${gf.replace(/\\/g, '/')}/device.mjs?g=${Date.now()}`);
+  const g = mod.default;
+  guard(g, gf, gm, { log: () => {}, makerApp: async () => null, backup: async () => {}, version: 'v1', now: () => new Date('2026-10-25T00:00:00.000Z') });
+  check(g.library.turnOn, 'the page shows Turn on settings for the new setting');
+  await g.connect();
+  check(JSON.stringify(mod.writes) === '["dpi"]', `the connect's self-check writes only the setting turned on before (${JSON.stringify(mod.writes)})`);
+  check(!g.settings.find((s) => s.key === 'dpi').readOnly && g.settings.find((s) => s.key === 'led').readOnly, 'the old setting works, the new one is read-only');
+  let refused = '';
+  try { await g.write('led', 900); } catch (e) { refused = e.message; }
+  check(/not turned on yet/.test(refused), `writing the new setting is refused until a press (${refused})`);
+  check(await g.write('dpi', 900) === 900, 'writing the old setting still works');
+  mod.writes.length = 0;
+  const t = await g.turnOn();
+  check(t.on && mod.writes.includes('led'), `after the press the new setting is self-checked (${JSON.stringify(t.why || mod.writes)})`);
+  check(!g.settings.find((s) => s.key === 'led').readOnly && await g.write('led', 900) === 900 && !g.library.turnOn, 'after the press the new setting works');
+  check(JSON.parse(read(`my-devices/${name}/library.json`)).settingsOn.keys.includes('led'), 'the press keeps its keys list');
+
+  // a copy a library update replaced BEFORE this rule (no keys list, its verified.json in the backup): the keys come
+  // from the record of the driver it was pressed for, so the setting the update added is not on
+  const old = 'acme-early';
+  put(`my-devices/${old}/device.mjs`, two(old, 'new', ['dpi', 'led'])); put(`my-devices/${old}/device.json`, meta(old, 'aab2', '2026-10-23'));
+  put(`my-devices/${old}/library.json`, { source: `device-library/${old}`, name: old, id: old, status: 'read-only', settingsOn: { at: '2026-10-22T01:00:00.000Z' }, updatedFromLibrary: { at: '2026-10-23T05:00:00.000Z', from: '2026-10-22', to: '2026-10-23' } });
+  put(`backups/library-drivers/${old}-2026-10-23T05-00-00-000Z/verified.json`, { checkedAt: '2026-10-22T02:00:00.000Z', keys: { dpi: { ok: true, value: 800, readBack: 800, at: '2026-10-22T02:00:00.000Z' } } });
+  const ef = path.join(root, 'my-devices', old);
+  const emod = await import(`file:///${ef.replace(/\\/g, '/')}/device.mjs?e=${Date.now()}`);
+  guard(emod.default, ef, JSON.parse(read(`my-devices/${old}/library.json`)), { log: () => {}, makerApp: async () => null, backup: async () => {}, version: 'v1' });
+  await emod.default.connect();
+  check(JSON.stringify(emod.writes) === '["dpi"]' && emod.default.library.turnOn, `a copy updated before the rule: only the setting pressed for is self-checked (${JSON.stringify(emod.writes)})`);
+  check(JSON.stringify(JSON.parse(read(`my-devices/${old}/library.json`)).settingsOn.keys) === '["dpi"]', 'and its keys list is written down');
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 if (fails.length) { console.log(`library refresh: ${fails.length} problem(s)\n${fails.map((f) => `- ${f}`).join('\n')}`); process.exit(1); }
 console.log('library refresh: all good');

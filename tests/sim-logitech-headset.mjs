@@ -318,11 +318,13 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
 // ---- 3b. the G522 LIGHTSPEED (23 Oct 2026), battery only: Centurion report 0x50 with the address byte 0x23 (HeadsetControl
 // logitech_g522_lightspeed.hpp FRAME_PREFIX 50 23; Solaar base.py "typical G522 (addr=0x23)"). The dongle 0B18 has the
 // bridge; the cable 0B19 may have none (Solaar centurion.py: a direct device). Frames: [addr, len, flags, payload] ----
-function simG522({ addr = 0x23, bridge = 3, direct = false, percent = 58, charge = 0, batteryIndex = 2 }) {
+// st (1 Nov 2026): { level } = sidetone 0x0604 at sub index 5, sleep: [minutes, lights dim, lights off] = 0x0108 at 6, as
+// HeadsetControl logitech_g522_lightspeed.hpp @ 7b760ddb reads and writes them; ignoreWrites: acks and keeps the old value
+function simG522({ addr = 0x23, bridge = 3, direct = false, percent = 58, charge = 0, batteryIndex = 2, st = null, sleep = null }) {
   const ev = emitter();
   const frame = (payload) => { const d = new Array(63).fill(0); d[0] = addr; d[1] = payload.length + 1; d[2] = 0; payload.forEach((x, i) => { d[3 + i] = x; }); return d; };
   const dev = {
-    ...ev, opened: false, sent: [], subs: [], bad: [], ignored: 0,
+    ...ev, opened: false, sent: [], subs: [], bad: [], ignored: 0, st, sleep, ignoreWrites: false,
     async open() { this.opened = true; },
     say(payload) { ev.emit(0x50, frame(payload)); },   // a frame the headset sends by itself
     async sendReport(rid, data) {
@@ -349,8 +351,13 @@ function simG522({ addr = 0x23, bridge = 3, direct = false, percent = 58, charge
       this.subs.push({ sub, fn, p });
       ev.emit(0x50, frame([bridge, 0x11, 0x00, 0x00]));                                 // the bridge's ack
       const answer = (out) => ev.emit(0x50, frame([bridge, 0x10, 0x00, out.length + 3, 0x00, sub, fs, ...out]));
-      if (sub === 0 && fn === 0x00) { const id = (p[0] << 8) | p[1]; return answer(id === F.C_BATTERY ? [batteryIndex, 0, 0] : [0, 0, 0]); }
+      if (sub === 0 && fn === 0x00) { const id = (p[0] << 8) | p[1]; return answer(id === F.C_BATTERY ? [batteryIndex, 0, 0] : id === F.C_SIDETONE && st ? [5, 0, 2] : id === F.C_AUTO_SLEEP && sleep ? [6, 0, 4] : [0, 0, 0]); }
       if (sub === batteryIndex && fn === 0x00) return answer([percent, percent, charge]);
+      const refuse = () => ev.emit(0x50, frame([bridge, 0x10, 0x00, 0x04, 0x00, 0xff, sub, fs, 0x02]));
+      if (st && sub === 5 && fn === 0x00) return answer([0x01, 0x01, 0x00, st.level]);              // <mic id> <?> <gain?> <level>
+      if (st && sub === 5 && fn === 0x10) { if (p[0] !== 0x01 || p[1] !== 0xff || p[2] > 9) return refuse(); if (!this.ignoreWrites) st.level = p[2]; return answer(p.slice(0, 3)); }
+      if (sleep && sub === 6 && fn === 0x00) return answer(sleep.slice());
+      if (sleep && sub === 6 && fn === 0x10) { if (msg.length - 3 !== 3 || p[0] > 90) return refuse(); if (!this.ignoreWrites) sleep.splice(0, 3, ...p.slice(0, 3)); if (this.timerDrift !== undefined) { sleep[2] = this.timerDrift; this.timerDrift = undefined; } return answer(p.slice(0, 3)); }   // timerDrift: the next write leaves the lights-off timer at that value
       return ev.emit(0x50, frame([bridge, 0x10, 0x00, 0x04, 0x00, 0xff, sub, fs, 0x07]));
     },
   };
@@ -364,8 +371,8 @@ function simG522({ addr = 0x23, bridge = 3, direct = false, percent = 58, charge
   check(await d.connect() && d.centurion && d.bridge === 3 && !d.direct, 'G522 dongle connects and finds its bridge at index 3');
   check(d.hid.byPid['0B18'].reportId === 0x50 && d.hid.byPid['0B18'].page === 'FFA0' && d.hid.byPid['0B18'].usage === '0001' && d.hid.byPid['0B18'].iface === 3 && d.hid.byPid['0B18'].len === 63, 'G522 dongle channel: report 0x50, FFA0 / 0001, interface 3, 64-byte frames');
   check(h(g.sent[0].slice(0, 8)) === '23 05 00 00 01 00 03 00', `bridge lookup frame = 50 [23 05 00] 00 01 00 03 (${h(g.sent[0].slice(0, 8))})`);
-  check(g.subs.length === 1 && g.subs[0].sub === 0 && h(g.subs[0].p.slice(0, 2)) === '01 04', `only the battery 0x0104 is looked up through the bridge (${JSON.stringify(g.subs)})`);
-  check(d.settings.length === 0 && JSON.stringify(await d.read()) === '{}', 'G522: no settings, nothing to write (battery only)');
+  check(g.subs.length === 3 && g.subs.every((x) => x.sub === 0) && g.subs.map((x) => h(x.p.slice(0, 2))).join() === '01 04,06 04,01 08', `the battery 0x0104, sidetone 0x0604 and auto sleep 0x0108 are looked up through the bridge, nothing else (${JSON.stringify(g.subs)})`);
+  check(d.settings.length === 0 && JSON.stringify(await d.read()) === '{}', 'G522 answering neither 0x0604 nor 0x0108: no settings');
   let bat = await d.battery();
   check(bat?.percent === 58 && bat.charging === true && bat.full === false, `G522 battery through the bridge ${JSON.stringify(bat)}`);
   check(g.subs.at(-1).sub === 2 && g.subs.at(-1).fn === 0x00, 'battery = 0x0104 fn 0x00 (HeadsetControl getBattery)');
@@ -379,7 +386,7 @@ function simG522({ addr = 0x23, bridge = 3, direct = false, percent = 58, charge
   const d2 = make('0B18', g2);
   g2.say([0x00, 0x00, 0x00, 0x01]);
   check(await d2.connect() && d2.frame.addr === 0x24 && g2.ignored === 1, `no answer at 0x23, then asked once at 0x24, the address the headset sent a frame from (ignored ${g2.ignored})`);
-  check(g2.sent.every((b, i) => i === 0 ? b[0] === 0x23 : b[0] === 0x24) && g2.sent.length <= 3, `never a guessed address: only 0x23, then 0x24 (${g2.sent.map((b) => b[0].toString(16))})`);
+  check(g2.sent.every((b, i) => i === 0 ? b[0] === 0x23 : b[0] === 0x24) && g2.sent.length <= 5, `never a guessed address: only 0x23, then 0x24 (${g2.sent.map((b) => b[0].toString(16))})`);
   const g3 = simG522({ addr: 0x30 });
   const d3 = make('0B18', g3);
   e = await refusal(() => d3.connect());
@@ -401,6 +408,49 @@ function simG522({ addr = 0x23, bridge = 3, direct = false, percent = 58, charge
   const nb = simG522({ direct: true });
   e = await refusal(() => make('0B18', nb).connect());
   check(/no Centurion bridge/.test(e?.message || ''), `a G522 dongle with no bridge is reported (${e?.message})`);
+  // ---- G522 sidetone (0x0604) and auto sleep (0x0108), 1 Nov 2026, exactly as HeadsetControl @ 7b760ddb ----
+  {
+    const gs = simG522({ st: { level: 4 }, sleep: [10, 2, 5] });
+    const ds = make('0B18', gs);
+    check(await ds.connect() && ds.features[F.C_SIDETONE]?.index === 5 && ds.features[F.C_AUTO_SLEEP]?.index === 6, 'G522 with sidetone and auto sleep connects');
+    const sS = ds.settings.find((x) => x.key === 'sidetone'), aS = ds.settings.find((x) => x.key === 'autoOff');
+    check(sS?.min === 0 && sS.max === 9 && sS.unit === 'steps' && aS?.min === 0 && aS.max === 90, `sidetone 0-9 steps, auto sleep 0-90 min (${JSON.stringify([sS, aS])})`);
+    check(!gs.subs.some((x) => x.sub === 5 && x.fn === 0x20), 'no gain-step read (fn 0x20) is sent to a G522');
+    let v = await ds.read();
+    check(v.sidetone === 4 && v.autoOff === 10 && v.micMuted === undefined, `G522 read: sidetone params[3], auto sleep byte 0 (${JSON.stringify(v)})`);
+    check(gs.subs.some((x) => x.sub === 5 && x.fn === 0x00) && gs.subs.some((x) => x.sub === 6 && x.fn === 0x00), 'reads: 0x0604 fn 0x00, 0x0108 fn 0x00');
+    check((await ds.write('sidetone', 7)) === 7 && gs.st.level === 7, 'G522 sidetone 7 written and read back');
+    check(h(gs.subs.filter((x) => x.sub === 5 && x.fn === 0x10).at(-1).p) === '01 ff 07', 'sidetone write = 0x0604 fn 0x10 [01 FF 07] (HeadsetControl setSidetone)');
+    let n = gs.subs.length;
+    let e = await refusal(() => ds.write('sidetone', 10));
+    check(/0-9/.test(e?.message || '') && gs.subs.length === n, 'sidetone 10 refused before sending');
+    check((await ds.write('autoOff', 30)) === 30 && h(gs.sleep) === '1e 02 05', `auto sleep 30 min written, the light timers kept as read (${h(gs.sleep)})`);
+    check(h(gs.subs.filter((x) => x.sub === 6 && x.fn === 0x10).at(-1).p) === '1e 02 05', 'auto sleep write = 0x0108 fn 0x10 [minutes, dim, off] (HeadsetControl buildAutoSleepParams)');
+    n = gs.subs.length;
+    e = await refusal(() => ds.write('autoOff', 91));
+    check(/0-90/.test(e?.message || '') && gs.subs.length === n, 'auto sleep 91 refused before sending');
+    gs.ignoreWrites = true;
+    e = await refusal(() => ds.write('sidetone', 2));
+    check(/reads back 7/.test(e?.message || ''), `a sidetone that does not read back fails (${e?.message})`);
+    e = await refusal(() => ds.write('autoOff', 15));
+    check(/reads back 1e 02 05/.test(e?.message || ''), `an auto sleep that does not read back fails (${e?.message})`);
+    gs.ignoreWrites = false;
+    // 2 Nov 2026: the minutes keep but a light timer moves -> all three bytes are compared, it fails and the bytes go back
+    gs.timerDrift = 9;
+    e = await refusal(() => ds.write('autoOff', 15));
+    check(/wrote 0f 02 05 but the headset reads back 0f 02 09 \(put back as read before\)/.test(e?.message || '') && h(gs.sleep) === '1e 02 05', `a light timer that moved fails the auto sleep write and is put back (${e?.message}; ${h(gs.sleep)})`);
+    check((await ds.write('sidetone', 4)) === 4 && (await ds.write('autoOff', 10)) === 10 && h(gs.sleep) === '0a 02 05', 'G522 put back as it started');
+    // a level above 9 is not a G522 reading (HeadsetControl: "Unexpected G522 sidetone reply"): not reported
+    gs.st.level = 12;
+    check((await ds.read()).sidetone === undefined, 'a sidetone level above 9 is not reported');
+    gs.st.level = 4;
+    n = gs.subs.length;
+    await selfChecked(ds, { st: gs.st, sleep: gs.sleep });
+    const sent = gs.subs.slice(n);
+    check(sent.some((x) => x.sub === 5 && x.fn === 0x10 && h(x.p) === '01 ff 04') && sent.some((x) => x.sub === 6 && x.fn === 0x10 && h(x.p) === '0a 02 05'), 'the G522 self-check really sent sidetone [01 FF 04] and auto sleep [0A 02 05], its own values');
+    check(gs.subs.filter((x) => x.fn === 0x10).every((x) => x.sub === 5 || x.sub === 6), 'only sidetone and auto sleep were ever written');
+    check(gs.bad.length === 0, `every G522 frame well formed (${gs.bad.join('; ')})`);
+  }
   // the G431 / G432 / G433 are not run (HeadsetControl only writes their sidetone, no read)
   check(!['0A9B', '0A9C', '0A6D'].some((p) => PIDS.includes(p)), 'G431 / G432 / G433 are not among the ids');
 }

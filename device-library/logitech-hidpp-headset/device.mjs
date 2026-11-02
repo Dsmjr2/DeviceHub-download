@@ -33,8 +33,23 @@
 //   address 0x00-0xFF; DeviceHub never does (no guessed sends): it only takes another address from a 0x50 frame the
 //   headset sends by itself, as Solaar's receive path does, and asks once more there. The cable id 0B19: Solaar names it
 //   but gives no collection or interface, so its channel is the 0xFFA0 collection with 63-byte reports (udev_impl.py);
-//   with no bridge there it is asked directly (centurion.py). Sidetone, auto sleep, lights, EQ and voice prompts on the
-//   G522 are not offered yet (only the battery is, read-only).
+//   with no bridge there it is asked directly (centurion.py).
+// G522 sidetone and auto sleep (1 Nov 2026), through the bridge only (the dongle 0B18; the cable stays battery only: no
+// source drives its settings):
+//   HC3    = HeadsetControl @ 7b760ddb29e4618f4229ab2936a4b009ab2e1fa0, lib/devices/logitech_g522_lightspeed.hpp as last
+//            changed by fbbce846b253f49edf063e52b2c04343bc581c4b ("Logitech G522: port to Centurion ... sidetone read-back
+//            (0x0604, 10 steps)", #592; "Tested on a G522 on Linux by the author"), with protocols/
+//            logitech_centurion_protocol.hpp (CenturionFeature HeadsetAudioSidetone = 0x0604, CenturionAutoSleep = 0x0108)
+//   - sidetone: getSidetone = 0x0604 fn 0x00, parseSidetoneResponse "<mic id> <?> <gain?> <level 0-9>": the level is
+//     params[3], and a reply with params[3] > SIDETONE_DEVICE_MAX (9) is "Unexpected"; setSidetone = fn 0x10
+//     [SIDETONE_MIC_ID 0x01, 0xFF, level], level 0-9 (HC maps 0-128 onto those 10 steps; DeviceHub offers the 10 steps
+//     themselves, so what is written is exactly what reads back). The same as the PRO X 2's version 2+ path (Solaar
+//     HeadsetSidetone), minus its fn 0x20 gain-step read, which HC3 never sends to a G522.
+//   - auto sleep: setInactiveTime reads 0x0108 fn 0x00 first, then writes fn 0x10 buildAutoSleepParams = [minutes,
+//     current[1], current[2]] ("The same command also carries the two lighting inactivity timers ... the headset rejects a
+//     write without them, so keep the values that were read back"); range 0-90 minutes (InactiveTimeResult max_minutes
+//     90). The minutes are read back from byte 0 of the same read (the slot buildAutoSleepParams writes).
+//   Lights, EQ, voice prompts and the mic-mute light stay out: HC3 only writes them (no read of the same value).
 //
 // Left out (no source documents a read-back, or the layout is not documented): HID++ sidetone on the G432 family and
 // G533 (HC writes only), lights (HC `04 3C`: write only), the PRO X 2's EQ (0x020D / 0x0636: HC writes a parametric
@@ -177,7 +192,7 @@ export function createLogitechHeadset({ open = defaultOpen, vendorApp = defaultV
         '0B18': { page: 'FFA0', usage: '0001', iface: 3, len: C_LEN, reportId: C_REPORT_ADDR },
         // the G522 cable: the 0xFFA0 collection whose input and output reports are 63 bytes (Solaar udev_impl.py)
         '0B19': { page: 'FFA0', usage: '*', inputLen: C_LEN, outputLen: C_LEN, len: C_LEN, reportId: C_REPORT_ADDR } } },
-    unsupported: ['lights', 'EQ on the PRO X 2', 'setting the mic mute (shown only)', 'G432 / G533 sidetone', 'G522 settings (battery only)', 'G435, ASTRO A50 / A50 X', 'firmware updates', 'pairing'],
+    unsupported: ['lights', 'EQ on the PRO X 2', 'setting the mic mute (shown only)', 'G432 / G533 sidetone', 'G522 lights, EQ, voice prompts and mic-mute light (write-only in HeadsetControl); the G522 cable\'s settings', 'G435, ASTRO A50 / A50 X', 'firmware updates', 'pairing'],
     dev: null, pid: null, centurion: false, features: {}, caps: {}, bridge: null, q: Promise.resolve(), frame: null, direct: false, heardAddr: null,
 
     get settings() {
@@ -185,7 +200,7 @@ export function createLogitechHeadset({ open = defaultOpen, vendorApp = defaultV
       const c = this.caps;
       if (c.sidetone) out.push({ key: 'sidetone', label: 'Sidetone', type: 'slider', min: 0, max: c.sidetone.max, step: 1, unit: c.sidetone.max === 100 ? '%' : 'steps', live: true, hint: 'How much of your own voice you hear' });
       if (c.autoOff?.choices) out.push({ key: 'autoOff', label: 'Turn off when idle', type: 'choice', options: c.autoOff.choices.map((m) => ({ value: m, label: m ? `after ${m} min` : 'never' })) });
-      else if (c.autoOff) out.push({ key: 'autoOff', label: 'Turn off when idle', type: 'slider', min: 0, max: 255, step: 1, unit: 'min', hint: '0 = never' });
+      else if (c.autoOff) out.push({ key: 'autoOff', label: 'Turn off when idle', type: 'slider', min: 0, max: c.autoOff.max ?? 255, step: 1, unit: 'min', hint: '0 = never' });
       if (c.micMute) out.push({ key: 'micMuted', label: 'Mic muted', type: 'display', hint: 'Shown only; mute with the headset\'s own button' });
       for (const b of c.eq?.bands || []) out.push({ key: `eq${b.n}`, label: `EQ ${b.label}`, type: 'slider', min: c.eq.min, max: c.eq.max, step: 1, unit: 'dB', hint: 'Stored in the headset' });
       return out;   // empty until connect() has read what this headset has
@@ -357,14 +372,16 @@ export function createLogitechHeadset({ open = defaultOpen, vendorApp = defaultV
       }
       if (!b[0]) throw new Error(`the ${CENTURION[this.pid]} dongle has no Centurion bridge (0x0003)`);
       this.bridge = b[0];
-      // the G522: only the battery is looked up (sidetone, auto sleep and mic mute are not offered for it yet)
-      for (const id of g522 ? [F.C_BATTERY] : [F.C_BATTERY, F.C_SIDETONE, F.C_AUTO_SLEEP, F.MIC_MUTE]) {
+      // the G522: the battery, sidetone and auto sleep (HC3; its mic mute is not looked up)
+      for (const id of g522 ? [F.C_BATTERY, F.C_SIDETONE, F.C_AUTO_SLEEP] : [F.C_BATTERY, F.C_SIDETONE, F.C_AUTO_SLEEP, F.MIC_MUTE]) {
         const r = await this.cSub(F.ROOT, 0x00, [id >> 8, id & 0xff]);
         if (r[0]) this.features[id] = { index: r[0], flags: r[1], version: r[2] };
       }
       const c = this.caps;
       const st = this.features[F.C_SIDETONE];
-      if (st) {
+      // G522 (HC3): 10 steps 0-9, the v2 layout ([01 FF level] / level at params[3]), no gain-step read
+      if (st && g522) c.sidetone = { max: 9, v2: true, g522: true };
+      else if (st) {
         // Solaar HeadsetSidetone.build: version > 1: get [mic_count, mic_id, reserved, level], set [01, FF, level], gain steps
         // N = fn 0x20 reply byte 2 when > 1; version <= 1: get [mic_count, mic_id, level], set [01, level], N = 101
         let steps = 101;
@@ -373,7 +390,8 @@ export function createLogitechHeadset({ open = defaultOpen, vendorApp = defaultV
       }
       const as = this.features[F.C_AUTO_SLEEP];
       // Solaar _AutoSleepRangeValidator: v4+ 3 bytes (slot 0), v3 2 bytes (slot 1), else 1 byte (slot 0); 0-255 minutes
-      if (as) c.autoOff = { max: 255, bytes: as.version >= 4 ? 3 : as.version >= 3 ? 2 : 1, slot: as.version === 3 ? 1 : 0 };
+      if (as && g522) c.autoOff = { max: 90, bytes: 3, slot: 0 };   // HC3 buildAutoSleepParams [minutes, lights dim, lights off], 0-90
+      else if (as) c.autoOff = { max: 255, bytes: as.version >= 4 ? 3 : as.version >= 3 ? 2 : 1, slot: as.version === 3 ? 1 : 0 };
       if (this.features[F.MIC_MUTE]) c.micMute = true;
     },
 
@@ -382,6 +400,8 @@ export function createLogitechHeadset({ open = defaultOpen, vendorApp = defaultV
       if (!this.caps.sidetone) return undefined;
       if (!this.centurion) return (await this.hidpp(F.SIDETONE, 0x00))[0];          // Solaar Sidetone: reply byte 0
       const r = await this.cSub(F.C_SIDETONE, 0x00);
+      // G522: HC3 parseSidetoneResponse refuses a level above 9 ("Unexpected G522 sidetone reply"): not reported then
+      if (this.caps.sidetone.g522) return r[3] <= 9 ? r[3] : undefined;
       return r[this.caps.sidetone.v2 ? 3 : 2];                                       // Solaar HeadsetSidetone read_skip_byte_count 3 / 2
     },
     async readAutoOffBytes() { return Array.from((await this.cSub(F.C_AUTO_SLEEP, 0x00)).slice(0, this.caps.autoOff.bytes)); },
@@ -436,7 +456,8 @@ export function createLogitechHeadset({ open = defaultOpen, vendorApp = defaultV
       if (key === 'sidetone') {
         if (!this.centurion) await this.hidpp(F.SIDETONE, 0x10, [value], { retry: false });   // Solaar Sidetone write fn 0x10 [level]; HC `07 1A level`
         else {
-          // Solaar HeadsetSidetone prepare_write: [01, FF, level] (v2+) or [01, level]. Solaar skips an unchanged level;
+          // Solaar HeadsetSidetone prepare_write: [01, FF, level] (v2+) or [01, level]; the G522 the same [01, FF, level]
+          // (HC3 setSidetone: SIDETONE_MIC_ID, 0xFF, mapped). Solaar skips an unchanged level;
           // DeviceHub always sends it (driver safety, 22 Oct 2026): the self-check writes the value it just read, and a
           // skipped write would pass without the headset ever taking the command
           await this.cSub(F.C_SIDETONE, 0x10, c.sidetone.v2 ? [0x01, 0xff, value] : [0x01, value]);
@@ -444,11 +465,22 @@ export function createLogitechHeadset({ open = defaultOpen, vendorApp = defaultV
       } else if (key === 'autoOff') {
         if (!this.centurion) await this.hidpp(F.ADC, 0x20, [value], { retry: false });     // Solaar ADCPower write 0x20 [minutes]; HC G535 `05 2D min`
         else {
-          // Solaar _AutoSleepRangeValidator.prepare_write: the bytes just read, only the timer slot changed. Sent even when
+          // Solaar _AutoSleepRangeValidator.prepare_write: the bytes just read, only the timer slot changed (the G522: HC3
+          // buildAutoSleepParams [minutes, current[1], current[2]], the two light timers as read). Sent even when
           // unchanged (driver safety, 22 Oct 2026: the self-check's write of the same value must reach the headset)
-          const cur = await this.readAutoOffBytes();
+          const was = await this.readAutoOffBytes();
+          const cur = was.slice();
           cur[c.autoOff.slot] = value;
           await this.cSub(F.C_AUTO_SLEEP, 0x10, cur);
+          // every byte read back, not only the minutes (2 Nov 2026): on the G522 the two light timers ride in the same
+          // write, so one that did not keep its value is a failed write too; the bytes read before go back once
+          const after = await this.readAutoOffBytes();
+          const off = cur.findIndex((b, i) => after[i] !== b);
+          if (off >= 0) {
+            let back = '';
+            try { await this.cSub(F.C_AUTO_SLEEP, 0x10, was); const again = await this.readAutoOffBytes(); back = was.every((b, i) => again[i] === b) ? ' (put back as read before)' : ' (and putting it back did not read back)'; } catch { back = ' (and putting it back failed)'; }
+            throw new Error(`autoOff: wrote ${cur.map((b) => b.toString(16).padStart(2, '0')).join(' ')} but the headset reads back ${after.map((b) => b.toString(16).padStart(2, '0')).join(' ')}${back}`);
+          }
         }
       } else if (/^eq\d+$/.test(key)) {
         // Solaar Equalizer write 0x30: [02, gain per band] (PackedRangeValidator write_prefix_bytes b"\x02", signed bytes);

@@ -331,8 +331,15 @@ on a real mouse): battery (0x1004 / 0x1000 / 0x1001), DPI (0x2201), report rate 
 G502 X family reads 1-based, libratbag `HIDPP20_QUIRK_INDEX_OFFSET`), **DPI stage** (0x8100 fn 0xB0 / 0xC0, slot 0-4,
 libratbag) and **lift-off** (0x2202: caps fn 0x10 `[00]` b2 bit1; read fn 0x50 `[00]` -> X b1-2, Y b5-6, LOD b9; write
 fn 0x60 `[00, X, Y, LOD]`; Solaar `ExtendedAdjustableDpi`). Every write is refused while G HUB (`lghub*.exe`) runs.
-Still left out: profile memory writes (the DPI of each stage, buttons, sleep timer), lights (0x8071 cannot be read back,
-0x8070 parameter layouts missing), button remaps (0x1B04 targets not documented), angle snapping, surface tuning.
+1 Nov 2026: **zone lights** (0x8070: info fn 0x00, ext caps bit 0 = zone effect reads back; zone info fn 0x10 `[zone]`;
+effect info fn 0x20 `[zone, i]`; read fn 0xE0 `[zone]` -> `[effect index, 10 bytes]`; write fn 0x30 `[zone, effect index,
+10 bytes]`, persistence byte 12 never sent; off / static colour 0-2 / cycle period 5-6 intensity 7 / breathe colour 0-2
+period 3-4 intensity 6; Solaar `LEDZoneSetting` and OpenRGB `setMode` use the effect index, libratbag the effect id:
+a reading the two layouts disagree on is not used) and **button remap** (0x1B04: count fn 0x00, info fn 0x10, read fn
+0x20 `[cid]`, write fn 0x30 `[cid, 00, target]`, targets = own id + the group mask's controls, Solaar
+`ReprogrammableKeys`; never Left Button, never a divert or persist bit).
+Still left out: profile memory writes (the DPI of each stage, buttons, sleep timer), 0x8071 lights (no read-back), other
+0x8070 effects, diverting and persistent remaps, angle snapping, surface tuning.
 
 Covered (22 Oct 2026, by id alone, from libratbag `data/devices/*.device` @ 8235b5bb; features still found at connect):
 USB G Pro 0xC085 / 0xC08C, G102 / G103 / G203 0xC084 / 0xC092 / 0xC09D, G302 0xC07F, G303 0xC080, G303 Shroud 0xC097,
@@ -356,7 +363,9 @@ curve); sidetone 0x8300 read fn 0x00 / write fn 0x10 (Solaar `Sidetone`); auto-o
 through Centurion frames (report 0x51) and the 0x0003 bridge exactly as HeadsetControl
 `logitech_centurion_protocol.hpp` builds them: battery 0x0104, sidetone 0x0604 in the headset's own gain steps and
 auto sleep 0x0108 with the other timer slots sent back as read (Solaar `HeadsetSidetone`, `HeadsetAutoSleep`).
-Not covered: lights (write-only), the PRO X 2 EQ, G432 / G533 sidetone (write-only), G522, G435, ASTRO A50 / A50 X.
+The G522 (1 Nov 2026): battery, sidetone 0x0604 (read params[3] 0-9, write `[01 FF level]`) and auto sleep 0x0108
+(write `[minutes, lights dim, lights off]`, the timers as read, 0-90) as HeadsetControl `logitech_g522_lightspeed.hpp` @ 7b760ddb.
+Not covered: lights (write-only), the PRO X 2 EQ, G432 / G533 sidetone (write-only), G522 lights / EQ / voice prompts, G435, ASTRO A50 / A50 X.
 
 **Keyboards** (G915 / G915 TKL / G815 / G813 / G515 TKL / G512 / G213 / PRO; receivers C541, C545): battery, report rate
 0x8061 / 0x8060 (host mode only), settings source 0x8100 fn 0x20 / 0x10, onboard profile **select only** (count from fn

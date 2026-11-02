@@ -215,8 +215,16 @@ keyboard work can stop at battery, sleep, DPI, polling and the mouse-only settin
 
 **Covered in device-library/asus-rog-mouse (22 Oct 2026):** battery, charging, sleep, DPI stages 1-4, polling,
 angle snapping, lift-off, button response (read only), and since 22 Oct the DPI stage count (`51 31 0A`, read `12 00`
-byte 19) and onboard profile select (`50 02`, read `12 00` byte 11; select only). Not covered, and why:
-docs/handoff/driver-coverage.md.
+byte 19) and onboard profile select (`50 02`, read `12 00` byte 11; select only); since 1 Nov the low-battery warning,
+angle tuning, per model as G-Helper's model classes say (HasLowBatteryWarning, HasAngleTuning with AngleTuningMin/Max;
+libratbag and OpenRGB document neither). Not covered, and why: docs/handoff/driver-coverage.md.
+
+**DPI stage colours: taken out again (2 Nov 2026).** They were offered on 1 Nov on the four HasDPIColors models
+(Harpe Ace Aim Lab, Keris Wireless AimPoint, Gladius III Wireless AimPoint, Chakram X). G-Helper and libratbag give
+all four separate X/Y DPI, read from `12 04 02` with stage i at byte 5+4i, while the colour write re-sent the raw DPI
+the driver reads from `12 04 00` at 5+2i. No source shows that `12 04 00` holds the real per-stage DPI on these models,
+so a colour write could send another DPI with the colour. Not offered until a capture from one of them shows the round
+trip is right. The colours are still read on demand and sent back unchanged with a DPI write.
 
 ## 6. Gaps and unknowns
 

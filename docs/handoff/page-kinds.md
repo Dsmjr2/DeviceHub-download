@@ -58,8 +58,9 @@ faked a reading as a slider that refuses. Three kinds are new, in the contract, 
   - Razer scroll mode, HyperX raw sidetone bytes and HyperX charging (raw) are undocumented raw numbers, so they stay
     in the device info.
   - Razer stage sliders, Logitech choices and the HyperX II Core sidetone step are real writable settings.
-  - Colour and remap are still unused by any library driver: no source documents a read-back for Razer or Logitech
-    static colour, ASUS stage colours or any button remap (driver-coverage.md "Gaps"). The kinds are ready when one is.
+  - Colour and remap were unused by any library driver until 1 Nov 2026, when the ASUS ROG mouse's DPI stage colours
+    used `color`; taken out again 2 Nov 2026 (separate X/Y DPI on those models, docs/brands/asus-rog.md). No source documents a read-back for Razer or Logitech static
+    colour or any button remap.
 
 **Tests** (`tests/declarative-driver.mjs`, new part 4 only; the ASUS byte-for-byte proof is untouched and passes):
 - A pretend device with display, one color, two zones and a two-button remap is accepted.

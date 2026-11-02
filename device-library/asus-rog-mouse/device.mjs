@@ -34,14 +34,20 @@ const HZ = [125, 250, 500, 1000, 2000, 4000, 8000];          // sheet: Polling r
 const UP_TO_1K = HZ.slice(0, 4);
 
 // sheet section 1 "Mice"; dpiMax: maker's spec (see top); pollingCable: sheet section 4 "Polling above 1000 Hz: only
-// on models GH lists for it (Chakram X wired, Harpe II Ace)"
+// on models GH lists for it (Chakram X wired, Harpe II Ace)". angle (1 Nov 2026): G-Helper's HasAngleTuning with its
+// AngleTuningMin / Max (AsusMouse.cs default -20..20; HarpeAceAimLab.cs -30..30); dpiColors: G-Helper's HasDPIColors.
+// DPI stage colours are NOT offered as settings (2 Nov 2026): G-Helper and libratbag give all four stage-colour models separate X/Y DPI, read from 12 04 02 at byte 5+4i, while the colour write re-sends the raw DPI read from 12 04 00 at 5+2i; no source shows that round trip is right, so it is not offered.
+// docs/brands/asus-rog.md. The colours are still read on demand and sent back unchanged with a DPI write.
+// DPI stage colours are NOT offered as settings (2 Nov 2026): G-Helper and libratbag give all four stage-colour models separate X/Y DPI, read from 12 04 02 at byte 5+4i, while the colour write re-sends the raw DPI read from 12 04 00 at 5+2i; no source shows that round trip is right, so it is not offered.
+// docs/brands/asus-rog.md. The colours are still read on demand and sent back unchanged with a DPI write.
+// Every battery model here has G-Helper's HasLowBatteryWarning (the Gladius III Wireless too; the wired Gladius III not).
 export const MODELS = [
-  { key: 'harpe-ace-aim-lab', name: 'ROG Harpe Ace Aim Lab Edition', cable: 0x1a92, dongle: 0x1a94, omni: [0x1a94], battery: true, dpiMax: 36000 },
-  { key: 'keris-wireless-aimpoint', name: 'ROG Keris Wireless AimPoint', cable: 0x1a66, dongle: 0x1a68, omni: [0x1a68, 0x1a6a], battery: true, dpiMax: 36000 },
+  { key: 'harpe-ace-aim-lab', name: 'ROG Harpe Ace Aim Lab Edition', cable: 0x1a92, dongle: 0x1a94, omni: [0x1a94], battery: true, dpiMax: 36000, angle: [-30, 30], dpiColors: true },
+  { key: 'keris-wireless-aimpoint', name: 'ROG Keris Wireless AimPoint', cable: 0x1a66, dongle: 0x1a68, omni: [0x1a68, 0x1a6a], battery: true, dpiMax: 36000, angle: [-20, 20], dpiColors: true },
   { key: 'gladius-iii', name: 'ROG Gladius III', cable: 0x197b, battery: false, dpiMax: 19000 },
   { key: 'gladius-iii-wireless', name: 'ROG Gladius III Wireless', cable: 0x197d, dongle: 0x197f, battery: true, dpiMax: 19000 },
-  { key: 'gladius-iii-wireless-aimpoint', name: 'ROG Gladius III Wireless AimPoint', cable: 0x1a70, dongle: 0x1a72, omni: [0x1a72], battery: true, dpiMax: 36000 },
-  { key: 'chakram-x', name: 'ROG Chakram X', cable: 0x1a18, dongle: 0x1a1a, battery: true, dpiMax: 36000, doubleDpi: true, pollingCable: HZ },
+  { key: 'gladius-iii-wireless-aimpoint', name: 'ROG Gladius III Wireless AimPoint', cable: 0x1a70, dongle: 0x1a72, omni: [0x1a72], battery: true, dpiMax: 36000, angle: [-20, 20], dpiColors: true },
+  { key: 'chakram-x', name: 'ROG Chakram X', cable: 0x1a18, dongle: 0x1a1a, battery: true, dpiMax: 36000, doubleDpi: true, pollingCable: HZ, angle: [-20, 20], dpiColors: true },
 ];
 export const PIDS = [...new Set(MODELS.flatMap((m) => [m.cable, m.dongle].filter(Boolean)).concat(OMNI))];
 
@@ -73,12 +79,16 @@ const SET = {
   liftOff: (v) => [0x51, 0x35, 0xff, 0x00, 0xff, v],                                    // `00 51 35 FF 00 FF <v>`
   stageCount: (n) => [0x51, 0x31, 0x0a, 0x00, n],                                       // sheet: DPI stage count `00 51 31 0A 00 <2-4>` (G-Helper)
   profile: (p) => [0x50, 0x02, p],                                                      // sheet: Profile `00 50 02 <p>`, 0-based (G-Helper, libratbag); select only
+  angle: (deg) => [0x51, 0x31, 0x0b, 0x00, deg & 0xff, (deg >> 8) & 0xff],             // sheet: Angle tuning `00 51 31 0B 00 <lo> <hi>`, signed (G-Helper GetUpdateAngleAdjustmentPacket)
 };
 
 // sheet: Sleep codes 00 1 min, 01 2, 02 3, 03 5, 04 10, FF never (value here: minutes, 0 = never)
 const SLEEP = { 0x00: 1, 0x01: 2, 0x02: 3, 0x03: 5, 0x04: 10, 0xff: 0 };
 const SLEEP_CODE = Object.fromEntries(Object.entries(SLEEP).map(([c, m]) => [m, Number(c)]));
-const LIFT = { 0x00: 'low', 0x01: 'high' };   // sheet: Lift-off `00` low, `01` high
+const LIFT = { 0x00: 'low', 0x01: 'high' };
+const HEX = /^#[0-9a-f]{6}$/;
+// a write that must leave these values as they were (they go out in the same packet)
+const KEEP = { sleep: ['lowBattery'], lowBattery: ['sleep'] };   // sheet: Lift-off `00` low, `01` high
 // sheet: Button response, the two tables that disagree (shown, never written)
 const debounceText = (c) => `code ${c}: G-Helper reads ${c === 0 ? 'off' : c <= 7 ? `${8 + 4 * (c - 1)} ms` : '?'}, libratbag ${c <= 7 ? `${4 + 4 * c} ms` : '?'} (read only: the sources disagree)`;
 
@@ -99,9 +109,9 @@ const adapter = {
   // one channel per pid (HID LAYER 1-3): mi_00 on the cable and own receiver; mi_02&col03 (+ col01 for report 01) on the Omni
   hid: { vid: '0B05', pid: '1A92', pids: PIDS.map((p) => p.toString(16).toUpperCase().padStart(4, '0')), page: 'FF01', usage: '*', iface: 0, len: 64, reportId: 0, replyMs: 300,
     byPid: { [OMNI.toString(16).toUpperCase().padStart(4, '0')]: { page: '*', usage: '*', iface: 2, col: 3, reportId: LINKS.omni.reportId, routes: { [OMNI_PAIRING.reportId]: { col: 1 } } } } },
-  unsupported: ['firmware updates', 'Omni receiver pairing', 'button remaps', 'lights (OpenRGB has them)', 'button response and the 8K booster (read only: the sources disagree)', 'active DPI stage, angle tuning, low-battery warning, DPI stage colors (not yet: see docs/handoff/driver-coverage.md)'],
+  unsupported: ['firmware updates', 'Omni receiver pairing', 'button remaps', 'lights (OpenRGB has them)', 'button response and the 8K booster (read only: the sources disagree)', 'active DPI stage (not yet: see docs/handoff/driver-coverage.md)'],
 
-  get settings() { return settingsFor(this.model, this.link, this.dpiLocked, this.booster); },
+  get settings() { return settingsFor(this.model, this.link, this.dpiLocked, this.booster, this.angleLocked); },
 
   // the vendor-app check (replaceable in tests); resolves with the running app's name, or null
   async vendorApp() {
@@ -118,7 +128,7 @@ const adapter = {
   },
 
   async connect(prompt = false) {
-    Object.assign(this, { dev: null, ch: null, model: null, link: null, booster: null, dpiLocked: false, snap: null, snapAt: 0, appAt: 0, app: null });
+    Object.assign(this, { dev: null, ch: null, model: null, link: null, booster: null, dpiLocked: false, angleLocked: false, snap: null, snapAt: 0, appAt: 0, app: null });
     const dev = await getDevice(PIDS.map((productId) => (productId === OMNI ? { vendorId: VID, productId } : { vendorId: VID, productId, usagePage: 0xff01 })), { prompt });
     if (!dev) return false;
     if (!dev.opened) await dev.open();
@@ -180,10 +190,10 @@ const adapter = {
   },
 
   decode({ status, profile, lift, prof }) {
-    const m = this.model, v = {};
+    const m = this.model, v = { dpiRaw: [] };
     for (let i = 0; i < 4; i++) {
       const raw = B(profile, 5 + 2 * i) | (B(profile, 6 + 2 * i) << 8);   // sheet: stage i at byte 5+2i
-      if (raw) v[`dpi${i + 1}`] = dpiFromRaw(raw, m);
+      if (raw) { v[`dpi${i + 1}`] = dpiFromRaw(raw, m); v.dpiRaw[i] = raw; }
     }
     const poll = B(profile, 13);                                           // sheet: byte 13 & 07; high nibble = booster
     v.pollingCode = poll & 0x07; v.pollingHigh = poll >> 4;
@@ -191,6 +201,10 @@ const adapter = {
     v.debounce = B(profile, 15);                                           // sheet: Button response byte 15 (read only)
     const snapRaw = B(profile, 17);                                        // sheet: Angle snapping byte 17
     if (snapRaw === 0 || snapRaw === 1) v.angleSnap = snapRaw === 1;       // another byte is not reported, so never written back as 0 / 1 (driver safety)
+    // sheet: Angle tuning bytes 19-20, signed int16 LE (G-Helper ParseAngleAdjustment); outside -30..30 = not reported;
+    // outside this model's range the range is wrong for this mouse, so it becomes read only (as a DPI stage above the maximum)
+    const tune = ((B(profile, 19) | (B(profile, 20) << 8)) << 16) >> 16;
+    if (tune >= -30 && tune <= 30) { v.angleTune = tune; if (m.angle && (tune < m.angle[0] || tune > m.angle[1])) this.angleLocked = true; }
     if (status) { v.sleep = SLEEP[B(status, 6)]; v.lowBattery = B(status, 7); }
     if (lift && LIFT[B(lift, 8)]) v.liftOff = LIFT[B(lift, 8)];            // sheet: Lift-off byte 8
     if (prof) {
@@ -256,7 +270,7 @@ const adapter = {
     const cmd = await this.command(key, value, before);
     await this.sendSet(cmd, s.label);
     const back = this.decode(await this.snapshot(true));
-    const kept = key !== 'sleep' || back.lowBattery === before.lowBattery;
+    const kept = (KEEP[key] || []).every((k) => back[k] === before[k]);
     if (back[key] !== value || !kept) {
       try { await this.sendSet(await this.command(key, before[key], before), s.label); this.snap = null; } catch {}
       throw new Error(`the mouse reads ${s.label} = ${back[key]} after writing ${value}; ${before[key]} was written back, nothing saved`);
@@ -282,6 +296,11 @@ const adapter = {
     if (key === 'liftOff') return SET.liftOff(value === 'high' ? 0x01 : 0x00);
     if (key === 'stageCount') return SET.stageCount(value);
     if (key === 'onboardProfile') return SET.profile(value - 1);
+    if (key === 'angleTune') return SET.angle(value);
+    if (key === 'lowBattery') {                                                  // the sleep code is sent back as read (same packet)
+      if (SLEEP_CODE[cur.sleep] === undefined) throw new Refused('the sleep setting was not read, so the low-battery warning cannot be sent');
+      return SET.sleep(SLEEP_CODE[cur.sleep], value);
+    }
     throw new Refused(`${key} is not a setting this mouse can change`);
   },
 };
@@ -289,11 +308,12 @@ const adapter = {
 function check(s, v) {
   if (s.type === 'toggle' && typeof v !== 'boolean') throw new Refused(`${s.label} must be on or off`);
   if (s.type === 'choice' && !s.options.some((o) => o.value === v)) throw new Refused(`"${v}" is not a choice for ${s.label}`);
+  if (s.type === 'color' && !(typeof v === 'string' && HEX.test(v))) throw new Refused(`${s.label} must be a color written #rrggbb`);
   if (s.type === 'slider' && !(Number.isInteger(v) && v >= s.min && v <= s.max && (v - s.min) % s.step === 0)) throw new Refused(`${s.label} must be ${s.min}-${s.max} in steps of ${s.step}`);
 }
 
 // the page: what this model on this link can change
-function settingsFor(m, link, dpiLocked, booster) {
+function settingsFor(m, link, dpiLocked, booster, angleLocked) {
   const out = [];
   if (!m) m = { dpiMax: 36000, battery: true };
   if (!m.doubleDpi && !dpiLocked) {
@@ -302,9 +322,12 @@ function settingsFor(m, link, dpiLocked, booster) {
   const hz = link === 'cable' && m.pollingCable ? m.pollingCable : UP_TO_1K;
   if (!(link === 'omni' && booster)) out.push({ key: 'pollingRate', label: 'Polling rate', type: 'choice', options: hz.map((x) => ({ value: x, label: x >= 1000 ? `${x / 1000}K Hz` : `${x} Hz` })) });
   out.push({ key: 'angleSnap', label: 'Angle snapping', type: 'toggle' });
+  if (m.angle && !angleLocked) out.push({ key: 'angleTune', label: 'Angle tuning', type: 'slider', min: m.angle[0], max: m.angle[1], step: 1, unit: '°', hint: 'Turns the sensor\'s idea of straight, in degrees.' });
   out.push({ key: 'liftOff', label: 'Lift-off distance', type: 'choice', options: [{ value: 'low', label: 'Low' }, { value: 'high', label: 'High' }],
     hint: 'Changing it also resets the sensor\'s surface calibration.' });
   if (m.battery) out.push({ key: 'sleep', label: 'Sleep after', type: 'choice', options: [1, 2, 3, 5, 10, 0].map((x) => ({ value: x, label: x ? `${x} min` : 'Never' })) });
+  // G-Helper LowBatteryWarningStep 10, LowBatteryWarningMax 50, slider Min 0
+  if (m.battery) out.push({ key: 'lowBattery', label: 'Low-battery warning', type: 'slider', min: 0, max: 50, step: 10, unit: '%', hint: 'The battery level the mouse warns at.' });
   out.push({ key: 'stageCount', label: 'DPI stages in use', type: 'choice', options: [2, 3, 4].map((x) => ({ value: x, label: String(x) })) });
   out.push({ key: 'onboardProfile', label: 'Onboard profile', type: 'choice', options: [1, 2, 3, 4, 5].map((x) => ({ value: x, label: `Profile ${x}` })),
     hint: 'Switches to a profile saved on the mouse; DPI and the other settings then read from that profile.' });

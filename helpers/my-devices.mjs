@@ -269,10 +269,34 @@ export function needsTurnOn(mark, proven, key) {
   if (proven && !learned) return false;
   const on = mark?.settingsOn?.at;
   if (!on) return true;
-  // 2 Nov 2026: a learned setting counts as turned on only when it was on the page when the person pressed it
-  // (settingsOn.keys): pressed before the restart that loaded it, it waits for another press
-  if (learned && Array.isArray(mark.settingsOn.keys) && !mark.settingsOn.keys.includes(key)) return true;
+  // 2 Nov 2026: a setting counts as turned on only when it was on the page when the person pressed it
+  // (settingsOn.keys): a learned one loaded at a later restart, or one a library update added to the driver, waits for
+  // another press. A record without a keys list (older than this) is given one before the driver changes
+  // (pressedKeys: helpers/library-refresh.mjs, and guard() for a copy updated before this rule).
+  if (Array.isArray(mark.settingsOn.keys) && !mark.settingsOn.keys.includes(key)) return true;
   return learned && !!mark.learnedAt && mark.learnedAt > on;
+}
+
+// The settings an older Turn on settings press (settingsOn without keys, before 2 Nov 2026) turned on: { keys, from } or
+// null when there is no press. Pressing turned on the settings of the driver on the page then, so the safest record of
+// them is that driver's own self-check record (verified.json): only settings it really checked, never one a later
+// driver added. A library update moves verified.json into backups\library-drivers\<name>-<time>\, so the record of the
+// driver pressed for is the FIRST backup made after the press; with no backup after the press, the driver has not
+// changed since and its verified.json in the folder is that record. A record that cannot be found turns nothing on:
+// every setting waits for a new press.
+const BACKUP_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/;
+export function pressedKeys(folder, mark) {
+  const on = mark?.settingsOn?.at;
+  if (!on) return null;
+  if (Array.isArray(mark.settingsOn.keys)) return { keys: mark.settingsOn.keys, from: 'Turn on settings' };
+  const name = path.basename(folder);
+  const dir = path.join(path.resolve(folder, '..', '..'), 'backups', 'library-drivers');
+  const stamp = String(on).replace(/[:.]/g, '-');
+  const after = folders(dir).filter((n) => n.startsWith(`${name}-`) && BACKUP_TIME.test(n.slice(name.length + 1)) && n.slice(name.length + 1) > stamp)[0];
+  const keysOf = (file) => Object.keys(readJson(file)?.keys || {});
+  if (after) return { keys: keysOf(path.join(dir, after, VERIFIED_FILE)), from: `the self-check record of the driver it was pressed for (backups/library-drivers/${after})` };
+  if (mark.updatedFromLibrary?.at && mark.updatedFromLibrary.at > on) return { keys: [], from: 'no record of the driver it was pressed for was found' };
+  return { keys: keysOf(path.join(folder, VERIFIED_FILE)), from: "the self-check record of the driver it was pressed for (verified.json)" };
 }
 export const TURN_ON_LINE = "DeviceHub writes each setting's current value back once to check it.";
 
@@ -490,6 +514,14 @@ export const connectedSettings = (name) => connectedNow.get(name) || null;
 export function guard(a, folder, mark, deps = null) {
   const write = a.write, connect = a.connect;
   const hints = Object.fromEntries(a.settings.map((s) => [s.key, s.hint]));
+  // an older Turn on settings record on a copy a library update already replaced (before 2 Nov 2026): the settings
+  // the press turned on, from the record of the driver it was pressed for (pressedKeys), so a setting the update added
+  // waits for a new press and is never self-checked before it
+  if (mark.settingsOn?.at && !Array.isArray(mark.settingsOn.keys) && mark.updatedFromLibrary?.at && mark.updatedFromLibrary.at > mark.settingsOn.at) {
+    const p = pressedKeys(folder, mark);
+    mark.settingsOn = { ...mark.settingsOn, keys: p.keys, keysFrom: p.from };
+    try { saveMark(folder, { settingsOn: mark.settingsOn }); } catch {}
+  }
   let verified = readVerified(folder);
   // a check made before a newer library driver was put in (helpers/library-refresh.mjs) was for the old driver: run it again
   if (mark.updatedFromLibrary?.at && verified.checkedAt && verified.checkedAt < mark.updatedFromLibrary.at) verified = { keys: {} };
