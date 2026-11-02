@@ -321,6 +321,18 @@ OpenRazer @ 477f4d6d (its latest master): OpenRGB @ 817834cf `RazerDevices.h` / 
 transaction id 0x1F (0x9F on the Low Profile TKL's dongle); OpenRGB writes their brightness (NOSTORE) but reads only the
 firmware (00/81), so these four are info only (model, firmware) until a source documents a read.
 
+Added 1 Nov 2026 (33 ids, 70 in all), from OpenRazer master (still 477f4d6d): `razerkbd_driver.h` ids, `keyboards.py` names,
+`razerkbd_driver.c` interface / wait / transaction ids. Brightness extended tid 3F: BlackWidow Lite 0x0235, 2019 0x0241,
+Essential 0x0237, V3 Tenkeyless 0x0A24 (interface 2), Huntsman 0x0227, Elite 0x0226, Tournament Edition 0x0243
+(interface 2), Ornata 0x021F, Ornata Chroma 0x021E, Cynosa Chroma 0x022A, Chroma Pro 0x022C, Lite 0x023F. Extended tid
+1F: BlackWidow Elite 0x0228, Cynosa V2 0x025E, Ornata V2 0x025D (interface 2), Joro 0x02CD (battery tid 1F). Seventeen
+older boards (BlackWidow Ultimate 2012 / 2013 / 2016, Stealth / Stealth Edition, TE 2014, Chroma, Chroma TE, Overwatch,
+X Chroma, X Ultimate, X Chroma TE, Chroma V2, Anansi, DeathStalker Essential / Expert / Chroma): game mode and macro LED
+only, since OpenRazer writes their brightness with standard 03/03, which the driver does not build. All have game mode
+(VARSTORE, tid FF) and the macro LED. OpenRazer has no polling case for any of them, so the driver asks 00/C0 with
+reads only (tids 1F, 3F, 9F) and offers polling only when a mapped code comes back. Left out: the 48 Blade ids and the
+Book 2020 (laptops; brightness 0E/04), and the Tartarus / Orbweaver / Nostromo keypads.
+
 ## 6. Gaps and unknowns
 
 - BlackShark V2 Pro / V2 X, Barracuda, Nari, Kraken V4 Pro: no PIDs, no protocol in any source.

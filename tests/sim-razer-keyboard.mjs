@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createRazerKeyboard, buildReport, MODELS, PIDS } from '../device-library/razer-keyboard/device.mjs';
+import { createRazerKeyboard, buildReport, MODELS, PIDS, OPTIONAL } from '../device-library/razer-keyboard/device.mjs';
 import { problem, fits } from '../helpers/my-devices.mjs';
 import { validateMeta } from '../helpers/device-library.mjs';
 
@@ -303,6 +303,112 @@ check(hex(buildReport(0x1f, 0x00, 0x40, 0x02, [0x00, 0x10])) === lit([0x00, 0x1f
   }
 }
 
+// ---- 5c. added 1 Nov 2026: 33 more keyboards from OpenRazer master; a null setting (OpenRazer does not say) is asked with
+// reads only and offered only when its read answers with a value the driver maps ----
+const NEW_PIDS = ['0235', '021F', '021E', '0226', '0227', '0243', '0241', '0237', '022A', '022C', '023F', '0A24', '0228', '025E', '025D', '02CD',
+  '010D', '010E', '011A', '011B', '011C', '010F', '0118', '0202', '0203', '0204', '0209', '0211', '0214', '0216', '0217', '021A', '0221'];
+{
+  // (a) an existing row is unchanged: the Ornata V3 has no polling in OpenRazer (false), so it is never asked even when the
+  // keyboard would answer; the same three settings as before
+  const ov = driverOn('02A1', { tids: { '00/81': 0xff, '0f/84': 0x1f, '0f/04': 0x1f, '03/80': 0xff, '03/00': 0xff, '00/c0': 0x1f, '00/40': 0x1f, '07/80': 0x1f, '07/84': 0x1f } });
+  allSims.push(ov.sim);
+  await ov.d.connect();
+  await ov.d.read();
+  check(ov.d.settings.map((s) => s.key).join() === 'brightness,gameMode,macroLed' && !ov.sim.sent.some((r) => ['00/c0', '07/80', '07/84'].includes(cmdKey(r))) && (await ov.d.battery()) === null, `existing Ornata V3: same settings, polling and battery never asked (${ov.d.settings.map((s) => s.key)}; ${ov.sim.sent.map(cmdKey)})`);
+  check(!('Not in OpenRazer' in (await ov.d.info())), 'existing Ornata V3: nothing found by reads');
+  const before = PIDS.filter((p) => !NEW_PIDS.includes(p));
+  check(before.length === 37 && before.every((p) => OPTIONAL.every((f) => MODELS[p][f] !== null)), 'none of the 37 earlier rows asks anything by reads (no null in them)');
+  check(MODELS['0287'].poll === 0x1f && MODELS['024E'].poll === false && MODELS['024E'].bat === false && MODELS['02A7'].bright === false && MODELS['0266'].game === false && MODELS['025A'].bat === 0x3f && MODELS['025A'].lowBat === true, 'earlier rows keep their values (false where they had none)');
+
+  // (b) a new row: BlackWidow Elite, brightness extended tid 1F (OpenRazer), polling not in OpenRazer (null)
+  const el = driverOn('0228', { tids: { '00/81': 0xff, '0f/84': 0x1f, '0f/04': 0x1f, '03/80': 0xff, '03/00': 0xff, '00/c0': 0x1f, '00/40': 0x1f } });
+  allSims.push(el.sim);
+  await el.d.connect();
+  const v = await el.d.read();
+  check(el.d.hid.byPid['0228'].iface === 1 && el.d.settings.map((s) => s.key).join() === 'brightness,gameMode,macroLed,pollingRate' && v.pollingRate === 1000, `BlackWidow Elite: polling answered on 1F, offered (${el.d.settings.map((s) => s.key)} ${JSON.stringify(v)})`);
+  check(writes(el.sim).length === 0, 'BlackWidow Elite: only reads while finding its settings');
+  check(/polling rate: found by reads \(tid 1f\)/.test((await el.d.info())['Not in OpenRazer'] || ''), 'its info says polling was found by reads');
+  const n = el.sim.sent.length;
+  check((await el.d.write('pollingRate', 500)) === 500 && el.sim.sent.slice(n).some((r) => cmdKey(r) === '00/40' && r.tid === 0x1f && r.size === 2 && hex(r.args) === '00 10') && (await el.d.write('pollingRate', 1000)) === 1000, 'its polling is written 00/40 [00 10] size 2 on the tid that answered, read back, put back');
+  await selfChecked(el.d, el.sim.s);
+
+  // (b) the same keyboard when polling does not answer on any tid, or answers a code the driver does not map
+  const np = driverOn('0228', { tids: { '00/81': 0xff, '0f/84': 0x1f, '0f/04': 0x1f, '03/80': 0xff, '03/00': 0xff } });
+  allSims.push(np.sim);
+  await np.d.connect();
+  await np.d.read();
+  check(np.d.settings.map((s) => s.key).join() === 'brightness,gameMode,macroLed' && np.sim.sent.filter((r) => cmdKey(r) === '00/c0').map((r) => r.tid).join() === '31,63,159' && writes(np.sim).length === 0, `no answer: polling asked on 1F, 3F, 9F with reads only, not offered (${np.sim.sent.map((r) => `${cmdKey(r)}@${r.tid.toString(16)}`)})`);
+  const e = await refusal(() => np.d.write('pollingRate', 1000));
+  check(/not a setting/.test(e?.message || '') && writes(np.sim).length === 0, 'and a polling write is refused, nothing written');
+  const bad = driverOn('0228', { tids: { '00/81': 0xff, '0f/84': 0x1f, '0f/04': 0x1f, '03/80': 0xff, '03/00': 0xff, '00/c0': 0x1f, '00/40': 0x1f }, state: { poll: 0x03 } });
+  allSims.push(bad.sim);
+  await bad.d.connect();
+  await bad.d.read();
+  check(!bad.d.settings.some((s) => s.key === 'pollingRate') && writes(bad.sim).length === 0, 'a polling code the driver does not map (03): not offered');
+
+  // an older board: brightness is standard 03/03 in OpenRazer, so never asked; game mode and the macro light
+  const bc = driverOn('0203', { tids: { '00/81': 0xff, '03/83': 0xff, '0f/84': 0x3f, '03/80': 0xff, '03/00': 0xff } });
+  allSims.push(bc.sim);
+  await bc.d.connect();
+  await bc.d.read();
+  check(bc.d.settings.map((s) => s.key).join() === 'gameMode,macroLed' && !bc.sim.sent.some((r) => ['0f/84', '03/83', '0f/04'].includes(cmdKey(r))), `BlackWidow Chroma: game mode and macro light; brightness never asked (${bc.sim.sent.map(cmdKey)})`);
+  check((await bc.d.write('gameMode', true)) === true && bc.sim.sent.some((r) => cmdKey(r) === '03/00' && r.tid === 0xff && hex(r.args) === '01 08 01') && (await bc.d.write('gameMode', false)) === false, 'BlackWidow Chroma game mode = 03/00 [01 08 01] tid FF, put back');
+  await selfChecked(bc.d, bc.sim.s);
+
+  // Joro: battery on tid 1F over the cable (razer_attr_read_charge_level)
+  const jo = driverOn('02CD', { tids: { '00/81': 0xff, '0f/84': 0x1f, '0f/04': 0x1f, '03/80': 0xff, '03/00': 0xff, '07/80': 0x1f, '07/84': 0x1f } });
+  allSims.push(jo.sim);
+  await jo.d.connect();
+  const jb = await jo.d.battery();
+  check(jb?.percent === 80 && jb.charging === true && jo.sim.sent.some((r) => cmdKey(r) === '07/80' && r.tid === 0x1f), `Joro battery on tid 1F (${JSON.stringify(jb)})`);
+
+  // (b) every null at once (a test row): each found by reads on the tid that answers, each written the driver's way
+  const T = { model: 'Test keyboard', link: 'wired', iface: 1, wait: 0.6, bright: null, game: null, macro: null, poll: null, bat: null, lowBat: false, fw: 0xff };
+  const mk = (tids, state) => {
+    const sim = simKeyboard({ tids, state }); sim.app = null; sim.clock = 1;
+    const d = createRazerKeyboard({ sleep: async () => {}, open: async (p) => (p === 'FFF0' ? sim.dev : null), vendorApp: async () => sim.app, now: () => sim.clock, models: { FFF0: T } });
+    allSims.push(sim);
+    return { d, sim };
+  };
+  const all3f = Object.fromEntries(['00/81', '0f/84', '0f/04', '00/c0', '00/40', '07/80', '07/84'].map((c) => [c, c === '00/81' ? 0xff : 0x3f]).concat([['03/80', 0xff], ['03/00', 0xff]]));
+  const a = mk(all3f);
+  await a.d.connect();
+  const av = await a.d.read();
+  check(a.d.settings.map((s) => s.key).join() === 'brightness,gameMode,macroLed,pollingRate' && av.brightness === 180 && writes(a.sim).length === 0, `every null answered on 3F: all offered, only reads sent (${a.d.settings.map((s) => s.key)})`);
+  check(a.d.model.bright === 'x3f' && a.d.model.poll === 0x3f && a.d.model.bat === 0x3f && a.d.model.game === 'std' && a.d.model.macro === true, `found forms: ${JSON.stringify(a.d.model)}`);
+  check((await a.d.battery())?.percent === 80, 'battery found on 3F');
+  check((await a.d.write('brightness', 40)) === 40 && a.sim.sent.some((r) => cmdKey(r) === '0f/04' && r.tid === 0x3f && r.size === 3 && hex(r.args) === '01 05 28') && (await a.d.write('brightness', 180)) === 180, 'found brightness written 0F/04 [01 05 28] on 3F, put back');
+  await selfChecked(a.d, a.sim.s);
+  const z = mk({ '00/81': 0xff }, { game: 2 });
+  await z.d.connect();
+  await z.d.read();
+  const zi = await z.d.info();
+  check(z.d.settings.length === 0 && (await z.d.battery()) === null && writes(z.sim).length === 0 && /brightness: asked with reads: no usable answer/.test(zi['Not in OpenRazer'] || ''), `nothing answers: nothing offered, nothing written, info says so (${JSON.stringify(zi)})`);
+  const g2 = mk({ '00/81': 0xff, '03/80': 0xff, '03/00': 0xff }, { game: 2, macro: 1 });
+  await g2.d.connect();
+  await g2.d.read();
+  check(g2.d.settings.map((s) => s.key).join() === 'macroLed', `a raw game state 2 is not a 0 / 1 answer: game mode not offered; macro light 1 is (${g2.d.settings.map((s) => s.key)})`);
+
+  // (c) nothing written before Turn on settings (DeviceHub's guard over the library driver), then each setting checked
+  {
+    const os = await import('node:os');
+    const { guard } = await import('../helpers/my-devices.mjs');
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-razer-kb-'));
+    const g = driverOn('0228', { tids: { '00/81': 0xff, '0f/84': 0x1f, '0f/04': 0x1f, '03/80': 0xff, '03/00': 0xff, '00/c0': 0x1f, '00/40': 0x1f } });
+    allSims.push(g.sim);
+    const start = JSON.stringify(g.sim.s), backups = [];
+    guard(g.d, folder, { status: 'read-only', source: 'device-library/razer-keyboard' }, { backup: async (b) => backups.push(b), log: () => {}, makerApp: async () => null, now: () => new Date('2026-11-01T18:00:00Z'), version: 'v1' });
+    check(await g.d.connect(), 'guarded BlackWidow Elite connects');
+    await g.d.read(); await g.d.info();
+    check(writes(g.sim).length === 0 && g.d.library.turnOn === true, 'guarded: before Turn on settings nothing is written');
+    const ge = await refusal(() => g.d.write('pollingRate', 500));
+    check(/Turn on settings/.test(ge?.message || '') && writes(g.sim).length === 0, `guarded: a write before Turn on settings is refused (${ge?.message})`);
+    const on = await g.d.turnOn();
+    check(on.on && ['brightness', 'gameMode', 'macroLed', 'pollingRate'].every((k) => on.keys?.[k]?.ok === true) && backups.length === 1 && JSON.stringify(g.sim.s) === start, `after Turn on settings each setting passes its check, the keyboard as it was (${JSON.stringify(on.keys || on)})`);
+    fs.rmSync(folder, { recursive: true, force: true });
+  }
+}
+
 // ---- 6. the model table and the never list ----
 {
   for (const sim of allSims) {
@@ -315,9 +421,20 @@ check(hex(buildReport(0x1f, 0x00, 0x40, 0x02, [0x00, 0x10])) === lit([0x00, 0x1f
   const iface = (ids) => ids.every((p) => MODELS[p]);
   check(iface(['026B', '026C', '0258', '024E', '02B9', '0295', '0292', '0287', '028D', '02A5', '0298', '02A6', '02A7', '02B0', '02CF', '02D7']) && ['026B', '026C', '0258', '024E', '02B9', '0295', '0292', '0287', '028D', '02A5', '0298', '02A6', '02A7', '02B0', '02CF', '02D7', '0271', '02BA'].every((p) => MODELS[p].iface === 3), 'interface 3 where razer_get_report_params says 0x03');
   check(['0266', '0282', '02B3', '02D4'].every((p) => MODELS[p].iface === 3) && ['0269', '02B4', '02D2'].every((p) => MODELS[p].iface === 2), 'the added boards: interface 3 / 2 as razer_get_report_params and OpenRGB\'s detectors say');
-  check(['02B3', '02B4', '02D4', '02D2'].every((p) => MODELS[p].infoOnly && MODELS[p].bright === null && MODELS[p].game === null && !MODELS[p].macro && MODELS[p].bat === null && MODELS[p].poll === null), 'the OpenRGB-only boards carry no setting');
+  check(['02B3', '02B4', '02D4', '02D2'].every((p) => MODELS[p].infoOnly && MODELS[p].bright === false && MODELS[p].game === false && MODELS[p].macro === false && MODELS[p].bat === false && MODELS[p].poll === false), 'the OpenRGB-only boards carry no setting (false: never asked)');
   check(['02A1', '028F', '02A3', '0257', '025A', '0293', '025C', '02D5', '0290', '0296'].every((p) => MODELS[p].iface === 2) && ['0294', '02A2'].every((p) => MODELS[p].iface === 1), 'interface 2 and the default 1 as razer_get_report_params says');
   check(['02BA', '02D5', '025C', '0271', '0290', '0296'].every((p) => MODELS[p].wait === 4.9 && MODELS[p].bright === 'x9f' && MODELS[p].bat === 0x9f), 'wireless boards: 4.9 ms, tid 9F');
+  // (d) every row complete: each optional setting stated as a form, false (none) or null (asked with reads only)
+  const FORMS = { bright: ['x3f', 'x1f', 'x9f', 'v3', '8k'], game: ['std', 'v2'], macro: [true] };
+  const incomplete = PIDS.filter((p) => {
+    const m = MODELS[p];
+    if (typeof m.model !== 'string' || !['wired', 'wireless'].includes(m.link) || ![1, 2, 3].includes(m.iface) || ![0.6, 4.9].includes(m.wait) || typeof m.lowBat !== 'boolean' || !Number.isInteger(m.fw)) return true;
+    return !OPTIONAL.every((f) => m[f] === null || m[f] === false || (FORMS[f] ? FORMS[f].includes(m[f]) : [0x1f, 0x3f, 0x9f].includes(m[f])));
+  });
+  check(PIDS.length === 70 && incomplete.length === 0, `every row states every setting (${incomplete.join(', ')})`);
+  check(NEW_PIDS.every((p) => MODELS[p] && MODELS[p].poll === null && OPTIONAL.filter((f) => f !== 'poll').every((f) => MODELS[p][f] !== null)), 'the 33 added rows: only polling is left to reads (OpenRazer gives the rest)');
+  check(NEW_PIDS.every((p) => MODELS[p].link === 'wired' && (p === '02CD' ? MODELS[p].bat === 0x1f : MODELS[p].bat === false)), 'the added rows: cable only, battery only on the Joro');
+  check(['0243', '0A24', '025D', '010F'].every((p) => MODELS[p].iface === 2) && NEW_PIDS.filter((p) => !['0243', '0A24', '025D', '010F'].includes(p)).every((p) => MODELS[p].iface === 1), 'the added rows: interface 2 where razer_get_report_params says, else the default 1');
   const d = createRazerKeyboard({ open: async () => null, vendorApp: async () => null });
   check((await d.connect()) === false, 'nothing plugged in: connect() is false');
   const meta = JSON.parse(fs.readFileSync(path.join(ROOT, 'device-library', 'razer-keyboard', 'device.json'), 'utf8'));

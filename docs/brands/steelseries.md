@@ -301,6 +301,11 @@ sends nothing else. The saves (`11 00`, `51 00`, `09 00`, `59`) are on helpers/n
 Prime Mini Wireless, Rival 3 Wireless and Aerox 3 Gen 2 battery (not in the battery row), wired-only mice with no read.
 Details: docs/handoff/drivers-round3b.md.
 
+1 Nov 2026 (rivalcfg 779ea52, commit 1878fa3): 48 more mice. The firmware read `10 00` also on the Rival 100 / 105,
+Rival / Rival 300 and editions, Rival 500, Rival 700 / 710 (same bytes and report as the Rival 3); the battery read
+`AA 01` on the Rival 650 Wireless (cable 172B, receiver 1726); 28 more named only (nothing sent: their only read is
+`90 00`, which DeviceHub never sends, or they have none). Their saves (`09 00`, `09`, `59 00`) are on the never list too.
+
 ## Sources
 
 - HeadsetControl, shared protocol: [lib/devices/protocols/steelseries_protocol.hpp](https://github.com/Sapd/HeadsetControl/blob/master/lib/devices/protocols/steelseries_protocol.hpp)

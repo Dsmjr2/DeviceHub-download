@@ -33,6 +33,18 @@
 //     RazerController.cpp razer_get_firmware (00/81 size 02 on that transaction id). OpenRGB only ever writes their
 //     brightness (NOSTORE, no read) and reads nothing else, so these four are info only (model and firmware): no
 //     setting, no battery, until a source documents a read.
+//
+// Added 1 Nov 2026: 33 more keyboards from OpenRazer master (still 477f4d6d), each row stating every setting (row() below
+// refuses one that does not). A value OpenRazer does not give for a keyboard is null: DeviceHub asks it with READS only
+// when it connects, and offers the setting only when the read answers with a value this driver maps; its write is then
+// the same command, size and transaction id the driver already uses for other keyboards (found below in ready()).
+// Polling is null on all 33: OpenRazer's razer_attr_read/write_poll_rate have no case for them, so it neither has nor
+// rules out polling_rate2. Battery is false on the cable-only boards (no charge_level / charge_status case).
+// Left out, with reasons: the 49 laptops (the 48 Blade ids and the Book 2020: is_blade_laptop brightness is 0E/04, a
+// command this driver does not have, and a laptop keyboard is not a USB keyboard to replace an app for); the 7 keypads
+// (Tartarus, Tartarus Chroma, Tartarus V2, Tartarus Pro, Orbweaver, Orbweaver Chroma, Nostromo: not keyboards; their
+// brightness is on ZERO_LED 0x00 or they have only the profile LEDs, neither of which this driver builds).
+// Kept unchanged: every row above (its values are OpenRazer's or OpenRGB's; false = none, never asked).
 import { getDevice } from '../../public/devices/hid.js';
 
 // ---- the 90-byte report (razercommon.h struct razer_report; sheet section 2) ----
@@ -84,16 +96,33 @@ export const LOWBAT_MIN = 0x0c, LOWBAT_MAX = 0x3f;
 // wait: ms between write and read: RAZER_BLACKWIDOW_CHROMA_WAIT_US 600 us, the _WIRELESS_WAIT_US ones 4900 us.
 // bright: matrix_brightness. 'x3f' / 'x1f' / 'x9f' = extended 0x0F/0x84 and 0x0F/0x04 with that transaction id, read and
 //   write; 'v3' = written extended (tid 1F), read standard 0x03/0x83 (tid FF) (Huntsman V3 Pro, V3 Pro Mini); '8k' = the
-//   same, written to the active profile's store (Huntsman V3 Pro 8KHz); null = no brightness here.
-// game: game_led_state, 'v2' = NOSTORE with tid 1F (Huntsman V2 / V2 TKL), else VARSTORE with tid FF.
-// macro: macro_led_state (VARSTORE, tid FF) is created for it in razer_kbd_probe.
-// poll: poll_rate's transaction id (polling_rate2), or null. bat: charge_level / charge_status transaction id, or null.
-// lowBat: charge_low_threshold (tid FF) is created for it. game null: game mode is not offered.
+//   same, written to the active profile's store (Huntsman V3 Pro 8KHz); false = no brightness here (never asked).
+// game: game_led_state, 'v2' = NOSTORE with tid 1F (Huntsman V2 / V2 TKL), 'std' = VARSTORE with tid FF; false = not offered.
+// macro: true = macro_led_state (VARSTORE, tid FF) is created for it in razer_kbd_probe; false = not offered.
+// poll: poll_rate's transaction id (polling_rate2), or false. bat: charge_level / charge_status transaction id, or false.
+// lowBat: charge_low_threshold (tid FF) is created for it.
+// null on bright / game / macro / poll / bat: OpenRazer does not say; asked with reads only (ready(), PROBE_TIDS).
 // fw: the firmware read's transaction id (OpenRazer: FF on every keyboard; OpenRGB: the device's own id).
 const W = 0.6, WL = 4.9;
-const k = (model, link, iface, wait, bright, o = {}) => ({ model, link, iface, wait, bright, game: 'std', macro: true, poll: null, bat: null, lowBat: false, fw: 0xff, ...o });
+export const OPTIONAL = ['bright', 'game', 'macro', 'poll', 'bat'];
+const k = (model, link, iface, wait, bright, o = {}) => ({ model, link, iface, wait, bright, game: 'std', macro: true, poll: false, bat: false, lowBat: false, fw: 0xff, ...o });
 // info only (OpenRGB): no brightness, game mode, macro light, polling or battery; firmware on the device's own tid
-const info = (model, link, iface, wait, fw) => k(model, link, iface, wait, null, { game: null, macro: false, fw, infoOnly: true });
+const info = (model, link, iface, wait, fw) => k(model, link, iface, wait, false, { game: false, macro: false, fw, infoOnly: true });
+// rows added 1 Nov 2026: every optional setting stated (a value, false, or null = asked with reads only)
+const row = (model, link, iface, wait, o) => {
+  const miss = OPTIONAL.filter((f) => !(f in o));
+  if (miss.length) throw new Error(`razer-keyboard ${model}: ${miss.join(', ')} not stated`);
+  return { model, link, iface, wait, lowBat: false, fw: 0xff, ...o };
+};
+// razerkbd_driver.c razer_attr_read/write_matrix_brightness 0x3F case, game_led_state VARSTORE tid 0xFF, macro_led_state
+// in razer_kbd_probe, no charge_level case (cable only), no poll_rate case
+const EXT3F = { bright: 'x3f', game: 'std', macro: true, poll: null, bat: false };
+// the same with matrix_brightness tid 0x1F
+const EXT1F = { bright: 'x1f', game: 'std', macro: true, poll: null, bat: false };
+// matrix_brightness is razer_chroma_standard_get_led_brightness (03/83) and razer_chroma_standard_set_led_brightness
+// (03/03, BACKLIGHT_LED or LOGO_LED) with tid 0xFF: this driver has no 03/03, so brightness is not offered (false);
+// game_led_state VARSTORE tid 0xFF and macro_led_state as above, cable only, no poll_rate case
+const STD_OLD = { bright: false, game: 'std', macro: true, poll: null, bat: false };
 export const MODELS = {
   '0287': k('BlackWidow V4', 'wired', 3, W, 'x1f', { poll: 0x1f }),
   '028D': k('BlackWidow V4 Pro', 'wired', 3, W, 'x1f', { poll: 0x1f }),
@@ -109,15 +138,15 @@ export const MODELS = {
   '0258': k('BlackWidow V3 Mini HyperSpeed', 'wired', 3, W, 'x1f', { bat: 0x1f }),
   '0271': k('BlackWidow V3 Mini HyperSpeed', 'wireless', 3, WL, 'x9f', { bat: 0x9f }),
   '02A6': k('Huntsman V3 Pro', 'wired', 3, W, 'v3'),
-  '02A7': k('Huntsman V3 Pro TKL', 'wired', 3, W, null),
+  '02A7': k('Huntsman V3 Pro TKL', 'wired', 3, W, false),
   '02B0': k('Huntsman V3 Pro Mini', 'wired', 3, W, 'v3'),
   '02CF': k('Huntsman V3 Pro 8KHz', 'wired', 3, W, '8k'),
   '026C': k('Huntsman V2', 'wired', 3, W, 'x1f', { game: 'v2', poll: 0x1f }),
   '026B': k('Huntsman V2 TKL', 'wired', 3, W, 'x1f', { game: 'v2', poll: 0x1f }),
   '0257': k('Huntsman Mini', 'wired', 2, W, 'x3f'),
   '0269': k('Huntsman Mini JP', 'wired', 2, W, 'x3f'),
-  '0266': k('Huntsman V2 Analog', 'wired', 3, W, 'v3', { game: null }),
-  '0282': k('Huntsman Mini Analog', 'wired', 3, W, 'v3', { game: null }),
+  '0266': k('Huntsman V2 Analog', 'wired', 3, W, 'v3', { game: false }),
+  '0282': k('Huntsman Mini Analog', 'wired', 3, W, 'v3', { game: false }),
   '02B3': info('BlackWidow V4 Pro 75%', 'wired', 3, W, 0x1f),
   '02B4': info('BlackWidow V4 Pro 75%', 'wireless', 2, WL, 0x1f),
   '02D4': info('BlackWidow V4 Low Profile TKL', 'wired', 3, W, 0x1f),
@@ -132,6 +161,47 @@ export const MODELS = {
   '02A3': k('Ornata V3 TKL', 'wired', 2, W, 'x1f'),
   '0294': k('Ornata V3 X', 'wired', 1, W, 'x1f'),
   '02A2': k('Ornata V3 X', 'wired', 1, W, 'x1f'),
+  // ---- added 1 Nov 2026 from OpenRazer master @ 477f4d6d. Ids: razerkbd_driver.h USB_DEVICE_ID_RAZER_*; names and
+  // USB_PID: daemon/openrazer_daemon/hardware/keyboards.py (class named beside each); interface and wait:
+  // razerkbd_driver.c razer_get_report_params (report_index 2 where named there, else the default 1; wait
+  // RAZER_BLACKWIDOW_CHROMA_WAIT_US 600 us on all of them) ----
+  // matrix_brightness extended tid 0x3F (EXT3F above)
+  '0235': row('BlackWidow Lite', 'wired', 1, W, EXT3F),                  // RazerBlackWidowLite
+  '021F': row('Ornata', 'wired', 1, W, EXT3F),                           // RazerOrnata
+  '021E': row('Ornata Chroma', 'wired', 1, W, EXT3F),                    // RazerOrnataChroma
+  '0226': row('Huntsman Elite', 'wired', 1, W, EXT3F),                   // RazerHuntsmanElite
+  '0227': row('Huntsman', 'wired', 1, W, EXT3F),                         // RazerHuntsman
+  '0243': row('Huntsman Tournament Edition', 'wired', 2, W, EXT3F),      // RazerHuntsmanTournamentEdition (report_index 2)
+  '0241': row('BlackWidow 2019', 'wired', 1, W, EXT3F),                  // RazerBlackWidow2019
+  '0237': row('BlackWidow Essential', 'wired', 1, W, EXT3F),             // RazerBlackWidowEssential
+  '022A': row('Cynosa Chroma', 'wired', 1, W, EXT3F),                    // RazerCynosaChroma
+  '022C': row('Cynosa Chroma Pro', 'wired', 1, W, EXT3F),                // RazerCynosaChromaPro
+  '023F': row('Cynosa Lite', 'wired', 1, W, EXT3F),                      // RazerCynosaLite
+  '0A24': row('BlackWidow V3 Tenkeyless', 'wired', 2, W, EXT3F),         // RazerBlackWidowV3TK (report_index 2)
+  // matrix_brightness extended tid 0x1F (EXT1F above)
+  '0228': row('BlackWidow Elite', 'wired', 1, W, EXT1F),                 // RazerBlackWidowElite
+  '025E': row('Cynosa V2', 'wired', 1, W, EXT1F),                        // RazerCynosaV2
+  '025D': row('Ornata V2', 'wired', 2, W, EXT1F),                        // RazerOrnataV2 (report_index 2)
+  // RazerJoro: charge_level / charge_status tid 0x1F (razer_attr_read_charge_level), its USB id is the cable one
+  '02CD': row('Joro', 'wired', 1, W, { ...EXT1F, bat: 0x1f }),
+  // standard brightness (STD_OLD above): game mode and the macro light only
+  '010D': row('BlackWidow Ultimate 2012', 'wired', 1, W, STD_OLD),       // RazerBlackWidowUltimate2012
+  '010E': row('BlackWidow Stealth Edition', 'wired', 1, W, STD_OLD),     // RazerBlackWidowStealthEdition
+  '011A': row('BlackWidow Ultimate 2013', 'wired', 1, W, STD_OLD),       // RazerBlackWidowUltimate2013
+  '011B': row('BlackWidow Stealth', 'wired', 1, W, STD_OLD),             // RazerBlackWidowStealth
+  '011C': row('BlackWidow Tournament Edition 2014', 'wired', 1, W, STD_OLD), // RazerBlackWidowTournamentEdition2014
+  '010F': row('Anansi', 'wired', 2, W, STD_OLD),                         // RazerAnansi (report_index 2)
+  '0118': row('DeathStalker Essential', 'wired', 1, W, STD_OLD),         // RazerDeathStalkerEssential
+  '0202': row('DeathStalker Expert', 'wired', 1, W, STD_OLD),            // RazerDeathStalkerExpert
+  '0203': row('BlackWidow Chroma', 'wired', 1, W, STD_OLD),              // RazerBlackWidowChroma
+  '0204': row('DeathStalker Chroma', 'wired', 1, W, STD_OLD),            // RazerDeathStalkerChroma
+  '0209': row('BlackWidow Chroma Tournament Edition', 'wired', 1, W, STD_OLD), // RazerBlackWidowChromaTournamentEdition
+  '0211': row('BlackWidow Chroma Overwatch', 'wired', 1, W, STD_OLD),    // RazerBlackWidowChromaOverwatch
+  '0214': row('BlackWidow Ultimate 2016', 'wired', 1, W, STD_OLD),       // RazerBlackWidowUltimate2016
+  '0216': row('BlackWidow X Chroma', 'wired', 1, W, STD_OLD),            // RazerBlackWidowXChroma
+  '0217': row('BlackWidow X Ultimate', 'wired', 1, W, STD_OLD),          // RazerBlackWidowXUltimate
+  '021A': row('BlackWidow X Tournament Edition Chroma', 'wired', 1, W, STD_OLD), // RazerBlackWidowXTournamentEditionChroma
+  '0221': row('BlackWidow Chroma V2', 'wired', 1, W, STD_OLD),           // RazerBlackWidowChromaV2
 };
 export const PIDS = Object.keys(MODELS);
 const BRIGHT = {
@@ -156,18 +226,24 @@ async function defaultOpen(pid, model) {
 const sleepReal = (ms) => new Promise((r) => setTimeout(r, ms));
 const hex2 = (b) => b.toString(16).padStart(2, '0');
 const POLL_EVERY = 10, POLL_FOR = 100, APP_CHECK_MS = 15000;
+// the transaction ids a null setting is asked on (reads only), cable first / dongle first: the ids this driver's own
+// rows use for the extended, polling and battery commands (1F, 3F on the cable; 9F on the dongle)
+export const PROBE_TIDS = { wired: [0x1f, 0x3f, 0x9f], wireless: [0x9f, 0x1f, 0x3f] };
+const asked = (t) => `found by reads (tid ${hex2(t)})`;
 class RazerError extends Error { constructor(msg, status) { super(msg); this.status = status; } }
 
-export function createRazerKeyboard({ sleep = sleepReal, open = defaultOpen, vendorApp = defaultVendorApp, now = () => Date.now() } = {}) {
+// models: the table (tests hand in their own rows to exercise every null)
+export function createRazerKeyboard({ sleep = sleepReal, open = defaultOpen, vendorApp = defaultVendorApp, now = () => Date.now(), models = MODELS } = {}) {
+  const pids = Object.keys(models);
   return {
     id: 'razer-keyboard',
     title: 'Razer keyboard',
     kind: 'Keyboard',
     vendor: 'Razer',
-    hid: { vid: '1532', pid: '0287', pids: PIDS, page: '*', usage: '*', len: LEN, featureLen: LEN, reportId: 0, featureOnly: true,
-      byPid: Object.fromEntries(PIDS.map((p) => [p, { iface: MODELS[p].iface }])) },
+    hid: { vid: '1532', pid: '0287', pids, page: '*', usage: '*', len: LEN, featureLen: LEN, reportId: 0, featureOnly: true,
+      byPid: Object.fromEntries(pids.map((p) => [p, { iface: models[p].iface }])) },
     unsupported: ['colours and lighting effects (no read-back exists)', 'the Fn toggle (write-only)', 'keyswitch optimization', 'device mode', 'macros and key remaps', 'firmware updates (Razer\'s own updater only)', 'dongle pairing'],
-    dev: null, pid: null, model: null, has: null, pollRates: POLL_BASE, raw: {}, q: Promise.resolve(), app: null, appAt: 0,
+    dev: null, pid: null, model: null, has: null, probed: {}, pollRates: POLL_BASE, raw: {}, q: Promise.resolve(), app: null, appAt: 0,
 
     get settings() {
       const all = [
@@ -182,9 +258,9 @@ export function createRazerKeyboard({ sleep = sleepReal, open = defaultOpen, ven
 
     async connect() {
       if (this.dev) return true;
-      for (const pid of PIDS) {
-        const dev = await open(pid, MODELS[pid]);
-        if (dev) { this.dev = dev; this.pid = pid; this.model = MODELS[pid]; this.has = null; this.raw = {}; this.pollRates = POLL_BASE; this.app = null; this.appAt = 0; return true; }
+      for (const pid of pids) {
+        const dev = await open(pid, models[pid]);
+        if (dev) { this.dev = dev; this.pid = pid; this.model = models[pid]; this.has = null; this.probed = {}; this.raw = {}; this.pollRates = POLL_BASE; this.app = null; this.appAt = 0; return true; }
       }
       return false;
     },
@@ -228,11 +304,47 @@ export function createRazerKeyboard({ sleep = sleepReal, open = defaultOpen, ven
       if (!this.dev) throw Object.assign(new Error('no Razer keyboard is open'), { gone: true });
       const has = new Set();
       const tries = async (fn) => { try { return { ok: true, v: await fn() }; } catch (e) { if (e.status === 4 || e.gone) throw e; return { ok: false }; } };
+      // a null setting (OpenRazer does not say): asked with reads only. It becomes the form this driver already writes
+      // for other keyboards only when the read answers with a value the driver maps; else false (not offered).
+      const m0 = models[this.pid];
+      const got = {}, probed = {};
+      const order = PROBE_TIDS[m0.link === 'wireless' ? 'wireless' : 'wired'];
+      if (m0.bright === null) {
+        // extended 0F/84 [VARSTORE, BACKLIGHT_LED]; written with 0F/04 on the same tid, as the x3f / x1f / x9f rows
+        got.bright = false;
+        for (const t of order) { const r = await tries(() => this.get('extBrightGet', t, [VARSTORE, LED.BACKLIGHT])); if (r.ok && r.v[1] === LED.BACKLIGHT) { got.bright = `x${hex2(t)}`; break; } }
+      }
+      if (m0.game === null) {
+        // 03/80 [VARSTORE, GAME_LED] tid FF, the 'std' rows' read; only a raw 0 or 1 counts
+        const r = await tries(() => this.get('ledStateGet', 0xff, [VARSTORE, LED.GAME]));
+        got.game = r.ok && bit(r.v[2]) !== null ? 'std' : false;
+      }
+      if (m0.macro === null) {
+        const r = await tries(() => this.get('ledStateGet', 0xff, [VARSTORE, LED.MACRO]));
+        got.macro = !!(r.ok && bit(r.v[2]) !== null);
+      }
+      if (m0.poll === null) {
+        // 00/C0 (polling_rate2): only a code razer_chroma_misc_set_polling_rate2 has
+        got.poll = false;
+        for (const t of order) { const r = await tries(() => this.get('pollGet', t)); if (r.ok && Object.values(POLL).includes(r.v[1])) { got.poll = t; break; } }
+      }
+      if (m0.bat === null) {
+        // 07/80 and 07/84 on one tid, both answering, charging a raw 0 or 1
+        got.bat = false;
+        for (const t of order) {
+          const a = await tries(() => this.get('battery', t));
+          const c = a.ok ? await tries(() => this.get('charging', t)) : { ok: false };
+          if (a.ok && c.ok && bit(c.v[1]) !== null) { got.bat = t; break; }
+        }
+      }
+      for (const [f, v] of Object.entries(got)) probed[f] = v === false ? 'asked with reads: no usable answer, not offered' : typeof v === 'number' ? asked(v) : f === 'bright' ? asked(parseInt(v.slice(1), 16)) : 'found by reads (tid ff)';
+      this.model = { ...m0, ...got };
+      this.probed = probed;
       const m = this.model;
       if (m.bright && (await tries(() => this.readBrightness())).ok) has.add('brightness');
       if (m.game && (await tries(() => this.readGame())).ok) has.add('gameMode');
       if (m.macro && (await tries(() => this.readMacro())).ok) has.add('macroLed');
-      if (m.poll != null) {
+      if (typeof m.poll === 'number') {
         const r = await tries(() => this.readPoll());
         if (r.ok && r.v) { has.add('pollingRate'); if (r.v > 1000) this.pollRates = Object.keys(POLL).map(Number).filter((hz) => hz <= r.v).sort((a, b) => a - b); }
       }
@@ -246,6 +358,9 @@ export function createRazerKeyboard({ sleep = sleepReal, open = defaultOpen, ven
       const fw = await this.get('firmware', this.model.fw);
       const out = { Model: `Razer ${this.model.model}`, Connection: this.model.link === 'wireless' ? 'wireless (dongle)' : 'cable', 'Product id': `1532:${this.pid}`,
         Firmware: `${fw[0]}.${fw[1]}`, Interface: String(this.model.iface) };
+      const names = { bright: 'brightness', game: 'game mode', macro: 'macro light', poll: 'polling rate', bat: 'battery' };
+      const p = Object.entries(this.probed);
+      if (p.length) out['Not in OpenRazer'] = p.map(([f, how]) => `${names[f]}: ${how}`).join('; ');
       if (this.model.infoOnly) out.Settings = 'none yet: no open source documents a read for this keyboard (OpenRGB only writes its lights)';
       return out;
     },
@@ -303,7 +418,7 @@ export function createRazerKeyboard({ sleep = sleepReal, open = defaultOpen, ven
 
     async battery() {
       await this.ready();
-      if (this.model.bat == null) return null;
+      if (typeof this.model.bat !== 'number') return null;
       const level = (await this.get('battery', this.model.bat))[1];
       return { percent: Math.round((level * 100) / 255), charging: (await this.get('charging', this.model.bat))[1] === 1 };   // OpenRazer: "scaled from 0-255 -> 0-100"
     },
