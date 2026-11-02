@@ -18,7 +18,8 @@ import * as batteryCare from './battery-care.mjs';
 import { headsetSound } from './headset-sound.mjs';
 import { loadProfiles, apply } from '../public/core/profiles.js';
 import { startGameMode, nowValues } from './game-mode-live.mjs';
-import { provider, closeAll, setGoneHandler, setMovedHandler, devicesChanged, useKeyboardSpec, addSpec, useWindowsEvents, setAnnounceHandlers } from './hid-host.mjs';
+import { provider, closeAll, setGoneHandler, setMovedHandler, devicesChanged, useKeyboardSpec, addSpec, useWindowsEvents, setAnnounceHandlers, vialChannel } from './hid-host.mjs';
+import { readVialDefinition } from '../public/devices/vial.js';
 import * as myDevices from './my-devices.mjs';
 import * as autoReport from './auto-report.mjs';
 import { applyAdded } from './profile-added.mjs';
@@ -157,7 +158,10 @@ export async function start({ port, corsairHelper }) {
     const use = async (other) => {
       let layout = null, none = null;
       try {
-        const { def, from } = await via.definitionFor(other.vid, other.pid);
+        // a Vial keyboard gives its own layout (1 Nov 2026, public/devices/vial.js): read once, only when no file is saved
+        // yet, on a raw channel closed straight after; a keyboard that is not Vial is told apart at the first question
+        const { def, from } = await via.definitionFor(other.vid, other.pid, { name: other.name, vial: () => readVialFrom(other),
+          log: (t) => console.log(`[keyboard] ${other.name || other.id}: ${t}`) });
         layout = fromDefinition(def);
         if (!layout.name || layout.name === 'VIA keyboard') layout.name = other.name || layout.name;
         console.log(`[keyboard] ${layout.name}: layout from ${from}, ${layout.rows}x${layout.cols}, ${layout.keys.length} keys`);
@@ -172,6 +176,13 @@ export async function start({ port, corsairHelper }) {
       useKeyboardSpec(other.vid, other.pid, other.name, { never: other.unlisted });
       if (other.unlisted) console.log(`[keyboard] ${other.name || other.id}: not on DeviceHub's list: it is identified first, then read only until Turn on settings`);
     };
+    async function readVialFrom(k) {
+      const dev = vialChannel(k.vid, k.pid, k.name);
+      try {
+        if (!(await dev.tryOpen())) throw new Error('its VIA channel did not open');
+        return await readVialDefinition(dev);
+      } finally { try { dev.close(); } catch {} }
+    }
     function onStepAside(id, why) {
       aside.add(id);
       console.log(`[keyboard] ${id}: stepped aside: ${why}; nothing more is sent to it`);

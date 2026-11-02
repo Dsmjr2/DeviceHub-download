@@ -1,0 +1,51 @@
+{
+  "vial-sample.xz": {
+    "length": 406,
+    "sha256": "dc2a4b1ee4ea221565b7e1165be1ada184b36ab37c9cba5c6f7dca24566e34c2"
+  },
+  "empty.xz": {
+    "length": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "crc32.xz": {
+    "length": 20000,
+    "sha256": "76d6463add25be07f8c4bb860d1b535d1345dda535f6202e170efbc5906a2904"
+  },
+  "nocheck.xz": {
+    "length": 20000,
+    "sha256": "76d6463add25be07f8c4bb860d1b535d1345dda535f6202e170efbc5906a2904"
+  },
+  "mixed.xz": {
+    "length": 125000,
+    "sha256": "3e6e45858c988dfbed21d01c0f7130f22a4d82d2fd3a4bb636e1bc12ac0e2bfe"
+  },
+  "extreme.xz": {
+    "length": 186889,
+    "sha256": "e21d4d72708644fcb4857c120c6e3ca5db3b64dacf3b8dc74244d1e3791d83ac"
+  },
+  "props-lc0-lp2-pb0.xz": {
+    "length": 60000,
+    "sha256": "09e4b5ddd8aa2be171c0f68e7a43c050875878b70e9db812c1191fc439f55cb5"
+  },
+  "props-lc4-lp0-pb4.xz": {
+    "length": 60000,
+    "sha256": "09e4b5ddd8aa2be171c0f68e7a43c050875878b70e9db812c1191fc439f55cb5"
+  },
+  "multistream.xz": {
+    "length": 6000,
+    "sha256": "e3e24a4a2f2b46f5562e9d3bda3997abaeb8f6d0f86efad0be5fbc1ef9fc120c"
+  },
+  "too-big.xz": {
+    "error": "more than allowed"
+  },
+  "sha256.xz": {
+    "error": "SHA-256"
+  },
+  "bcj.xz": {
+    "error": "BCJ"
+  },
+  "multiblock.xz": {
+    "length": 120000,
+    "sha256": "36979a153064bac9516031518ba0ee271db5e80d14517d4158dbe3ac7db8b1d8"
+  }
+}

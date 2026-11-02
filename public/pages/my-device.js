@@ -303,7 +303,7 @@ export function twinSettingsCard(d, redraw) {
   const shown = (a.settings || []).filter((s) => d.values?.[s.key] !== undefined);
   return card([h('h2', {}, 'Battery & headset settings'), batteryPill(d)],
     turnOnBanner(d, redraw),
-    shown.length ? shown.map((s) => settingRow(d, s)) : h('p', { class: 'faint', style: { margin: 0 } }, d.status === 'connected' ? 'No settings reported yet.' : `The ${a.title} is not connected.`),
+    shown.length ? settingsList(d, shown) : h('p', { class: 'faint', style: { margin: 0 } }, d.status === 'connected' ? 'No settings reported yet.' : `The ${a.title} is not connected.`),   // in groups too (1 Nov 2026)
     careLine(d),
     h('div', { class: 'actions', style: { marginTop: '10px' } }, button('More', () => { location.hash = `#/${d.id}`; }, { kind: 'ghost small', title: `Everything about the ${a.title}` })));
 }

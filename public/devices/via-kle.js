@@ -55,7 +55,10 @@ export function keymapToKeys(keymap) {
       if (enc) key.ei = +enc[1];
       if (d) key.d = true;
       const rc = pair(slots[0]);
-      if (rc) { key.row = rc[0]; key.col = rc[1]; }
+      // a Vial definition (1 Nov 2026) draws each knob turn as its own key: "e" alone in slot 4 and "index,direction"
+      // in slot 0 (vial-gui src/main/python/protocol/keyboard_comm.py reload_layout @ aef8222a), not a matrix row,col
+      if (/^e$/i.test(slots[4] || '') && rc) { key.ei = rc[0]; key.dir = rc[1]; }
+      else if (rc) { key.row = rc[0]; key.col = rc[1]; }
       else if (!d && key.ei == null) throw new Error(`a key in the drawing has no row,col (${JSON.stringify(item).slice(0, 30)})`);
       const g = pair(slots[8]);
       if (g) ((groups[g[0]] ||= {})[g[1]] ||= []).push(key);

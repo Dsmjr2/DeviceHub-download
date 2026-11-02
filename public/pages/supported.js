@@ -21,9 +21,14 @@ async function load() {
 }
 
 // what works with no driver at all: [what, what it gets]
+// (1 Nov 2026) and the whole families a driver takes by protocol, models it does not name included
+// (device-library/*/device.json "family"), the pointer card on every mouse, a Bluetooth headset's battery
 const ANY = [
   ['Any VIA keyboard', 'Keys, layers, macros, lights.'],
-  ['Any USB headset', 'Volume, mic, EQ.'],
+  ['Any Logitech G device', 'Mouse, keyboard or headset on its own channel: battery and settings.'],
+  ['Any Corsair mouse or keyboard', 'Battery, polling rate, firmware (read only).'],
+  ['Any mouse', "Windows' pointer speed, scroll and double-click."],
+  ['Any USB or Bluetooth headset', 'Volume, mic, EQ; battery over Bluetooth.'],
   ['Monitors', 'Brightness, contrast, color, volume.'],
   ['Webcams', 'Picture settings.'],
   ['USB lights', 'Colors.'],

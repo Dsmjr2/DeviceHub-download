@@ -384,6 +384,13 @@ export function useKeyboardSpec(vid, pid, name, { never = false } = {}) {
   const s = { ...SPECS[i], vid, pid, vendorId: parseInt(vid, 16), productId: parseInt(pid, 16), productName: name || 'VIA keyboard', ...(never ? { never: true } : {}) };
   SPECS[i] = s; hosts[i] = new HostDevice(s);
 }
+// A Vial keyboard's own layout (1 Nov 2026, public/devices/vial.js): Vial's replies do not repeat the request's first
+// byte, which the keyboard channel's REQ waits for, so the definition is read on a raw channel (SEND / READ) of the
+// same FF60 collection. Not added to SPECS, so getDevice never hands it out; the caller closes it when done. The never
+// list is checked on it like any library channel, and vial.js itself sends only FE 00 / FE 01 / FE 02.
+export function vialChannel(vid, pid, name) {
+  return new HostDevice(normalize({ id: 'vial-read', vid, pid, page: 'FF60', usage: '0061', len: 32, reportId: 0, replyMs: 400, reply: 'raw', never: true, productName: name || 'VIA keyboard' }));
+}
 // the helper stopped: every open device is gone until it reopens
 native.onExit(() => { for (const h of hosts) if (h.opened) h.gone(); });
 

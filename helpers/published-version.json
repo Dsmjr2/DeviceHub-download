@@ -1,8 +1,10 @@
 {
-  "version": "1.51",
-  "commit": "5a8873a32796",
+  "version": "1.52",
+  "commit": "928dd9326ee1",
   "notes": [
-    "Review fixes: DPI in use for ASUS, shared chip ids, pointer card read",
-    "Added device pages lead with their figures"
+    "Vial keyboards give DeviceHub their own layout",
+    "Razer mouse driver knows 53 more mice from openrazer",
+    "Headset twin settings in groups too",
+    "Supported page names the device families"
   ]
 }

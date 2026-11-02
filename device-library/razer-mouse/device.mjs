@@ -202,6 +202,102 @@ export const MODELS = {
   // Naga V2 HyperSpeed receiver: tid 1F (846, 1650, 3448/3556, 3317/3198); low battery read 1F (3636) but written with FF
   // (3803); charge status "0" without asking (1716: AA battery); no lighting (mouse.py:1948-1963); wait NEW (rmd.c:71).
   '00B4': m('Naga V2 HyperSpeed', 'dongle', { tid: 0x1f, wait: NEW, poll: 'classic', power: 'aa', dpiMax: 30000, setTids: { lowBattery: 0xff }, light: false }),
+  // ---- 1 Nov 2026: the rest of openrazer master's mice (commit 477f4d6) that speak this 90-byte report. Every value is
+  // from openrazer: model, USB_PID and DPI_MAX from the class in daemon/openrazer_daemon/hardware/mouse.py (a receiver
+  // class takes its parent's DPI_MAX); transaction ids per command from driver/razermouse_driver.c (functions
+  // razer_attr_read_firmware_version, _read/_write_dpi, _read/_write_poll_rate, _read/_write_dpi_stages,
+  // _read_charge_level, _read_charge_status, _read/_write_device_idle_time, _read/_write_charge_low_threshold,
+  // _read/_write_led_brightness, _read/_write_matrix_brightness); waits and report index from razer_get_report. Names are
+  // driver/razermouse_driver.h USB_DEVICE_ID_RAZER_*. poll 'classic' = the model reads razer_chroma_misc_get_polling_rate.
+  // stages: false where mouse.py lists no get_dpi_stages; leds: the zones mouse.py names (get_logo / get_scroll /
+  // get_left / get_right_brightness); leds null where mouse.py names only get_brightness (the extended ZERO_LED read):
+  // the probe asks with reads only. light: false where mouse.py names no brightness, or where the driver reads it with the
+  // standard 0x03 class (razer_chroma_standard_get_led_brightness, "dock" brightness), which this table does not send.
+  // power 'aa' where razer_attr_read_charge_status answers "0" without asking (its "Use AA batteries" case list).
+  // Lancehead (Wired 0059 / Wireless 005A; Wireless 2019: wired 0070, receiver 006F; TE 0060): firmware, DPI, polling and
+  // brightness 3F; stages, idle and low battery FF; battery and charging 3F (0059/005A) or 1F (0070/006F); 006F / 0070
+  // take RAZER_NEW_MOUSE_RECEIVER_WAIT_US. mouse.py RazerLanceheadWired / Wireless / WirelessWired / WirelessReceiver / TE.
+  '0059': m('Lancehead', 'wired', { tid: 0x3f, poll: 'classic', power: 'rechargeable', dpiMax: 16000, tids: { dpiStages: 0xff, idle: 0xff, lowBattery: 0xff }, leds: [0x04, 0x01, 0x11, 0x10] }),
+  '005A': m('Lancehead', 'dongle', { tid: 0x3f, poll: 'classic', dpiMax: 16000, tids: { dpiStages: 0xff, idle: 0xff, lowBattery: 0xff }, leds: [0x04, 0x01, 0x11, 0x10] }),
+  '0070': m('Lancehead Wireless', 'wired', { tid: 0x3f, wait: NEW, poll: 'classic', power: 'rechargeable', dpiMax: 16000, tids: { battery: 0x1f, charging: 0x1f, dpiStages: 0xff, idle: 0xff, lowBattery: 0xff }, leds: [0x04, 0x01, 0x11, 0x10] }),
+  '006F': m('Lancehead Wireless', 'dongle', { tid: 0x3f, wait: NEW, poll: 'classic', dpiMax: 16000, tids: { battery: 0x1f, charging: 0x1f, dpiStages: 0xff, idle: 0xff, lowBattery: 0xff }, leds: [0x04, 0x01, 0x11, 0x10] }),
+  '0060': m('Lancehead Tournament Edition', 'wired', { tid: 0x3f, poll: 'classic', dpiMax: 16000, tids: { dpiStages: 0xff }, leds: [0x04, 0x01, 0x11, 0x10] }),
+  // DeathAdder Elite 005C: 3F throughout (RazerDeathAdderElite). DeathAdder Chroma 0043, 2000 004F, 3500 0054: FF; their
+  // lighting is the standard class (RazerDeathAdderChroma / 2000 / 3500).
+  '005C': m('DeathAdder Elite', 'wired', { tid: 0x3f, poll: 'classic', dpiMax: 16000, stages: false, leds: [0x04, 0x01] }),
+  '0043': m('DeathAdder Chroma', 'wired', { tid: 0xff, poll: 'classic', dpiMax: 10000, stages: false, light: false }),
+  '004F': m('DeathAdder 2000', 'wired', { tid: 0xff, poll: 'classic', dpiMax: 2000, stages: false, light: false }),
+  '0054': m('DeathAdder 3500', 'wired', { tid: 0xff, poll: 'classic', dpiMax: 3500, stages: false, light: false }),
+  // Viper 0078 (RazerViper): FF, brightness 3F
+  '0078': m('Viper', 'wired', { tid: 0xff, poll: 'classic', dpiMax: 16000, tids: { brightness: 0x3f }, leds: [0x04] }),
+  // Viper Mini SE (RazerViperMiniSEWired 009E / Wireless 009F): 1F throughout, polling_rate2 (read 0xC0, written with
+  // 0x00 then 0x01, both 1F: razer_attr_write_poll_rate), RAZER_VIPER_MOUSE_RECEIVER_WAIT_US; 009F has the dongle light
+  // (razer_attr_read_hyperpolling_wireless_dongle_indicator_led_mode, 1F); no brightness in mouse.py.
+  '009E': m('Viper Mini SE', 'wired', { tid: 0x1f, wait: VIPER, poll: 'rate2', power: 'rechargeable', dpiMax: 30000, light: false }),
+  '009F': m('Viper Mini SE', 'dongle', { tid: 0x1f, wait: VIPER, poll: 'rate2', dpiMax: 30000, light: false, dongleLed: true }),
+  // Basilisk 0064 (3F), Basilisk Essential 0065 (3F, stages FF); Basilisk Ultimate (wired 0086 / receiver 0088): 1F,
+  // polling read FF but written 1F, idle and low battery FF, RAZER_NEW_MOUSE_RECEIVER_WAIT_US; Basilisk X HyperSpeed 0083:
+  // FF throughout, AA, new-receiver wait; Basilisk Mobile (wired 00D3 / receiver 00D4): 1F, AA, new-receiver wait,
+  // brightness read 1F but written 3F (razer_attr_write_matrix_brightness).
+  '0064': m('Basilisk', 'wired', { tid: 0x3f, poll: 'classic', dpiMax: 16000, stages: false, leds: [0x04, 0x01] }),
+  '0065': m('Basilisk Essential', 'wired', { tid: 0x3f, poll: 'classic', dpiMax: 6400, tids: { dpiStages: 0xff }, leds: [0x04] }),
+  '0086': m('Basilisk Ultimate', 'wired', { tid: 0x1f, wait: NEW, poll: 'classic', power: 'rechargeable', dpiMax: 20000, stages: false, tids: { poll: 0xff, idle: 0xff, lowBattery: 0xff }, setTids: { poll: 0x1f }, leds: [0x04, 0x01, 0x11, 0x10] }),
+  '0088': m('Basilisk Ultimate', 'dongle', { tid: 0x1f, wait: NEW, poll: 'classic', dpiMax: 20000, stages: false, tids: { poll: 0xff, idle: 0xff, lowBattery: 0xff }, setTids: { poll: 0x1f }, leds: [0x04, 0x01, 0x11, 0x10] }),
+  '0083': m('Basilisk X HyperSpeed', 'dongle', { tid: 0xff, wait: NEW, poll: 'classic', power: 'aa', dpiMax: 16000, light: false }),
+  '00D3': m('Basilisk Mobile', 'wired', { tid: 0x1f, wait: NEW, poll: 'classic', power: 'aa', dpiMax: 18000, setTids: { brightness: 0x3f } }),
+  '00D4': m('Basilisk Mobile', 'dongle', { tid: 0x1f, wait: NEW, poll: 'classic', power: 'aa', dpiMax: 18000, setTids: { brightness: 0x3f } }),
+  // Naga X 0096: 1F, stages FF, report index 0x03 (razer_get_report, as Basilisk V3). Naga Left-Handed 2020 008D: 1F.
+  // Naga Pro (wired 008F / wireless 0090): 1F; only 0090 takes the new-receiver wait. Naga Trinity 0067: FF, brightness 3F.
+  // Naga Hex V2 0050 (3F), Naga Chroma 0053 (FF), Naga Epic Chroma (wired 003E / dock 003F, FF), Naga 2014 0040 (FF):
+  // standard-class or no lighting.
+  '0096': m('Naga X', 'wired', { tid: 0x1f, poll: 'classic', iface: 3, dpiMax: 18000, tids: { dpiStages: 0xff }, leds: [0x01, 0x11] }),
+  '008D': m('Naga Left-Handed Edition', 'wired', { tid: 0x1f, poll: 'classic', dpiMax: 20000, stages: false, leds: [0x04, 0x01, 0x10] }),
+  '008F': m('Naga Pro', 'wired', { tid: 0x1f, poll: 'classic', power: 'rechargeable', dpiMax: 20000, leds: [0x04, 0x01] }),
+  '0090': m('Naga Pro', 'dongle', { tid: 0x1f, wait: NEW, poll: 'classic', dpiMax: 20000, leds: [0x04, 0x01] }),
+  '0067': m('Naga Trinity', 'wired', { tid: 0xff, poll: 'classic', dpiMax: 16000, stages: false, tids: { brightness: 0x3f } }),
+  '0050': m('Naga Hex V2', 'wired', { tid: 0x3f, poll: 'classic', dpiMax: 16000, stages: false, light: false }),
+  '0053': m('Naga Chroma', 'wired', { tid: 0xff, poll: 'classic', dpiMax: 16000, stages: false, light: false }),
+  '003E': m('Naga Epic Chroma', 'wired', { tid: 0xff, poll: 'classic', power: 'rechargeable', dpiMax: 8200, stages: false, light: false }),
+  '003F': m('Naga Epic Chroma', 'dongle', { tid: 0xff, poll: 'classic', dpiMax: 8200, stages: false, light: false }),
+  '0040': m('Naga 2014', 'wired', { tid: 0xff, poll: 'classic', dpiMax: 8200, stages: false, light: false }),
+  // Mamba Elite 006C: 1F, polling FF. Mamba Wireless 2018 (wired 0073 / receiver 0072): 3F, idle and low battery FF,
+  // new-receiver wait. Mamba Chroma (wired 0044 / wireless 0045): FF, polling written 3F; Mamba Tournament Edition 0046
+  // (FF, no polling in the driver: poll null = reads only); Mamba 2012 (wired 0024 / wireless 0025): FF; standard lighting.
+  '006C': m('Mamba Elite', 'wired', { tid: 0x1f, poll: 'classic', dpiMax: 16000, stages: false, tids: { poll: 0xff }, leds: [0x04, 0x01, 0x11, 0x10] }),
+  '0073': m('Mamba Wireless', 'wired', { tid: 0x3f, wait: NEW, poll: 'classic', power: 'rechargeable', dpiMax: 16000, stages: false, tids: { idle: 0xff, lowBattery: 0xff }, leds: [0x04, 0x01] }),
+  '0072': m('Mamba Wireless', 'dongle', { tid: 0x3f, wait: NEW, poll: 'classic', dpiMax: 16000, stages: false, tids: { idle: 0xff, lowBattery: 0xff }, leds: [0x04, 0x01] }),
+  '0044': m('Mamba Chroma', 'wired', { tid: 0xff, poll: 'classic', power: 'rechargeable', dpiMax: 16000, stages: false, setTids: { poll: 0x3f }, light: false }),
+  '0045': m('Mamba Chroma', 'dongle', { tid: 0xff, poll: 'classic', dpiMax: 16000, stages: false, setTids: { poll: 0x3f }, light: false }),
+  '0046': m('Mamba Tournament Edition', 'wired', { tid: 0xff, dpiMax: 16000, stages: false, light: false }),
+  '0024': m('Mamba (2012)', 'wired', { tid: 0xff, poll: 'classic', power: 'rechargeable', dpiMax: 6400, stages: false, light: false }),
+  '0025': m('Mamba (2012)', 'dongle', { tid: 0xff, poll: 'classic', dpiMax: 6400, stages: false, light: false }),
+  // Abyssus Elite D.Va Edition 006A / Essential 006B: FF, brightness 3F. Abyssus V2 005B, Abyssus 2000 005E: FF.
+  '006A': m('Abyssus Elite D.Va Edition', 'wired', { tid: 0xff, poll: 'classic', dpiMax: 7200, stages: false, tids: { brightness: 0x3f }, leds: [0x04] }),
+  '006B': m('Abyssus Essential', 'wired', { tid: 0xff, poll: 'classic', dpiMax: 7200, stages: false, tids: { brightness: 0x3f }, leds: [0x04] }),
+  '005B': m('Abyssus V2', 'wired', { tid: 0xff, poll: 'classic', dpiMax: 5000, stages: false, light: false }),
+  '005E': m('Abyssus 2000', 'wired', { tid: 0xff, poll: 'classic', dpiMax: 2000, stages: false, light: false }),
+  // Pro Click (receiver 0077 / wired 0080): 1F, idle and low battery FF; Pro Click Mini receiver 009A, Pro Click V2
+  // (wired 00D0 / wireless 00D1) and V2 Vertical Edition (wired 00C7 / wireless 00C8): 1F throughout. All new-receiver wait.
+  '0080': m('Pro Click', 'wired', { tid: 0x1f, wait: NEW, poll: 'classic', power: 'rechargeable', dpiMax: 16000, tids: { idle: 0xff, lowBattery: 0xff }, light: false }),
+  '0077': m('Pro Click', 'dongle', { tid: 0x1f, wait: NEW, poll: 'classic', dpiMax: 16000, tids: { idle: 0xff, lowBattery: 0xff }, light: false }),
+  '009A': m('Pro Click Mini', 'dongle', { tid: 0x1f, wait: NEW, poll: 'classic', dpiMax: 12000, light: false }),
+  '00D0': m('Pro Click V2', 'wired', { tid: 0x1f, wait: NEW, poll: 'classic', power: 'rechargeable', dpiMax: 30000 }),
+  '00D1': m('Pro Click V2', 'dongle', { tid: 0x1f, wait: NEW, poll: 'classic', dpiMax: 30000 }),
+  '00C7': m('Pro Click V2 Vertical Edition', 'wired', { tid: 0x1f, wait: NEW, poll: 'classic', power: 'rechargeable', dpiMax: 30000 }),
+  '00C8': m('Pro Click V2 Vertical Edition', 'dongle', { tid: 0x1f, wait: NEW, poll: 'classic', dpiMax: 30000 }),
+  // Atheris receiver 0062: 1F, stages, idle and low battery FF, AA, RAZER_ATHERIS_RECEIVER_WAIT_US. Ouroboros 0032 (one id,
+  // battery: FF), Orochi Chroma 0048 (FF; mouse.py names no battery, so idle / low battery are not asked), Taipan 0034,
+  // Diamondback Chroma 004C (FF, no polling in the driver): standard-class or no lighting.
+  '0062': m('Atheris', 'dongle', { tid: 0x1f, wait: 400, poll: 'classic', power: 'aa', dpiMax: 7200, tids: { dpiStages: 0xff, idle: 0xff, lowBattery: 0xff }, light: false }),
+  '0032': m('Ouroboros', 'wired', { tid: 0xff, poll: 'classic', power: 'rechargeable', dpiMax: 8200, stages: false, light: false }),
+  '0048': m('Orochi Chroma', 'wired', { tid: 0xff, poll: 'classic', dpiMax: 8200, stages: false, light: false }),
+  '0034': m('Taipan', 'wired', { tid: 0xff, poll: 'classic', dpiMax: 8200, stages: false, light: false }),
+  '004C': m('Diamondback Chroma', 'wired', { tid: 0xff, dpiMax: 16000, stages: false, light: false }),
+  // Not added (openrazer master): DeathAdder 3.5G 0016 / 3.5G Black 0029 (old control message, not this report); Orochi
+  // 2011 0013 (its own poll+DPI command, no firmware read); Naga 0015, Naga 2012 002E, Naga Hex 0041, Naga Hex Red 0036,
+  // Naga Epic 001F, Abyssus 1800 0020, DeathAdder 2013 0037, DeathAdder 1800 0038 (one-byte DPI, get_dpi_xy_byte);
+  // Imperator 002F and Orochi 2013 0039 (DPI read with VARSTORE); Abyssus 0042 (no DPI in the driver, no DPI_MAX);
+  // Orochi V2 Bluetooth 0095 (Bluetooth only).
 };
 export const PIDS = Object.keys(MODELS);
 
