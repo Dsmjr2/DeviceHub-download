@@ -8,8 +8,9 @@
 // Coverage (22 Oct 2026, docs/handoff/driver-coverage.md): every razer.md §3 mouse row that has both a set and a get
 // is here: DPI, the DPI stage table (active stage and each stage's DPI; the stage COUNT is never changed), polling
 // (classic and HyperPolling), sleep timer, low-battery threshold, scroll acceleration and smart reel (Basilisk-type
-// wheels), the HyperPolling dongle's indicator light, and extended lighting brightness per documented LED id. Left out,
-// with why: lighting effect / static colour (0x0F/0x02 has no get, so nothing could be read back), scroll mode (the
+// wheels), the HyperPolling dongle's indicator light, and extended lighting brightness per documented LED id. Since 2 Nov
+// 2026 also the lighting effects and colours per LED zone, as write-only settings (see "Lighting effects" below). Left out,
+// with why: scroll mode (the
 // sheet names no mode values: read and shown only), device mode, dongle pairing, macros / remaps (no source), lift-off,
 // angle snapping, debounce and onboard profiles (no source documents them for Razer).
 //
@@ -96,6 +97,243 @@ export const LEDS = [
   { id: 0x11, key: 'brightnessLeft', name: 'left side' },
 ];
 export const LED_ALL = { id: 0x00, key: 'brightnessAll', name: 'whole mouse' };
+
+// ---- Lighting effects as write-only settings (2 Nov 2026, Shawn's rule; helpers/my-devices.mjs "Write-only settings") ----
+// The effect commands have no read, so each effect setting is `writeOnly`: never read back or self-checked, locked until
+// Turn on settings AND the person checked it by eye once on that model (Try it). From openrazer master @ 477f4d6d:
+// "rcc.c:N" = driver/razerchromacommon.c, "rmd.c:N" = driver/razermouse_driver.c, "mouse.py:N" = the class in
+// daemon/openrazer_daemon/hardware/mouse.py, "razercommon.h" for the ids. Facts only, no code copied.
+//  - THE STORE BYTE: openrazer sends every effect with VARSTORE (0x01); razercommon.h names 0x01 VARSTORE and 0x00
+//    NOSTORE ("LED STORAGE Options"), OpenRGB (Controllers/RazerController/RazerController.h) names them
+//    RAZER_STORAGE_SAVE = 0x01 and RAZER_STORAGE_NO_SAVE = 0x00 and sends every effect NO_SAVE, and razerkbd_driver.c
+//    razer_get_active_varstore uses that byte as the onboard profile number. So VARSTORE is taken to be saved on the
+//    device, and this driver sends only NOSTORE (FX_STORE): the mouse forgets the effect when it is unplugged.
+//  - Two commands, both with that store byte: extended 0x0F/0x02 (rcc.c:481 razer_chroma_extended_matrix_effect_base:
+//    [store, led, effect]) and the "mouse extended" 0x03/0x0D (rcc.c:784) of the Naga Hex V2 / Naga Chroma. Left out:
+//    the standard matrix effect 0x03/0x0A (rcc.c:208: no store byte at all, so it cannot be sent in a form that is
+//    not kept) used by the Mamba Chroma / TE, Diamondback Chroma and Orochi Chroma; the classic LED-state sequences
+//    (0x03/0x00 + 0x03/0x01 + 0x03/0x02) of the DeathAdder Chroma / 2000 / 3500, Abyssus V2 / 2000, Mamba 2012, Naga
+//    Epic Chroma, Naga 2014, Ouroboros and Taipan (several commands per effect, and rmd.c:4899-4919 has no break and falls through into
+//    the extended command for some of them); the Naga Trinity / Naga Pro / Naga V2 Pro whole-mouse effects and the
+//    Basilisk Mobile static (rmd.c:1133-1170: an undocumented "mode switcher" report first); the custom frame 0x0F/0x03.
+//  - Which model has which effect on which LED: only what BOTH mouse.py METHODS lists (set_logo_static,
+//    set_scroll_wave, set_static_effect ...: FX_METHODS) AND the matching rmd.c function has a case for (FX_ZONE for
+//    the per-LED *_common functions, FX_ALL for the whole-mouse ZERO_LED ones), with that case's transaction id.
+//  - Wave: openrazer's daemon passes direction 1 or 2 (device_base.py WAVE_DIRS (1, 2) on every mouse here;
+//    dbus_methods/lanceheadte.py set_logo_wave: "(0|1) - down to up, (1|2) up to down"); speed 0x28 as rcc.c:542.
+//    Reactive speed 1-4 (rcc.c:643 clamp; pylib constants REACTIVE_500MS 1 ... REACTIVE_2000MS 4).
+export const FX_STORE = NOSTORE;
+export const FX_CMD = { ext: { cls: 0x0f, id: 0x02 }, mext: { cls: 0x03, id: 0x0d } };
+// zones: razercommon.h LED ids; 'all' = ZERO_LED, the whole-mouse set_*_effect methods (rmd.c:971-1310)
+export const FX_ZONES = {
+  logo: { led: 0x04, name: 'logo' }, scroll: { led: 0x01, name: 'scroll wheel' }, left: { led: 0x11, name: 'left side' },
+  right: { led: 0x10, name: 'right side' }, backlight: { led: 0x05, name: 'backlight' }, all: { led: 0x00, name: 'mouse' },
+};
+// openrazer's case lists, per effect: the builder ('ext' / 'mext'), the transaction id, the line of the call (at) and of
+// the transaction id (tidAt), and the product ids of that case that this driver has (the others are not Razer mice here)
+export const FX_ZONE = {
+  wave: [   // razer_attr_write_matrix_effect_wave_common rmd.c:4581
+    { cmd: 'ext', tid: 0x3f, at: 4599, tidAt: 4600, pids: '0059 005A 0060 006F 0070' },
+    { cmd: 'ext', tid: 0x1f, at: 4629, tidAt: 4630, pids: '0096 008D 008F 0090 006C 0099 00DB 00DA 00B0 00AF 00AA 00AB 00CB 00CC 00CD 00D6 00D7 0088 0086 00A7 00A8 00B9 00C8 00C7 00D0 00D1' },
+  ],
+  spectrum: [   // razer_attr_write_matrix_effect_spectrum_common rmd.c:4666
+    { cmd: 'mext', tid: 0x3f, at: 4693, tidAt: 4694, pids: '0050 0053' },
+    { cmd: 'ext', tid: 0x3f, at: 4717, tidAt: 4718, pids: '005C 0059 005A 0060 006F 0070 0072 0073 006A 006B 0078 008A 007A 007B 0064 0065 0084 007C 007D 008C' },
+    { cmd: 'ext', tid: 0x1f, at: 4751, tidAt: 4752, pids: '0091 0096 008D 008F 0090 006C 0088 0086 0085 0099 00A3 00DB 00DA 00B0 00AF 00AA 00AB 00CB 00CC 00CD 00D6 00D7 00A1 00A7 00A8 00B9 00C8 00C7 00D0 00D1' },
+  ],
+  reactive: [   // razer_attr_write_matrix_effect_reactive_common rmd.c:4789
+    { cmd: 'mext', tid: 0x3f, at: 4807, tidAt: 4808, pids: '0050 0053' },
+    { cmd: 'ext', tid: 0x3f, at: 4831, tidAt: 4832, pids: '005C 0059 005A 0060 006F 0070 0072 0073 006A 006B 0078 008A 007A 007B 0064 0065 0084 007C 007D 008C' },
+    { cmd: 'ext', tid: 0x1f, at: 4853, tidAt: 4854, pids: '0091 0096 008D 008F 0090 006C 0088 0086 0085 00A1 00A7 00A8 00A3 00B9 00C8 00C7 00D0 00D1' },
+  ],
+  static: [   // razer_attr_write_matrix_effect_static_common rmd.c:5122
+    { cmd: 'mext', tid: 0x3f, at: 5162, tidAt: 5163, pids: '0053 0050' },
+    { cmd: 'ext', tid: 0x3f, at: 5189, tidAt: 5190, pids: '005C 0059 005A 0060 006F 0070 006E 0098 0071 0072 0073 006A 006B 0078 008A 007A 007B 0064 0065 0084 007C 007D 008C' },
+    { cmd: 'ext', tid: 0x1f, at: 5223, tidAt: 5224, pids: '0091 0096 008D 008F 0090 006C 0088 0086 0085 0099 00DB 00DA 00B0 00AF 00AA 00AB 00CB 00CC 00CD 00D6 00D7 00A1 00A7 00A8 00A3 00B9 00C8 00C7 00D0 00D1' },
+  ],
+  none: [   // razer_attr_write_matrix_effect_none_common rmd.c:5325
+    { cmd: 'mext', tid: 0x3f, at: 5381, tidAt: 5382, pids: '0053 0050' },
+    { cmd: 'ext', tid: 0x3f, at: 5408, tidAt: 5409, pids: '005C 0059 005A 0060 006F 0070 006E 0098 0071 0072 0073 006A 006B 0078 008A 007A 007B 0064 0065 0084 007C 007D 008C' },
+    { cmd: 'ext', tid: 0x1f, at: 5441, tidAt: 5442, pids: '0091 0096 008D 008F 0090 006C 0088 0086 0085 00DB 00DA 00B0 00AF 00AA 00AB 00CB 00CC 00CD 00D6 00D7 00A1 00A7 00A8 00A3 00B9 00C8 00C7 00D0 00D1' },
+  ],
+  // razer_attr_write_matrix_effect_breath_common rmd.c:4891: the builder by the first switch (mext 4941 single / 4945
+  // dual / 4949 random; ext 4997 / 5001 / 5005), the transaction id by the second (0x1f rmd.c:5053, 0x3f rmd.c:5094)
+  breath: [
+    { cmd: 'mext', tid: 0x3f, at: 4941, tidAt: 5094, pids: '0053 0050' },
+    { cmd: 'ext', tid: 0x1f, at: 4997, tidAt: 5053, pids: '0091 0096 008D 008F 0090 006C 0085 0088 0086 00A1 00A7 00A8 00B9 00C8 00C7 00D0 00D1' },
+    { cmd: 'ext', tid: 0x3f, at: 4997, tidAt: 5094, pids: '005C 0059 005A 0060 006F 0070 006E 0098 0071 0072 0073 006A 006B 0078 008A 007A 007B 0064 0065 0084 007C 007D 008C 00A3' },
+  ],
+};
+// the whole-mouse effects on ZERO_LED (rmd.c razer_attr_write_matrix_effect_static 1121, _wave 1210, _spectrum 1260,
+// _none 971): only their extended 0x0F/0x02 case
+export const FX_ALL = {
+  static: [{ cmd: 'ext', tid: 0x1f, at: 1188, tidAt: 1189, pids: '0099 00DB 00DA 00B0 00AF 00AA 00AB 00CB 00CC 00CD 00D6 00D7 00C8 00C7 00D0 00D1' }],
+  wave: [{ cmd: 'ext', tid: 0x1f, at: 1239, tidAt: 1240, pids: '0099 00DB 00DA 00B0 00AF 00AA 00AB 00CB 00CC 00CD 00D6 00D7 00C8 00C7 00D0 00D1' }],
+  spectrum: [{ cmd: 'ext', tid: 0x1f, at: 1296, tidAt: 1297, pids: '0099 00DB 00DA 00B0 00AF 00AA 00AB 00CB 00CC 00CD 00D6 00D7 00C8 00C7 00D0 00D1' }],
+  none: [{ cmd: 'ext', tid: 0x1f, at: 996, tidAt: 997, pids: '00DB 00DA 00B0 00AF 00AA 00AB 00CB 00CC 00CD 00D6 00D7 00C8 00C7 00D0 00D1 00D4 00D3' }],
+};
+// mouse.py METHODS per model: [class, line, 'zone:codes|...'] with S static, P spectrum, N none, R reactive, Bs / Bd / Br
+// breathing single / dual / random, W wave, and Bl blinking, On, Bm breath mono (not built here) (set_<zone>_<effect>; zone
+// 'all' = set_<effect>_effect). Models listed
+// here whose effects are in no FX case above (standard or classic lighting) get no effect setting.
+export const FX_METHODS = {
+  '0099': ['BasiliskV3', 1192, 'scroll:W S P|all:S W P|logo:W S P'],
+  '00AA': ['BasiliskV3ProWired', 1694, 'scroll:W S P N|all:S W P N|logo:W S P N'],
+  '00AB': ['BasiliskV3ProWireless', 1730, 'scroll:W S P N|all:S W P N|logo:W S P N'],
+  '00CB': ['BasiliskV3_35K', 1821, 'scroll:W S P N|all:S W P N|logo:W S P N'],
+  '00CC': ['BasiliskV3Pro35KWired', 1738, 'scroll:W S P N|all:S W P N|logo:W S P N'],
+  '00CD': ['BasiliskV3Pro35KWireless', 1774, 'scroll:W S P N|all:S W P N|logo:W S P N'],
+  '00D6': ['BasiliskV3Pro35KPhantomGreenEditionWired', 1782, 'scroll:W S P N|all:S W P N'],
+  '00D7': ['BasiliskV3Pro35KPhantomGreenEditionWireless', 1813, 'scroll:W S P N|all:S W P N'],
+  '00B9': ['BasiliskV3XHyperSpeed', 1983, 'scroll:W S P N R Br Bs Bd'],
+  '00A3': ['Cobra', 1925, 'logo:Br Bd Bs R P S N'],
+  '00AF': ['CobraProWired', 1566, 'all:S W P N|logo:W S P N|scroll:W S P N'],
+  '00B0': ['CobraProWireless', 1595, 'all:S W P N|logo:W S P N|scroll:W S P N'],
+  '00DA': ['CobraHyperSpeed', 1602, 'all:S W P N|logo:W S P N'],
+  '00DB': ['CobraHyperSpeedWireless', 1629, 'all:S W P N|logo:W S P N'],
+  '00A7': ['NagaV2ProWired', 1011, 'logo:W S P N R Br Bs Bd|all:S P R N Br Bs Bd'],
+  '00A8': ['NagaV2ProWireless', 1038, 'logo:W S P N R Br Bs Bd|all:S P R N Br Bs Bd'],
+  '008A': ['ViperMini', 10, 'logo:S P N R Br Bs Bd'],
+  '0085': ['BasiliskV2', 1168, 'logo:S P N R Br Bs Bd|scroll:S P N R Br Bs Bd'],
+  '007A': ['ViperUltimateWired', 817, 'logo:S P N R Br Bs Bd'],
+  '007B': ['ViperUltimateWireless', 841, 'logo:S P N R Br Bs Bd'],
+  '00A1': ['DeathAdderV2Lite', 1901, 'logo:S P N R Br Bs Bd'],
+  '0091': ['Viper8KHz', 1399, 'logo:S P N R Br Bs Bd'],
+  '006E': ['DeathAdderEssential', 873, 'logo:S N Bs|scroll:S N Bs'],
+  '0071': ['DeathAdderEssentialWhiteEdition', 110, 'logo:S N Bs|scroll:S N Bs'],
+  '0098': ['DeathAdderEssential2021', 892, 'logo:S N Bs'],
+  '0084': ['DeathAdderV2', 1226, 'logo:S P N R Br Bs Bd|scroll:S P N R Br Bs Bd'],
+  '008C': ['DeathAdderV2Mini', 1375, 'logo:S P N R Br Bs Bd'],
+  '007C': ['DeathAdderV2ProWired', 1249, 'logo:S P N R Br Bs Bd'],
+  '007D': ['DeathAdderV2ProWireless', 1273, 'logo:S P N R Br Bs Bd'],
+  '0059': ['LanceheadWired', 71, 'logo:W S P N R Br Bs Bd|scroll:W S P N R Br Bs Bd|left:W S P N R Br Bs Bd|right:W S P N R Br Bs Bd'],
+  '005A': ['LanceheadWireless', 102, 'logo:W S P N R Br Bs Bd|scroll:W S P N R Br Bs Bd|left:W S P N R Br Bs Bd|right:W S P N R Br Bs Bd'],
+  '0070': ['LanceheadWirelessWired', 32, 'logo:W S P N R Br Bs Bd|scroll:W S P N R Br Bs Bd|left:W S P N R Br Bs Bd|right:W S P N R Br Bs Bd'],
+  '006F': ['LanceheadWirelessReceiver', 63, 'logo:W S P N R Br Bs Bd|scroll:W S P N R Br Bs Bd|left:W S P N R Br Bs Bd|right:W S P N R Br Bs Bd'],
+  '0060': ['LanceheadTE', 172, 'logo:W S P N R Br Bs Bd|scroll:W S P N R Br Bs Bd|left:W S P N R Br Bs Bd|right:W S P N R Br Bs Bd'],
+  '005C': ['DeathAdderElite', 583, 'logo:S P N R Br Bs Bd|scroll:S P N R Br Bs Bd'],
+  '0043': ['DeathAdderChroma', 331, 'logo:N S Bs Bl P|scroll:N S Bs Bl P'],
+  '004F': ['DeathAdder2000', 347, 'logo:N On Bm|scroll:N On Bm'],
+  '0054': ['DeathAdder3500', 801, 'logo:N S Bs Bl|scroll:N S Bs Bl'],
+  '0078': ['Viper', 851, 'logo:S P N R Br Bs Bd'],
+  '0064': ['Basilisk', 1060, 'logo:S P N R Br Bs Bd|scroll:S P N R Br Bs Bd'],
+  '0065': ['BasiliskEssential', 1084, 'logo:P R Br Bs Bd S N'],
+  '0086': ['BasiliskUltimateWired', 1106, 'logo:P R Br Bs Bd S N|scroll:P R Br Bs Bd S N|left:W S P N R Br Bs Bd|right:W S P N R Br Bs Bd'],
+  '0088': ['BasiliskUltimateReceiver', 1161, 'logo:P R Br Bs Bd S N|scroll:P R Br Bs Bd S N|left:W S P N R Br Bs Bd|right:W S P N R Br Bs Bd'],
+  '00D3': ['BasiliskMobileWired', 2005, 'all:S N'],
+  '00D4': ['BasiliskMobileReceiver', 2026, 'all:S N'],
+  '0096': ['NagaX', 1345, 'scroll:W S P N R Br Bs Bd|left:W S P N R Br Bs Bd'],
+  '008D': ['NagaLeftHanded2020', 939, 'logo:W S P N R Br Bs Bd|scroll:W S P N R Br Bs Bd|right:W S P N R Br Bs Bd'],
+  '008F': ['NagaProWired', 971, 'logo:W S P N R Br Bs Bd|scroll:W S P N R Br Bs Bd|all:S P R N Br Bs Bd'],
+  '0090': ['NagaProWireless', 1003, 'logo:W S P N R Br Bs Bd|scroll:W S P N R Br Bs Bd|all:S P R N Br Bs Bd'],
+  '0067': ['NagaTrinity', 500, 'all:S'],
+  '0050': ['NagaHexV2', 378, 'backlight:S P R N Br Bs Bd|logo:S P N R Br Bs Bd|scroll:S P N R Br Bs Bd'],
+  '0053': ['NagaChroma', 455, 'backlight:S P R N Br Bs Bd|logo:S P N R Br Bs Bd|scroll:S P N R Br Bs Bd'],
+  '003E': ['NagaEpicChromaWired', 1451, 'scroll:N S Bs P|backlight:N S Bs P'],
+  '003F': ['NagaEpicChromaWireless', 1469, 'scroll:N S Bs P|backlight:N S Bs P'],
+  '0040': ['Naga2014', 724, 'logo:N On|scroll:N On|backlight:N On'],
+  '006C': ['MambaElite', 908, 'logo:W S P N R Br Bs Bd|scroll:W S P N R Br Bs Bd|left:W S P N R Br Bs Bd|right:W S P N R Br Bs Bd'],
+  '0073': ['MambaWirelessWired', 691, 'logo:S P N R Br Bs Bd|scroll:S P N R Br Bs Bd'],
+  '0072': ['MambaWirelessReceiver', 715, 'logo:S P N R Br Bs Bd|scroll:S P N R Br Bs Bd'],
+  '0044': ['MambaChromaWired', 221, 'backlight:W S P R N Br Bs Bd'],
+  '0045': ['MambaChromaWireless', 201, 'backlight:W S P R N Br Bs Bd'],
+  '0046': ['MambaTE', 240, 'backlight:W S P R N Br Bs Bd'],
+  '0024': ['Mamba2012Wired', 674, 'scroll:N S P'],
+  '0025': ['Mamba2012Wireless', 658, 'scroll:N S P'],
+  '006A': ['AbyssusEliteDVaEdition', 132, 'logo:S P N R Br Bs Bd'],
+  '006B': ['AbyssusEssential', 152, 'logo:S P N R Br Bs Bd'],
+  '005B': ['AbyssusV2', 757, 'logo:N S Bs Bl P|scroll:N S Bs Bl P'],
+  '005E': ['Abyssus2000', 787, 'logo:N On'],
+  '00D0': ['ProClickV2Wired', 2173, 'all:S W P N'],
+  '00D1': ['ProClickV2Wireless', 2194, 'all:S W P N'],
+  '00C7': ['ProClickV2VerticalEditionWired', 2145, 'all:S W P N'],
+  '00C8': ['ProClickV2VerticalEditionWireless', 2166, 'all:S W P N'],
+  '0032': ['Ouroboros', 283, 'scroll:N On'],
+  '0048': ['OrochiWired', 312, 'scroll:N On|backlight:S P R N Br Bs Bd'],
+  '0034': ['Taipan', 566, 'logo:N On|scroll:N On'],
+  '004C': ['DiamondbackChroma', 607, 'backlight:W S P R N Br Bs Bd'],
+};
+// the choices of one zone's effect: [value, label, METHODS code, FX group, parameter]
+export const FX_OPTIONS = [
+  ['static', 'Static colour', 'S', 'static'],
+  ['breathing', 'Breathing, one colour', 'Bs', 'breath'],
+  ['breathingDual', 'Breathing, two colours', 'Bd', 'breath'],
+  ['breathingRandom', 'Breathing, random colours', 'Br', 'breath'],
+  ['spectrum', 'Spectrum (colour cycle)', 'P', 'spectrum'],
+  ['waveUp', 'Wave, upward', 'W', 'wave', 0x01],
+  ['waveDown', 'Wave, downward', 'W', 'wave', 0x02],
+  ['reactive1', 'Lights up when clicked, 0.5 s', 'R', 'reactive', 0x01],
+  ['reactive2', 'Lights up when clicked, 1 s', 'R', 'reactive', 0x02],
+  ['reactive3', 'Lights up when clicked, 1.5 s', 'R', 'reactive', 0x03],
+  ['reactive4', 'Lights up when clicked, 2 s', 'R', 'reactive', 0x04],
+  ['off', 'Off', 'N', 'none'],
+];
+const USES_C1 = new Set(['static', 'breathing', 'breathingDual', 'reactive1', 'reactive2', 'reactive3', 'reactive4']);
+const USES_C2 = new Set(['breathingDual']);
+export const FX_DEFAULT = { c1: '#00ff00', c2: '#0000ff' };   // the colours an effect uses until the person picks one
+const cap = (s) => s[0].toUpperCase() + s.slice(1);
+const inGroup = (list, pid) => (list || []).find((g) => g.pids.split(' ').includes(pid)) || null;
+// the effects one model has: [{ zone, led, name, options: [{ value, label, group: { cmd, tid, at, tidAt }, param }] }]
+export function effectsFor(pid) {
+  const row = FX_METHODS[pid];
+  if (!row) return [];
+  const out = [];
+  for (const part of row[2].split('|')) {
+    const [zone, codes] = part.split(':');
+    const has = new Set(codes.split(' '));
+    const table = zone === 'all' ? FX_ALL : FX_ZONE;
+    const options = [];
+    for (const [value, label, code, group, param] of FX_OPTIONS) {
+      const g = has.has(code) ? inGroup(table[group], pid) : null;
+      if (g) options.push({ value, label, group: g, param });
+    }
+    // a zone with nothing but Off is not offered
+    if (options.some((o) => o.value !== 'off')) out.push({ zone, ...FX_ZONES[zone], options });
+  }
+  return out;
+}
+// the write-only settings for one model's effects (effect, colour, second colour per zone)
+export function effectSettings(pid) {
+  const out = [];
+  for (const z of effectsFor(pid)) {
+    const Z = cap(z.zone), vals = z.options.map((o) => o.value);
+    const test = vals.includes('spectrum') ? 'spectrum' : vals.includes('static') ? 'static' : vals.find((v) => v !== 'off');
+    out.push({ key: `effect${Z}`, label: z.zone === 'all' ? 'Light effect (whole mouse)' : `Light effect: ${z.name}`, type: 'choice', group: 'lights',
+      options: z.options.map(({ value, label }) => ({ value, label })), hint: 'Lasts until the mouse is unplugged (never saved on the mouse)',
+      writeOnly: { volatile: true, confirm: `Is the ${z.name} showing this now: {value}?`, test, restore: 'previous' } });
+    if (vals.some((v) => USES_C1.has(v))) out.push({ key: `color${Z}`, label: z.zone === 'all' ? 'Light colour (whole mouse)' : `Light colour: ${z.name}`, type: 'color', group: 'lights',
+      hint: 'Used by the static, breathing and click effects; picking one shows it as a static colour unless one of those is on',
+      writeOnly: { volatile: true, confirm: `Did the ${z.name} light turn {value}?`, test: '#ff0000', restore: 'previous' } });
+    if (vals.some((v) => USES_C2.has(v))) out.push({ key: `color2${Z}`, label: z.zone === 'all' ? 'Second colour (whole mouse)' : `Second colour: ${z.name}`, type: 'color', group: 'lights',
+      hint: 'Used by breathing with two colours; picking one turns that effect on',
+      writeOnly: { volatile: true, confirm: `Is the ${z.name} now breathing between two colours, one of them {value}?`, test: '#0000ff', restore: 'previous' } });
+  }
+  return out;
+}
+const rgbOf = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+// one effect's report arguments with NOSTORE, byte for byte as the rcc.c builder lays them out: { size, args }
+export function fxArgs(cmd, value, led, param, c1 = FX_DEFAULT.c1, c2 = FX_DEFAULT.c2) {
+  const s = FX_STORE, a = rgbOf(c1), b = rgbOf(c2);
+  if (cmd === 'ext') {
+    if (value === 'off') return { size: 0x06, args: [s, led, 0x00, 0, 0, 0] };                                    // rcc.c:498 none
+    if (value === 'static') return { size: 0x09, args: [s, led, 0x01, 0, 0, 0x01, ...a] };                       // rcc.c:511 [5] 01, [6-8] RGB
+    if (value === 'spectrum') return { size: 0x06, args: [s, led, 0x03, 0, 0, 0] };                              // rcc.c:605
+    if (/^wave/.test(value)) return { size: 0x06, args: [s, led, 0x04, param, 0x28, 0] };                        // rcc.c:531 [3] dir, [4] 0x28
+    if (/^reactive/.test(value)) return { size: 0x09, args: [s, led, 0x05, 0, param, 0x01, ...a] };              // rcc.c:639 [4] speed, [5] 01
+    if (value === 'breathingRandom') return { size: 0x06, args: [s, led, 0x02, 0, 0, 0] };                       // rcc.c:662
+    if (value === 'breathing') return { size: 0x09, args: [s, led, 0x02, 0x01, 0, 0x01, ...a] };                 // rcc.c:667 [3] 01, [5] 01
+    if (value === 'breathingDual') return { size: 0x0c, args: [s, led, 0x02, 0x02, 0, 0x02, ...a, ...b] };       // rcc.c:680 [3] 02, [5] 02
+  } else if (cmd === 'mext') {
+    if (value === 'off') return { size: 0x03, args: [s, led, 0x00] };                                            // rcc.c:801
+    if (value === 'static') return { size: 0x06, args: [s, led, 0x06, ...a] };                                   // rcc.c:812
+    if (value === 'spectrum') return { size: 0x03, args: [s, led, 0x04] };                                       // rcc.c:828
+    if (/^reactive/.test(value)) return { size: 0x07, args: [s, led, 0x02, param, ...a] };                       // rcc.c:841
+    if (value === 'breathingRandom') return { size: 0x0a, args: [s, led, 0x03, 0x03, 0, 0, 0, 0, 0, 0] };        // rcc.c:863
+    if (value === 'breathing') return { size: 0x0a, args: [s, led, 0x03, 0x01, ...a, 0, 0, 0] };                 // rcc.c:871
+    if (value === 'breathingDual') return { size: 0x0a, args: [s, led, 0x03, 0x02, ...a, ...b] };                // rcc.c:883
+  }
+  throw new Error(`${value} is not an effect this driver builds with ${cmd}`);
+}
 
 // §2 Transaction ids: try 0x1F, then 0x3F, then 0xFF (§4: "keep the one that answers 0x02")
 export const PROBE_TIDS = [0x1f, 0x3f, 0xff];
@@ -349,15 +587,18 @@ export function createRazerMouse({ sleep = sleepReal, open = defaultOpen, vendor
     vendor: 'Razer',
     hid: { vid: '1532', pid: '00B7', pids: PIDS, page: '0001', usage: '0002', len: LEN, featureLen: LEN, reportId: 0, featureOnly: true,
       byPid: Object.fromEntries(PIDS.map((p) => [p, { iface: MODELS[p].iface }])) },
-    unsupported: ['firmware updates (Razer\'s own updater only)', 'lighting colour and effects (no read-back exists)', 'scroll mode (read only: no documented values)',
+    unsupported: ['firmware updates (Razer\'s own updater only)', 'saving a lighting effect on the mouse (effects set here last until it is unplugged)',
+      'per-key / custom-frame lighting', 'lighting effects on the older standard-lighting mice (their commands have no form that is not saved)', 'scroll mode (read only: no documented values)',
       'the number of DPI stages', 'buttons, macros and remaps', 'onboard profiles', 'lift-off distance, angle snapping, debounce', 'dongle pairing', 'device mode'],
     dev: null, pid: null, model: null, tid: null, tidHow: null, pollKind: null, has: null, raw: {}, q: Promise.resolve(),
-    stageCount: 0, leds: [], scrollModeShown: false, app: null, appAt: 0,
+    stageCount: 0, leds: [], scrollModeShown: false, app: null, appAt: 0, fx: {},
 
     // the page's list: before the first read every setting; then only those this mouse answered
     get settings() {
-      if (!this.has) return allSettings();
-      return allSettings(Math.min(this.model.dpiMax, DPI_MAX), this.stageCount, this.pollKind, this.leds).filter((s) => this.has.has(s.key));
+      // the lighting effects (write-only) depend only on the model, so they are listed as soon as one is connected
+      const fx = this.pid ? effectSettings(this.pid) : [];
+      if (!this.has) return [...allSettings(), ...fx];
+      return [...allSettings(Math.min(this.model.dpiMax, DPI_MAX), this.stageCount, this.pollKind, this.leds).filter((s) => this.has.has(s.key)), ...fx];
     },
 
     // the first Razer product id that is plugged in, in the table's order. Opening sends nothing.
@@ -372,7 +613,7 @@ export function createRazerMouse({ sleep = sleepReal, open = defaultOpen, vendor
 
     attach(dev, pid) {
       this.dev = dev; this.pid = pid; this.model = MODELS[pid];
-      this.tid = null; this.tidHow = null; this.pollKind = null; this.has = null; this.raw = {}; this.stageCount = 0; this.leds = []; this.scrollModeShown = false; this.appAt = 0; this.app = null;
+      this.tid = null; this.tidHow = null; this.pollKind = null; this.has = null; this.raw = {}; this.stageCount = 0; this.leds = []; this.scrollModeShown = false; this.appAt = 0; this.app = null; this.fx = {};
     },
 
     // one request at a time: send, wait the model's time, read until the reply is not new/busy and answers this request
@@ -522,9 +763,36 @@ export function createRazerMouse({ sleep = sleepReal, open = defaultOpen, vendor
       if (this.app) throw Object.assign(new Error(`${this.app} is running: close it first (two programs writing the mouse fight)`), { refused: true });
     },
 
+    // a lighting effect setting (write-only): the report for the zone's effect with NOSTORE, on openrazer's transaction id
+    // for that model and effect; nothing is read back (the command has no read). this.fx = what was sent this connection,
+    // so a colour change re-sends the effect that is on.
+    async writeEffect(s, value) {
+      const m = /^(effect|color2|color)(.+)$/.exec(s.key);
+      const zone = m[2][0].toLowerCase() + m[2].slice(1);
+      const z = effectsFor(this.pid).find((x) => x.zone === zone);
+      if (s.type === 'choice' && !s.options.some((o) => o.value === value)) throw new Error(`${s.label}: ${JSON.stringify(value)} is not an effect this mouse has`);
+      if (s.type === 'color' && !(typeof value === 'string' && /^#[0-9a-f]{6}$/.test(value))) throw new Error(`${s.label} must be a colour like #ff0000`);
+      const st = { effect: null, c1: FX_DEFAULT.c1, c2: FX_DEFAULT.c2, ...this.fx[zone] };
+      const has = (v) => z.options.some((o) => o.value === v);
+      let effect;
+      if (m[1] === 'effect') effect = value;
+      else if (m[1] === 'color') { st.c1 = value; effect = USES_C1.has(st.effect) ? st.effect : ['static', 'breathing', 'reactive2'].find(has); }
+      else { st.c2 = value; effect = USES_C2.has(st.effect) ? st.effect : 'breathingDual'; }
+      const o = z.options.find((x) => x.value === effect);
+      if (!o) throw new Error(`${s.label}: no effect on the ${z.name} uses it`);
+      await this.appCheck();
+      const { size, args } = fxArgs(o.group.cmd, effect, z.led, o.param, st.c1, st.c2);
+      const c = FX_CMD[o.group.cmd];
+      await this.request(o.group.tid, { cls: c.cls, size }, c.id, args);
+      this.fx[zone] = { ...st, effect };
+      return value;
+    },
+
     // one setting, checked, written, read back; a read-back that differs is a failed write
     async write(key, value) {
       await this.ready();
+      const fxs = typeof key === 'string' && this.pid ? effectSettings(this.pid).find((s) => s.key === key) : null;
+      if (fxs) return this.writeEffect(fxs, value);
       if (typeof key !== 'string' || !this.has.has(key)) throw new Error(`${key} is not a setting of this mouse`);
       const setting = this.settings.find((s) => s.key === key);
       let n;

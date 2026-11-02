@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-02T03:53:43Z",
+  "updated": "2026-11-02T06:56:42Z",
   "id": "razer-mouse",
   "vendor": "Razer",
   "product": "Razer mice (90-byte report)",
@@ -190,17 +190,19 @@
     "writes (one at a time, read back; refused while Razer Synapse runs): DPI, polling rate, sleep timer, low-battery threshold, active DPI stage, each DPI stage's value (the stage count is kept), scroll acceleration and smart reel (Basilisk family), the HyperPolling dongle light (connection / battery / battery warning), brightness of each LED zone that answers",
     "transaction id from the sheet, or found by reads only in the sheet order 0x1F, 0x3F, 0xFF",
     "added 23 Oct 2026 from OpenRazer's driver itself (razermouse_driver.c, mouse.py): DeathAdder Essential family, DeathAdder V2 / V2 Mini / V2 Pro / V2 X HyperSpeed, Viper V2 Pro, Viper V3 HyperSpeed, Naga V2 HyperSpeed, each with OpenRazer's own transaction id per command and its DPI maximum; simulated only",
-    "added 1 Nov 2026 from openrazer master (mouse.py, razermouse_driver.c): 53 more mouse ids (Lancehead, DeathAdder Elite / Chroma, Viper, Viper Mini SE, Basilisk / Essential / Ultimate / X HyperSpeed / Mobile, Naga X / Pro / Trinity / Left-Handed and older Nagas, Mamba family, Abyssus, Pro Click family, Atheris, Ouroboros, Orochi Chroma, Taipan, Diamondback Chroma), each with openrazer's transaction id per command; simulated only"
+    "added 1 Nov 2026 from openrazer master (mouse.py, razermouse_driver.c): 53 more mouse ids (Lancehead, DeathAdder Elite / Chroma, Viper, Viper Mini SE, Basilisk / Essential / Ultimate / X HyperSpeed / Mobile, Naga X / Pro / Trinity / Left-Handed and older Nagas, Mamba family, Abyssus, Pro Click family, Atheris, Ouroboros, Orochi Chroma, Taipan, Diamondback Chroma), each with openrazer's transaction id per command; simulated only",
+    "2 Nov 2026, lighting effects as write-only settings on 55 mice, per LED zone (logo, scroll wheel, left / right side, backlight, whole mouse) as openrazer 477f4d6d mouse.py METHODS lists them and razermouse_driver.c has a case for: static colour, breathing (one, two or random colours), spectrum, wave up / down, lighting up when clicked (4 speeds), off, with a colour and a second colour; extended 0F/02 or the Naga Hex V2 / Naga Chroma 03/0D, always NOSTORE (forgotten on unplug, never saved), on openrazer's transaction id for that mouse and effect; each checked by eye once per mouse model (Try it) after Turn on settings"
   ],
   "doesNotWork": [
     "firmware updates (never: Razer's own updater only)",
-    "lighting colour and effects (the sheet's effect command 0F/02 has no read, so nothing could be read back)",
+    "per-key / custom-frame lighting and saving an effect on the mouse (effects set here last until it is unplugged)",
     "scroll mode writes (tactile / free spin: the sheet names no mode values; shown raw only)",
     "changing the number of DPI stages (the table's maximum is unconfirmed)",
     "buttons, macros and remaps (no source documents them on the device)",
     "onboard profiles, lift-off distance, angle snapping, debounce (no source documents them for Razer)",
     "dongle pairing / unpairing",
-    "device mode"
+    "device mode",
+    "lighting effects on the standard-lighting mice (Mamba Chroma / TE, Diamondback Chroma, Orochi Chroma: 03/0A has no store byte), the classic-LED mice (DeathAdder Chroma / 2000 / 3500, Abyssus V2 / 2000, Mamba 2012, Naga Epic Chroma, Naga 2014, Ouroboros, Taipan), the Naga Trinity and Basilisk Mobile, and the Naga Pro / Naga V2 Pro whole-mouse effects (an undocumented mode-switcher report first)"
   ],
   "status": "read-only",
   "tested": [],

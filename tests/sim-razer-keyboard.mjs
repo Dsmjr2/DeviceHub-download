@@ -47,6 +47,9 @@ function simKeyboard({ tids, state, stores = {} }) {
         case '07/81': ok([s.lowBat]); break;
         case '07/01': if (a[0] < 0x0c || a[0] > 0x3f) r[0] = 0x03; else { s.lowBat = a[0]; ok([a[0]]); } break;
         case '05/84': ok([s.store]); break;
+        // the extended effect (rcc.c:481): the simulated keyboard refuses anything but NOSTORE on BACKLIGHT_LED and keeps
+        // what it was sent (it cannot report it back: there is no read)
+        case '0f/02': if (q[5] < 0x06 || a[0] !== 0x00 || a[1] !== 0x05) r[0] = 0x03; else { s.fx = [...a.slice(0, q[5])]; ok(a.slice(0, q[5])); } break;
         default: r[0] = 0x05;
       }
     }
@@ -79,9 +82,11 @@ function driverOn(pid, simOpts) {
   const d = createRazerKeyboard({ sleep: async (ms) => { sleeps.push(ms); }, open: async (p) => (p === pid ? sim.dev : null), vendorApp: async () => sim.app, now: () => sim.clock });
   return { d, sim };
 }
-const ALLOWED_CMDS = new Set(['00/81', '0f/84', '0f/04', '03/83', '03/80', '03/00', '00/c0', '00/40', '07/80', '07/84', '07/81', '07/01', '05/84']);
+const ALLOWED_CMDS = new Set(['0f/02', '00/81', '0f/84', '0f/04', '03/83', '03/80', '03/00', '00/c0', '00/40', '07/80', '07/84', '07/81', '07/01', '05/84']);
 const cmdKey = (r) => `${r.cls.toString(16).padStart(2, '0')}/${r.id.toString(16).padStart(2, '0')}`;
 const writes = (sim) => sim.sent.filter((r) => !(r.id & 0x80));
+// the keys of the settings DeviceHub reads back (the write-only lighting effects, 2 Nov 2026, are checked in section 9)
+const readBack = (d) => d.settings.filter((s) => !s.writeOnly).map((s) => s.key);
 const allSims = [];
 
 // ---- the library self-check (helpers/my-devices.mjs selfCheck): every writable setting written with its own value and
@@ -94,7 +99,7 @@ async function selfChecked(d, state, { waiting = [] } = {}) {
   const backups = [];
   const r = await selfCheck(d, d.write, { folder, mark: { status: 'untested', source: 'device-library' }, backup: async (b) => backups.push(b), version: 'test' });
   fs.rmSync(folder, { recursive: true, force: true });
-  const writable = d.settings.filter((s) => s.type !== 'display');
+  const writable = d.settings.filter((s) => s.type !== 'display' && !s.writeOnly);   // write-only settings are never self-checked
   check(backups.length === 1, 'the self-check took a backup first');
   check(writable.length > 0 && writable.every((s) => (waiting.includes(s.key) ? r.keys?.[s.key]?.waiting === true : r.keys?.[s.key]?.ok === true)), `the self-check passes every setting (waiting: ${waiting.join(', ') || 'none'}) (${JSON.stringify(r.keys || r)})`);
   check(!d.settings.filter((s) => s.type === 'display').some((s) => r.keys?.[s.key]), 'readings are not self-checked');
@@ -118,7 +123,7 @@ check(hex(buildReport(0x1f, 0x00, 0x40, 0x02, [0x00, 0x10])) === lit([0x00, 0x1f
   check(await d.connect(), 'BlackWidow V4 connects');
   check(d.hid.byPid['0287'].iface === 3 && d.hid.featureOnly && d.hid.featureLen === 90 && d.hid.page === '*', 'BlackWidow V4: interface 3, feature-only, 91-byte feature report, any usage page');
   const v = await d.read();
-  check(problem(d) === null && d.settings.map((s) => s.key).join() === 'brightness,gameMode,macroLed,pollingRate', `settings: ${d.settings.map((s) => s.key)}`);
+  check(problem(d) === null && readBack(d).join() === 'brightness,gameMode,macroLed,pollingRate', `settings: ${readBack(d)}`);
   check(v.brightness === 180 && v.gameMode === false && v.macroLed === false && v.pollingRate === 1000, `read: ${JSON.stringify(v)}`);
   check(sim.sent.some((r) => cmdKey(r) === '0f/84' && r.tid === 0x1f && hex(r.args) === '01 05 00'), 'brightness read = 0F/84 [01 05] tid 1F');
   check(sim.sent.some((r) => cmdKey(r) === '03/80' && r.tid === 0xff && hex(r.args) === '01 08 00'), 'game mode read = 03/80 [01 08] tid FF');
@@ -217,7 +222,7 @@ check(hex(buildReport(0x1f, 0x00, 0x40, 0x02, [0x00, 0x10])) === lit([0x00, 0x1f
   check(d.hid.byPid['025C'].iface === 2, 'BlackWidow V3 Pro wireless: interface 2');
   await d.connect();
   const v = await d.read();
-  check(d.settings.map((s) => s.key).join() === 'brightness,gameMode,macroLed,lowBattery' && v.lowBattery === 0x26, `V3 Pro settings ${d.settings.map((s) => s.key)} ${JSON.stringify(v)}`);
+  check(readBack(d).join() === 'brightness,gameMode,macroLed,lowBattery' && v.lowBattery === 0x26, `V3 Pro settings ${readBack(d)} ${JSON.stringify(v)}`);
   check(sleeps.length && sleeps.every((ms) => ms === 4.9 || ms === 10), `wireless wait 4.9 ms (RAZER_BLACKWIDOW_V3_WIRELESS_WAIT_US) (${[...new Set(sleeps)]})`);
   const bat = await d.battery();
   check(bat.percent === 80 && bat.charging === true, `battery 204/255 = 80%, charging (${JSON.stringify(bat)})`);
@@ -260,7 +265,7 @@ check(hex(buildReport(0x1f, 0x00, 0x40, 0x02, [0x00, 0x10])) === lit([0x00, 0x1f
   await tkl.d.connect();
   await tkl.d.read();
   check(!tkl.d.settings.some((s) => s.key === 'brightness') && !tkl.sim.sent.some((r) => r.cls === 0x0f || cmdKey(r) === '03/83'), 'Huntsman V3 Pro TKL: no brightness (no read in OpenRazer), never asked');
-  check(tkl.d.settings.map((s) => s.key).join() === 'gameMode,macroLed', 'TKL keeps game mode and the macro light');
+  check(readBack(tkl.d).join() === 'gameMode,macroLed', 'TKL keeps game mode and the macro light');
 }
 
 // ---- 5b. added 23 Oct 2026: Huntsman Mini JP (as the Mini), the two analog Huntsmans (lights and info only), and the
@@ -269,7 +274,7 @@ check(hex(buildReport(0x1f, 0x00, 0x40, 0x02, [0x00, 0x10])) === lit([0x00, 0x1f
   const jp = driverOn('0269', { tids: { '00/81': 0xff, '0f/84': 0x3f, '0f/04': 0x3f, '03/80': 0xff, '03/00': 0xff } });
   allSims.push(jp.sim);
   await jp.d.connect();
-  check(jp.d.hid.byPid['0269'].iface === 2 && (await jp.d.read()).brightness === 180 && jp.d.settings.map((s) => s.key).join() === 'brightness,gameMode,macroLed', `Huntsman Mini JP: interface 2, brightness, game mode, macro light (${jp.d.settings.map((s) => s.key)})`);
+  check(jp.d.hid.byPid['0269'].iface === 2 && (await jp.d.read()).brightness === 180 && readBack(jp.d).join() === 'brightness,gameMode,macroLed', `Huntsman Mini JP: interface 2, brightness, game mode, macro light (${readBack(jp.d)})`);
   check((await jp.d.write('brightness', 33)) === 33 && jp.sim.sent.some((r) => cmdKey(r) === '0f/04' && r.tid === 0x3f && hex(r.args) === '01 05 21') && (await jp.d.write('brightness', 180)) === 180, 'Mini JP brightness = 0F/04 [01 05 21] tid 3F, put back');
   await selfChecked(jp.d, jp.sim.s);
 
@@ -278,7 +283,7 @@ check(hex(buildReport(0x1f, 0x00, 0x40, 0x02, [0x00, 0x10])) === lit([0x00, 0x1f
     allSims.push(a.sim);
     await a.d.connect();
     const v = await a.d.read();
-    check(a.d.hid.byPid[pid].iface === 3 && a.d.settings.map((s) => s.key).join() === 'brightness,macroLed' && v.brightness === 180 && v.macroLed === false, `${pid} (analog): interface 3, brightness and the macro light only (${a.d.settings.map((s) => s.key)})`);
+    check(a.d.hid.byPid[pid].iface === 3 && readBack(a.d).join() === 'brightness,macroLed' && v.brightness === 180 && v.macroLed === false, `${pid} (analog): interface 3, brightness and the macro light only (${readBack(a.d)})`);
     check(!a.sim.sent.some((r) => cmdKey(r).startsWith('03/') && r.args[1] === 0x08), `${pid}: game mode is never asked or written`);
     check((await a.d.write('brightness', 64)) === 64 && a.sim.sent.some((r) => cmdKey(r) === '0f/04' && r.tid === 0x1f) && a.sim.sent.some((r) => cmdKey(r) === '03/83' && r.tid === 0xff), `${pid}: brightness written 0F/04 tid 1F, read 03/83 tid FF`);
     check((await a.d.write('brightness', 180)) === 180, `${pid}: put back`);
@@ -314,7 +319,7 @@ const NEW_PIDS = ['0235', '021F', '021E', '0226', '0227', '0243', '0241', '0237'
   allSims.push(ov.sim);
   await ov.d.connect();
   await ov.d.read();
-  check(ov.d.settings.map((s) => s.key).join() === 'brightness,gameMode,macroLed' && !ov.sim.sent.some((r) => ['00/c0', '07/80', '07/84'].includes(cmdKey(r))) && (await ov.d.battery()) === null, `existing Ornata V3: same settings, polling and battery never asked (${ov.d.settings.map((s) => s.key)}; ${ov.sim.sent.map(cmdKey)})`);
+  check(readBack(ov.d).join() === 'brightness,gameMode,macroLed' && !ov.sim.sent.some((r) => ['00/c0', '07/80', '07/84'].includes(cmdKey(r))) && (await ov.d.battery()) === null, `existing Ornata V3: same settings, polling and battery never asked (${readBack(ov.d)}; ${ov.sim.sent.map(cmdKey)})`);
   check(!('Not in OpenRazer' in (await ov.d.info())), 'existing Ornata V3: nothing found by reads');
   const before = PIDS.filter((p) => !NEW_PIDS.includes(p));
   check(before.length === 37 && before.every((p) => OPTIONAL.every((f) => MODELS[p][f] !== null)), 'none of the 37 earlier rows asks anything by reads (no null in them)');
@@ -325,7 +330,7 @@ const NEW_PIDS = ['0235', '021F', '021E', '0226', '0227', '0243', '0241', '0237'
   allSims.push(el.sim);
   await el.d.connect();
   const v = await el.d.read();
-  check(el.d.hid.byPid['0228'].iface === 1 && el.d.settings.map((s) => s.key).join() === 'brightness,gameMode,macroLed,pollingRate' && v.pollingRate === 1000, `BlackWidow Elite: polling answered on 1F, offered (${el.d.settings.map((s) => s.key)} ${JSON.stringify(v)})`);
+  check(el.d.hid.byPid['0228'].iface === 1 && readBack(el.d).join() === 'brightness,gameMode,macroLed,pollingRate' && v.pollingRate === 1000, `BlackWidow Elite: polling answered on 1F, offered (${readBack(el.d)} ${JSON.stringify(v)})`);
   check(writes(el.sim).length === 0, 'BlackWidow Elite: only reads while finding its settings');
   check(/polling rate: found by reads \(tid 1f\)/.test((await el.d.info())['Not in OpenRazer'] || ''), 'its info says polling was found by reads');
   const n = el.sim.sent.length;
@@ -337,7 +342,7 @@ const NEW_PIDS = ['0235', '021F', '021E', '0226', '0227', '0243', '0241', '0237'
   allSims.push(np.sim);
   await np.d.connect();
   await np.d.read();
-  check(np.d.settings.map((s) => s.key).join() === 'brightness,gameMode,macroLed' && np.sim.sent.filter((r) => cmdKey(r) === '00/c0').map((r) => r.tid).join() === '31,63,159' && writes(np.sim).length === 0, `no answer: polling asked on 1F, 3F, 9F with reads only, not offered (${np.sim.sent.map((r) => `${cmdKey(r)}@${r.tid.toString(16)}`)})`);
+  check(readBack(np.d).join() === 'brightness,gameMode,macroLed' && np.sim.sent.filter((r) => cmdKey(r) === '00/c0').map((r) => r.tid).join() === '31,63,159' && writes(np.sim).length === 0, `no answer: polling asked on 1F, 3F, 9F with reads only, not offered (${np.sim.sent.map((r) => `${cmdKey(r)}@${r.tid.toString(16)}`)})`);
   const e = await refusal(() => np.d.write('pollingRate', 1000));
   check(/not a setting/.test(e?.message || '') && writes(np.sim).length === 0, 'and a polling write is refused, nothing written');
   const bad = driverOn('0228', { tids: { '00/81': 0xff, '0f/84': 0x1f, '0f/04': 0x1f, '03/80': 0xff, '03/00': 0xff, '00/c0': 0x1f, '00/40': 0x1f }, state: { poll: 0x03 } });
@@ -351,7 +356,7 @@ const NEW_PIDS = ['0235', '021F', '021E', '0226', '0227', '0243', '0241', '0237'
   allSims.push(bc.sim);
   await bc.d.connect();
   await bc.d.read();
-  check(bc.d.settings.map((s) => s.key).join() === 'gameMode,macroLed' && !bc.sim.sent.some((r) => ['0f/84', '03/83', '0f/04'].includes(cmdKey(r))), `BlackWidow Chroma: game mode and macro light; brightness never asked (${bc.sim.sent.map(cmdKey)})`);
+  check(readBack(bc.d).join() === 'gameMode,macroLed' && !bc.sim.sent.some((r) => ['0f/84', '03/83', '0f/04'].includes(cmdKey(r))), `BlackWidow Chroma: game mode and macro light; brightness never asked (${bc.sim.sent.map(cmdKey)})`);
   check((await bc.d.write('gameMode', true)) === true && bc.sim.sent.some((r) => cmdKey(r) === '03/00' && r.tid === 0xff && hex(r.args) === '01 08 01') && (await bc.d.write('gameMode', false)) === false, 'BlackWidow Chroma game mode = 03/00 [01 08 01] tid FF, put back');
   await selfChecked(bc.d, bc.sim.s);
 
@@ -374,7 +379,7 @@ const NEW_PIDS = ['0235', '021F', '021E', '0226', '0227', '0243', '0241', '0237'
   const a = mk(all3f);
   await a.d.connect();
   const av = await a.d.read();
-  check(a.d.settings.map((s) => s.key).join() === 'brightness,gameMode,macroLed,pollingRate' && av.brightness === 180 && writes(a.sim).length === 0, `every null answered on 3F: all offered, only reads sent (${a.d.settings.map((s) => s.key)})`);
+  check(readBack(a.d).join() === 'brightness,gameMode,macroLed,pollingRate' && av.brightness === 180 && writes(a.sim).length === 0, `every null answered on 3F: all offered, only reads sent (${readBack(a.d)})`);
   check(a.d.model.bright === 'x3f' && a.d.model.poll === 0x3f && a.d.model.bat === 0x3f && a.d.model.game === 'std' && a.d.model.macro === true, `found forms: ${JSON.stringify(a.d.model)}`);
   check((await a.d.battery())?.percent === 80, 'battery found on 3F');
   check((await a.d.write('brightness', 40)) === 40 && a.sim.sent.some((r) => cmdKey(r) === '0f/04' && r.tid === 0x3f && r.size === 3 && hex(r.args) === '01 05 28') && (await a.d.write('brightness', 180)) === 180, 'found brightness written 0F/04 [01 05 28] on 3F, put back');
@@ -387,7 +392,7 @@ const NEW_PIDS = ['0235', '021F', '021E', '0226', '0227', '0243', '0241', '0237'
   const g2 = mk({ '00/81': 0xff, '03/80': 0xff, '03/00': 0xff }, { game: 2, macro: 1 });
   await g2.d.connect();
   await g2.d.read();
-  check(g2.d.settings.map((s) => s.key).join() === 'macroLed', `a raw game state 2 is not a 0 / 1 answer: game mode not offered; macro light 1 is (${g2.d.settings.map((s) => s.key)})`);
+  check(readBack(g2.d).join() === 'macroLed', `a raw game state 2 is not a 0 / 1 answer: game mode not offered; macro light 1 is (${readBack(g2.d)})`);
 
   // (c) nothing written before Turn on settings (DeviceHub's guard over the library driver), then each setting checked
   {
@@ -406,6 +411,152 @@ const NEW_PIDS = ['0235', '021F', '021E', '0226', '0227', '0243', '0241', '0237'
     const on = await g.d.turnOn();
     check(on.on && ['brightness', 'gameMode', 'macroLed', 'pollingRate'].every((k) => on.keys?.[k]?.ok === true) && backups.length === 1 && JSON.stringify(g.sim.s) === start, `after Turn on settings each setting passes its check, the keyboard as it was (${JSON.stringify(on.keys || on)})`);
     fs.rmSync(folder, { recursive: true, force: true });
+  }
+}
+
+// ---- 5b. lighting effects as write-only settings (2 Nov 2026). Expected bytes typed out by hand from openrazer master
+// @ 477f4d6d: rcc.c = driver/razerchromacommon.c (the layout), rkd.c = driver/razerkbd_driver.c (the transaction id per
+// keyboard), keyboards.py = daemon/openrazer_daemon/hardware/keyboards.py (METHODS). The store byte is ALWAYS 0x00 (NOSTORE),
+// never openrazer's VARSTORE 0x01 (OpenRGB: RAZER_STORAGE_SAVE), so the keyboard forgets the effect on unplug. ----
+{
+  const { effectsFor, effectSettings, fxArgs, FX_GROUPS, FX_METHODS, FX_OPTIONS } = await import('../device-library/razer-keyboard/device.mjs');
+  const fxSent = (sim) => sim.sent.filter((r) => cmdKey(r) === '0f/02');
+  const A = (r) => (r ? hex(r.args) : 'nothing');
+  const rows = { '00/81': 0xff, '0f/84': 0x1f, '0f/04': 0x1f, '03/80': 0xff, '03/00': 0xff, '00/c0': 0x1f, '00/40': 0x1f };
+  // (a) BlackWidow V4 0287 (keyboards.py:2135 METHODS: wave, wheel, static, spectrum, reactive, none, breath x3, starlight x3)
+  {
+    const { d, sim } = driverOn('0287', { tids: { ...rows, '0f/02': 0x1f } });
+    allSims.push(sim);
+    await d.connect();
+    check(problem(d) === null, `with its effect settings the driver still has the my-devices shape (${problem(d)})`);
+    const wo = d.settings.filter((s) => s.writeOnly);
+    check(wo.map((s) => s.key).join() === 'effect,color,color2' && wo.every((s) => s.writeOnly.volatile === true && /\?$/.test(s.writeOnly.confirm)), `BlackWidow V4: effect, colour, second colour, all write-only and volatile (${wo.map((s) => s.key)})`);
+    check(wo[0].options.map((o) => o.value).join() === 'static,breathing,breathingDual,breathingRandom,spectrum,waveRight,waveLeft,wheel,wheelReverse,reactive1,reactive2,reactive3,reactive4,starlight1,starlight2,starlight3,starlightDual1,starlightDual2,starlightDual3,starlightRandom1,starlightRandom2,starlightRandom3,off', `BlackWidow V4 effects (${wo[0].options.map((o) => o.value)})`);
+    check(wo[0].writeOnly.test === 'waveRight' && wo[1].writeOnly.test === '#ff0000' && wo[2].writeOnly.test === '#0000ff', 'safe test values: a rainbow wave, red, blue');
+    // [effect, size, arguments, where] (colour 1 green #00ff00, colour 2 blue #0000ff until the person picks)
+    const want = [
+      ['waveRight', 0x06, '00 05 04 01 28 00', 'rcc.c:531-543 [2] 04 wave, [3] direction, [4] 0x28; rkd.c:2512-2513 tid 1F'],
+      ['waveLeft', 0x06, '00 05 04 02 28 00', 'chroma_keyboard.py:230 "2 right to left"'],
+      ['wheel', 0x06, '00 05 0a 01 28 00', 'rcc.c:616-628 [2] 0A wheel; rkd.c:2617-2618 tid 1F'],
+      ['wheelReverse', 0x06, '00 05 0a 02 28 00', 'rcc.c:622 direction 1-2'],
+      ['spectrum', 0x06, '00 05 03 00 00 00', 'rcc.c:605-608; rkd.c:2691-2692'],
+      ['static', 0x09, '00 05 01 00 00 01 00 ff 00', 'rcc.c:511-518 [5] 01, [6-8] RGB; rkd.c:3142-3143'],
+      ['breathing', 0x09, '00 05 02 01 00 01 00 ff 00', 'rcc.c:667-677 [3] 01, [5] 01; rkd.c:3616, 3625'],
+      ['breathingDual', 0x0c, '00 05 02 02 00 02 00 ff 00 00 00 ff', 'rcc.c:680-699 [3] 02, [5] 02; rkd.c:3618, 3625'],
+      ['breathingRandom', 0x06, '00 05 02 00 00 00', 'rcc.c:662-665; rkd.c:3620, 3625'],
+      ['reactive3', 0x09, '00 05 05 00 03 01 00 ff 00', 'rcc.c:639-651 [4] speed, [5] 01; rkd.c:2869-2870'],
+      ['starlight1', 0x09, '00 05 07 00 01 01 00 ff 00', 'rcc.c:567-578 [4] speed, [5] 01; rkd.c:3297, 3304'],
+      ['starlightDual2', 0x0c, '00 05 07 00 02 02 00 ff 00 00 00 ff', 'rcc.c:581-598 [5] 02; rkd.c:3295, 3304'],
+      ['starlightRandom3', 0x06, '00 05 07 00 03 00', 'rcc.c:558-565; rkd.c:3299, 3304'],
+      ['off', 0x06, '00 05 00 00 00 00', 'rcc.c:498-501; rkd.c:2331-2332'],
+    ];
+    for (const [v, size, args, cite] of want) {
+      const n = fxSent(sim).length;
+      await d.write('effect', v);
+      const r = fxSent(sim)[n];
+      check(fxSent(sim).length === n + 1 && r.tid === 0x1f && r.size === size && A(r) === args, `BlackWidow V4 ${v}: 0F/02 size ${size} [${args}] tid 1F (${cite}); got ${r ? `${r.tid.toString(16)} size ${r.size} [${A(r)}]` : 'nothing'}`);
+    }
+    // one whole report typed out: status 00, tid 1F, remaining 00 00, protocol 00, size 06, class 0F, id 02, args 00 05 04 01
+    // 28 00; crc 06^0F^02^00^05^04^01^28^00 = 23
+    const lit = (head, c) => { const r = new Uint8Array(90); r.set(head); r[88] = c; return hex(r); };
+    check(hex(buildReport(0x1f, 0x0f, 0x02, 0x06, fxArgs('waveRight', 0x01).args)) === lit([0x00, 0x1f, 0x00, 0x00, 0x00, 0x06, 0x0f, 0x02, 0x00, 0x05, 0x04, 0x01, 0x28, 0x00], 0x23), 'the wave report, every byte (crc 23)');
+    // colours: a colour re-sends the effect that is on; with none that takes it, static; colour 2 turns on two-colour breathing
+    await d.write('effect', 'breathing'); await d.write('color', '#123456');
+    check(A(fxSent(sim).at(-1)) === '00 05 02 01 00 01 12 34 56', `colour while breathing: breathing with #123456 (${A(fxSent(sim).at(-1))})`);
+    await d.write('effect', 'spectrum'); await d.write('color', '#ff0000');
+    check(A(fxSent(sim).at(-1)) === '00 05 01 00 00 01 ff 00 00', `colour while the spectrum runs: static red (${A(fxSent(sim).at(-1))})`);
+    await d.write('color2', '#0000ff');
+    check(A(fxSent(sim).at(-1)) === '00 05 02 02 00 02 ff 00 00 00 00 ff', `second colour: breathing between red and blue (${A(fxSent(sim).at(-1))})`);
+    await d.write('effect', 'starlightDual1'); await d.write('color2', '#ffff00');
+    check(A(fxSent(sim).at(-1)) === '00 05 07 00 01 02 ff 00 00 ff ff 00', `second colour while two-colour starlight runs: starlight kept (${A(fxSent(sim).at(-1))})`);
+    const n = fxSent(sim).length;
+    check(!!(await refusal(() => d.write('effect', 'rainbow'))) && !!(await refusal(() => d.write('color', 'red'))) && !!(await refusal(() => d.write('effect', 0x04))) && fxSent(sim).length === n, 'an effect or colour it does not take: refused, nothing sent');
+    check(!('effect' in (await d.read())) && !('color' in (await d.read())), 'the driver itself reads no effect back (none exists)');
+    sim.app = 'Razer Synapse.exe'; sim.clock += 20000;
+    check(/Synapse/.test((await refusal(() => d.write('effect', 'spectrum')))?.message || '') && fxSent(sim).length === n, 'Synapse running: no effect sent');
+    sim.app = null; sim.clock += 20000;
+  }
+  // (b) the transaction id per keyboard and effect, and the wave byte per WAVE_DIRS
+  const one = async (pid, tid, key, v) => {
+    const { d, sim } = driverOn(pid, { tids: { '00/81': 0xff, '0f/02': tid } });
+    allSims.push(sim);
+    await d.connect();
+    await d.write(key, v);
+    return fxSent(sim)[0] || null;
+  };
+  let r = await one('025C', 0x9f, 'effect', 'spectrum');
+  check(r?.tid === 0x9f && A(r) === '00 05 03 00 00 00', `BlackWidow V3 Pro on its dongle: tid 9F (rkd.c:2706-2707) (${r?.tid})`);
+  r = await one('025C', 0x9f, 'effect', 'static');
+  check(r?.tid === 0x9f && r.size === 0x09, 'BlackWidow V3 Pro dongle static: tid 9F (rkd.c:3171-3172)');
+  r = await one('0293', 0x3f, 'effect', 'static');
+  check(r?.tid === 0x3f, `BlackWidow V4 X static: tid 3F (its case is rkd.c:3106-3107, not the V4's 1F) (${r?.tid})`);
+  r = await one('0293', 0x3f, 'effect', 'reactive1');
+  check(r?.tid === 0x3f && A(r) === '00 05 05 00 01 01 00 ff 00', 'BlackWidow V4 X reactive: tid 3F (rkd.c:2842-2843)');
+  r = await one('0293', 0x1f, 'effect', 'spectrum');
+  check(r?.tid === 0x1f, 'BlackWidow V4 X spectrum: tid 1F (rkd.c:2691-2692)');
+  r = await one('0257', 0x3f, 'effect', 'waveLeft');
+  check(r?.tid === 0x3f && A(r) === '00 05 04 00 28 00', `Huntsman Mini (WAVE_DIRS (0, 1), keyboards.py:1970): right to left is 00 (chroma_keyboard.py:244-245); tid 3F (rkd.c:2474-2475) (${A(r)})`);
+  r = await one('0257', 0x3f, 'effect', 'waveRight');
+  check(A(r) === '00 05 04 01 28 00', 'Huntsman Mini: left to right is 01');
+  r = await one('021F', 0x3f, 'effect', 'starlight2');
+  check(r?.tid === 0x3f && A(r) === '00 05 07 00 02 01 00 ff 00', 'Ornata starlight (one colour): tid 3F (rkd.c:3232-3233)');
+  // (c) offered only where keyboards.py METHODS lists it AND rkd.c has a VARSTORE case for that keyboard
+  const vals = (pid) => effectsFor(pid).map((o) => o.value).join();
+  check(vals('021F') === 'static,breathing,waveRight,waveLeft,reactive1,reactive2,reactive3,reactive4,starlight1,starlight2,starlight3,off', `Ornata: no random starlight (rkd.c:3228 one colour only), no two-colour breathing (METHODS 'set_breath_single_effect' only) (${vals('021F')})`);
+  check(vals('0237') === 'static,breathing,waveRight,waveLeft,off', `BlackWidow Essential: its spectrum, reactive and starlight are standard 0x03/0x0A in rkd.c (2788, 2949, 3464): left out (${vals('0237')})`);
+  check(vals('0235') === 'static,breathing,off' && effectSettings('0235').map((s) => s.key).join() === 'effect,color', 'BlackWidow Lite: static, one-colour breathing, off; no second colour');
+  check(!/wave/.test(vals('0294')) && !/reactive|starlight/.test(vals('02A1')), 'Ornata V3 X has no wave, Ornata V3 no reactive or starlight (not in their METHODS)');
+  for (const pid of ['02CF', '0203', '0221', '010F', '0214', '02B3', '02D2', '010D'])
+    check(effectSettings(pid).length === 0, `${pid} ${MODELS[pid].model}: no effect setting (8KHz: the store byte is its profile, rkd.c:2336; the rest standard 0x03/0x0A, LED state, or no METHODS)`);
+  const bad = [];
+  for (const pid of PIDS) {
+    for (const o of effectsFor(pid)) {
+      const code = FX_OPTIONS.find((x) => x[0] === o.value)[2];
+      if (!FX_METHODS[pid][2].split(' ').includes(code)) bad.push(`${pid} ${o.value}: not in METHODS`);
+      if (!o.group.pids.split(' ').includes(pid)) bad.push(`${pid} ${o.value}: not in its rkd.c case`);
+      const { args } = fxArgs(o.value, o.param);
+      if (args[0] !== 0x00 || args[1] !== 0x05) bad.push(`${pid} ${o.value}: store ${args[0]} led ${args[1]}`);
+    }
+  }
+  const known = new Set(PIDS);
+  for (const [k, list] of Object.entries(FX_GROUPS)) for (const g of list) for (const p of g.pids.split(' ')) if (!known.has(p)) bad.push(`FX_GROUPS.${k}: ${p} is not a keyboard here`);
+  for (const p of Object.keys(FX_METHODS)) if (!known.has(p)) bad.push(`FX_METHODS ${p} is not a keyboard here`);
+  check(bad.length === 0, `every effect offered: in METHODS, in its rkd.c case, NOSTORE on BACKLIGHT_LED (${bad.slice(0, 5).join('; ')})`);
+  check(PIDS.filter((p) => effectSettings(p).length).length === 48, `48 keyboards have effects (70 less the 8KHz, the four OpenRGB-only ids and 17 standard-lighting boards) (${PIDS.filter((p) => effectSettings(p).length).length})`);
+  // (d) guarded: locked before Turn on settings and before the check by eye; Try it sends only the test value
+  {
+    const os = await import('node:os');
+    const md = await import('../helpers/my-devices.mjs');
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-razer-kb-fx-'));
+    const folder = path.join(root, 'my-devices', 'razer-keyboard');
+    fs.mkdirSync(folder, { recursive: true });
+    fs.copyFileSync(path.join(ROOT, 'device-library', 'razer-keyboard', 'device.json'), path.join(folder, 'device.json'));
+    fs.writeFileSync(path.join(folder, 'library.json'), JSON.stringify({ source: 'device-library', status: 'read-only' }));
+    const g = driverOn('0287', { tids: { ...rows, '0f/02': 0x1f } });
+    allSims.push(g.sim);
+    md.guard(g.d, folder, md.libraryMark(folder), { makerApp: async () => null, backup: async () => {}, log: () => {}, version: 'test' });
+    check(await g.d.connect(), 'guarded BlackWidow V4 connects');
+    const st = (k) => g.d.settings.find((s) => s.key === k);
+    check(['effect', 'color', 'color2'].every((k) => st(k)?.readOnly && st(k).writeOnlyState === 'gated'), `before Turn on settings the effects are locked (${['effect', 'color', 'color2'].map((k) => st(k)?.writeOnlyState)})`);
+    let e = await refusal(() => g.d.write('effect', 'spectrum'));
+    let t = await g.d.tryWrite('effect');
+    check(/Turn on settings/.test(e?.message || '') && !t.ok && t.gated && fxSent(g.sim).length === 0, `before Turn on settings: a write and Try it are refused, nothing sent (${e?.message})`);
+    const on = await g.d.turnOn();
+    check(on.on && fxSent(g.sim).length === 0 && ['effect', 'color', 'color2'].every((k) => !on.keys?.[k]), `Turn on settings: the self-check never sends an effect (${JSON.stringify(on.keys ? Object.keys(on.keys) : on)})`);
+    check(st('effect').writeOnlyState === 'untrusted' && st('effect').readOnly, 'after Turn on settings: still locked until checked by eye');
+    e = await refusal(() => g.d.write('effect', 'spectrum'));
+    check(/Try it/.test(e?.message || '') && fxSent(g.sim).length === 0, `untrusted: a write is refused, nothing sent (${e?.message})`);
+    t = await g.d.tryWrite('effect');
+    check(t.ok && t.question === 'Is the keyboard showing this now: Rainbow wave, left to right?' && fxSent(g.sim).length === 1 && A(fxSent(g.sim)[0]) === '00 05 04 01 28 00', `Try it: only the wave, once, and the plain question (${t.question}; ${fxSent(g.sim).map(A)})`);
+    const no = await g.d.tryAnswer('effect', false);
+    check(no.ok && !no.trusted && no.putBack === null && /unplug/.test(no.line) && fxSent(g.sim).length === 1, `No with nothing earlier: nothing sent back, unplug to undo (${no.line})`);
+    await g.d.tryWrite('effect');
+    const yes = await g.d.tryAnswer('effect', true);
+    check(yes.ok && yes.trusted && st('effect').writeOnlyState === 'trusted' && !st('effect').readOnly && st('color').writeOnlyState === 'untrusted', 'Yes: the effect is trusted on this model; the colours still wait for their own check');
+    await g.d.write('effect', 'spectrum');
+    check(A(fxSent(g.sim).at(-1)) === '00 05 03 00 00 00' && (await g.d.read()).effect === 'spectrum' && (await g.d.read()).brightness === 180, 'a trusted write sends the spectrum; read() shows it and the read-back settings as before');
+    check(/Try it/.test((await refusal(() => g.d.write('color', '#ff0000')))?.message || ''), 'the colour is still refused until its own Try it');
+    fs.rmSync(root, { recursive: true, force: true });
   }
 }
 
@@ -442,6 +593,13 @@ const NEW_PIDS = ['0235', '021F', '021E', '0226', '0227', '0243', '0241', '0237'
   check(meta.pids.map((p) => p.toUpperCase()).sort().join() === [...PIDS].sort().join() && meta.id === d.id, 'device.json lists exactly the driver\'s ids');
   const mouse = JSON.parse(fs.readFileSync(path.join(ROOT, 'device-library', 'razer-mouse', 'device.json'), 'utf8'));
   check(!meta.pids.some((p) => mouse.pids.includes(p)), 'no product id is shared with the mouse driver');
+}
+
+// the Ornata V3 and its Alt take the wave the other way round (openrazer razerkbd_driver.c 2482-2488: direction ^= 3)
+{
+  const { waveDir } = await import('../device-library/razer-keyboard/device.mjs');
+  check(waveDir('02A1', 'right') === 0x02 && waveDir('02A1', 'left') === 0x01 && waveDir('028F', 'right') === 0x02, 'Ornata V3 (02A1, 028F): wave direction flipped as openrazer does');
+  check(waveDir('0258', 'right') === 0x01, 'other keyboards: left to right stays 1');
 }
 
 console.log(fails.length ? `sim-razer-keyboard: FAILED: ${fails.join('; ')}` : 'sim-razer-keyboard (Razer keyboard driver, simulated): all good');

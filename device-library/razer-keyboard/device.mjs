@@ -13,8 +13,8 @@
 // Settings, each only where OpenRazer has both its read and its write for that keyboard: backlight brightness, game mode
 // (OpenRazer: "Game mode will be enabled"; the firmware locks the Windows key), the macro light, polling rate
 // (HyperPolling-style codes) and the low-battery threshold; battery and charging on the wireless boards.
-// Left out: static colour per zone and every effect (OpenRazer's matrix_effect_* files are write-only: no read-back
-// exists), the Fn toggle (write-only), keyswitch optimization and device mode (sheet: high risk), the profile LEDs,
+// Since 2 Nov 2026 also the backlight's lighting effects and colours, as write-only settings (see "Lighting effects" below).
+// Left out: per-key colour (the custom frame), the Fn toggle (write-only), keyswitch optimization and device mode (sheet: high risk), the profile LEDs,
 // macros and key remaps (host-side in OpenRazer), and the Huntsman V3 Pro TKL's brightness (OpenRazer writes it but has
 // no read for it). Never: dongle pair / unpair (00/46, 00/41, 00/42) and device mode 02 ("factory test mode"), in
 // helpers/never-commands.json. Nothing outside CMD below can be built.
@@ -209,6 +209,224 @@ const BRIGHT = {
   v3: { get: ['stdBrightGet', 0xff], set: 0x1f }, '8k': { get: ['stdBrightGet', 0xff], set: 0x1f, activeStore: true },
 };
 
+// ---- Lighting effects as write-only settings (2 Nov 2026, Shawn's rule; helpers/my-devices.mjs "Write-only settings") ----
+// The effect command has no read, so each effect setting is `writeOnly`: never read back or self-checked, locked until
+// Turn on settings AND the person checked it by eye once on that keyboard (Try it). From openrazer master @ 477f4d6d:
+// "rcc.c:N" = driver/razerchromacommon.c, "rkd.c:N" = driver/razerkbd_driver.c, "keyboards.py:N" = the class in
+// daemon/openrazer_daemon/hardware/keyboards.py. Facts only, no code copied.
+//  - THE STORE BYTE: openrazer sends every effect with VARSTORE (0x01); razercommon.h names 0x01 VARSTORE and 0x00 NOSTORE,
+//    OpenRGB (Controllers/RazerController/RazerController.h) names them RAZER_STORAGE_SAVE 0x01 / RAZER_STORAGE_NO_SAVE
+//    0x00 and sends every effect NO_SAVE, and rkd.c:689 razer_get_active_varstore uses that byte as the onboard profile
+//    number. So VARSTORE is taken to be saved on the keyboard; this driver sends only NOSTORE (FX_STORE): the keyboard
+//    forgets the effect when it is unplugged.
+//  - One command: extended 0x0F/0x02 on BACKLIGHT_LED (rcc.c:481 [store, led, effect]). Left out: the standard matrix
+//    effect 0x03/0x0A (rcc.c:208: no store byte at all, so no form that is not kept) of the BlackWidow Chroma family,
+//    DeathStalker Chroma, BlackWidow Ultimate 2016, X family and Chroma V2; the Anansi's LED-state commands; the Huntsman
+//    V3 Pro 8KHz (rkd.c:2336 and every other effect: its store byte is the active profile, razer_get_active_varstore, so
+//    0x00 is not known to mean "not kept" there); the custom frame 0x0F/0x03; the BlackWidow Essential's spectrum,
+//    reactive and starlight (standard 0x03/0x0A in rkd.c).
+//  - Which keyboard has which effect: only what BOTH keyboards.py METHODS lists (set_wave_effect, set_starlight_dual_effect
+//    ...: FX_METHODS) AND the matching rkd.c function has a VARSTORE case for (FX_GROUPS), with that case's transaction id.
+//  - Wave: openrazer's daemon takes 1 = left to right, 2 = right to left (dbus_methods/chroma_keyboard.py set_wave_effect)
+//    and sends WAVE_DIRS[0] for a direction the keyboard does not list (chroma_keyboard.py:244-245): on a (0, 1) keyboard
+//    left to right stays 1 and right to left becomes 0. Speed 0x28 as rcc.c:542. Wheel: direction 1 or 2 (rcc.c:622
+//    clamp), speed 0x28. Reactive speed 1-4 (rcc.c:643; pylib REACTIVE_500MS 1 ... 2000MS 4), starlight 1-3 (rcc.c:562;
+//    STARLIGHT_FAST 1, NORMAL 2, SLOW 3).
+export const FX_STORE = NOSTORE;
+export const FX_CMD = { cls: 0x0f, id: 0x02 };
+const G9F = '025C 0271 02BA 0290 0296 02D5';
+const STAR3F = '021E 0226 0243 0241 0227 022A 022C 0257 0269 024E 0A24 025A 0295 0292 0298';
+const STAR1F = '0228 025E 025D 026B 026C 0258 02B9 0287 0293 028D 02CD 02A5 02A6 02A7 02B0 02D7';
+const BR3F = '021E 0226 0243 0241 0227 0237 022A 022C 023F 0257 0269 024E 0A24 025A 0295 0292 0298';
+const BR1F = '0228 025E 025D 02A1 028F 0294 02A2 02A3 026B 026C 0266 0282 0258 02B9 0287 0293 028D 02CD 02A5 02A6 02A7 02B0 02D7';
+// openrazer's VARSTORE cases per effect: transaction id, the line of the call (at) and of its transaction id (tidAt), and
+// the product ids of that case this driver has
+export const FX_GROUPS = {
+  none: [   // razer_attr_write_matrix_effect_none rkd.c:2275
+    { tid: 0x3f, at: 2302, tidAt: 2303, pids: '0235 021F 021E 0226 0243 0241 0227 0237 022A 022C 023F 0257 0269 024E 0A24 025A 0295 0292 0298' },
+    { tid: 0x1f, at: 2331, tidAt: 2332, pids: '0228 025E 025D 02A1 028F 0294 02A2 02A3 026B 026C 0266 0282 0258 02B9 0287 0293 028D 02CD 02A5 02A6 02A7 02B0 02D7' },
+    { tid: 0x9f, at: 2346, tidAt: 2347, pids: G9F },
+  ],
+  wave: [   // razer_attr_write_matrix_effect_wave rkd.c:2444
+    { tid: 0x3f, at: 2474, tidAt: 2475, pids: '021F 021E 0226 0243 0241 0227 0237 022A 022C 0257 0269 024E 0A24 025A 0295 0292 0298' },
+    { tid: 0x1f, at: 2487, tidAt: 2488, pids: '02A1 028F' },
+    { tid: 0x1f, at: 2512, tidAt: 2513, pids: '0228 025E 025D 02A3 026B 026C 0266 0282 0258 02B9 0287 0293 028D 02CD 02A5 02A6 02A7 02B0 02D7' },
+    { tid: 0x9f, at: 2527, tidAt: 2528, pids: G9F },
+  ],
+  wheel: [{ tid: 0x1f, at: 2617, tidAt: 2618, pids: '0287 0293 028D 02A5' }],   // razer_attr_write_matrix_effect_wheel rkd.c:2600
+  spectrum: [   // razer_attr_write_matrix_effect_spectrum rkd.c:2638
+    { tid: 0x3f, at: 2663, tidAt: 2664, pids: '021F 021E 0226 0243 0241 0227 022A 022C 023F 0257 0269 024E 0A24 025A 0295 0292 0298' },
+    { tid: 0x1f, at: 2691, tidAt: 2692, pids: '0228 025E 025D 02A1 028F 0294 02A2 02A3 026B 026C 0266 0282 0258 02B9 0287 0293 028D 02CD 02A5 02A6 02A7 02B0 02D7' },
+    { tid: 0x9f, at: 2706, tidAt: 2707, pids: G9F },
+  ],
+  reactive: [   // razer_attr_write_matrix_effect_reactive rkd.c:2809
+    { tid: 0x3f, at: 2842, tidAt: 2843, pids: '021F 021E 0226 0243 0241 0227 022A 022C 0257 0269 024E 0A24 025A 0293 0295 0292 0298' },
+    { tid: 0x1f, at: 2869, tidAt: 2870, pids: '0228 025E 025D 02A1 028F 02A3 026B 026C 0266 0282 0258 02B9 0287 028D 02CD 02A5 02A6 02A7 02B0 02D7' },
+    { tid: 0x9f, at: 2884, tidAt: 2885, pids: G9F },
+  ],
+  static: [   // razer_attr_write_matrix_effect_static rkd.c:2970
+    { tid: 0x3f, at: 3106, tidAt: 3107, pids: '0235 021F 021E 0226 0243 0241 0227 0237 022A 022C 023F 0257 0269 024E 0A24 025A 0293 0295 0292 0298' },
+    { tid: 0x1f, at: 3142, tidAt: 3143, pids: '0228 025E 025D 02A1 028F 0294 02A2 02A3 026B 026C 0266 0282 0258 02B9 0287 028D 02CD 02A5 02A6 02A7 02B0 02D7' },
+    { tid: 0x9f, at: 3171, tidAt: 3172, pids: G9F },
+  ],
+  // razer_attr_write_matrix_effect_starlight rkd.c:3218 (the Ornata: single only, rkd.c:3228 "count != 4")
+  starlight: [{ tid: 0x3f, at: 3232, tidAt: 3233, pids: '021F' }, { tid: 0x3f, at: 3261, tidAt: 3262, pids: STAR3F }, { tid: 0x1f, at: 3297, tidAt: 3304, pids: STAR1F }, { tid: 0x9f, at: 3336, tidAt: 3343, pids: G9F }],
+  starlightDual: [{ tid: 0x3f, at: 3255, tidAt: 3256, pids: STAR3F }, { tid: 0x1f, at: 3295, tidAt: 3304, pids: STAR1F }, { tid: 0x9f, at: 3334, tidAt: 3343, pids: G9F }],
+  starlightRandom: [{ tid: 0x3f, at: 3267, tidAt: 3268, pids: STAR3F }, { tid: 0x1f, at: 3299, tidAt: 3304, pids: STAR1F }, { tid: 0x9f, at: 3338, tidAt: 3343, pids: G9F }],
+  // razer_attr_write_matrix_effect_breath rkd.c:3482 (the BlackWidow Lite and Ornata: single only, rkd.c:3492-3501)
+  breathing: [{ tid: 0x3f, at: 3494, tidAt: 3495, pids: '0235 021F' }, { tid: 0x3f, at: 3563, tidAt: 3564, pids: BR3F }, { tid: 0x1f, at: 3616, tidAt: 3625, pids: BR1F }, { tid: 0x9f, at: 3655, tidAt: 3664, pids: G9F }],
+  breathingDual: [{ tid: 0x3f, at: 3571, tidAt: 3572, pids: BR3F }, { tid: 0x1f, at: 3618, tidAt: 3625, pids: BR1F }, { tid: 0x9f, at: 3657, tidAt: 3664, pids: G9F }],
+  breathingRandom: [{ tid: 0x3f, at: 3579, tidAt: 3580, pids: BR3F }, { tid: 0x1f, at: 3620, tidAt: 3625, pids: BR1F }, { tid: 0x9f, at: 3659, tidAt: 3664, pids: G9F }],
+};
+// keyboards.py METHODS per keyboard: [class, line, effect codes, WAVE_DIRS when the class sets one]. S static, P spectrum,
+// N none, R reactive, Bs / Bd / Br breathing single / dual / random, W wave, Wh wheel, Ls / Ld / Lr starlight single /
+// dual / random. A keyboard here whose effects are in no FX_GROUPS case gets no effect setting.
+export const FX_METHODS = {
+  '0287': ['BlackWidowV4', 2135, 'W Wh S P R N Br Bs Bd Lr Ls Ld', '12'],
+  '028D': ['BlackWidowV4Pro', 2179, 'W Wh S P R N Br Bs Bd Lr Ls Ld', '12'],
+  '02A5': ['BlackWidowV4_75PCT', 979, 'W Wh S P R N Br Bs Bd Lr Ls Ld', '12'],
+  '0293': ['BlackWidowV4X', 2158, 'W Wh S P R N Br Bs Bd Lr Ls Ld', '12'],
+  '02B9': ['BlackWidowV4MiniHyperSpeedWired', 1178, 'W S P R N Br Bs Bd Lr Ls Ld', '12'],
+  '02BA': ['BlackWidowV4MiniHyperSpeedWireless', 1199, 'W S P R N Br Bs Bd Lr Ls Ld', '12'],
+  '02D7': ['BlackWidowV4TenkeylessHyperSpeedWired', 423, 'W S P R N Br Bs Bd Lr Ls Ld', '12'],
+  '02D5': ['BlackWidowV4TenkeylessHyperSpeedWireless', 445, 'W S P R N Br Bs Bd Lr Ls Ld', '12'],
+  '024E': ['BlackWidowV3', 1108, 'W S P R N Br Bs Bd Lr Ls Ld', '12'],
+  '025A': ['BlackWidowV3ProWired', 379, 'W S P R N Br Bs Bd Lr Ls Ld', '12'],
+  '025C': ['BlackWidowV3ProWireless', 402, 'W S P R N Br Bs Bd Lr Ls Ld', '12'],
+  '0258': ['BlackWidowV3MiniHyperSpeedWired', 1150, 'W S P R N Br Bs Bd Lr Ls Ld', '12'],
+  '0271': ['BlackWidowV3MiniHyperSpeedWireless', 1171, 'W S P R N Br Bs Bd Lr Ls Ld', '12'],
+  '02A6': ['HuntsmanV3Pro', 598, 'W S P R N Br Bs Bd Lr Ls Ld'],
+  '02A7': ['HuntsmanV3ProTKL', 630, 'W S P R N Br Bs Bd Lr Ls Ld'],
+  '02B0': ['HuntsmanV3ProMini', 662, 'W S P R N Br Bs Bd Lr Ls Ld', '01'],
+  '02CF': ['HuntsmanV3Pro8KHz', 2411, 'W S P R N Br Bs Bd Lr Ls Ld'],
+  '026C': ['HuntsmanV2', 556, 'W S P R N Br Bs Bd Lr Ls Ld'],
+  '026B': ['HuntsmanV2Tenkeyless', 534, 'W S P R N Br Bs Bd Lr Ls Ld'],
+  '0257': ['HuntsmanMini', 1970, 'W S P R N Br Bs Bd Lr Ls Ld', '01'],
+  '0269': ['HuntsmanMiniJP', 1990, 'W S P R N Br Bs Bd Lr Ls Ld', '01'],
+  '0266': ['HuntsmanV2Analog', 579, 'W S P R N Br Bs Bd'],
+  '0282': ['HuntsmanMiniAnalog', 694, 'W S P R N Br Bs Bd'],
+  '0295': ['DeathStalkerV2', 1424, 'W S P R N Br Bs Bd Lr Ls Ld'],
+  '0292': ['DeathStalkerV2ProWired', 1444, 'W S P R N Br Bs Bd Lr Ls Ld'],
+  '0290': ['DeathStalkerV2ProWireless', 1466, 'W S P R N Br Bs Bd Lr Ls Ld'],
+  '0298': ['DeathStalkerV2ProTKLWired', 1473, 'W S P R N Br Bs Bd Lr Ls Ld'],
+  '0296': ['DeathStalkerV2ProTKLWireless', 1495, 'W S P R N Br Bs Bd Lr Ls Ld'],
+  '02A1': ['OrnataV3', 909, 'W S P N Br Bs Bd', '12'],
+  '028F': ['OrnataV3_Alternate', 928, 'W S P N Br Bs Bd', '12'],
+  '02A3': ['OrnataV3Tenkeyless', 960, 'W S P R N Br Bs Bd'],
+  '0294': ['OrnataV3X', 935, 'S P N Bs Bd'],
+  '02A2': ['OrnataV3X_Alternate', 953, 'S P N Bs Bd'],
+  '0235': ['BlackWidowLite', 1284, 'S N Bs'],
+  '021F': ['Ornata', 1340, 'W S R N Bs Bs Lr Ls', '01'],
+  '021E': ['OrnataChroma', 867, 'W S P R N Br Bs Bd Lr Ls Ld', '01'],
+  '0226': ['HuntsmanElite', 1024, 'W S P R N Br Bs Bd Lr Ls Ld', '01'],
+  '0227': ['Huntsman', 1087, 'W S P R N Br Bs Bd Lr Ls Ld', '01'],
+  '0243': ['HuntsmanTournamentEdition', 1045, 'W S P R N Br Bs Bd Lr Ls Ld', '01'],
+  '0241': ['BlackWidow2019', 1300, 'W S P R N Br Bs Bd Lr Ls Ld'],
+  '0237': ['BlackWidowEssential', 1320, 'S N P W R Lr Ls Ld Bs'],
+  '022A': ['CynosaChroma', 1206, 'W S P R N Br Bs Bd Lr Ls Ld', '01'],
+  '022C': ['CynosaChromaPro', 1227, 'W S P R N Br Bs Bd Lr Ls Ld', '01'],
+  '023F': ['CynosaLite', 1268, 'S P N Br Bs Bd'],
+  '0A24': ['BlackWidowV3TK', 1129, 'W S P R N Br Bs Bd Lr Ls Ld', '12'],
+  '0228': ['BlackWidowElite', 1066, 'W S P R N Br Bs Bd Lr Ls Ld', '01'],
+  '025E': ['CynosaV2', 1247, 'W S P R N Br Bs Bd Lr Ls Ld', '01'],
+  '025D': ['OrnataV2', 888, 'W S P R N Br Bs Bd Lr Ls Ld', '12'],
+  '02CD': ['Joro', 1002, 'W S P R N Br Bs Bd Lr Ls Ld'],
+  '010F': ['Anansi', 1360, 'S P N'],
+  '0203': ['BlackWidowChroma', 453, 'W S P R N Br Bs Bd'],
+  '0204': ['DeathStalkerChroma', 1405, 'W S P N Br Bs Bd'],
+  '0209': ['BlackWidowChromaTournamentEdition', 495, 'W S P R N Br Bs Bd'],
+  '0211': ['BlackWidowChromaOverwatch', 1503, 'W S P R N Br Bs Bd'],
+  '0214': ['BlackWidowUltimate2016', 827, 'W S R N Br Bs Bd Lr'],
+  '0216': ['BlackWidowXChroma', 514, 'W S P R N Br Bs Bd'],
+  '0217': ['BlackWidowXUltimate', 847, 'W S R N Br Bs Bd Lr'],
+  '021A': ['BlackWidowXTournamentEditionChroma', 713, 'W S P R N Br Bs Bd'],
+  '0221': ['BlackWidowChromaV2', 474, 'W S P R N Br Bs Bd Lr Ls Ld'],
+};
+// [value, label, METHODS code, FX_GROUPS key, parameter]; the wave's direction byte is chosen per keyboard (waveDir)
+export const FX_OPTIONS = [
+  ['static', 'Static colour', 'S', 'static'],
+  ['breathing', 'Breathing, one colour', 'Bs', 'breathing'],
+  ['breathingDual', 'Breathing, two colours', 'Bd', 'breathingDual'],
+  ['breathingRandom', 'Breathing, random colours', 'Br', 'breathingRandom'],
+  ['spectrum', 'Spectrum (colour cycle)', 'P', 'spectrum'],
+  ['waveRight', 'Rainbow wave, left to right', 'W', 'wave', 'right'],
+  ['waveLeft', 'Rainbow wave, right to left', 'W', 'wave', 'left'],
+  ['wheel', 'Wheel', 'Wh', 'wheel', 0x01],
+  ['wheelReverse', 'Wheel, reversed', 'Wh', 'wheel', 0x02],
+  ['reactive1', 'Keys light up when pressed, 0.5 s', 'R', 'reactive', 0x01],
+  ['reactive2', 'Keys light up when pressed, 1 s', 'R', 'reactive', 0x02],
+  ['reactive3', 'Keys light up when pressed, 1.5 s', 'R', 'reactive', 0x03],
+  ['reactive4', 'Keys light up when pressed, 2 s', 'R', 'reactive', 0x04],
+  ['starlight1', 'Starlight, one colour, fast', 'Ls', 'starlight', 0x01],
+  ['starlight2', 'Starlight, one colour', 'Ls', 'starlight', 0x02],
+  ['starlight3', 'Starlight, one colour, slow', 'Ls', 'starlight', 0x03],
+  ['starlightDual1', 'Starlight, two colours, fast', 'Ld', 'starlightDual', 0x01],
+  ['starlightDual2', 'Starlight, two colours', 'Ld', 'starlightDual', 0x02],
+  ['starlightDual3', 'Starlight, two colours, slow', 'Ld', 'starlightDual', 0x03],
+  ['starlightRandom1', 'Starlight, random colours, fast', 'Lr', 'starlightRandom', 0x01],
+  ['starlightRandom2', 'Starlight, random colours', 'Lr', 'starlightRandom', 0x02],
+  ['starlightRandom3', 'Starlight, random colours, slow', 'Lr', 'starlightRandom', 0x03],
+  ['off', 'Off', 'N', 'none'],
+];
+const USES_C1 = (v) => ['static', 'breathing', 'breathingDual'].includes(v) || /^reactive|^starlight[123]$|^starlightDual/.test(v);
+const USES_C2 = (v) => v === 'breathingDual' || /^starlightDual/.test(v);
+export const FX_DEFAULT = { c1: '#00ff00', c2: '#0000ff' };   // the colours an effect uses until the person picks one
+// the wave's direction byte (see the top): left to right 1; right to left 2, or 0 on a (0, 1) keyboard
+// The Ornata V3 and its Alt (02A1, 028F) take it the other way round: openrazer razerkbd_driver.c 2482-2488 @ 477f4d6d
+// flips the direction for them (direction ^= 3) before building the wave (a review, 2 Nov 2026)
+const WAVE_FLIPPED = new Set(['02A1', '028F']);
+export const waveDir = (pid, way) => {
+  const d = way === 'right' ? 0x01 : FX_METHODS[pid]?.[3] === '01' ? 0x00 : 0x02;
+  return WAVE_FLIPPED.has(String(pid).toUpperCase()) && (d === 0x01 || d === 0x02) ? d ^ 3 : d;
+};
+// the effects one keyboard has: [{ value, label, group: { tid, at, tidAt }, param }]
+export function effectsFor(pid) {
+  const row = FX_METHODS[pid];
+  if (!row) return [];
+  const has = new Set(row[2].split(' '));
+  const out = [];
+  for (const [value, label, code, group, param] of FX_OPTIONS) {
+    const g = has.has(code) ? (FX_GROUPS[group] || []).find((x) => x.pids.split(' ').includes(pid)) : null;
+    if (g) out.push({ value, label, group: g, param: group === 'wave' ? waveDir(pid, param) : param });
+  }
+  return out.some((o) => o.value !== 'off') ? out : [];
+}
+// the write-only settings for one keyboard's effects: effect, colour, second colour
+export function effectSettings(pid) {
+  const opts = effectsFor(pid);
+  if (!opts.length) return [];
+  const vals = opts.map((o) => o.value);
+  const test = ['waveRight', 'spectrum', 'static'].find((v) => vals.includes(v)) || vals.find((v) => v !== 'off');
+  const out = [{ key: 'effect', label: 'Lighting effect', type: 'choice', group: 'lights', options: opts.map(({ value, label }) => ({ value, label })),
+    hint: 'Lasts until the keyboard is unplugged (never saved on the keyboard)',
+    writeOnly: { volatile: true, confirm: 'Is the keyboard showing this now: {value}?', test, restore: 'previous' } }];
+  if (vals.some(USES_C1)) out.push({ key: 'color', label: 'Lighting colour', type: 'color', group: 'lights',
+    hint: 'Used by the static, breathing, key-press and starlight effects; picking one shows it as a static colour unless one of those is on',
+    writeOnly: { volatile: true, confirm: "Did the keyboard's lights turn {value}?", test: '#ff0000', restore: 'previous' } });
+  if (vals.some(USES_C2)) out.push({ key: 'color2', label: 'Second colour', type: 'color', group: 'lights',
+    hint: 'Used by the two-colour effects; picking one turns breathing with two colours on unless a two-colour effect is on',
+    writeOnly: { volatile: true, confirm: 'Is the keyboard now showing two colours, one of them {value}?', test: '#0000ff', restore: 'previous' } });
+  return out;
+}
+const rgbOf = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+// one effect's arguments with NOSTORE, byte for byte as the rcc.c builder lays them out: { size, args }
+export function fxArgs(value, param, c1 = FX_DEFAULT.c1, c2 = FX_DEFAULT.c2) {
+  const s = FX_STORE, L = LED.BACKLIGHT, a = rgbOf(c1), b = rgbOf(c2);
+  if (value === 'off') return { size: 0x06, args: [s, L, 0x00, 0, 0, 0] };                                    // rcc.c:498 none
+  if (value === 'static') return { size: 0x09, args: [s, L, 0x01, 0, 0, 0x01, ...a] };                       // rcc.c:511
+  if (value === 'spectrum') return { size: 0x06, args: [s, L, 0x03, 0, 0, 0] };                              // rcc.c:605
+  if (/^wave/.test(value)) return { size: 0x06, args: [s, L, 0x04, param, 0x28, 0] };                        // rcc.c:531
+  if (/^wheel/.test(value)) return { size: 0x06, args: [s, L, 0x0a, param, 0x28, 0] };                       // rcc.c:616
+  if (/^reactive/.test(value)) return { size: 0x09, args: [s, L, 0x05, 0, param, 0x01, ...a] };              // rcc.c:639
+  if (value === 'breathingRandom') return { size: 0x06, args: [s, L, 0x02, 0, 0, 0] };                       // rcc.c:662
+  if (value === 'breathing') return { size: 0x09, args: [s, L, 0x02, 0x01, 0, 0x01, ...a] };                 // rcc.c:667
+  if (value === 'breathingDual') return { size: 0x0c, args: [s, L, 0x02, 0x02, 0, 0x02, ...a, ...b] };       // rcc.c:680
+  if (/^starlightRandom/.test(value)) return { size: 0x06, args: [s, L, 0x07, 0, param, 0] };                // rcc.c:558
+  if (/^starlightDual/.test(value)) return { size: 0x0c, args: [s, L, 0x07, 0, param, 0x02, ...a, ...b] };   // rcc.c:581
+  if (/^starlight/.test(value)) return { size: 0x09, args: [s, L, 0x07, 0, param, 0x01, ...a] };             // rcc.c:567
+  throw new Error(`${value} is not an effect this driver builds`);
+}
+
 // the maker's app (the same process names as device-library/razer-mouse, from helpers/diagnose.mjs)
 export const VENDOR_APPS = [/^razer synapse/i, /^razerappengine\.exe$/i];
 async function defaultVendorApp() {
@@ -242,8 +460,8 @@ export function createRazerKeyboard({ sleep = sleepReal, open = defaultOpen, ven
     vendor: 'Razer',
     hid: { vid: '1532', pid: '0287', pids, page: '*', usage: '*', len: LEN, featureLen: LEN, reportId: 0, featureOnly: true,
       byPid: Object.fromEntries(pids.map((p) => [p, { iface: models[p].iface }])) },
-    unsupported: ['colours and lighting effects (no read-back exists)', 'the Fn toggle (write-only)', 'keyswitch optimization', 'device mode', 'macros and key remaps', 'firmware updates (Razer\'s own updater only)', 'dongle pairing'],
-    dev: null, pid: null, model: null, has: null, probed: {}, pollRates: POLL_BASE, raw: {}, q: Promise.resolve(), app: null, appAt: 0,
+    unsupported: ['saving a lighting effect on the keyboard (effects set here last until it is unplugged)', 'per-key colours (custom frame)', 'lighting effects on the older standard-lighting keyboards and the Huntsman V3 Pro 8KHz (no form that is known not to be saved)', 'the Fn toggle (write-only)', 'keyswitch optimization', 'device mode', 'macros and key remaps', 'firmware updates (Razer\'s own updater only)', 'dongle pairing'],
+    dev: null, pid: null, model: null, has: null, probed: {}, pollRates: POLL_BASE, raw: {}, q: Promise.resolve(), app: null, appAt: 0, fx: null,
 
     get settings() {
       const all = [
@@ -253,14 +471,16 @@ export function createRazerKeyboard({ sleep = sleepReal, open = defaultOpen, ven
         { key: 'pollingRate', label: 'Polling rate', type: 'choice', options: this.pollRates.map((hz) => ({ value: hz, label: `${hz} Hz` })) },
         { key: 'lowBattery', label: 'Low-battery warning', type: 'slider', min: LOWBAT_MIN, max: LOWBAT_MAX, step: 1, unit: 'raw', hint: 'Raw 12-63: 12 is about 5%, 38 about 15%, 63 about 25% (OpenRazer)' },
       ];
-      return this.has ? all.filter((s) => this.has.has(s.key)) : all;
+      // the lighting effects (write-only) depend only on the model, so they are listed as soon as one is connected
+      const fx = this.pid ? effectSettings(this.pid) : [];
+      return [...(this.has ? all.filter((s) => this.has.has(s.key)) : all), ...fx];
     },
 
     async connect() {
       if (this.dev) return true;
       for (const pid of pids) {
         const dev = await open(pid, models[pid]);
-        if (dev) { this.dev = dev; this.pid = pid; this.model = models[pid]; this.has = null; this.probed = {}; this.raw = {}; this.pollRates = POLL_BASE; this.app = null; this.appAt = 0; return true; }
+        if (dev) { this.dev = dev; this.pid = pid; this.model = models[pid]; this.has = null; this.probed = {}; this.raw = {}; this.pollRates = POLL_BASE; this.app = null; this.appAt = 0; this.fx = null; return true; }
       }
       return false;
     },
@@ -381,9 +601,33 @@ export function createRazerKeyboard({ sleep = sleepReal, open = defaultOpen, ven
       if (this.app) throw Object.assign(new Error(`${this.app} is running: close it first (two programs writing the keyboard fight)`), { refused: true, waiting: true });
     },
 
+    // a lighting effect setting (write-only): the 0F/02 report with NOSTORE on openrazer's transaction id for this keyboard
+    // and effect; nothing is read back (no read exists). this.fx = what was sent this connection, so a colour change
+    // re-sends the effect that is on.
+    async writeEffect(s, value) {
+      const opts = effectsFor(this.pid);
+      if (s.type === 'choice' && !s.options.some((o) => o.value === value)) throw new Error(`${s.label}: ${JSON.stringify(value)} is not an effect this keyboard has`);
+      if (s.type === 'color' && !(typeof value === 'string' && /^#[0-9a-f]{6}$/.test(value))) throw new Error(`${s.label} must be a colour like #ff0000`);
+      const st = { effect: null, c1: FX_DEFAULT.c1, c2: FX_DEFAULT.c2, ...this.fx };
+      const has = (v) => opts.some((o) => o.value === v);
+      let effect;
+      if (s.key === 'effect') effect = value;
+      else if (s.key === 'color') { st.c1 = value; effect = USES_C1(st.effect) ? st.effect : ['static', 'breathing', 'reactive2', 'starlight2'].find(has); }
+      else { st.c2 = value; effect = USES_C2(st.effect) ? st.effect : ['breathingDual', 'starlightDual2'].find(has); }
+      const o = opts.find((x) => x.value === effect);
+      if (!o) throw new Error(`${s.label}: no effect on this keyboard uses it`);
+      await this.appCheck();
+      const { size, args } = fxArgs(effect, o.param, st.c1, st.c2);
+      await this.request(o.group.tid, { ...FX_CMD, size }, args);
+      this.fx = { ...st, effect };
+      return value;
+    },
+
     // one setting, checked, written, read back
     async write(key, value) {
       await this.ready();
+      const fxs = this.pid ? effectSettings(this.pid).find((x) => x.key === key) : null;
+      if (fxs) return this.writeEffect(fxs, value);
       const s = this.settings.find((x) => x.key === key);
       if (!s) throw new Error(`${key} is not a setting of this keyboard`);
       if (s.type === 'toggle' && typeof value !== 'boolean') throw new Error(`${s.label} is on or off (true / false)`);

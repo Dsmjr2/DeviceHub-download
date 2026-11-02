@@ -333,6 +333,29 @@ only, since OpenRazer writes their brightness with standard 03/03, which the dri
 reads only (tids 1F, 3F, 9F) and offers polling only when a mapped code comes back. Left out: the 48 Blade ids and the
 Book 2020 (laptops; brightness 0E/04), and the Tartarus / Orbweaver / Nostromo keypads.
 
+### Lighting effects as write-only settings (2 Nov 2026)
+
+Both drivers now offer the lighting effects as write-only settings (helpers/my-devices.mjs "Write-only settings": locked
+until Turn on settings and one check by eye per driver + USB id + setting; never read back, never self-checked). From
+openrazer master @ 477f4d6d: the layouts from `razerchromacommon.c` (extended `razer_chroma_extended_matrix_effect_*`,
+class 0x0F id 0x02; the mouse-extended class 0x03 id 0x0D for the Naga Hex V2 / Naga Chroma), which model has which
+effect on which LED from `mouse.py` / `keyboards.py` METHODS, and the transaction id per model and effect from the case
+lists in `razermouse_driver.c` / `razerkbd_driver.c` (each table row cites its lines).
+
+- **Store byte:** openrazer sends every effect with VARSTORE 0x01. `razercommon.h` calls 0x01 VARSTORE and 0x00 NOSTORE,
+  OpenRGB's `RazerController.h` calls them RAZER_STORAGE_SAVE / RAZER_STORAGE_NO_SAVE and sends every effect NO_SAVE, and
+  `razer_get_active_varstore` (Huntsman V3 Pro 8KHz) puts the onboard profile number in that byte. So 0x01 is taken to
+  be saved on the device; DeviceHub sends **only NOSTORE 0x00**, which the device forgets on unplug.
+- **Mice (55 ids):** per zone (logo 0x04, scroll wheel 0x01, left side 0x11, right side 0x10, backlight 0x05, whole mouse
+  0x00): static, breathing one / two / random colours, spectrum, wave up / down (direction 1 / 2, speed 0x28), reactive
+  (speed 1-4), off, plus a colour and a second colour.
+- **Keyboards (48 ids):** the backlight (0x05): the same plus wheel (BlackWidow V4 family), starlight one / two / random
+  colours (speed 1-3), and the wave direction per `WAVE_DIRS` (0 / 1 on some boards).
+- **Left out:** the standard matrix effect 0x03/0x0A (no store byte, so no form that is not kept), the classic LED-state
+  sequences, the "mode switcher" whole-mouse effects (Naga Trinity / Pro / V2 Pro, Basilisk Mobile), the Huntsman V3 Pro
+  8KHz (store byte = profile), the custom frame 0x0F/0x03, and anything METHODS does not list for the model. The existing
+  brightness settings (read back) are unchanged.
+
 ## 6. Gaps and unknowns
 
 - BlackShark V2 Pro / V2 X, Barracuda, Nari, Kraken V4 Pro: no PIDs, no protocol in any source.

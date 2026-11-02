@@ -82,6 +82,9 @@ function simMouse({ tids = [0x1f], perCmd = {}, power = 'rechargeable', poll = '
         case '07/03': { const v = (a[0] << 8) | a[1]; if (!(idle && power)) r[0] = 0x05; else if (v < 60 || v > 900) r[0] = 0x03; else { s.idle = v; ok([a[0], a[1]]); } break; }
         case '07/81': if (lowBattery && power) ok([s.lowBat]); else r[0] = 0x05; break;
         case '07/01': if (!(lowBattery && power)) r[0] = 0x05; else if (a[0] < 0x0c || a[0] > 0x3f) r[0] = 0x03; else { s.lowBat = a[0]; ok([a[0]]); } break;
+        // the lighting effects (2 Nov 2026): extended 0F/02 (rcc.c:481) and mouse extended 03/0D (rcc.c:784); the simulated
+        // mouse refuses anything but NOSTORE (0x00) and keeps what it was sent (there is no read)
+        case '0f/02': case '03/0d': if (q[5] < 0x03 || a[0] !== 0x00) r[0] = 0x03; else { s.fx = [...a.slice(0, q[5])]; ok(a.slice(0, q[5])); } break;
         default: r[0] = 0x05;
       }
     }
@@ -123,7 +126,7 @@ function driverOn(pid, simOpts) {
 }
 const cmdKey = (r) => `${r.cls.toString(16).padStart(2, '0')}/${r.id.toString(16).padStart(2, '0')}`;
 const SHEET_CMDS = new Set(['00/81', '07/80', '07/84', '04/85', '04/05', '04/86', '04/06', '00/85', '00/05', '00/c0', '00/40', '07/83', '07/03', '07/81', '07/01',
-  '02/94', '02/96', '02/16', '02/97', '02/17', '07/90', '07/10', '0f/84', '0f/04']);
+  '02/94', '02/96', '02/16', '02/97', '02/17', '07/90', '07/10', '0f/84', '0f/04', '0f/02', '03/0d']);
 const allSims = [];
 
 // ---- 1. the report, byte for byte against the sheet (razer.md §2), typed out by hand ----
@@ -522,6 +525,159 @@ for (const [pid, model, tid, perCmd, power, max, wait, stages, simLights, docLig
   await d.write('lowBattery', 0x20);
   const rs = sim.sent.filter((r) => cmdKey(r) === '07/81'), ws = sim.sent.filter((r) => cmdKey(r) === '07/01');
   check(rs.length && rs.every((r) => r.tid === 0x1f) && ws.length === 1 && ws[0].tid === 0xff && sim.s.lowBat === 0x20, 'Naga V2 HyperSpeed: threshold read with 1F, written with FF');
+}
+
+// ---- 8c. lighting effects as write-only settings (2 Nov 2026). Expected bytes typed out by hand from openrazer master
+// @ 477f4d6d: rcc.c = driver/razerchromacommon.c (the layout), rmd.c = driver/razermouse_driver.c (the transaction id per
+// mouse and effect), mouse.py = daemon/openrazer_daemon/hardware/mouse.py (METHODS). The store byte is ALWAYS 0x00
+// (NOSTORE), never openrazer's VARSTORE 0x01 (OpenRGB: RAZER_STORAGE_SAVE), so the mouse forgets the effect on unplug. ----
+{
+  const { effectsFor, effectSettings, fxArgs, FX_ZONE, FX_ALL, FX_METHODS, FX_OPTIONS, FX_ZONES } = await import('../device-library/razer-mouse/device.mjs');
+  const fxSent = (sim) => sim.sent.filter((r) => ['0f/02', '03/0d'].includes(cmdKey(r)));
+  const A = (r) => (r ? hex(r.args) : 'nothing');
+  const woKeys = (d) => d.settings.filter((s) => s.writeOnly).map((s) => s.key).join();
+  // (a) Lancehead 0059 (mouse.py:71: logo, scroll, left and right, each W S P N R Br Bs Bd): extended 0F/02, tid 3F
+  {
+    const { d, sim } = driverOn('0059', { tids: [0x3f], poll: 'classic', lights: [0x04, 0x01, 0x11, 0x10] }); allSims.push(sim);
+    await d.connect();
+    check(problem(d) === null, `with its effect settings the mouse driver still has the my-devices shape (${problem(d)})`);
+    check(woKeys(d) === 'effectLogo,colorLogo,color2Logo,effectScroll,colorScroll,color2Scroll,effectLeft,colorLeft,color2Left,effectRight,colorRight,color2Right', `Lancehead: an effect, a colour and a second colour per zone (${woKeys(d)})`);
+    check(d.settings.filter((s) => s.writeOnly).every((s) => s.writeOnly.volatile === true && /\?$/.test(s.writeOnly.confirm)), 'every effect setting is volatile with a plain question');
+    check(d.settings.find((s) => s.key === 'effectLogo').options.map((o) => o.value).join() === 'static,breathing,breathingDual,breathingRandom,spectrum,waveUp,waveDown,reactive1,reactive2,reactive3,reactive4,off', 'Lancehead logo effects');
+    const want = [
+      ['static', 0x09, '00 04 01 00 00 01 00 ff 00', 'rcc.c:511-518 [5] 01, [6-8] RGB; rmd.c:5189-5190 tid 3F'],
+      ['spectrum', 0x06, '00 04 03 00 00 00', 'rcc.c:605-608; rmd.c:4717-4718'],
+      ['waveUp', 0x06, '00 04 04 01 28 00', 'rcc.c:531-543 [3] direction, [4] 0x28; rmd.c:4599-4600; lanceheadte.py:11 "(1|2)"'],
+      ['waveDown', 0x06, '00 04 04 02 28 00', 'rcc.c:531-543'],
+      ['reactive1', 0x09, '00 04 05 00 01 01 00 ff 00', 'rcc.c:639-651 [4] speed, [5] 01; rmd.c:4831-4832'],
+      ['breathing', 0x09, '00 04 02 01 00 01 00 ff 00', 'rcc.c:667-677; rmd.c:4997, 5094'],
+      ['breathingDual', 0x0c, '00 04 02 02 00 02 00 ff 00 00 00 ff', 'rcc.c:680-699; rmd.c:5001, 5094'],
+      ['breathingRandom', 0x06, '00 04 02 00 00 00', 'rcc.c:662-665; rmd.c:5005, 5094'],
+      ['off', 0x06, '00 04 00 00 00 00', 'rcc.c:498-501; rmd.c:5408-5409'],
+    ];
+    for (const [v, size, args, cite] of want) {
+      const n = fxSent(sim).length;
+      await d.write('effectLogo', v);
+      const r = fxSent(sim)[n];
+      check(fxSent(sim).length === n + 1 && cmdKey(r) === '0f/02' && r.tid === 0x3f && r.size === size && A(r) === args, `Lancehead logo ${v}: 0F/02 size ${size} [${args}] tid 3F (${cite}); got ${r ? `${cmdKey(r)} ${r.tid.toString(16)} size ${r.size} [${A(r)}]` : 'nothing'}`);
+    }
+    // the LED id per zone (razercommon.h SCROLL_WHEEL_LED 01, LEFT_SIDE_LED 11, RIGHT_SIDE_LED 10)
+    for (const [key, led] of [['effectScroll', '01'], ['effectLeft', '11'], ['effectRight', '10']]) {
+      await d.write(key, 'spectrum');
+      check(A(fxSent(sim).at(-1)) === `00 ${led} 03 00 00 00`, `${key}: LED ${led} (${A(fxSent(sim).at(-1))})`);
+    }
+    // one whole report typed out: 00 3F 00 00 00 09 0F 02, args 00 04 01 00 00 01 FF 00 00; crc 09^0F^02^04^01^01^FF = FF
+    const lit = (head, c) => { const r = new Uint8Array(90); r.set(head); r[88] = c; return hex(r); };
+    check(hex(buildReport(0x3f, 0x0f, 0x02, 0x09, fxArgs('ext', 'static', 0x04, undefined, '#ff0000').args)) === lit([0x00, 0x3f, 0x00, 0x00, 0x00, 0x09, 0x0f, 0x02, 0x00, 0x04, 0x01, 0x00, 0x00, 0x01, 0xff, 0x00, 0x00], 0xff), 'the static red logo report, every byte (crc FF)');
+    // colours: re-send the effect that is on; with none that takes one, static; colour 2 turns two-colour breathing on
+    await d.write('effectLogo', 'reactive3'); await d.write('colorLogo', '#123456');
+    check(A(fxSent(sim).at(-1)) === '00 04 05 00 03 01 12 34 56', `colour while reactive: reactive with #123456 (${A(fxSent(sim).at(-1))})`);
+    await d.write('effectLogo', 'spectrum'); await d.write('colorLogo', '#ff0000');
+    check(A(fxSent(sim).at(-1)) === '00 04 01 00 00 01 ff 00 00', `colour while the spectrum runs: static red (${A(fxSent(sim).at(-1))})`);
+    await d.write('color2Logo', '#0000ff');
+    check(A(fxSent(sim).at(-1)) === '00 04 02 02 00 02 ff 00 00 00 00 ff', `second colour: breathing between red and blue (${A(fxSent(sim).at(-1))})`);
+    check(A(fxSent(sim).at(-1)) !== A(fxSent(sim).at(-2)) && (await d.write('effectScroll', 'static')) === 'static' && A(fxSent(sim).at(-1)) === '00 01 01 00 00 01 00 ff 00', 'each zone keeps its own colours (the scroll wheel is still green)');
+    const n = fxSent(sim).length;
+    check(await rejects(() => d.write('effectLogo', 'starlight')) && await rejects(() => d.write('colorLogo', 'red')) && await rejects(() => d.write('effectLogo', 0x03)) && fxSent(sim).length === n, 'an effect or colour it does not take: refused, nothing sent');
+    const v = await d.read();
+    check(!Object.keys(v).some((k) => /^(effect|color)/.test(k)), 'the driver itself reads no effect back (none exists)');
+    sim.app = 'Razer Synapse.exe'; sim.clock += 20000;
+    check(await rejects(() => d.write('effectLogo', 'spectrum'), /Synapse/) && fxSent(sim).length === n, 'Synapse running: no effect sent');
+  }
+  // (b) the transaction id and LED per model and effect
+  const one = async (pid, opts, key, v) => {
+    const { d, sim } = driverOn(pid, opts); allSims.push(sim);
+    await d.connect();
+    await d.write(key, v);
+    return { r: fxSent(sim)[0] || null, d };
+  };
+  let { r, d } = await one('00AA', { tids: [0x1f], power: 'rechargeable', poll: 'rate2' }, 'effectAll', 'static');
+  check(r?.tid === 0x1f && A(r) === '00 00 01 00 00 01 00 ff 00', `Basilisk V3 Pro whole mouse: static on ZERO_LED 00, tid 1F (rmd.c:1188-1189) (${A(r)})`);
+  check(woKeys(d) === 'effectScroll,colorScroll,effectAll,colorAll,effectLogo,colorLogo' && d.settings.find((s) => s.key === 'effectLogo').options.map((o) => o.value).join() === 'static,spectrum,waveUp,waveDown,off', `Basilisk V3 Pro: no reactive or breathing (not in mouse.py:1694 METHODS), so no second colour (${woKeys(d)})`);
+  ({ r } = await one('00A3', { tids: [0x1f, 0x3f] }, 'effectLogo', 'static'));
+  check(r?.tid === 0x1f, `Cobra static: tid 1F (rmd.c:5223-5224) (${r?.tid})`);
+  ({ r } = await one('00A3', { tids: [0x1f, 0x3f] }, 'effectLogo', 'breathing'));
+  check(r?.tid === 0x3f, `Cobra breathing: tid 3F (its case is rmd.c:5094, not 5053) (${r?.tid})`);
+  // the Naga Hex V2 0050: mouse extended 03/0D (rcc.c:784 [store, led, effect]), tid 3F
+  const naga = [
+    ['static', 0x06, '00 04 06 00 ff 00', 'rcc.c:812-820; rmd.c:5162-5163'],
+    ['spectrum', 0x03, '00 04 04', 'rcc.c:828-831; rmd.c:4693-4694'],
+    ['reactive4', 0x07, '00 04 02 04 00 ff 00', 'rcc.c:841-855; rmd.c:4807-4808'],
+    ['breathing', 0x0a, '00 04 03 01 00 ff 00 00 00 00', 'rcc.c:871-881; rmd.c:4941, 5094'],
+    ['breathingDual', 0x0a, '00 04 03 02 00 ff 00 00 00 ff', 'rcc.c:883-901; rmd.c:4945'],
+    ['breathingRandom', 0x0a, '00 04 03 03 00 00 00 00 00 00', 'rcc.c:863-869; rmd.c:4949'],
+    ['off', 0x03, '00 04 00', 'rcc.c:801-804; rmd.c:5381-5382'],
+  ];
+  for (const [v, size, args, cite] of naga) {
+    ({ r } = await one('0050', { tids: [0x3f], poll: 'classic', power: null }, 'effectLogo', v));
+    check(r && cmdKey(r) === '03/0d' && r.tid === 0x3f && r.size === size && A(r) === args, `Naga Hex V2 logo ${v}: 03/0D size ${size} [${args}] tid 3F (${cite}); got ${r ? `${cmdKey(r)} ${r.size} [${A(r)}]` : 'nothing'}`);
+  }
+  ({ r } = await one('0050', { tids: [0x3f], poll: 'classic', power: null }, 'effectBacklight', 'spectrum'));
+  check(A(r) === '00 05 04', 'Naga Hex V2 backlight: BACKLIGHT_LED 05');
+  // (c) offered only where mouse.py METHODS lists it AND rmd.c has a case for that mouse with a store byte
+  const vals = (pid, zone) => (effectsFor(pid).find((z) => z.zone === zone)?.options || []).map((o) => o.value).join();
+  check(vals('006E', 'logo') === 'static,breathing,off' && effectSettings('006E').map((s) => s.key).join() === 'effectLogo,colorLogo,effectScroll,colorScroll', 'DeathAdder Essential (mouse.py:873 S N Bs): static, one-colour breathing, off; no second colour');
+  check(effectsFor('008F').map((z) => z.zone).join() === 'logo,scroll', 'Naga Pro: logo and scroll wheel; no whole-mouse effect (rmd.c:1133-1170 a mode-switcher report first, rmd.c:1002 standard none)');
+  check(effectsFor('0099').map((z) => z.zone).join() === 'scroll,all,logo' && !vals('0099', 'all').includes('off'), 'Basilisk V3: whole-mouse static, wave and spectrum, no off (not in mouse.py:1192)');
+  for (const pid of ['00B7', '00C0', '0044', '0045', '0046', '004C', '0048', '0043', '004F', '0054', '005B', '005E', '0024', '0025', '003E', '003F', '0040', '0032', '0034', '0067', '00D3', '00D4', '009C', '00B3'])
+    check(effectSettings(pid).length === 0, `${pid} ${MODELS[pid].model}: no effect setting (no lights, standard 0x03/0x0A without a store byte, classic LED-state lighting, or a mode-switcher report)`);
+  const bad = [];
+  for (const pid of PIDS) {
+    const meth = FX_METHODS[pid] ? Object.fromEntries(FX_METHODS[pid][2].split('|').map((p) => p.split(':')).map(([z, c]) => [z, c.split(' ')])) : {};
+    for (const z of effectsFor(pid)) {
+      if (z.led !== FX_ZONES[z.zone].led) bad.push(`${pid} ${z.zone}: led`);
+      for (const o of z.options) {
+        const code = FX_OPTIONS.find((x) => x[0] === o.value)[2];
+        if (!(meth[z.zone] || []).includes(code)) bad.push(`${pid} ${z.zone} ${o.value}: not in METHODS`);
+        if (!o.group.pids.split(' ').includes(pid)) bad.push(`${pid} ${o.value}: not in its rmd.c case`);
+        const { args } = fxArgs(o.group.cmd, o.value, z.led, o.param);
+        if (args[0] !== 0x00 || args[1] !== z.led) bad.push(`${pid} ${z.zone} ${o.value}: store ${args[0]} led ${args[1]}`);
+      }
+    }
+  }
+  const known = new Set(PIDS);
+  for (const t of [FX_ZONE, FX_ALL]) for (const [k, list] of Object.entries(t)) for (const g of list) for (const p of g.pids.split(' ')) if (!known.has(p)) bad.push(`${k}: ${p} is not a mouse here`);
+  for (const p of Object.keys(FX_METHODS)) if (!known.has(p)) bad.push(`FX_METHODS ${p} is not a mouse here`);
+  check(bad.length === 0, `every effect offered: in METHODS, in its rmd.c case, NOSTORE on the zone's LED (${bad.slice(0, 5).join('; ')})`);
+  const withFx = PIDS.filter((p) => effectSettings(p).length);
+  check(withFx.length === 55, `55 of the 102 mice have effects (the rest: no effect methods in mouse.py, standard or classic lighting, a mode-switcher report) (${withFx.length})`);
+  // (d) guarded: locked before Turn on settings and before the check by eye; Try it sends only the test value
+  {
+    const os = await import('node:os');
+    const md = await import('../helpers/my-devices.mjs');
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-razer-fx-'));
+    const folder = path.join(root, 'my-devices', 'razer-mouse');
+    fs.mkdirSync(folder, { recursive: true });
+    fs.copyFileSync(path.join(ROOT, 'device-library', 'razer-mouse', 'device.json'), path.join(folder, 'device.json'));
+    fs.writeFileSync(path.join(folder, 'library.json'), JSON.stringify({ source: 'device-library', status: 'read-only' }));
+    const g = driverOn('0059', { tids: [0x3f], poll: 'classic', lights: [0x04, 0x01, 0x11, 0x10] }); allSims.push(g.sim);
+    md.guard(g.d, folder, md.libraryMark(folder), { makerApp: async () => null, backup: async () => {}, log: () => {}, version: 'test' });
+    check(await g.d.connect(), 'guarded Lancehead connects');
+    const st = (k) => g.d.settings.find((s) => s.key === k);
+    check(['effectLogo', 'colorLogo', 'color2Logo', 'effectRight'].every((k) => st(k)?.readOnly && st(k).writeOnlyState === 'gated'), `before Turn on settings the effects are locked (${['effectLogo', 'colorLogo'].map((k) => st(k)?.writeOnlyState)})`);
+    let t = await g.d.tryWrite('effectLogo');
+    check(await rejects(() => g.d.write('effectLogo', 'spectrum'), /Turn on settings/) && !t.ok && t.gated && fxSent(g.sim).length === 0, 'before Turn on settings: a write and Try it are refused, nothing sent');
+    const on = await g.d.turnOn();
+    check(on.on && fxSent(g.sim).length === 0 && !Object.keys(on.keys || {}).some((k) => /^(effect|color)/.test(k)), `Turn on settings: the self-check never sends an effect (${JSON.stringify(Object.keys(on.keys || on))})`);
+    check(st('effectLogo').writeOnlyState === 'untrusted' && await rejects(() => g.d.write('effectLogo', 'spectrum'), /Try it/) && fxSent(g.sim).length === 0, 'after Turn on settings: still locked until checked by eye, nothing sent');
+    t = await g.d.tryWrite('effectLogo');
+    check(t.ok && t.question === 'Is the logo showing this now: Spectrum (colour cycle)?' && fxSent(g.sim).length === 1 && A(fxSent(g.sim)[0]) === '00 04 03 00 00 00', `Try it: only the spectrum, once, and the plain question (${t.question}; ${fxSent(g.sim).map(A)})`);
+    const yes = await g.d.tryAnswer('effectLogo', true);
+    check(yes.ok && yes.trusted && st('effectLogo').writeOnlyState === 'trusted' && st('effectScroll').writeOnlyState === 'untrusted' && st('colorLogo').writeOnlyState === 'untrusted', 'Yes: only that setting is trusted (each zone and colour is checked on its own)');
+    t = await g.d.tryWrite('colorLogo');
+    check(t.ok && t.question === 'Did the logo light turn red?' && A(fxSent(g.sim).at(-1)) === '00 04 01 00 00 01 ff 00 00', `the colour's Try it: static red, "${t.question}"`);
+    await g.d.tryAnswer('colorLogo', false);
+    await g.d.write('effectLogo', 'waveDown');
+    check(A(fxSent(g.sim).at(-1)) === '00 04 04 02 28 00' && (await g.d.read()).effectLogo === 'waveDown', 'a trusted write sends the wave; read() shows the value DeviceHub sent');
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+// the never list (helpers/never-commands.json, Razer rows): nothing any simulated mouse was sent matches one
+{
+  const NEVER = JSON.parse(fs.readFileSync(path.join(ROOT, 'helpers', 'never-commands.json'), 'utf8')).commands.filter((c) => c.bytes && [].concat(c.vid).includes('1532'));
+  const matchesNever = (bytes) => NEVER.some((n) => n.bytes.split(' ').every((t, i) => t === '??' || parseInt(t, 16) === bytes[i]));
+  check(NEVER.length >= 4 && matchesNever(buildReport(0x1f, 0x00, 0x04, 0x02, [0x02, 0x00])), 'the never list has the Razer rows (device mode 02 caught)');
+  check(!allSims.flatMap((s) => s.sent).some((r) => matchesNever(r.bytes)), 'no simulated mouse was sent anything on the never list');
 }
 
 // ---- 9. nothing outside the sheet, ever; every report well formed ----

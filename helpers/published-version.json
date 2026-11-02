@@ -1,9 +1,8 @@
 {
-  "version": "1.56",
-  "commit": "e78ec3c6891a",
+  "version": "1.57",
+  "commit": "ebaff1e4bc8f",
   "notes": [
-    "Write-only values last one connection",
-    "Write-only settings after one check by eye",
-    "ASUS DPI read only on the three mice G-Helper gives separate X and Y…"
+    "Ornata V3 wave direction as openrazer sends it",
+    "Razer lighting effects as write-only settings, never saved on the…"
   ]
 }

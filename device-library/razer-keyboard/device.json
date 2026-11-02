@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-02T04:20:18Z",
+  "updated": "2026-11-02T07:04:49Z",
   "id": "razer-keyboard",
   "vendor": "Razer",
   "product": "Razer keyboards (90-byte report)",
@@ -150,11 +150,12 @@
     "polling rate 125-1000 Hz (00/C0 and 00/40), higher rates once the keyboard reads at one: BlackWidow V4 / V4 Pro / V4 75% / V4 TKL HyperSpeed, Huntsman V2 / V2 TKL",
     "battery and charging (07/80, 07/84) on the wireless boards; low-battery warning (07/81, 07/01, raw 12-63) on the BlackWidow V3 Pro",
     "each setting offered only when its read answers; every write read back; every write refused while Razer Synapse runs",
-    "a setting OpenRazer does not give for a keyboard (polling on the 33 added in November) is asked with reads only when it connects, and offered only when the read answers with a value the driver maps; it is then written with the same command the driver uses for other keyboards"
+    "a setting OpenRazer does not give for a keyboard (polling on the 33 added in November) is asked with reads only when it connects, and offered only when the read answers with a value the driver maps; it is then written with the same command the driver uses for other keyboards",
+    "2 Nov 2026, lighting effects as write-only settings on 48 keyboards (openrazer 477f4d6d keyboards.py METHODS and razerkbd_driver.c, layouts from razerchromacommon.c): static colour, breathing (one, two or random colours), spectrum, rainbow wave both ways, wheel (BlackWidow V4 family), keys lighting up when pressed (4 speeds), starlight (one, two or random colours, 3 speeds), off, with a colour and a second colour; extended 0F/02 on the backlight, always NOSTORE (forgotten on unplug, never saved), on the transaction id openrazer uses for that keyboard and effect; each checked by eye once per keyboard model (Try it) after Turn on settings"
   ],
   "doesNotWork": [
     "firmware updates (never: Razer's own updater only)",
-    "static colour per zone and lighting effects: OpenRazer's matrix effect commands are write-only, so nothing could be read back",
+    "per-key colours (the custom frame) and saving an effect on the keyboard (effects set here last until it is unplugged)",
     "the Fn toggle (02/06: write-only), keyswitch optimization and device mode (high risk)",
     "Huntsman V3 Pro TKL brightness (OpenRazer writes it but has no read for it)",
     "BlackWidow V4 Pro 75% and V4 Low Profile TKL: info only (model, firmware); OpenRGB only writes their lights and no source has a read, so no setting or battery yet",
@@ -162,7 +163,8 @@
     "macros and key remaps (OpenRazer does them on the host)",
     "dongle pair / unpair",
     "brightness on the 17 older boards (OpenRazer sets it with standard 03/03, a command this driver does not have)",
-    "Blade laptops and the Razer Book (laptop keyboards, their own brightness command) and the Tartarus / Orbweaver / Nostromo keypads"
+    "Blade laptops and the Razer Book (laptop keyboards, their own brightness command) and the Tartarus / Orbweaver / Nostromo keypads",
+    "lighting effects on the 17 older standard-lighting boards (standard 03/0A has no store byte, so no form that is not saved), the Anansi, and the Huntsman V3 Pro 8KHz (its store byte is the active profile)"
   ],
   "status": "read-only",
   "tested": [],
