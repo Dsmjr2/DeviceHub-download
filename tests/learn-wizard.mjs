@@ -264,8 +264,9 @@ check(session.cmds.at(-1).endsWith('quit'), 'saving ends the listener');
 await route('POST', 'quit');
 
 // ---------------------------------------------------------------- a device that already has a driver (22 Oct 2026)
-// shown, not hidden; refused in plain words for shared chip ids, code drivers and drivers that never write; for a
-// driver.json driver the learned settings go into its my-devices copy (backed up first), never the library's own copy
+// shown, not hidden; refused in plain words for shared chip ids; for a driver.json driver the learned settings go into
+// its my-devices copy (backed up first), never the library's own copy; for a code driver beside it (1 Nov 2026,
+// tests/learned-extras.mjs: learned.json), even one listing no writable setting before it connects
 check(/Sinowealth/.test(lw.vendorRefusal('258a') || '') && /Laview/.test(lw.vendorRefusal('22D4') || '') && /Logitech/.test(lw.vendorRefusal('046d') || '') && lw.vendorRefusal('3456') === null, 'shared chip makers and code-only vendors are refused, others not');
 {
   // a library entry whose driver never writes, for 7777:0001
@@ -279,17 +280,19 @@ check(/Sinowealth/.test(lw.vendorRefusal('258a') || '') && /Laview/.test(lw.vend
   const by = Object.fromEntries(ds.map((d) => [d.vid, d]));
   check(by['1234']?.library && by['1234'].note === 'already has a driver; Learn adds settings it lacks' && by['1234'].driver?.where === 'my-devices' && !by['1234'].refused, `a device with a driver.json driver in my-devices is listed with the note (${JSON.stringify(by['1234'])})`);
   check(by['258A']?.refused && /Sinowealth/.test(by['258A'].note), `a Sinowealth id is listed with why it cannot be learned (${JSON.stringify(by['258A'])})`);
-  check(by['7777']?.refused && /refuses every write/.test(by['7777'].note), `a device whose library driver never writes says so (${JSON.stringify(by['7777'])})`);
+  check(!by['7777']?.refused && by['7777'].note === lw.ADDS_BESIDE_NOTE && by['7777'].driver?.code, `a device whose library driver is code is listed: Learn adds settings beside it (${JSON.stringify(by['7777'])})`);
   check(!ds.some((d) => d.driver?.dir), 'the page never gets a folder path');
   check(/Sinowealth/.test((await route('POST', 'begin', { vid: '258A', pid: '0036' })).error || ''), 'begin refuses a Sinowealth id with a plain reason');
-  check(/refuses every write/.test((await route('POST', 'begin', { vid: '7777', pid: '0001' })).error || ''), 'begin refuses a device whose driver never writes');
+  const cb = await route('POST', 'begin', { vid: '7777', pid: '0001' });
+  check(cb.ok && cb.addsTo?.code === true && cb.addsTo.name === 'never-writes' && cb.addsTo.note === lw.ADDS_BESIDE_NOTE, `begin on a code driver's device adds beside it (${JSON.stringify(cb.addsTo || cb.error)})`);
+  await route('POST', 'quit');
   // 24 Oct 2026: a device with a ready driver is never learned from the start: Learn names its driver and its page
   const no = await route('POST', 'begin', { vid: '1234', pid: '5678' });
   check(no.ok === false && /already has a driver/.test(no.error || '') && no.ready?.name === shared.name && /^#\//.test(no.ready.page || ''), `begin on a device with a ready driver names it and its page (${JSON.stringify(no)})`);
   check(by['1234'].ready?.name === shared.name, `the list names its ready driver (${JSON.stringify(by['1234'].ready)})`);
-  // "A setting is missing?": recordings only, for Shawn; nothing is added to the driver here
+  // "A setting is missing?": recorded for Shawn, and since 1 Nov 2026 what it learns is added to its driver too
   const bg = await route('POST', 'begin', { vid: '1234', pid: '5678', capture: true });
-  check(bg.ok && bg.capture === true && !bg.addsTo, `A setting is missing? opens a recordings-only session (${JSON.stringify(bg.addsTo || bg.error)})`);
+  check(bg.ok && bg.capture === true && bg.addsTo?.name === shared.name && bg.addsTo.code === false, `A setting is missing? records and adds to its driver (${JSON.stringify(bg.addsTo || bg.error)})`);
   await route('POST', 'quit');
 
   // merging: a second setting learned on the Acme mouse goes into a copy of its driver

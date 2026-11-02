@@ -35,6 +35,16 @@ check(settable([...kb, { page: 'FF00', outLen: 0, featLen: 65 }]) && settable([{
 check(!settable([{ page: 'FF00', outLen: 0, featLen: 0 }]), 'a vendor page that takes nothing: nothing to set');
 check(describe(['1532:0084'], { usb: [{ vid: '1532', pid: '0084', name: 'x' }], brands, canSet: () => false }).length === 0, 'a known brand with nothing to set: not offered');
 check(describe(['1532:0084'], { usb: [{ vid: '1532', pid: '0084', name: 'x' }], brands, canSet: () => null })[0]?.learn, 'not read yet: still offered');
+// a brand the guide does not list (1 Nov 2026): Learn only for a mouse or keyboard with a settings channel
+{
+  const unknown = (u, canSet) => describe(['ABCD:0001'], { usb: [{ vid: 'abcd', pid: '0001', name: 'Gaming Mouse', ...u }], brands, canSet: () => canSet });
+  const m = unknown({ usages: { mouse: true }, pages: ['FF01:0001'] }, true);
+  check(m.length === 1 && m[0].learn && m[0].brand === null && m[0].name === 'Gaming Mouse', `an unknown brand's mouse with a settings channel: offered Learn (${JSON.stringify(m)})`);
+  check(unknown({ usages: { mouse: true }, pages: ['FF01:0001'] }, null).length === 0, 'its channel not read yet: not offered (a known brand is, an unknown one waits for proof)');
+  check(unknown({ usages: { mouse: false, keyboard: false }, pages: ['FF01:0001'] }, true).length === 0, 'not a mouse or keyboard to Windows (a webcam, a controller): not offered');
+  check(unknown({ usages: { keyboard: true }, pages: [] }, true).length === 0, 'no private channel (a plain keyboard): not offered');
+  check(describe(['258A:0001'], { usb: [{ vid: '258a', pid: '0001', usages: { mouse: true }, pages: ['FF01:0001'] }], brands, canSet: () => true }).length === 0, 'a shared chip maker\'s id: never offered');
+}
 const g = groupDevices({ collections: [{ vid: '3434', pid: '0311', page: '0001', usage: '0006', outLen: 2 }, { vid: '1532', pid: '0084', page: 'FF00', usage: '0001', featLen: 91 }] });
 check(g.find((d) => d.pid === '0311')?.settable === false && g.find((d) => d.pid === '0084')?.settable === true && /works as it is/.test(AS_IS), 'the wizard marks what can be set');
 { const sent2 = []; let u2 = [];

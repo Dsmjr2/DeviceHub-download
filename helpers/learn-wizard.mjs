@@ -20,8 +20,16 @@
 // (installed from the library first when it is not there yet; the old files backed up to backups\ first); the library's
 // own copy is never edited. Added settings are listed in library.json learnedKeys and stay read-only until the person
 // presses Turn on settings and each passes the check, whatever the entry's status. Refused at begin, in plain words: a chip maker's shared vendor id where a
-// wrong write has bricked devices (SHARED_CHIPS), a vendor DeviceHub never takes as a driver.json (never-commands.json
-// refuseVendors), a device whose driver refuses every write, and a device whose driver is code (device.mjs).
+// wrong write has bricked devices (SHARED_CHIPS) and a vendor DeviceHub never takes as a driver.json (never-commands.json
+// refuseVendors).
+// A driver written as code (device.mjs: Razer, SteelSeries, Corsair, HyperX, Wooting ...; 1 Nov 2026,
+// docs/handoff/learned-extras.md): the learned settings are saved BESIDE its my-devices copy as learned.json (the
+// driver.json format, only the learned parts; helpers/learned-extras.mjs), never into its code. A learned key equal to
+// one of its keys, or a learned battery when it reads one, is refused at save. The old refusals "written as code" and
+// "refuses every write on purpose" are gone: the second counted settings before the device connected (Wooting, Corsair,
+// SteelSeries and Keychron list theirs per model, so they counted 0), and the drivers that must never be written are
+// refused by vendor first (Sinowealth / Laview chips, Logitech); a learned setting carries its own read-back, sends only
+// recorded bytes and waits for Turn on settings and the self-check like any other.
 //
 // Readings and a second USB id (22 Oct 2026, docs/handoff/learn-readings.md): a value the device reports and the
 // person cannot set (battery, charging, ChatMix, a sensor) is learned from a read and its reply, or from an input report
@@ -49,7 +57,8 @@ import { fileURLToPath } from 'node:url';
 import { readPcapBuffer } from './pcap-read.mjs';
 import { validate, fromJson, forPid } from './declarative-driver.mjs';
 import { ROOT, devicehubVersion, match as libraryMatch, list as libraryList, installFromLibrary, loadDriver, driverFileOf } from './device-library.mjs';
-import { writable, libraryMark, LIBRARY_FILE } from './my-devices.mjs';
+import { writable, libraryMark, LIBRARY_FILE, connectedSettings } from './my-devices.mjs';
+import { saveLearned, readLearned, sideProblem, learnedOn } from './learned-extras.mjs';
 import { plan as makePlan, runAppUi, parseInfo, valueOf, uiText, valuesIn, FORBIDDEN, deviceKind, usageKinds, KIND_QUESTION, findMaker } from './learn-apps.mjs';
 import { UAC_LINE, UAC_WAIT_MS, record as recordUac } from './uac.mjs';
 import { plainName, seemsFrom } from '../public/core/device-name.js';
@@ -1022,33 +1031,70 @@ async function writableCount(dir) {
 }
 
 // the driver a listed device already has: { name, where: 'my-devices' | 'library', dir, code, writes, title } or null
-async function driverFor(k, own, root) {
+// a listed device's HID collections as the library's family matches them: ["FF42:0001", ...]
+const pagesOf = (d) => [...new Set((d?.collections || []).map((c) => `${up4(c.page)}:${up4(c.usage)}`))];
+async function driverFor(k, own, root, pages = []) {
+  const asCopy = async (name) => {
+    const dir = path.join(root, 'my-devices', name);
+    return { name, where: 'my-devices', dir, code: driverFileOf(dir) === 'device.mjs', writes: await writableCount(dir), learned: !!libraryMark(dir)?.learned };
+  };
   const copy = (own.copies || []).find((c) => c.ids.includes(k));
-  if (copy) {
-    const dir = path.join(root, 'my-devices', copy.name);
-    return { name: copy.name, where: 'my-devices', dir, code: driverFileOf(dir) === 'device.mjs', writes: await writableCount(dir), learned: !!libraryMark(dir)?.learned };
-  }
+  if (copy) return asCopy(copy.name);
   const [vid, pid] = k.split(':');
-  let m = null;
-  try { m = libraryMatch([{ vid, pid }], { root, readOnly: true, untested: true }).find((x) => !x.installed) || null; } catch {}
+  let all = [];
+  try { all = libraryMatch([{ vid, pid, pages }], { root, readOnly: true, untested: true }); } catch {}
+  // matched by the family of an entry already installed (auto setup adds the id to its familyPids later): its copy
+  const inCopy = all.find((x) => x.installed && x.familyPids?.length && (own.copies || []).some((c) => c.name === x.name));
+  if (inCopy) return asCopy(inCopy.name);
+  const m = all.find((x) => !x.installed) || null;
   if (!m) return null;
   const e = libraryList({ root }).find((x) => x.name === m.name);
   if (!e) return null;
   return { name: m.name, where: 'library', dir: e.dir, code: driverFileOf(e.dir) === 'device.mjs', writes: await writableCount(e.dir), status: m.meta.status };
 }
 // the note a listed device shows, and why it cannot be picked (or null)
+export const ADDS_NOTE = 'already has a driver; Learn adds settings it lacks';
+export const ADDS_BESIDE_NOTE = 'already has a driver; Learn adds settings it lacks beside its driver';
 function coverageNote(d) {
   const drv = d.driver;
   if (d.refused) return d.refused;
   if (!drv) return null;
-  return 'already has a driver; Learn adds settings it lacks';
+  return drv.code ? ADDS_BESIDE_NOTE : ADDS_NOTE;
 }
-function coverageRefusal(drv) {
+// (1 Nov 2026) nothing about the driver itself refuses learning any more: see the top of this file
+function coverageRefusal() { return null; }
+
+// what Learn adds to: a driver.json driver ({ def }), or a code driver ({ code, def: the learned.json already beside its
+// copy or null, codeInfo: { keys, battery, vid } }); null when its driver cannot be read
+async function baseFor(drv) {
   if (!drv) return null;
-  // a driver the wizard made may hold only readings: more can still be learned into it
-  if (!drv.writes && !drv.learned) return `Its driver (${drv.name}) refuses every write on purpose, so DeviceHub does not learn settings for it either. Use the maker's app for its settings.`;
-  if (drv.code) return `It already has a driver written as code (${drv.name}, device.mjs). Learned settings can only be added to a driver.json driver, so this one is not learned here.`;
-  return null;
+  if (!drv.code) { const def = readJson(path.join(drv.dir, 'driver.json')); return def ? { ...drv, def } : null; }
+  let keys = [], battery = false, vid = null;
+  try {
+    const { a } = await loadDriver(drv.dir, 'learn');
+    keys = (Array.isArray(a?.settings) ? a.settings : []).map((x) => x.key);
+    battery = typeof a?.battery === 'function';
+    if (a?.hid?.vid) vid = up4(a.hid.vid);
+  } catch { return null; }
+  const meta = readJson(path.join(drv.dir, 'device.json'));
+  if (!vid && meta?.vid) vid = up4(meta.vid);
+  // a driver that lists its settings per model: the keys its copy's self-check saw count too
+  keys.push(...Object.keys(readJson(path.join(drv.dir, 'verified.json'))?.keys || {}));
+  return { ...drv, code: true, def: drv.where === 'my-devices' ? readLearned(drv.dir) : null, codeInfo: { keys: [...new Set(keys)], battery, vid } };
+}
+
+// Beside a code driver (2 Nov 2026): the settings its device has, known only once that device has connected in this run
+// (Corsair, Wooting and SteelSeries list theirs per model, so before it connects the driver lists none and a clash with
+// one of them went unseen). { info: { keys, battery, vid } } (info null for a driver.json base), or { why } in plain words.
+function codeInfoNow() {
+  const b = session?.base;
+  if (!b?.code) return { info: null };
+  const dev = session.device;
+  const live = b.where === 'my-devices' ? options.deps.connectedSettings?.(options.root, b.name) || null : null;
+  if (!live) return { why: `Connect the device first, then learn. DeviceHub knows which settings its driver (${b.name}) has only once ${b.where === 'library' ? 'the driver is set up (Setup) and ' : ''}the device has connected since DeviceHub started.` };
+  if (!live.pid) return { why: `Not added: DeviceHub cannot tell which USB id its driver (${b.name}) is connected to, so learned settings cannot be kept for this device. Get help, top right.` };
+  if (up4(live.pid) !== up4(dev.pid)) return { why: `Connect the device first, then learn. Its driver is connected to USB ${up4(dev.vid)}:${up4(live.pid)}, not to this one (${up4(dev.vid)}:${up4(dev.pid)}).` };
+  return { info: { keys: [...new Set([...(b.codeInfo?.keys || []), ...(live.keys || [])])], battery: !!(b.codeInfo?.battery || live.battery), vid: b.codeInfo?.vid || null } };
 }
 
 // The learned settings added to a copy of the driver a device already has: the base driver.json with the learned
@@ -1204,6 +1250,11 @@ export const deps = {
         if (j?.vid) for (const p of [].concat(j.pids || [])) ids.push(`${up4(j.vid)}:${up4(p)}`);
       }
       try { const t = fs.readFileSync(path.join(dir, n, 'device.mjs'), 'utf8'); const v = /vid:\s*'([0-9A-Fa-f]{4})'/.exec(t); for (const m of t.matchAll(/pid:\s*'([0-9A-Fa-f]{4})'/g)) if (v) ids.push(`${up4(v[1])}:${up4(m[1])}`); } catch {}
+      // the ids its library.json familyPids add (a brand's model the entry does not list, run by its protocol family:
+      // 2 Nov 2026, a Corsair id the Bragi family runs was offered to be learned again as a second driver)
+      const fam = readJson(path.join(dir, n, LIBRARY_FILE))?.familyPids;
+      const famVid = readJson(path.join(dir, n, 'device.json'))?.vid || readJson(path.join(dir, n, 'driver.json'))?.vid;
+      if (famVid && Array.isArray(fam)) for (const p of fam) if (/^(0x)?[0-9a-f]{1,4}$/i.test(String(p))) ids.push(`${up4(famVid)}:${up4(p)}`);
       if (fs.existsSync(path.join(dir, n, LIBRARY_FILE))) copies.push({ name: n, ids: [...new Set(ids)] });
       else mine.push(...ids);
     }
@@ -1227,6 +1278,8 @@ export const deps = {
   },
   writeCommand(dir, text) { const f = path.join(dir, 'command.txt'); fs.writeFileSync(`${f}.tmp`, text); fs.renameSync(`${f}.tmp`, f); },
   readState: (dir) => readJson(path.join(dir, 'state.json')),
+  // a my-devices copy's device as it connected in this run: { keys, battery, pid } or null (helpers/my-devices.mjs)
+  connectedSettings: (root, name) => connectedSettings(name),
   readTake(dir, name) {
     let files = [];
     try { files = fs.readdirSync(dir).filter((f) => f.startsWith(`${name}-`) && f.endsWith('.pcap')); } catch {}
@@ -1267,6 +1320,8 @@ async function readyOf(d, own, root) {
   // every copy on this id (a receiver can carry a mouse and a keyboard driver: 24 Oct 2026, a friend's C54D led to the
   // keyboard driver that had stepped aside): all are listed (others), the page shows the one that runs the device
   let copies = (own.copies || []).filter((c) => c.ids.includes(k));
+  // a copy whose library entry runs it by family, before its library.json lists the id (driverFor)
+  if (!copies.length && d.driver?.where === 'my-devices') copies = (own.copies || []).filter((c) => c.name === d.driver.name);
   if (!copies.length && vendorRefusal(d.vid) && /ready-made/.test(vendorRefusal(d.vid))) copies = (own.copies || []).filter((c) => c.ids.some((x) => x.startsWith(`${d.vid}:`)));
   if (copies.length) {
     const one = (copy) => {
@@ -1375,13 +1430,14 @@ async function listDevices() {
   let library = [];
   const json = await d.listHid();
   const raw = groupDevices(json, { ...own });
-  try { library = libraryMatch(raw.map((x) => ({ vid: x.vid, pid: x.pid })), { root, readOnly: true, untested: true }).flatMap((m) => m.matched.map((u) => `${up4(u.vid)}:${up4(u.pid)}`)); } catch {}
+  // with each device's HID collections ("FF42:0001"), so an entry's protocol family matches a model it does not list
+  try { library = libraryMatch(raw.map((x) => ({ vid: x.vid, pid: x.pid, pages: pagesOf(x) })), { root, readOnly: true, untested: true }).flatMap((m) => m.matched.map((u) => `${up4(u.vid)}:${up4(u.pid)}`)); } catch {}
   for (const c of own.copies || []) library.push(...c.ids);
   listed = groupDevices(json, { runs: own.runs, mine: own.mine, library });
   for (const d of listed) {
     d.refused = vendorRefusal(d.vid);
     if (d.library) {
-      d.driver = await driverFor(`${d.vid}:${d.pid}`, own, root);
+      d.driver = await driverFor(`${d.vid}:${d.pid}`, own, root, pagesOf(d));
       d.refused = d.refused || coverageRefusal(d.driver);
     }
     // nothing to set: listed under Already works, never offered for learning
@@ -1424,7 +1480,7 @@ function summary() {
   return {
     active: true,
     device: { vid: session.device.vid, pid: session.device.pid, name: session.device.title || session.device.name, product: session.device.name || null, seems: session.device.seems || null, kind: session.kindPick || session.plan?.kind || null },
-    addsTo: session.base ? { name: session.base.name, where: session.base.where, note: 'already has a driver; Learn adds settings it lacks' } : null,
+    addsTo: session.base ? { name: session.base.name, where: session.base.where, code: !!session.base.code, note: session.base.code ? ADDS_BESIDE_NOTE : ADDS_NOTE } : null,
     listener: !session.listening ? 'off' : !st ? 'waiting' : st.status,
     listenerError: st?.error || null,
     setting: session.setting,
@@ -1480,14 +1536,17 @@ export async function act(name, b = {}) {
       // "A setting is missing?" on a device with a ready driver: only recordings, for Shawn (nothing saved here)
       if (!dev.ready && !dev.driver) return { ok: false, error: 'It has no driver yet: use Learn it for me.' };
       if (SHARED_CHIPS[dev.vid]) return { ok: false, error: vendorRefusal(dev.vid) };
+      // 1 Nov 2026: what it learns is added to its driver too (beside it for a code driver), read-only until Turn on
+      // settings; a vendor never learned (Logitech) stays recordings only
+      if (dev.driver && !vendorRefusal(dev.vid)) base = await baseFor(dev.driver);
     } else {
       if (dev.ready && !dev.ready.learned) return { ok: false, error: `It already has a driver (${dev.ready.name}). Open its page; a missing setting goes through A setting is missing?.`, ready: dev.ready };
       if (dev.refused) return { ok: false, error: dev.refused };
-      // a device with a driver.json driver already: the learned settings go into its my-devices copy
+      // a device with a driver already: the learned settings go into its my-devices copy (driver.json), or beside it
+      // (learned.json, for a driver written as code)
       if (dev.driver) {
-        const def = readJson(path.join(dev.driver.dir, 'driver.json'));
-        if (!def) return { ok: false, error: `Its driver (${dev.driver.name}) could not be read, so nothing can be added to it.` };
-        base = { ...dev.driver, def };
+        base = await baseFor(dev.driver);
+        if (!base) return { ok: false, error: `Its driver (${dev.driver.name}) could not be read, so nothing can be added to it. Update DeviceHub, then try again.` };
       }
     }
     if (session?.listening) await command(session.dir, 'quit', null, 'ended', 3000).catch(() => {});
@@ -1495,7 +1554,7 @@ export async function act(name, b = {}) {
     const dir = path.join(root, 'learn', 'wizard', id);
     fs.mkdirSync(dir, { recursive: true });
     const kindPick = ['mouse', 'keyboard'].includes(b.kind) ? b.kind : null;
-    session = { id, dir, device: dev, base: b.capture ? null : base, second, setting: null, takes: [], learned: [], listening: false, seq: 0, kindPick, captures: [], capture: !!b.capture, at: Date.now() };
+    session = { id, dir, device: dev, base, second, setting: null, takes: [], learned: [], listening: false, seq: 0, kindPick, captures: [], capture: !!b.capture, at: Date.now() };
     return { ok: true, ...summary() };
   }
   if (!session) return { ok: false, error: 'Pick a device first.' };
@@ -1595,10 +1654,15 @@ export async function act(name, b = {}) {
       return { ok: true, ...summary() };
     }
     const role = session.analysis.role;
-    if (role === 'battery' && (session.learned.some((s) => s.role === 'battery') || session.base?.def?.battery)) return { ok: false, why: ['The battery level is learned already. Remove the other one first.'] };
+    // beside a code driver: its settings as its device connected in this run (2 Nov 2026)
+    const live = codeInfoNow();
+    if (live.why) return { ok: false, why: [live.why] };   // live.why says what to do next (Connect the device first, then learn)
+    if (role === 'battery' && (session.learned.some((s) => s.role === 'battery') || session.base?.def?.battery || live.info?.battery)) return { ok: false, why: ['The battery level is learned already. Remove the other one first.'] };
     if (role === 'charging' && session.learned.some((s) => s.role === 'charging')) return { ok: false, why: ['Charging is learned already. Remove the other one first.'] };
     const r = withRange(session.analysis, b, [...session.learned.map((s) => s.key), ...(session.base?.def?.settings || []).map((s) => s.key), ...Object.keys(session.base?.def?.fields || {})]);
     if (!r.setting) return { ok: false, why: [r.why] };
+    // the code driver has a setting by that name: refused (a second "dpi2" would be the same setting twice)
+    if (live.info?.keys.includes(r.setting.key)) return { ok: false, why: [`Not added: its driver already has a setting called "${r.setting.key}". Skip that setting: the driver has it.`] };
     const all = [...session.learned, r.setting];
     const out = draftCheck(all, b);
     if (!out.ok) return out;
@@ -1639,13 +1703,18 @@ export async function act(name, b = {}) {
         if (!inst.ok) return { ok: false, why: [`Its library driver could not be copied to my-devices: ${inst.error}`, 'Close any my-devices folder window, then try again.'] };
         folder = inst.to;
       }
-      const r = saveInto(folder, c.driver, keys, { root });
+      const live = session.base.code ? codeInfoNow() : null;
+      if (live?.why) return { ok: false, why: [live.why] };   // live.why says what to do next (Connect the device first, then learn)
+      const r = session.base.code ? saveLearned(folder, c.driver, keys, live.info, { root, on: `${up4(session.device.vid)}:${up4(session.device.pid)}` }) : saveInto(folder, c.driver, keys, { root });
       if (!r.ok) return { ok: false, why: r.why };
       let loaded = null;
       if (session.base.where !== 'my-devices') { try { loaded = await d.loadNew(root); } catch {} }
       lastSaved = null;
       session.saved = { name: r.name, id: r.id, added: keys, into: session.base.name, loaded: !!loaded?.some((x) => x.name === r.name && x.id),
-        note: session.base.where === 'my-devices' ? 'Added to its driver. Restart DeviceHub; new settings stay read-only until Turn on settings.' : 'Added to a copy of its library driver. New settings stay read-only until Turn on settings.' };
+        beside: !!session.base.code,
+        note: session.base.code
+          ? (session.base.where === 'my-devices' ? 'Added beside its driver. Restart DeviceHub; new settings stay read-only until Turn on settings.' : 'Added beside a copy of its library driver. New settings stay read-only until Turn on settings.')
+          : session.base.where === 'my-devices' ? 'Added to its driver. Restart DeviceHub; new settings stay read-only until Turn on settings.' : 'Added to a copy of its library driver. New settings stay read-only until Turn on settings.' };
       if (session.listening) { await command(session.dir, 'quit', null, 'ended', 3000).catch(() => {}); session.listening = false; }
       return { ok: true, ...summary() };
     }
@@ -1807,8 +1876,18 @@ function draftCheck(learned, b = {}) {
   const seen = verifySeen(def, learned);
   if (seen.length) return { ok: false, why: ['The driver would send something not seen in the recordings, so it was not made.', ...seen, 'Remove the last setting learned, then save again.'], driver: def };
   if (session.base) {
-    let merged;
-    try { merged = mergeDriver(session.base.def, def); } catch (e) { return { ok: false, why: [e.message], driver: def }; }
+    let merged = def;
+    // beside a code driver: the learned.json already there takes the new settings; else the new file is just them
+    if (session.base.def) { try { merged = mergeDriver(session.base.def, def); } catch (e) { return { ok: false, why: [e.message], driver: def }; } }
+    if (session.base.code) {
+      const live = codeInfoNow();
+      if (live.why) return { ok: false, why: [live.why], driver: merged };   // live.why says what to do next (Connect the device first, then learn)
+      // one learned.json, one USB id: settings learned before on another id of the same driver are not mixed in
+      const was = session.base.def ? learnedOn(session.base.def) : null, now = `${up4(dev.vid)}:${up4(dev.pid)}`;
+      if (was && was !== now) return { ok: false, why: [`Not added: the settings learned beside this driver before were learned on USB ${was}, and its learned settings are kept for one USB id only. This is ${now}: Skip that setting, or Learn it with the device on ${was}.`], driver: merged };
+      const bad = sideProblem(merged, live.info);
+      if (bad) return { ok: false, why: [`Not added: ${bad}. Skip that setting: the driver has it.`], driver: merged };
+    }
     const mv = validate(merged);
     if (!mv.ok) return { ok: false, why: mv.problems, driver: merged };
     const ms = verifySeen(merged, learned);

@@ -1,10 +1,11 @@
 {
-  "version": "1.49",
-  "commit": "2b86730d5ae3",
+  "version": "1.50",
+  "commit": "c1824bd4f205",
   "notes": [
-    "Bluetooth headsets show the battery Windows has for them",
-    "Added device tiles lead with DPI, polling and the like",
-    "Added devices: settings in groups, stages beside Device, units spaced",
-    "Pointer card for every mouse; DPI stages card for added mice"
+    "Learned settings wait for Save and stay on their own USB id",
+    "A setting is missing? adds learned settings beside code drivers",
+    "New Corsair models recognized read-only by their Bragi channel",
+    "Unknown brand on plug-in: Learn it opens with the device picked",
+    "Plus 2 more fixes and improvements"
   ]
 }

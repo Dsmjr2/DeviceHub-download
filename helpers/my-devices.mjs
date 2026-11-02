@@ -55,11 +55,15 @@
 // Drivers with a real-device record keep the behaviour above; settings the wizard added to one wait for the click too.
 // "Could not check for the maker's app" is waiting, never "not open". No write on any USB id DeviceHub's own drivers
 // run, from any id the driver declares (hid, driver.json, device.json).
+// Since 1 Nov 2026 (docs/handoff/learned-extras.md): a device.mjs copy may have my-devices\<name>\learned.json beside it,
+// the settings Learn a device added (helpers/learned-extras.mjs withLearned): one adapter, one queue for both drivers,
+// learned keys in library.json learnedKeys so they wait for Turn on settings like any the wizard added.
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
+import { withLearned, connectedPid } from './learned-extras.mjs';
 
 const BUILT_IN = ['mouse', 'headset', 'keyboard'];
 const TYPES = ['slider', 'toggle', 'choice', 'display', 'color', 'remap'];
@@ -265,6 +269,9 @@ export function needsTurnOn(mark, proven, key) {
   if (proven && !learned) return false;
   const on = mark?.settingsOn?.at;
   if (!on) return true;
+  // 2 Nov 2026: a learned setting counts as turned on only when it was on the page when the person pressed it
+  // (settingsOn.keys): pressed before the restart that loaded it, it waits for another press
+  if (learned && Array.isArray(mark.settingsOn.keys) && !mark.settingsOn.keys.includes(key)) return true;
   return learned && !!mark.learnedAt && mark.learnedAt > on;
 }
 export const TURN_ON_LINE = "DeviceHub writes each setting's current value back once to check it.";
@@ -462,6 +469,21 @@ function saveMark(folder, change) {
   fs.renameSync(tmp, file);
 }
 
+// A copy's device as it connected in this run (2 Nov 2026): its driver's own setting keys (a driver listing them per
+// model, Corsair / Wooting / SteelSeries, has none before it connects), whether it reads the battery, and the USB product
+// id it is on. Learn a device asks for this before it saves learned settings beside a code driver (helpers/learn-wizard.mjs).
+const connectedNow = new Map();   // folder name -> { keys, battery, pid, at }
+async function noteConnected(a, folder, info) {
+  try {
+    const learnedKeys = a.learnedExtras?.keys || [];
+    const keys = (Array.isArray(a.settings) ? a.settings : []).map((s) => s.key).filter((k) => !learnedKeys.includes(k));
+    const battery = a.learnedExtras ? !!a.learnedExtras.ownBattery : typeof a.battery === 'function';
+    connectedNow.set(path.basename(folder), { keys, battery, pid: await connectedPid(a, async () => info), at: Date.now() });
+  } catch {}
+}
+// { keys, battery, pid, at } of a my-devices copy that connected in this run, or null
+export const connectedSettings = (name) => connectedNow.get(name) || null;
+
 // wraps a library driver: writes refused unless allowed, the self-check inside connect() (only once the person turned
 // its settings on, for a driver with no real-device record), and each setting's hint says whether it is read-only and
 // why. Returns the adapter (the same object).
@@ -571,6 +593,7 @@ export function guard(a, folder, mark, deps = null) {
       relabel();   // a driver whose settings depend on the model connected (Corsair) lists them only now
       let info = {};
       try { info = (await inTime(a.info(), 'reading its info')) || {}; } catch {}
+      await noteConnected(a, folder, info);
       const plan = planNow(info);
       if (plan) await runCheck(plan.only);
       if (a.library.turnOn && !saidGated) {
@@ -597,7 +620,8 @@ export function guard(a, folder, mark, deps = null) {
     if (ownDevice(a)) return { ran: false, on: false, why: 'DeviceHub\'s own driver runs this device, so this library driver never writes to it' };
     const at = (deps?.now ? deps.now() : new Date()).toISOString();
     if (anyGated() || !mark.settingsOn?.at) {
-      mark.settingsOn = { at };
+      // the keys on its page now: a setting learned since (loaded at a later restart) is not turned on by this press
+      mark.settingsOn = { at, keys: [...new Set((Array.isArray(a.settings) ? a.settings : []).map((s) => s.key))] };
       try { saveMark(folder, { settingsOn: mark.settingsOn }); } catch (e) { delete mark.settingsOn; relabel(); return { ran: false, on: false, why: `it could not be saved (${e.message}), so nothing was turned on` }; }
       relabel();
       const d = await depsNow();
@@ -722,15 +746,26 @@ async function loadOne(dir, name, { register, addSpec, taken, selfCheck: deps })
       const clash = [...new Set(ids.flatMap((d) => ownClash(d.vid, d.pids)))];
       if (clash.length) return { name, error: `not loaded: ${clash.join(', ')} is a USB id DeviceHub's own driver already runs (the mouse, headset or keyboard page), and two programs driving one device fight` };
     }
+    // settings learned beside a code driver (helpers/learned-extras.mjs): wrapped BEFORE the guard, so they are
+    // read-only until Turn on settings and self-checked like the driver's own; a learned.json that does not load is
+    // logged once and the device runs with its code driver alone
+    const extra = coded && mark ? withLearned(a, folder) : null;
     if (mark) { guard(a, folder, mark, deps); watchDriverFile(a, folder); }
     stepAside(a);
     // a brand's model the entry does not list, matched by its protocol (device-library family): its product ids are
     // opened too, and the driver tries them (a.familyPids) after its own
+    // A driver on the native helper's channels (no `hid`: corsair-bragi-peripherals, 1 Nov 2026) gets the ids alone
     if (mark?.familyPids?.length && a.hid && Array.isArray(a.hid.pids)) withFamily(a, mark.familyPids);
-    for (const s of hidSpecs(a)) addSpec(s);
+    else if (mark?.familyPids?.length && !a.hid) a.familyPids = [...new Set(mark.familyPids.map(hex4u).filter((p) => /^[0-9A-F]{4}$/.test(p)))];
+    const specs = hidSpecs(a);
+    for (const s of specs) addSpec(s);
+    // the learned driver opens the same device through the same provider: its own channel only when no channel of the
+    // code driver has that vid / pid / usage page (else hid-host hands both the one handle)
+    const key = (s) => `${hex4(s.vid)}:${hex4(s.pid)}:${hex4(s.page || 'ff00')}`;
+    if (extra?.side?.hid) for (const s of hidSpecs({ id: a.id, hid: extra.side.hid })) if (!specs.some((c) => key(c) === key(s))) addSpec(s);
     register(a);
     loadedByName.set(name, a);
-    return mark ? { name, id: a.id, library: mark.status || 'unknown' } : { name, id: a.id };
+    return mark ? { name, id: a.id, library: mark.status || 'unknown', ...(extra?.side ? { learned: extra.keys } : extra?.error ? { learnedError: extra.error } : {}) } : { name, id: a.id };
   } catch (e) { return { name, error: String(e.message || e).split('\n')[0] }; }
 }
 
@@ -758,6 +793,11 @@ export function addFamilyPids(root, name, pids) {
     const added = withFamily(a, fresh);
     const { pids: _p, byPid: _b, ...base } = a.hid;
     for (const pid of added) last.opts.addSpec({ id: a.id, ...base, pid });
+    a.notMineRetry?.();
+    import('../public/core/devices.js').then((core) => core.connect(a.id, false)).catch(() => {});
+  } else if (a && !a.hid) {
+    // a helper-channel driver: the ids alone, and it looks again at once
+    a.familyPids = [...new Set([...(a.familyPids || []), ...fresh])];
     a.notMineRetry?.();
     import('../public/core/devices.js').then((core) => core.connect(a.id, false)).catch(() => {});
   }

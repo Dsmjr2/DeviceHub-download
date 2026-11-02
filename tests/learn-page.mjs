@@ -26,6 +26,24 @@ const failed = code.slice(code.indexOf("if (a.phase === 'failed' || a.phase === 
 ok(/const bad = \(a\.preflight\?\.lines \|\| \[\]\)\.filter\(\(x\) => !x\.ok\)/.test(failed) && /pfLines\(bad, d,/.test(failed), 'a failed check shows only its failing lines, each with its fix');
 ok(/unknownApp \? 'primary' : 'ghost small'/.test(failed), "an app DeviceHub does not know: Choose the settings myself is the next step");
 
+// 2 Nov 2026: A setting is missing? never saves (or installs a library driver) by itself; a Save button on the Sent step does
+const runItemSrc = code.slice(code.indexOf('async function runItem()'), code.indexOf('function changeOf('));
+const analyzeSrc = code.slice(code.indexOf('async function analyzeQueued('), code.indexOf("st.step = 'found'; st.found = null;"));
+ok(runItemSrc.length > 100 && !/'save'/.test(runItemSrc) && /sendToShawn\(/.test(runItemSrc), 'when recording ends nothing is saved by itself; the recordings still go to Shawn');
+ok(analyzeSrc.length > 100 && !/'save'/.test(analyzeSrc), 'what is learned is only added to the draft, never saved, while recording');
+ok((code.match(/run\('save'/g) || []).length === 3 && /function saveStep\(\)[\s\S]{0,400}button\(st\.busy \? 'Saving…' : 'Save', \(\) => run\('save'/.test(code), 'the only saves are the person\'s buttons: Save the driver, Add USB id, and Save on the Sent step');
+ok(/function sentStep\(\)[\s\S]{0,400}saveStep\(\)/.test(code), 'the Sent step shows the Save step');
+{
+  const fn = code.slice(code.indexOf('export function saveLine('), code.indexOf('function saveStep('));
+  const saveLine = new Function(`${fn.replace('export ', '')}; return saveLine;`)();
+  const base = { device: { name: 'Kite mouse' }, learned: [{ label: 'Lights' }], addsTo: { name: 'kite-mouse', where: 'my-devices' } };
+  const l1 = saveLine(base);
+  ok(/^Add Lights to Kite mouse\? Nothing is added until you press Save\. It stays read-only until you press Turn on settings/.test(l1 || ''), `the Save step says what is added and to which device (${l1})`);
+  const l2 = saveLine({ ...base, learned: [{ label: 'Lights' }, { label: 'Sleep' }], addsTo: { name: 'corsair-bragi-peripherals', where: 'library' } });
+  ok(/Add Lights and Sleep to Kite mouse\? DeviceHub also sets up its driver \(corsair-bragi-peripherals\) from the device library\./.test(l2 || ''), `and that a library driver is set up too (${l2})`);
+  ok(saveLine({ ...base, saved: { added: ['lights'] } }) === null && saveLine({ ...base, learned: [] }) === null && saveLine({ ...base, addsTo: null }) === null, 'no Save step once saved, with nothing learned, or with no driver to add to');
+}
+
 const lw = src('helpers/learn-wizard.mjs');
 ok(/const failed = !!last && !last\.ok;/.test(lw) && /line\('capture', has && !failed,/.test(lw), 'a capture driver never tested is not a stop; one that failed its test is');
 const la = src('helpers/learn-auto.mjs');

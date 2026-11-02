@@ -109,11 +109,15 @@ export function match(usb, { root = ROOT, examples = showsExamples(), readOnly =
   const entries = list({ root, examples }).filter((e) => !e.error);
   // every id an entry lists by name: a family never takes one of those (the entry that names it does)
   const named = new Set(entries.flatMap((e) => e.meta.pids.map((p) => `${hex4(e.meta.vid)}:${hex4(p)}`)));
+  // and never an id DeviceHub's own drivers run (pc-map.js RUNS: the HS80 on 0a6b / 0a69 / 0a6a / 0a71 has the Bragi
+  // collection too): matched by family, it made auto setup skip the whole entry, so a listed Corsair mouse or keyboard
+  // beside an HS80 was never set up (2 Nov 2026)
+  const own = (u) => ownClash(u.vid, [u.pid]).length > 0;
   const pagesOf = new Map((Array.isArray(usb) ? usb : []).map((u) => [`${hex4(u.vid)}:${hex4(u.pid)}`, (Array.isArray(u.pages) ? u.pages : []).map((x) => String(x).toUpperCase())]));
   for (const e of entries) {
     const vid = hex4(e.meta.vid), pids = e.meta.pids.map(hex4);
     const fam = (e.meta.family || []).map((x) => String(x).toUpperCase());
-    const byFamily = fam.length ? have.filter((u) => u.vid === vid && !named.has(`${u.vid}:${u.pid}`) && (pagesOf.get(`${u.vid}:${u.pid}`) || []).some((p) => fam.includes(p))) : [];
+    const byFamily = fam.length ? have.filter((u) => u.vid === vid && !named.has(`${u.vid}:${u.pid}`) && !own(u) && (pagesOf.get(`${u.vid}:${u.pid}`) || []).some((p) => fam.includes(p))) : [];
     const matched = [...have.filter((u) => u.vid === vid && pids.includes(u.pid)), ...byFamily];
     if (!matched.length) continue;
     const familyPids = byFamily.map((u) => u.pid);

@@ -11,6 +11,7 @@ import * as lw from '../helpers/learn-wizard.mjs';
 import { validate, fromJson } from '../helpers/declarative-driver.mjs';
 import { setDeviceProvider } from '../public/devices/hid.js';
 import { Rec, pad } from './lib/usb-recording.mjs';
+import { sideProblem } from '../helpers/learned-extras.mjs';
 
 const VERBOSE = process.argv.includes('--verbose');
 const ONLY = process.argv.slice(2).find((a) => !a.startsWith('--'));
@@ -440,6 +441,17 @@ const safety = [];
   safety.push([!ok(frontFilled), 'a template that puts something in a front checksum byte is refused']);
   const behind = front(); behind.transport.checksum = { type: 'sum8', from: 0, to: 2, at: 3 }; behind.messages.setDpi.bytes = '00 53 00 00 {value:u16le}';
   safety.push([!ok(behind), 'a template reaching past a checksum behind its range is still refused']);
+}
+// 1 Nov 2026 (helpers/learned-extras.mjs): every style learned above can also sit beside a driver written as code as its
+// learned.json, and is refused there when the code driver already has the same key or is another vendor's
+{
+  const learnedDefs = results.filter((r) => r.ok && r.def);
+  const besideOk = learnedDefs.filter((r) => sideProblem(r.def, { keys: ['codeOnly'], battery: false, vid: r.def.vid }) === null);
+  safety.push([learnedDefs.length > 0 && besideOk.length === learnedDefs.length, `every learned style is accepted as learned.json beside a code driver (${besideOk.length} of ${learnedDefs.length})`]);
+  const clashOk = learnedDefs.filter((r) => /already has a setting called/.test(sideProblem(r.def, { keys: r.def.settings.map((s) => s.key), battery: false, vid: r.def.vid }) || ''));
+  safety.push([clashOk.length === learnedDefs.length, `and refused when the code driver has the same key (${clashOk.length} of ${learnedDefs.length})`]);
+  const vendorOk = learnedDefs.filter((r) => /is for USB vendor/.test(sideProblem(r.def, { keys: [], battery: false, vid: 'ABCD' }) || ''));
+  safety.push([vendorOk.length === learnedDefs.length, `and refused beside another vendor's driver (${vendorOk.length} of ${learnedDefs.length})`]);
 }
 for (const [good, what] of safety) console.log(`${good ? 'SAFE   ' : 'UNSAFE '} ${what}`);
 if (safety.some(([g]) => !g)) results.push({ ok: false });

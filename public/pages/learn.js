@@ -17,6 +17,9 @@
 // just what it lacks); a pre-flight (GET /api/learn/preflight) must pass before any recording, one fix per line; while
 // recording the page says how many messages it heard, and nothing heard in 10 seconds stops it with what to try; at the
 // end the recordings go to Shawn by themselves and the person's part ends with SENT_DONE.
+// 1 Nov 2026 (docs/handoff/learned-extras.md): A setting is missing? also adds what it learns to the device's driver
+// (beside it for a driver written as code), read-only until Turn on settings; the recordings still go to Shawn.
+// 2 Nov 2026: only when the person presses Save on the Sent step (saveStep); nothing is saved or installed before.
 import { h } from '../ui/dom.js';
 import { card, row, segmented, button, pill } from '../ui/controls.js';
 import { installerButton } from '../ui/installer-button.js';
@@ -288,7 +291,7 @@ function pickStep() {
     working.length ? card([h('h2', {}, 'Already working')],
       h('p', { class: 'learn-works', style: { margin: '0 0 10px' } }, ['These have a driver, so there is nothing to learn. Change them on their own page: ', ...working.flatMap((d, i) => [i ? ', ' : '', h('a', { href: runningCopy(d)?.page || d.ready?.page || '#/setup', onclick: (e) => { e.preventDefault(); openPage(d); } }, nameOf(d))]), '.']),
       h('details', { class: 'learn-other' }, h('summary', {}, 'A setting is missing on one of these?'),
-        faint('DeviceHub records you changing it in the maker\'s app and sends that to Shawn, who adds it to the driver.'),
+        faint('DeviceHub records you changing it in the maker\'s app, sends the recordings to Shawn, and offers to add what it learned to the driver when you press Save (read-only until Turn on settings).'),
         ...working.map((d) => row(nameOf(d), null, button('Record a missing setting', () => missingFor(d), { kind: 'ghost small' }))))) : null,
     cannot.length ? h('details', { class: 'learn-other' }, h('summary', {}, `Other USB devices (${cannot.length}): can't be learned`),
       ...cannot.map((d) => row(d.title || d.name, why(d),
@@ -492,6 +495,8 @@ async function runItem() {
   if (!it) {
     st.queue = null; st.change = null;
     st.step = st.server?.capture ? 'sent' : 'driver'; redrawPage();
+    // A setting is missing? (2 Nov 2026): nothing is added to its driver here; the Sent step shows a Save button (saveStep)
+    // and only that press saves (and, for a library driver, sets it up in my-devices). The recordings go to Shawn as before
     await sendToShawn(st.server?.capture ? 'a setting its driver lacks' : 'the recordings of this session');
     redrawPage(); return;
   }
@@ -572,7 +577,18 @@ async function skipItem(why = 'skipped') {
 // the existing diff on what was recorded; added at once when its range is known (the app's own) or not needed
 async function analyzeQueued(it) {
   // recordings only (A setting is missing?): nothing is worked out here; Shawn gets them at the end
-  if (st.server?.capture) { it.learned = true; it.ticked = false; logItem(it, null); nextItem(); return; }
+  if (st.server?.capture) {
+    // added to its driver when the diff works and nothing more needs asking (a number's range from the app); else
+    // only recorded for Shawn
+    if (st.server.addsTo) {
+      const r = await api('analyze', {});
+      if (r?.ok && (r.kind !== 'number' || it.range)) {
+        const a = await api('add', { ...(it.range || {}), ...st.save });
+        if (a?.active !== undefined) st.server = a;
+      }
+    }
+    it.learned = true; it.ticked = false; logItem(it, null); nextItem(); return;
+  }
   st.step = 'found'; st.found = null; redrawPage();
   const r = await run('analyze', {});
   st.found = r;
@@ -868,9 +884,30 @@ function foundStep() {
 // "Start this setting over": in a list, the same setting again from the start; else back to the form
 function overAgain() { st.found = null; if (st.queue) { runItem(); return; } st.step = 'ready'; redrawPage(); }
 
+// A setting is missing?: what was learned waits for the person's press (2 Nov 2026: it was saved, and a library driver
+// installed, with no click). Plain words: what is added, to which device, and what the press also does.
+export function saveLine(server) {
+  const s = server || {};
+  const labels = (s.learned || []).map((l) => l.label);
+  if (!s.addsTo || !labels.length || s.saved) return null;
+  const dev = s.device?.name || 'this device';
+  const what = labels.length === 1 ? labels[0] : `${labels.slice(0, -1).join(', ')} and ${labels.at(-1)}`;
+  return `Add ${what} to ${dev}? ${s.addsTo.where === 'library' ? `DeviceHub also sets up its driver (${s.addsTo.name}) from the device library. ` : ''}Nothing is added until you press Save. ${labels.length === 1 ? 'It stays' : 'They stay'} read-only until you press Turn on settings on its page.`;
+}
+function saveStep() {
+  const line = saveLine(st.server);
+  if (!line) return null;
+  return h('div', { class: 'learn-check', role: 'status' }, p(line), problems(),
+    h('div', { class: 'actions', style: { margin: 0 } },
+      button(st.busy ? 'Saving…' : 'Save', () => run('save', { ...st.save }), { kind: 'primary small', disabled: st.busy })));
+}
+
 // recordings only (A setting is missing?): the person's part ends here
 function sentStep() {
+  const sv = st.server?.saved;
   return card([h('h2', {}, st.sent?.sent || st.sent?.queued ? 'Sent' : st.sent?.nothing ? 'Nothing to send' : st.sent ? 'Not sent' : 'Sending to Shawn…'), h('span', { class: 'spacer' })],
+    saveStep(),
+    sv?.added?.length ? h('div', { class: 'learn-check', role: 'status' }, p(`${sv.note} Added: ${(st.server.learned || []).map((l) => l.label).join(', ')}.`)) : null,
     sentNote() || faint('Sending the recordings…'),
     ...st.log.filter((x) => !x.ok).map((x) => faint(`Not recorded: ${x.label}. ${x.why === 'skipped' ? 'Skipped.' : x.why}`)),
     h('div', { class: 'actions', style: { marginTop: '12px' } },

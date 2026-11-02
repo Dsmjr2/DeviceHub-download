@@ -126,6 +126,33 @@ export const MODELS = [
 ];
 export const ALL_PIDS = [...MODELS.flatMap((m) => [...m.devices, ...m.receivers]), ...GENERIC_RECEIVERS];
 
+// ---- protocol family (1 Nov 2026): a Corsair model this table does not list ----
+// device.json "family": ["FF42:0001"]: the sheet (docs/brands/corsair.md section 2, "bragi": "vendor HID, usage page FF42
+// usage 01") names that collection as Bragi's own, and every Bragi device answers the same GET frame (ckb-next
+// bragi_common.c, OpenLinkHub transfer()). The library keeps such an unlisted id in library.json familyPids and
+// helpers/my-devices.mjs hands it to the driver as familyPids. It is IDENTIFIED read-only: OPEN (nothing sent), then
+// GET 13 (firmware, "all bragi") and GET 11 (vendor id) on endpoint 08, GETs every listed model gets too. A device that
+// does not answer GET 13 with status 00, or names another vendor in 11, is closed and stepped aside from (notMine).
+// It is shown as "Corsair device (1B1C:xxxx)" with readings only (battery, polling rate, firmware): no read tells its
+// kind (mouse, keyboard or headset), so no write is ever offered for it.
+// Never taken by family: the HS80 (DeviceHub's own), the ids left out above for their 128- / 1024-byte packets
+// (HID LAYER 4) and the HS80 RGB USB 0A88 (sheet section 1: "not bragi").
+// 0A6A: the HS80 on its cable while charging (helpers/pc-map.js RUNS 'Headset page (its USB cable, charging)'), DeviceHub's own too
+export const FAMILY_NEVER = [...HS80_OWN_PIDS, '0A6A', '1BB3', '1BD4', '1BC4', '1BC6', '1B73', '1BB9', '1BAF', '1BCF', '1BC3', '1BD7', '1B7C', '1B7D', '1BC5', '1BE3', '0A88'];
+const up4 = (x) => String(x).trim().toUpperCase().replace(/^0X/, '').padStart(4, '0');
+export function familyModel(pid) {
+  const p = up4(pid);
+  return { key: 'family', kind: 'device', family: true, name: `Corsair device (1B1C:${p})`, devices: [p], receivers: [], source: 'device.json family FF42:0001 (sheet section 2 "bragi")' };
+}
+// an id the library matched by family: { model, pid, conn, ep, generic, family } or null
+export function identifyFamily(pid, familyPids = []) {
+  const p = up4(pid);
+  if (!/^[0-9A-F]{4}$/.test(p) || FAMILY_NEVER.includes(p) || ALL_PIDS.includes(p)) return null;
+  if (!familyPids.map(up4).includes(p)) return null;
+  return { model: familyModel(p), pid: p, conn: 'unknown', ep: EP.cable, generic: false, family: true };
+}
+const notMine = (message) => Object.assign(new Error(message), { notMine: true, gone: true });
+
 // What the helper SETs, per frame: id -> [min, max] raw. canSet() keeps anything else from being sent.
 // The peripheral frame (hs80io.cs Hs80Io.PeripheralAllows; each range's source is beside it there):
 export const PERIPHERAL_SETS = { 0x01: [1, 4], 0x02: [0, 1000], 0x0d: [0, 1], 0x0e: [60000, 3600000], 0x21: [100, 26000], 0x22: [100, 26000] };
@@ -168,6 +195,7 @@ export function identify(pid) {
 // the ids a model's probe asks: section 4 "Safe to read first" (0d is a GET too, as the headset driver asks it), and a
 // writable id only while the helper can SET it (never asked for nothing)
 function probeIds(m, helperSets) {
+  if (m.family) return [P.battery, P.polling];
   const w = (id, lo, hi) => (canSet(helperSets, id, lo) && canSet(helperSets, id, hi) ? [id] : []);
   return m.kind === 'mouse'
     ? [P.battery, P.polling, P.dpiX, P.dpiY, ...w(P.sleep, 60000, SLEEP_MAX * 60000), ...w(P.sleepOn, 0, 1)]
@@ -182,6 +210,8 @@ function dpiWritable(model, helperSets) {
 // The settings a model's page shows: what its kind has, what answered a GET, and (for a write) what the helper sends.
 export function settingsFor(model, { helperSets = PERIPHERAL_SETS, readable = {} } = {}) {
   if (!model) return [];
+  // a family model (an unlisted id): readings only, whatever the channel could send
+  if (model.family) return readable[P.polling] ? [{ key: 'polling', label: 'Polling rate', type: 'display', unit: ' Hz', hint: 'As the device reports it. DeviceHub does not know this Corsair model by name yet, so it only reads it' }] : [];
   const can = (id, lo, hi) => canSet(helperSets, id, lo) && canSet(helperSets, id, hi);
   const out = [];
   if (model.kind === 'mouse') {
@@ -216,7 +246,9 @@ function icueCheck() {
 }
 
 // helperSets: a fixed SET list for every channel (tests: an older helper); left out, each channel's own frame decides
-export function createDriver({ transport = nativeTransport(), icueRunning = icueCheck(), helperSets = null } = {}) {
+export function createDriver({ transport = nativeTransport(), icueRunning = icueCheck(), helperSets = null, familyPids = null } = {}) {
+  let self = null;         // the driver object (helpers/my-devices.mjs sets self.familyPids from library.json)
+  const famPids = () => (Array.isArray(self?.familyPids) ? self.familyPids : familyPids || []);
   let cur = null;          // { model, pid, conn, ep, chan, generic }
   let readable = {};       // id -> true when it answered a GET with status 00
   let probed = false;
@@ -265,7 +297,7 @@ export function createDriver({ transport = nativeTransport(), icueRunning = icue
       v.dpi = x == null ? null : y != null && (y & 0xffff) !== (x & 0xffff) ? `${x & 0xffff} x ${y & 0xffff}` : x & 0xffff;
       v.sleepMs = await num(P.sleep);
       const s = await num(P.sleepOn); v.sleepOn = s == null ? null : s === 1;
-    } else {
+    } else if (cur.model.kind === 'keyboard') {
       const b = await num(P.brightness); v.brightness = b == null ? null : Math.round(b / 10);
     }
     last = v;
@@ -313,7 +345,7 @@ export function createDriver({ transport = nativeTransport(), icueRunning = icue
     return raw & 0xffff;
   }
 
-  return {
+  return self = {
     id: 'corsair-bragi-peripherals',
     get title() { return cur?.model ? cur.model.name.replace(/^CORSAIR /, 'Corsair ') : 'Corsair mouse or keyboard'; },
     kind: 'Mouse or keyboard',
@@ -325,6 +357,7 @@ export function createDriver({ transport = nativeTransport(), icueRunning = icue
       if (m?.kind === 'mouse' && !Number.isInteger(m.dpiMax)) out.push(`changing DPI on the ${m.name} (its top DPI is not documented, so DPI is a reading)`);
       if (cur && cur.frame !== 'peripheral' && !helperSets) out.push('changing DPI and the polling rate on this channel (it speaks the headset frame, whose SET list has neither)');
       if (!m || m.kind === 'keyboard') out.push('Win-lock and the other key locks');
+      if (m?.family) out.push(`changing settings on this Corsair model (1B1C:${cur.pid}): it is not in DeviceHub's list by name yet, so it is only read`);
       // a setting this kind has but the device did not answer a read of
       const kindKeys = m?.kind === 'mouse' ? ['dpi', 'sleepTimer', 'sleepOn', 'polling'] : ['brightness', 'polling'];
       if (m && probed) for (const k of kindKeys) if (!settingsFor(m, { helperSets: sets(), readable }).some((x) => x.key === k)) out.push(`${k} (this ${m.kind} did not answer a read of it, or DeviceHub's helper cannot send it)`);
@@ -343,9 +376,11 @@ export function createDriver({ transport = nativeTransport(), icueRunning = icue
     async connect() {
       close();
       const list = String(await transport.request('hidlist', 'FF42 01', 5000));
-      const rank = (f) => (f.conn === 'cable' ? 0 : f.generic ? 2 : 1);
+      const rank = (f) => (f.family ? 3 : f.conn === 'cable' ? 0 : f.generic ? 2 : 1);
+      const fam = famPids();
       const found = list.split('|').map((l) => l.trim().split(' ')).filter((w) => w.length >= 2 && w[0].toUpperCase() === '1B1C')
-        .map((w) => identify(w[1])).filter(Boolean).sort((a, b) => rank(a) - rank(b));
+        .map((w) => identify(w[1]) || identifyFamily(w[1], fam)).filter(Boolean).sort((a, b) => rank(a) - rank(b));
+      let stepped = null;   // why a family id was left alone (a notMine when nothing else connected)
       for (const f of found) {
         let chan = null, frame = null;
         for (const want of ['peripheral', 'headset']) {
@@ -364,9 +399,19 @@ export function createDriver({ transport = nativeTransport(), icueRunning = icue
           if (!m) { close(); continue; }   // nothing paired, asleep, or a model this driver does not know
           cur.model = m; cur.paired = h4(p.value & 0xffff);
         }
+        if (f.family) {
+          // identified read-only: firmware (13) must answer status 00, and the vendor id (11), when it answers, is Corsair's
+          const fw = await get(P.firmware).catch(() => null);
+          const vid = fw && fw.status === 0 ? await get(P.vendorId).catch(() => null) : null;
+          const why = !fw ? 'does not answer the Bragi protocol'
+            : fw.status !== 0 ? `answers the Bragi firmware read with status ${fw.status < 0 ? 'unreadable' : h2(fw.status)}`
+            : vid && vid.status === 0 && (vid.value & 0xffff) !== 0x1b1c ? `names vendor ${h4(vid.value & 0xffff)}` : null;
+          if (why) { close(); stepped = `this Corsair device (1B1C:${f.pid}) ${why}, so the Corsair mouse and keyboard driver leaves it alone`; continue; }
+        }
         transport.onEvent(chan, () => {});   // notices are not used here (the peripheral frame reads none)
         return true;
       }
+      if (stepped) throw notMine(stepped);
       return false;
     },
 
@@ -380,7 +425,9 @@ export function createDriver({ transport = nativeTransport(), icueRunning = icue
         const f = ok(await get(P.firmware));
         if (f) fw = `${f.bytes[0]}.${f.bytes[1]}.${m.kind === 'mouse' ? f.bytes[2] | (f.bytes[3] << 8) : f.bytes[2]}`;
       } catch (e) { if (e.gone) throw e; }
-      const out = { Model: m.name, Type: m.kind, Firmware: fw || 'wake the device to read it', Connection: cur.conn === 'cable' ? 'USB cable' : 'wireless receiver', 'USB id': `1b1c:${cur.pid.toLowerCase()}` };
+      const out = { Model: m.name, Type: m.family ? 'not identified (mouse, keyboard or headset)' : m.kind, Firmware: fw || 'wake the device to read it',
+        Connection: cur.conn === 'cable' ? 'USB cable' : cur.conn === 'unknown' ? 'USB (cable or receiver: not identified)' : 'wireless receiver', 'USB id': `1b1c:${cur.pid.toLowerCase()}` };
+      if (m.family) out.Recognised = 'by its Bragi collection (FF42:0001), not by name: read-only';
       if (cur.paired) out['Paired device id'] = `1b1c:${cur.paired.toLowerCase()}`;
       if (m.kind === 'mouse' && last && typeof last.dpi === 'string') out['DPI (X x Y)'] = last.dpi;
       out.Frame = cur.frame === 'peripheral' ? 'peripheral (no report id)' : 'headset (report id 02)';
@@ -428,7 +475,7 @@ export function createDriver({ transport = nativeTransport(), icueRunning = icue
     async rawBackup() {
       const m = cur.model;
       const ids = [P.battery, P.chargeStatus, P.vendorId, P.productId, P.firmware, P.connection, P.lightMode, P.polling,
-        ...(m.kind === 'mouse' ? [P.dpiX, P.dpiY, P.sleep, ...(readable[P.sleepOn] ? [P.sleepOn] : [])] : [P.brightness])];
+        ...(m.kind === 'mouse' ? [P.dpiX, P.dpiY, P.sleep, ...(readable[P.sleepOn] ? [P.sleepOn] : [])] : m.kind === 'keyboard' ? [P.brightness] : [])];
       const props = {};
       for (const id of ids) { const r = await get(id); props[h2(id)] = r ? { status: r.status, value: r.value } : null; }
       return { model: m.key, pid: cur.pid, paired: cur.paired || null, connection: cur.conn, props };

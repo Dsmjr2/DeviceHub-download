@@ -221,6 +221,11 @@ env.onNewDevice = (x) => {
     const detail = x.installed.proven ? 'Connected and ready to customize.' : 'Open to verify and customize.';
     toast(`${x.name} is ready`, 'good', { detail, ms: 15000,
       action: x.installed.id ? { label: 'Open', run: () => { location.hash = `#/${x.installed.id}`; } } : null });
+  } else if (x.learn && !x.brand) {
+    // a brand DeviceHub does not know (1 Nov 2026, helpers/plug-watch.mjs): no app of its own to drive, so Learn a device
+    // opens with it picked, for the person to choose its settings
+    toast(`New: ${x.name}`, 'info', { ms: 20000, detail: 'DeviceHub can learn its settings from its own app.',
+      action: { label: 'Learn it', run: async () => { await learnThis(x.vid, x.pid); location.hash = '#/learn'; } } });
   } else if (x.learn) {
     toast(`New: ${x.name}`, 'info', { ms: 20000,
       action: { label: 'Learn it for me', run: async () => { await learnThis(x.vid, x.pid, { start: true }); location.hash = '#/learn'; } } });

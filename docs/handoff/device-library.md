@@ -92,3 +92,25 @@ was tried on a TEMP folder with a backups folder, a .pcap and a user path: refus
   firmware. Worth adding a `firmware` field to `tested[]` once real entries arrive.
 - `installFromLibrary` does not check the id against drivers already in `my-devices/` (that needs importing them);
   `my-devices.mjs` refuses a duplicate id at load with "already used", so the effect is only a log line.
+
+## Protocol families by brand (1 Nov 2026)
+
+`device.json` `family` lets an entry take a model it does not list when the device has the entry's own vendor HID
+collection (`match()`, `pages` from `helpers/pc-map.js`). It is given only where one read-only question answers the
+same way on every model of that collection.
+
+- **Logitech** (`FF00:0002` mouse / keyboard, `FF43:0202` headset): HID++ 2.0 ping and IRoot, as before.
+- **Corsair Bragi** (`FF42:0001`, `corsair-bragi-peripherals`, added): the sheet names FF42/01 as Bragi's own
+  collection and every Bragi device answers the same GET. An unlisted id is opened on the helper's channel (nothing
+  sent), asked GET 13 (firmware) and GET 11 (vendor id) on endpoint 08, and stepped aside from (notMine) when 13 does
+  not answer status 00 or 11 names another vendor. It shows as "Corsair device (1B1C:xxxx)" with readings only (no
+  read tells a mouse from a keyboard or headset, so no write is offered). Never the HS80, the 128- / 1024-byte
+  keyboards or the HS80 RGB USB. A helper-channel driver (no `hid`) gets the ids as `a.familyPids` from
+  `helpers/my-devices.mjs`.
+- **SteelSeries** (`FFC0:0001`, `FF43:0202`): refused. One collection carries Nova headsets (`00 B0` status), mice
+  (rivalcfg `92` / `D2`, OR'd with `0x40` on a receiver, older mice where `09` saves) and keyboards (`A3`); the sheet
+  says unknown ids "could reach bootloader or calibration functions". A read on one family is an unknown command on
+  another, so there is no safe first question.
+- **Razer Kraken** (`FF14:0001`): refused. Only Kraken V4 / Kitty V3 Pro use it (OpenRGB, lighting only, report size
+  unconfirmed), and no library driver runs them; Razer mice and keyboards are on standard pages, not a vendor one.
+- **HyperX**: refused. The sheet: "HyperX has no single protocol. Each headset generation has its own frame."

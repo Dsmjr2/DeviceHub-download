@@ -52,7 +52,10 @@ async function applyAll() {
   // added devices with one color (my-devices and library drivers), each through its own read-back write
   for (const { d, s } of addedColors()) {
     if (ui.include[d.id] === false || d.status !== 'connected' || s.readOnly) continue;
-    try { await write(d.id, s.key, rgbToHex(r * k, g * k, b * k), { label: s.label, display: ui.off ? 'off' : ui.hex, silent: true }); done.push(d.adapter.title); }
+    // a color with zones (logo, wheel, strip): every zone the same color, in one write
+    const hex = rgbToHex(r * k, g * k, b * k);
+    const value = s.zones ? Object.fromEntries(s.zones.map((z) => [z.value, hex])) : hex;
+    try { await write(d.id, s.key, value, { label: s.label, display: ui.off ? 'off' : ui.hex, silent: true }); done.push(d.adapter.title); }
     catch (e) { log(`lighting failed: ${e.message}`, 'bad', d.id); }
   }
   // the PC's own lights (board, fans, RAM, graphics card) through OpenRGB, when it runs
@@ -61,11 +64,11 @@ async function applyAll() {
   t.update(done.length && ui.off ? `Lights off on ${done.join(' + ')}` : done.length ? `Lighting set on ${done.join(' + ')}` : 'No lit devices', done.length ? 'good' : 'bad', done.length ? undefined : 'Connect a device first.');
 }
 
-// the devices this PC has, beyond the built-in three, that take one color (23 Oct 2026, a friend's PC listed Shawn's
-// own three devices whatever it had)
+// the devices this PC has, beyond the built-in three, that take a color (23 Oct 2026, a friend's PC listed Shawn's
+// own three devices whatever it had); one with zones too, all set to the picked color (1 Nov 2026; one color first)
 function addedColors() {
   return shownDevices().filter((d) => !['mouse', 'keyboard', 'headset'].includes(d.id))
-    .map((d) => ({ d, s: (d.adapter.settings || []).find((x) => x.type === 'color' && !x.zones) })).filter((x) => x.s);
+    .map((d) => { const c = (d.adapter.settings || []).filter((x) => x.type === 'color' && (!x.zones || x.zones.length)); return { d, s: c.find((x) => !x.zones) || c[0] }; }).filter((x) => x.s);
 }
 
 // the Apply to card: drawn again on its own when a device connects or drops (keepAlive), never the whole page
@@ -91,7 +94,7 @@ function targetsCard() {
       ...addedColors().map(({ d, s }) => {
         const ok = d.status === 'connected' && !s.readOnly;
         return h('div', { class: 'target lighting-preview', style: { '--cc': 'var(--signal)', '--pick': ui.off ? OFF : ui.hex } }, h('div', { class: 'target-ic' }, icon(d.adapter.kind === 'Mouse' ? 'mouse' : d.adapter.kind === 'Headset' ? 'headset' : d.adapter.kind === 'Keyboard' ? 'keyboard' : 'lighting')),
-          h('div', { class: 'grow' }, h('b', {}, d.adapter.title), h('small', {}, ok ? s.label : d.status !== 'connected' ? 'Not connected' : `${s.label}: turn on settings first`)),
+          h('div', { class: 'grow' }, h('b', {}, d.adapter.title), h('small', {}, ok ? (s.zones ? `${s.label}, ${s.zones.length} zones` : s.label) : d.status !== 'connected' ? 'Not connected' : `${s.label}: turn on settings first`)),
           toggle({ value: ui.include[d.id] !== false && ok, disabled: !ok, label: `include ${d.adapter.title}`, onCommit: async (on) => { ui.include[d.id] = on; } }));
       }),
       has('mouse') ? h('div', { class: 'target', style: { '--cc': 'var(--c-mouse)' } }, artOf(devices.mouse), h('div', { class: 'grow' }, h('b', {}, devices.mouse.adapter.title), h('small', {}, 'No settable lights')), pill('n/a')) : null,

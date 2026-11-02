@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createDriver, MODELS, ALL_PIDS, HS80_OWN_PIDS, PERIPHERAL_SETS, HEADSET_SETS, GENERIC_RECEIVERS, P, POLLING_HZ } from '../device-library/corsair-bragi-peripherals/device.mjs';
+import { createDriver, MODELS, ALL_PIDS, HS80_OWN_PIDS, PERIPHERAL_SETS, HEADSET_SETS, GENERIC_RECEIVERS, P, POLLING_HZ, identifyFamily } from '../device-library/corsair-bragi-peripherals/device.mjs';
 import real from '../device-library/corsair-bragi-peripherals/device.mjs';
 import { HS80_OWN_PIDS as HEADSET_OWN, ALL_PIDS as HEADSET_PIDS } from '../device-library/corsair-bragi-headset/device.mjs';
 import { validateMeta } from '../helpers/device-library.mjs';
@@ -375,6 +375,57 @@ for (const m of MODELS) {
   const e4 = await throws(() => dm.write('dpi', 800));
   check(e3 && /iCUE/.test(e3.message) && e4 && /iCUE/.test(e4.message) && e4.waiting === true && mh.out.length === n2 && md.props[P.sleep] === 600000 && md.props[P.dpiX] === 1600, 'mouse sleep and DPI writes refuse while iCUE runs, nothing sent');
   check(await d.vendorApp() === 'iCUE.exe' && (await selfCheck(d, d.write, { backup: async () => true })).ran === false, 'the self-check does not run while iCUE runs');
+}
+
+// ---- protocol family (1 Nov 2026): an unlisted id with the Bragi collection, identified read-only ----
+{
+  check(JSON.stringify(meta.family) === '["FF42:0001"]', 'device.json family is the Bragi collection FF42:0001');
+  const unknownMouse = { key: 'x', kind: 'mouse', name: 'a new Corsair mouse' };
+  // an unlisted id the library matched by family: connects, named by its id, readings only, nothing but GETs
+  const dev = device(unknownMouse), hp = helper({ '1C77': dev }), d = mk(hp, { familyPids: ['1c77'] });
+  check(await d.connect() === true && d.model?.family === true && d.title === 'Corsair device (1B1C:1C77)', `a family id connects as "Corsair device (1B1C:1C77)" (${d.title})`);
+  check(sent(hp).slice(0, 2).join('|') === '00 08 02 13 00 00 00 00 00|00 08 02 11 00 00 00 00 00', `identified by GET 13 (firmware) then GET 11 (vendor id) on endpoint 08 (${sent(hp).slice(0, 2)})`);
+  const v = await d.read();
+  check(d.settings.length === 1 && d.settings.every((s) => s.type === 'display') && v.polling === 1000, `readings only: polling shown, no writable setting (${JSON.stringify(d.settings.map((s) => [s.key, s.type]))})`);
+  check((await d.battery()).percent === 82, 'its battery is read');
+  const info = await d.info();
+  check(info.Firmware === '5.2.44' && /not identified/.test(info.Type) && /FF42:0001/.test(info.Recognised), `info says it was recognised by family (${JSON.stringify(info)})`);
+  for (const [k, val] of [['polling', 500], ['dpi', 800], ['sleepTimer', 5], ['brightness', 50]]) {
+    const n = hp.out.length, e = await throws(() => d.write(k, val));
+    check(e && hp.out.length === n, `a family device refuses ${k} with nothing sent (${e?.message})`);
+  }
+  await d.rawBackup();
+  check(hp.out.every((x) => x.bytes[2] === 2) && hp.log.every(allowedLine), 'a family device only ever gets GETs');
+  check(dev.props[P.polling] === 4 && dev.props[P.dpiX] === 1600 && dev.props[P.sleep] === 600000, 'nothing on it changed');
+  const sc = await selfCheck(d, d.write, { backup: async () => true });
+  check(hp.out.every((x) => x.bytes[2] === 2), `the self-check sends no SET to a family device (${JSON.stringify(sc).slice(0, 120)})`);
+
+  // the same id without a family match (no library.json familyPids): not opened at all
+  const hp2 = helper({ '1C77': device(unknownMouse) }), d2 = mk(hp2);
+  check(await d2.connect() === false && !hp2.log.some((l) => /^hs80:1C77/.test(l)), 'an unlisted id the library did not match by family is never opened');
+  // never by family: the HS80, a 1024-byte keyboard, a listed id (that one runs as its own model)
+  for (const p of ['0A69', '1B7C', '0A88']) check(identifyFamily(p, [p]) === null, `${p} is never taken by family`);
+  const km = MODELS.find((x) => x.key === 'k55-pro');
+  check(identifyFamily('1BA4', ['1BA4']) === null && (await (async () => { const h = helper({ '1BA4': device(km) }), x = mk(h, { familyPids: ['1ba4'] }); await x.connect(); return x.model === km; })()), 'a listed id given as a family id still runs as its own model');
+
+  // a device that answers wrongly: stepped aside (notMine), closed, nothing but the identifying GETs sent
+  const wrong = [
+    ['no firmware answer', device(unknownMouse, { drop: [P.firmware] }), /status 05/],
+    ['asleep / not Bragi', device(unknownMouse, { asleep: true }), /does not answer/],
+    ['another vendor', device(unknownMouse, { props: { [P.vendorId]: 0x046d } }), /names vendor 046D/],
+  ];
+  for (const [what, wd, re] of wrong) {
+    const h = helper({ '1C78': wd }), x = mk(h, { familyPids: ['1C78'] });
+    const e = await throws(() => x.connect());
+    check(e?.notMine === true && re.test(e.message) && !h.open.size && h.out.every((o) => o.bytes[2] === 2 && [0x13, 0x11].includes(o.bytes[3])), `${what}: stepped aside with notMine, closed, only GET 13 / 11 sent (${e?.message})`);
+  }
+  // a listed model beside a wrongly answering family id: the listed model connects, no notMine
+  const k = MODELS.find((x) => x.key === 'k100-air'), h3 = helper({ '1BAB': device(k), '1C79': device(unknownMouse, { drop: [P.firmware] }) }), d3 = mk(h3, { familyPids: ['1c79'] });
+  check(await d3.connect() === true && d3.model === k, 'a listed model is tried before a family id');
+  // helpers/my-devices.mjs hands library.json familyPids to the driver object (no hid: the helper's channels)
+  const d4 = mk(helper({ '1C77': device(unknownMouse) }));
+  d4.familyPids = ['1C77'];
+  check(await d4.connect() === true && d4.model?.family, 'the familyPids set on the driver object are used');
 }
 
 // ---- unplugged ----

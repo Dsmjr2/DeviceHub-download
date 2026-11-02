@@ -44,7 +44,16 @@ export function describe(added, { usb = [], rec = null, brands = {}, own = { min
     const b = brands[vid.toLowerCase()];
     const name = u.name || (b ? `${b.name} device` : `USB device ${k}`);
     if (inst) { out.push({ vid, pid, name: inst.product || name, brand: b?.name || null, installed: { name: inst.name, id: inst.id || null, proven: !!inst.proven } }); continue; }
-    if (mine.has(k) || !b || b.shared || vendorRefusal(vid)) continue;
+    if (mine.has(k) || b?.shared || vendorRefusal(vid)) continue;
+    // a brand the guide does not list (1 Nov 2026, Shawn: "further learn devices"): offered Learn only when Windows sees a
+    // mouse or keyboard on it, it has a private settings channel (a vendor page), and that channel can carry settings;
+    // a webcam, a controller or a plain keyboard is never offered
+    if (!b) {
+      const vendorPage = (u.pages || []).some((p) => /^FF/i.test(String(p)));
+      if (!(u.usages?.mouse || u.usages?.keyboard) || !vendorPage || canSet(k) !== true) continue;
+      out.push({ vid, pid, name, brand: null, learn: true });
+      continue;
+    }
     if (!b.kinds.some((x) => ['mouse', 'keyboard', 'headset'].includes(x))) continue;
     if (canSet(k) === false) continue;
     out.push({ vid, pid, name, brand: b.name, learn: true });

@@ -131,6 +131,9 @@ check(/const now = h\('span', \{ class: 'swatch pcl-current'/.test(rowSrc) && !/
 check(/class: 'btn ghost small pcl-off'[^\n]*onclick: \(\) => offRow\(key, writes\) \}, 'Off'\)/.test(rowSrc) && !/offSwatch/.test(pc), 'Off is a small text button, no slashed circle');
 check(/h\('span', \{ class: 'pcl-now-off faint' \}, 'Off'\)/.test(rowSrc) && /dot\.hidden = off; offText\.hidden = !off;/.test(rowSrc), 'a light that is off shows the word Off in faint text instead of its dot');
 check(/p\.dataset\.hex === cur; p\.classList\.toggle\('on', on\)/.test(rowSrc), "the preset that equals the row's color is ringed");
+// an added device's color with zones is on the Apply to card, every zone set to the picked color (1 Nov 2026)
+const lp = src('pages/lighting.js');
+check(/const value = s\.zones \? Object\.fromEntries\(s\.zones\.map\(\(z\) => \[z\.value, hex\]\)\) : hex;/.test(lp) && /return \{ d, s: c\.find\(\(x\) => !x\.zones\) \|\| c\[0\] \}/.test(lp), 'a zoned color is applied to every zone; a plain one is preferred when a device has both');
 
 if (fails.length) { console.log(`lighting-page: ${fails.length} failed\n - ${fails.join('\n - ')}`); process.exit(1); }
 console.log('lighting-page: all checks passed');
