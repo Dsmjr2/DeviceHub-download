@@ -21,7 +21,7 @@ async function getJson(url, opts) {
 export function offersWorks(d) {
   const lib = d?.adapter?.library;
   if (!lib || lib.learned || lib.turnOn || d.status !== 'connected') return false;
-  return (d.adapter.settings || []).some((s) => s.type !== 'display' && !s.readOnly);
+  return (d.adapter.settings || []).some((s) => s.type !== 'display' && !s.readOnly && !s.writeOnly);   // a write-only one passes no check
 }
 
 // invite: the person just turned its settings on and they passed: say so and ask, instead of the quiet one-line button

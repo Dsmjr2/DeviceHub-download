@@ -36,17 +36,20 @@ const UP_TO_1K = HZ.slice(0, 4);
 // sheet section 1 "Mice"; dpiMax: maker's spec (see top); pollingCable: sheet section 4 "Polling above 1000 Hz: only
 // on models GH lists for it (Chakram X wired, Harpe II Ace)". angle (1 Nov 2026): G-Helper's HasAngleTuning with its
 // AngleTuningMin / Max (AsusMouse.cs default -20..20; HarpeAceAimLab.cs -30..30); dpiColors: G-Helper's HasDPIColors.
-// DPI stage colours are NOT offered as settings (2 Nov 2026): G-Helper and libratbag give all four stage-colour models separate X/Y DPI, read from 12 04 02 at byte 5+4i, while the colour write re-sends the raw DPI read from 12 04 00 at 5+2i; no source shows that round trip is right, so it is not offered.
-// docs/brands/asus-rog.md. The colours are still read on demand and sent back unchanged with a DPI write.
-// DPI stage colours are NOT offered as settings (2 Nov 2026): G-Helper and libratbag give all four stage-colour models separate X/Y DPI, read from 12 04 02 at byte 5+4i, while the colour write re-sends the raw DPI read from 12 04 00 at 5+2i; no source shows that round trip is right, so it is not offered.
+// DPI on the three X/Y models is read only (2 Nov 2026): G-Helper (master d7347c0) gives the Harpe Ace Aim Lab, Keris
+// Wireless AimPoint and Gladius III Wireless AimPoint HasXYDPI() = true, so it reads their DPI from 12 04 02 with stage i
+// at byte 5+4i (AsusMouse.cs GetReadDPIPacket / ParseDPI), not from 12 04 00 at 5+2i as this driver does. libratbag
+// (master 8235b5b) has no SEPARATE_XY_DPI quirk for them (only the Chakram X), so the sources disagree and nothing has
+// been measured: DPI shows as a reading on those models and no DPI packet (51 31 00-03) is ever sent to them (xyDpi).
+// DPI stage colours are NOT offered as settings (2 Nov 2026) for the same reason: the colour goes out in the DPI packet.
 // docs/brands/asus-rog.md. The colours are still read on demand and sent back unchanged with a DPI write.
 // Every battery model here has G-Helper's HasLowBatteryWarning (the Gladius III Wireless too; the wired Gladius III not).
 export const MODELS = [
-  { key: 'harpe-ace-aim-lab', name: 'ROG Harpe Ace Aim Lab Edition', cable: 0x1a92, dongle: 0x1a94, omni: [0x1a94], battery: true, dpiMax: 36000, angle: [-30, 30], dpiColors: true },
-  { key: 'keris-wireless-aimpoint', name: 'ROG Keris Wireless AimPoint', cable: 0x1a66, dongle: 0x1a68, omni: [0x1a68, 0x1a6a], battery: true, dpiMax: 36000, angle: [-20, 20], dpiColors: true },
+  { key: 'harpe-ace-aim-lab', name: 'ROG Harpe Ace Aim Lab Edition', cable: 0x1a92, dongle: 0x1a94, omni: [0x1a94], battery: true, dpiMax: 36000, angle: [-30, 30], dpiColors: true, xyDpi: true },
+  { key: 'keris-wireless-aimpoint', name: 'ROG Keris Wireless AimPoint', cable: 0x1a66, dongle: 0x1a68, omni: [0x1a68, 0x1a6a], battery: true, dpiMax: 36000, angle: [-20, 20], dpiColors: true, xyDpi: true },
   { key: 'gladius-iii', name: 'ROG Gladius III', cable: 0x197b, battery: false, dpiMax: 19000 },
   { key: 'gladius-iii-wireless', name: 'ROG Gladius III Wireless', cable: 0x197d, dongle: 0x197f, battery: true, dpiMax: 19000 },
-  { key: 'gladius-iii-wireless-aimpoint', name: 'ROG Gladius III Wireless AimPoint', cable: 0x1a70, dongle: 0x1a72, omni: [0x1a72], battery: true, dpiMax: 36000, angle: [-20, 20], dpiColors: true },
+  { key: 'gladius-iii-wireless-aimpoint', name: 'ROG Gladius III Wireless AimPoint', cable: 0x1a70, dongle: 0x1a72, omni: [0x1a72], battery: true, dpiMax: 36000, angle: [-20, 20], dpiColors: true, xyDpi: true },
   { key: 'chakram-x', name: 'ROG Chakram X', cable: 0x1a18, dongle: 0x1a1a, battery: true, dpiMax: 36000, doubleDpi: true, pollingCable: HZ, angle: [-20, 20], dpiColors: true },
 ];
 export const PIDS = [...new Set(MODELS.flatMap((m) => [m.cable, m.dongle].filter(Boolean)).concat(OMNI))];
@@ -87,6 +90,8 @@ const SLEEP = { 0x00: 1, 0x01: 2, 0x02: 3, 0x03: 5, 0x04: 10, 0xff: 0 };
 const SLEEP_CODE = Object.fromEntries(Object.entries(SLEEP).map(([c, m]) => [m, Number(c)]));
 const LIFT = { 0x00: 'low', 0x01: 'high' };
 const HEX = /^#[0-9a-f]{6}$/;
+// why DPI is a reading on the xyDpi models (see the MODELS note)
+export const XY_DPI_WHY = 'DPI on this model has separate X and Y values DeviceHub does not handle yet';
 // a write that must leave these values as they were (they go out in the same packet)
 const KEEP = { sleep: ['lowBattery'], lowBattery: ['sleep'] };   // sheet: Lift-off `00` low, `01` high
 // sheet: Button response, the two tables that disagree (shown, never written)
@@ -263,6 +268,9 @@ const adapter = {
   async write(key, value) {
     const s = this.settings.find((x) => x.key === key);
     if (!s) throw new Refused(`${key} is not a setting this mouse can change`);
+    // a reading (the X/Y DPI models' DPI) is never written; s.readOnly is not asked here, since DeviceHub's guard marks
+    // settings read-only on the list this write also sees (helpers/my-devices.mjs guard) and its self-check writes past it
+    if (s.type === 'display') throw new Refused(`${s.label} is read only${typeof s.readOnly === 'string' ? `: ${s.readOnly}` : ''}`);
     check(s, value);
     await this.stepBackCheck();
     const before = this.decode(await this.snapshot(true));
@@ -286,6 +294,7 @@ const adapter = {
   },
   async command(key, value, cur) {
     if (/^dpi[1-4]$/.test(key)) {
+      if (this.model.xyDpi) throw new Refused(`DPI is read only: ${XY_DPI_WHY}`);   // never a DPI packet to an X/Y model
       // the stage's color goes back unchanged with it (sheet: DPI stage colors "appended to the DPI write")
       const stage = Number(key[3]) - 1, c = await this.optional(CMD.colors);
       return SET.dpi(stage, (value - 50) / 50, c ? [B(c, 5 + 3 * stage), B(c, 6 + 3 * stage), B(c, 7 + 3 * stage)] : []);
@@ -317,7 +326,10 @@ function settingsFor(m, link, dpiLocked, booster, angleLocked) {
   const out = [];
   if (!m) m = { dpiMax: 36000, battery: true };
   if (!m.doubleDpi && !dpiLocked) {
-    for (let i = 1; i <= 4; i++) out.push({ key: `dpi${i}`, label: `DPI stage ${i}`, type: 'slider', min: 100, max: m.dpiMax, step: 50, unit: ' DPI' });
+    for (let i = 1; i <= 4; i++) {
+      out.push(m.xyDpi ? { key: `dpi${i}`, label: `DPI stage ${i}`, type: 'display', unit: ' DPI', hint: `Read only: ${XY_DPI_WHY}.`, readOnly: XY_DPI_WHY }
+        : { key: `dpi${i}`, label: `DPI stage ${i}`, type: 'slider', min: 100, max: m.dpiMax, step: 50, unit: ' DPI' });
+    }
   }
   const hz = link === 'cable' && m.pollingCable ? m.pollingCable : UP_TO_1K;
   if (!(link === 'omni' && booster)) out.push({ key: 'pollingRate', label: 'Polling rate', type: 'choice', options: hz.map((x) => ({ value: x, label: x >= 1000 ? `${x / 1000}K Hz` : `${x} Hz` })) });

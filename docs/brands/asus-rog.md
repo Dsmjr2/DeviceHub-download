@@ -220,11 +220,27 @@ angle tuning, per model as G-Helper's model classes say (HasLowBatteryWarning, H
 libratbag and OpenRGB document neither). Not covered, and why: docs/handoff/driver-coverage.md.
 
 **DPI stage colours: taken out again (2 Nov 2026).** They were offered on 1 Nov on the four HasDPIColors models
-(Harpe Ace Aim Lab, Keris Wireless AimPoint, Gladius III Wireless AimPoint, Chakram X). G-Helper and libratbag give
-all four separate X/Y DPI, read from `12 04 02` with stage i at byte 5+4i, while the colour write re-sent the raw DPI
+(Harpe Ace Aim Lab, Keris Wireless AimPoint, Gladius III Wireless AimPoint, Chakram X). G-Helper gives
+all four separate X/Y DPI (libratbag only the Chakram X: see below), read from `12 04 02` with stage i at byte 5+4i, while the colour write re-sent the raw DPI
 the driver reads from `12 04 00` at 5+2i. No source shows that `12 04 00` holds the real per-stage DPI on these models,
 so a colour write could send another DPI with the colour. Not offered until a capture from one of them shows the round
 trip is right. The colours are still read on demand and sent back unchanged with a DPI write.
+
+**DPI read only on the three X/Y models (2 Nov 2026).** Checked against the sources: G-Helper master `d7347c0`
+(app/Peripherals/Mouse/AsusMouse.cs: `HasXYDPI()` false by default, line 1370; `GetReadDPIPacket` asks `12 04 02`
+when it is true, lines 1414-1422; `ParseDPI` expects byte 3 = `02` and reads stage i at `5 + 4i`, lines 1447-1468)
+sets `HasXYDPI() = true` in HarpeAceAimLab.cs (line 50), KerisWirelssAimpoint.cs (49), GladiusIIIAimpoint.cs (49)
+and ChakramX.cs (48); GladiusIIIWireless.cs does not, so the Gladius III and Gladius III Wireless read `12 04 00` at
+`5 + 2i` as DeviceHub does. libratbag master `8235b5b` has `ASUS_QUIRK_SEPARATE_XY_DPI` (src/asus.h line 13,
+src/driver-asus.c 158-193, src/asus.c 333-382) only on the Chakram X (data/devices/asus-rog-chakram-x.device); its
+Keris Wireless AimPoint file and its `1A92` "Harpe Wireless" file have no quirk (they read `12 04 00`), and it has no
+Gladius III AimPoint file. So the sources disagree and nothing is measured: on the Harpe Ace Aim Lab, Keris Wireless
+AimPoint and Gladius III Wireless AimPoint the DPI stages are shown as a reading ("DPI on this model has separate X and
+Y values DeviceHub does not handle yet") and no DPI packet (`51 31 00-03`) is ever sent to them (`xyDpi` in both
+device.mjs and driver.json; tests/sim-asus.mjs and tests/declarative-driver.mjs check it). The Chakram X was already
+read only (`DOUBLE_DPI`). Polling, snapping, angle tuning and the rest are read from `12 04 00` by G-Helper on every
+model too (GetReadPollingRatePacket), so they are unchanged. To offer DPI there: a capture of `12 04 02` and `12 04 00`
+from one of the three, and of what Armoury Crate sends for an X/Y change.
 
 ## 6. Gaps and unknowns
 

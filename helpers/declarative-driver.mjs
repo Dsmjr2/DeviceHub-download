@@ -413,6 +413,8 @@ export function validate(obj) {
   for (const s of settings) {
     if (!isObj(s)) { no('every setting must be an object'); continue; }
     const w = `setting "${s.key}"`;
+    // write-only settings (2 Nov 2026, helpers/my-devices.mjs) are for device.mjs drivers: every driver.json write is read back
+    if ('writeOnly' in s) no(`${w}: writeOnly is not part of this format: every driver.json write is read back before and after (a write-only setting needs a device.mjs, and never a save after it)`);
     unknown(s, 'setting', w);
     if (typeof s.key !== 'string' || !/^[A-Za-z][A-Za-z0-9_]*$/.test(s.key) || s.key === '__proto__') { no('every setting needs a key (letters and digits)'); continue; }
     if (typeof s.label !== 'string' || !s.label.trim()) no(`${w} needs a label`);

@@ -12,7 +12,7 @@ import { problem, selfCheck } from '../helpers/my-devices.mjs';
 import { validateMeta } from '../helpers/device-library.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const { default: drv, MODELS, WRITE_ONLY, VENDOR_APPS, parseBattery, WIRELESS_FLAG } = await import('../device-library/steelseries-mouse/device.mjs');
+const { default: drv, MODELS, WRITE_ONLY, VENDOR_APPS, parseBattery, WIRELESS_FLAG, SAVES, WRITE_CMDS, settingsFor, encode } = await import('../device-library/steelseries-mouse/device.mjs');
 const { VENDOR_APPS: ARCTIS_APPS } = await import('../device-library/steelseries-arctis/device.mjs');
 const meta = JSON.parse(fs.readFileSync(path.join(ROOT, 'device-library/steelseries-mouse/device.json'), 'utf8'));
 const NEVER = JSON.parse(fs.readFileSync(path.join(ROOT, 'helpers', 'never-commands.json'), 'utf8'));
@@ -33,7 +33,7 @@ check(NEVERS.some((n) => n.bytes === '11 00') && NEVERS.some((n) => n.bytes === 
 class SimMouse {
   constructor(m, o = {}) {
     Object.assign(this, { vendorId: 0x1038, productId: m.pid, productName: `sim ${m.name}`, opened: false });
-    this.m = m; this.listeners = new Set(); this.sent = []; this.bad = [];
+    this.m = m; this.listeners = new Set(); this.sent = []; this.bad = []; this.writes = [];
     this.o = { level: 13, charging: false, silent: false, fw: [0x25, 0x00], ...o };   // level code 13 -> (13 - 1) x 5 = 60%
   }
   async open() { this.opened = true; }
@@ -47,6 +47,13 @@ class SimMouse {
     if (b.length !== 64) this.bad.push(`length ${b.length}`);
     for (const n of NEVERS) if ((!n.pids || n.pids.includes(h4(this.m.pid))) && n.b.every((x, i) => b[i] === x)) this.bad.push(`never: ${n.what}`);
     const dongle = this.m.link === 'dongle', cmd = b[0];
+    for (const p of SAVES) if (p.every((x, i) => b[i] === x)) this.bad.push(`a save: ${hx(b.slice(0, 2))}`);
+    // a write-only setting's command (2 Nov 2026): the family's first bytes, | 0x40 through the receiver, which answers 64 bytes
+    if (this.m.wo && (dongle ? (cmd & WIRELESS_FLAG) && WRITE_CMDS[this.m.wo].includes(cmd & ~WIRELESS_FLAG) : WRITE_CMDS[this.m.wo].includes(cmd))) {
+      this.writes.push(b);
+      if (dongle && !this.o.silent) this.reply([cmd, ...new Array(63).fill(0)]);
+      return;
+    }
     if (this.o.silent) return;
     if (this.m.named) { this.bad.push(`sent ${hx(b.slice(0, 3))} to a mouse no source documents a read for`); return; }
     if (this.m.battery === 'aa') {
@@ -89,7 +96,10 @@ check(['1830', '1836', '1850', '183C'].every((p) => drv.hid.byPid[p].page === 'F
 const NEW = [0x184a, 0x1848, 0x1830, 0x1872, 0x1836, 0x1850, 0x1870, 0x182e, 0x184d, 0x183c];
 check(NEW.every((p) => MODELS.some((m) => m.pid === p)), 'the rivalcfg models added 23 Oct 2026 are in the table');
 check(MODELS.filter((m) => m.named).map((m) => m.pid).sort().join() === [0x1836, 0x1850, 0x1870, 0x182e, 0x184d, 0x183c, ...NAMED_NOV].sort().join() && MODELS.filter((m) => m.named).every((m) => !m.battery && !m.firmware), 'the wired mice with no read are named only');
-check(drv.settings.length === 0, 'no settings: every documented mouse setting is write-only');
+check(drv.settings.length === 0, 'no settings before a mouse connects (they are per model)');
+const WO = { aerox: [0x183a, 0x1838, 0x187a, 0x1878, 0x1854, 0x1852, 0x185e, 0x185c, 0x1862, 0x1860, 0x185a, 0x1858, 0x1876, 0x1874], prime: [0x1842, 0x1840, 0x184a, 0x1848], rival3: [0x1824, 0x184c] };
+check(MODELS.every((m) => (m.wo || null) === (Object.keys(WO).find((f) => WO[f].includes(m.pid)) || null)), 'write-only settings only on the Aerox Wireless, Prime (Mini) Wireless and Rival 3 (the rivalcfg profiles mapped)');
+check(MODELS.every((m) => settingsFor(m).every((st) => st.writeOnly?.volatile === true && !problem({ ...drv, settings: settingsFor(m) }))), 'every setting is write-only and volatile, and passes the my-devices check');
 check(!MODELS.some((m) => [0x1890].includes(m.pid)), 'the Aerox 3 Gen 2 (OpenRGB only, no rivalcfg profile) is left out');
 check(String(VENDOR_APPS) === String(ARCTIS_APPS) && VENDOR_APPS.test('SteelSeriesGG.exe') && VENDOR_APPS.test('SteelSeriesEngine3.exe') && !VENDOR_APPS.test('steam.exe'), 'the GG names are the Arctis driver\'s');
 for (const [b, p, c] of [[0x00, 0, false], [0x01, 0, false], [0x15, 100, false], [0x7f, 100, false], [0x8d, 60, true]]) {
@@ -145,6 +155,49 @@ for (const m of MODELS) {
   check(plugged.bad.length === 0, `${m.name}: nothing undocumented or on the never list was sent (${plugged.bad.join(', ')})`);
 }
 check(/write-only/.test((await throws(() => drv.write('dpi', 800)))?.message || '') && WRITE_ONLY.every((w) => w.cite && w.bytes), 'a write-only setting is named with its source');
+
+// ---- the write-only settings (2 Nov 2026): rivalcfg's bytes exactly, | 0x40 through the receiver, never a save ----
+const RED3 = { top: '#ff0000', middle: '#00ff00', bottom: '#0000ff' };
+const WANT = {
+  aerox: [['dpi', 1600, ['2d 01 00 12']], ['dpi', 400, ['2d 01 00 04']], ['pollingRate', 500, ['2b 01']], ['pollingRate', 125, ['2b 03']], ['sleepTimer', 1, ['29 60 ea 00']], ['sleepTimer', 20, ['29 80 4f 12']],
+    ['dimTimer', 10, ['23 0f 01 00 00 10 27 00']], ['dimTimer', 1200, ['23 0f 01 00 00 80 4f 12']], ['colors', RED3, ['21 01 00 ff 00 00', '21 01 01 00 ff 00', '21 01 02 00 00 ff']]],
+  prime: [['dpi', 3200, ['2d 01 00 26']], ['pollingRate', 1000, ['2b 00']], ['sleepTimer', 0, ['29 00 00 00']], ['color', '#ff0000', ['21 01 00 ff 00 00']]],
+  rival3: [['dpi', 1600, ['0b 00 01 01 24']], ['dpi', 800, ['0b 00 01 01 12']], ['pollingRate', 500, ['04 00 02']], ['pollingRate', 1000, ['04 00 01']], ['lightEffect', 'breath', ['06 00 02']], ['lightEffect', 'steady', ['06 00 04']],
+    ['colors', { top: '#ff0000', middle: '#ff0000', bottom: '#ff0000', logo: '#123456' }, ['05 00 01 ff 00 00 64', '05 00 02 ff 00 00 64', '05 00 03 ff 00 00 64', '05 00 04 12 34 56 64']]],
+};
+for (const m of MODELS.filter((x) => x.wo)) {
+  plugged = new SimMouse(m);
+  await drv.connect();
+  const keys = drv.settings.map((x) => x.key).join();
+  check(keys === (m.wo === 'rival3' ? 'dpi,pollingRate,colors,lightEffect' : m.wo === 'prime' ? 'dpi,pollingRate,sleepTimer,dimTimer,color' : 'dpi,pollingRate,sleepTimer,dimTimer,colors'), `${m.name}: its settings (${keys})`);
+  for (const [k, v, bytes] of WANT[m.wo]) {
+    plugged.writes = [];
+    const r = await drv.write(k, v);
+    const got = plugged.writes.map((w) => hx(w.slice(0, bytes[0].split(' ').length)));
+    const want = bytes.map((b) => (m.link === 'dongle' ? hx([parseInt(b.slice(0, 2), 16) | 0x40]) + b.slice(2) : b));
+    check(JSON.stringify(r) === JSON.stringify(v) && JSON.stringify(got) === JSON.stringify(want) && plugged.writes.every((w) => w.length === 64 && w.slice(bytes[0].split(' ').length).every((x) => x === 0)), `${m.name} ${h4(m.pid)}: ${k} ${JSON.stringify(v)} sends ${want.join(' | ')} (${got.join(' | ')})`);
+  }
+  // each setting's test value is one it takes, and encodes
+  for (const st of drv.settings) check(encode(m, st.key, st.writeOnly.test).length > 0, `${m.name}: ${st.key} test value encodes`);
+  for (const [k, v] of [['dpi', 1234], ['pollingRate', 2000], ['sleepTimer', 21], ['dimTimer', 7], ['color', 'red'], ['colors', { top: '#ff0000' }], ['lightEffect', 'strobe'], ['save', 1]]) {
+    plugged.writes = [];
+    check(await throws(() => drv.write(k, v)) && plugged.writes.length === 0, `${m.name}: ${k} ${JSON.stringify(v)} refused, nothing sent`);
+  }
+  check(plugged.bad.length === 0, `${m.name}: no save, nothing undocumented (${plugged.bad.join(', ')})`);
+}
+// no SteelSeries save bytes can leave the driver, whatever is asked: send() refuses them on every model
+{
+  const m = MODELS.find((x) => x.wo === 'aerox' && x.link === 'cable');
+  plugged = new SimMouse(m); await drv.connect();
+  for (const p of SAVES) {
+    const e = await throws(() => drv.link.send(p));
+    check(e && plugged.sent.every((s) => !SAVES.some((q) => q.every((b, i) => s[i] === b))), `send() refuses ${hx(p)} (${e?.message})`);
+  }
+  const d = MODELS.find((x) => x.wo === 'aerox' && x.link === 'dongle');
+  plugged = new SimMouse(d); await drv.connect();
+  check(await throws(() => drv.link.send([0x11, 0x00])) && plugged.sent.length === 0, 'the receiver: 11 00 (sent as 51 00) refused, nothing sent');
+  check(SAVES.every((p) => !Object.values(WRITE_CMDS).flat().some((c) => c === p[0] || (c | 0x40) === p[0])), 'no write command starts like a save, on the cable or the receiver');
+}
 
 // ---- silence, nothing plugged, the self-check with no settings ----
 plugged = new SimMouse(MODELS[1], { silent: true });

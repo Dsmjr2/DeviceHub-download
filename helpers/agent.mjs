@@ -387,6 +387,9 @@ export async function op(name, b) {
     case 'recheck': { const r = await core.recheck(has(b.id)); return { ran: !!r?.ran, why: r?.why || null, waiting: !!r?.waiting, counts: r?.counts || null, device: snapshot(b.id) }; }
     // "Turn on settings" for a library driver with no real-device record (safety round 2): kept, then its self-check now
     case 'turn-on': { const r = await core.turnOn(has(b.id)); return { ran: !!r?.ran, on: !!r?.on, why: r?.why || null, waiting: !!r?.waiting, counts: r?.counts || null, device: snapshot(b.id) }; }
+    // a write-only setting's Try it and the person's Yes / No (helpers/my-devices.mjs "Write-only settings")
+    case 'try-write': { const r = await core.tryWrite(has(b.id), String(b.key || '')); return { ...(r || { ok: false }), device: snapshot(b.id) }; }
+    case 'try-answer': { const r = await core.tryAnswer(has(b.id), String(b.key || ''), b.yes === true); return { ...(r || { ok: false }), device: snapshot(b.id) }; }
     // the daily self-check (Settings > Health): its last result, or run it now
     case 'check-result': return daily.result();
     case 'check-run': return daily.run({ all: true });

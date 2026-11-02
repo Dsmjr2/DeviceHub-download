@@ -345,7 +345,8 @@ function libraryFacts(snap) {
   const mark = read('library.json');
   if (!mark) return null;
   const v = read('verified.json') || { keys: {} };
-  const readOnly = (snap.adapter.settings || []).filter((st) => st.type !== 'display').flatMap((st) => {
+  // a write-only setting (2 Nov 2026) has no self-check: it waits for Try it on its page, not for a check
+  const readOnly = (snap.adapter.settings || []).filter((st) => st.type !== 'display' && !st.writeOnly).flatMap((st) => {
     const k = v.keys?.[st.key];
     if (k && k.ok === false) return [{ label: st.label, why: k.why || 'it read back differently', failed: true }];
     if (k && k.waiting) return [{ label: st.label, why: k.why || 'waiting', waiting: true }];

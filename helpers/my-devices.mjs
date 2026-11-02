@@ -58,12 +58,23 @@
 // Since 1 Nov 2026 (docs/handoff/learned-extras.md): a device.mjs copy may have my-devices\<name>\learned.json beside it,
 // the settings Learn a device added (helpers/learned-extras.mjs withLearned): one adapter, one queue for both drivers,
 // learned keys in library.json learnedKeys so they wait for Turn on settings like any the wizard added.
+// Write-only settings (2 Nov 2026, Shawn's rule; helpers/write-only.mjs): a setting may declare
+//   writeOnly: { volatile: true, confirm: '<plain question, {value} = the value sent>', test: <a safe value>, restore?: <value | 'previous'> }
+// for a documented command the device cannot read back. Only one the device FORGETS on unplug (volatile: true), never
+// on a driver that sends a save after it (problem() refuses saveAfterWrite / save / then on it). Such a setting is
+// written without read-back, is never part of the self-check (not written, not counted), and stays read-only until
+// (a) Turn on settings included its key and (b) the person confirmed it by eye once on this model: Try it (tryWrite)
+// sends its test value, the page asks the confirm question, and Yes (tryAnswer) trusts it for driver + vid:pid + key
+// (data\trusted-writes.json); No sends back the last value DeviceHub wrote (else restore) and it stays locked. read()
+// gives the last value DeviceHub wrote (data\last-written.json), or null: "not set by DeviceHub yet". Only drivers from
+// the device library (guarded) may use it; a person's own driver's write-only settings are refused (lockWriteOnly).
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { withLearned, connectedPid } from './learned-extras.mjs';
+import { writeOnlyStore, trustKey, question, tryLine, showValue, TRY_MS, WRITE_ONLY_PARTS } from './write-only.mjs';
 
 const BUILT_IN = ['mouse', 'headset', 'keyboard'];
 const TYPES = ['slider', 'toggle', 'choice', 'display', 'color', 'remap'];
@@ -76,6 +87,8 @@ const plain = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 const reading = (v) => v === null || typeof v === 'string' || typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v));
 // is this setting ever written? (a display never is)
 export const writable = (s) => s?.type !== 'display';
+// is it part of the self-check? (written and read back: not a display, not a write-only setting)
+export const checkable = (s) => writable(s) && !(s && s.writeOnly !== undefined && s.writeOnly !== null && s.writeOnly !== false);
 export const LIBRARY_FILE = 'library.json';
 export const VERIFIED_FILE = 'verified.json';
 export const MAKER_CACHE_MS = 15000;  // a maker's-app answer is kept this long before a guarded write asks again
@@ -95,10 +108,32 @@ export function problem(a) {
     if (s.type === 'choice' && !(Array.isArray(s.options) && s.options.length)) return `setting ${s.key}: a choice needs options`;
     if (s.type === 'color' && s.zones !== undefined && !named(s.zones)) return `setting ${s.key}: zones must be a list of { value, label } with distinct values`;
     if (s.type === 'remap' && !(named(s.buttons) && named(s.targets))) return `setting ${s.key}: a remap needs buttons and targets, each a list of { value, label } with distinct values`;
+    const wo = writeOnlyProblem(a, s);
+    if (wo) return `setting ${s.key}: ${wo}`;
   }
   if (a.hid && !(/^[0-9A-F]{4}$/i.test(a.hid.vid || '') && /^[0-9A-F]{4}$/i.test(a.hid.pid || ''))) return 'hid needs vid and pid (4 hex digits each)';
   const care = batteryCareProblem(a);
   if (care) return care;
+  return null;
+}
+
+// a write-only setting's declaration (see the top): what is wrong with it, or null (also null for any other setting)
+export const isWriteOnly = (s) => !!s && s.writeOnly !== undefined && s.writeOnly !== null && s.writeOnly !== false;
+export function writeOnlyProblem(a, s) {
+  if (!isWriteOnly(s)) return null;
+  const w = s.writeOnly;
+  if (!plain(w)) return 'writeOnly must be { volatile: true, confirm, test, restore? }';
+  const other = Object.keys(w).find((k) => !WRITE_ONLY_PARTS.includes(k));
+  if (other) return `writeOnly has "${other}": only ${WRITE_ONLY_PARTS.join(', ')} are known`;
+  if (w.volatile !== true) return 'writeOnly needs volatile: true (only a setting the device forgets on unplug may be write-only)';
+  if (typeof w.confirm !== 'string' || !w.confirm.trim() || w.confirm.length > 160 || !/\?\s*$/.test(w.confirm)) return 'writeOnly needs confirm: a plain question the person answers by eye (ending in ?)';
+  if (!writable(s)) return 'a reading cannot be write-only';
+  if (s.selfCheck === true) return 'a write-only setting is never self-checked';
+  if (!('test' in w) || !fits(s, w.test)) return `writeOnly test ${JSON.stringify(w.test)} is not a value ${s.key} takes`;
+  if ('restore' in w && w.restore !== 'previous' && !fits(s, w.restore)) return `writeOnly restore ${JSON.stringify(w.restore)} is not a value ${s.key} takes`;
+  // a save after it would keep it on the device: then it is not volatile, so it is not allowed
+  const after = a?.saveAfterWrite;
+  if (after === true || (Array.isArray(after) && after.includes(s.key)) || s.save || s.then || s.write?.then || s.saveAfter) return 'its driver sends a save after it, so it is kept on the device and cannot be write-only';
   return null;
 }
 
@@ -353,6 +388,7 @@ export async function selfCheck(a, write, { folder, mark = {}, backup, log = () 
   for (const s of todo) {
     if (stopped) { keys[s.key] = { ok: false, why: `not checked: ${stopped}`, at }; continue; }
     if (!writable(s)) continue;   // a display is a reading: never written, so nothing to check
+    if (isWriteOnly(s)) continue;   // a write-only setting cannot be read back: never written here, never counted
     if (s.selfCheck === false) { keys[s.key] = { ok: false, skip: true, why: 'its driver says it is not to be self-checked', at }; continue; }
     // a setting this model does not have (29 Oct 2026: the Arctis driver knows sidetone, the Nova 3 reports none, and a
     // friend's copy filed "self-check failed"): not in the first read, so not on its page and nothing to check
@@ -382,7 +418,7 @@ export async function selfCheck(a, write, { folder, mark = {}, backup, log = () 
   if (folder && a.library?.newerDriver) result.saveError = 'a newer driver waits for a restart, so this check was not kept';
   else try { if (folder) saveVerified(folder, result); } catch (e) { result.saveError = e.message; }
   // a skipped setting (not to be checked, or one this model does not have) is neither a pass nor a failure
-  const checked = todo.filter(writable).filter((s) => !keys[s.key]?.skip);
+  const checked = todo.filter(checkable).filter((s) => !keys[s.key]?.skip);
   const ok = checked.filter((s) => keys[s.key]?.ok).map((s) => s.label);
   const waits = checked.filter((s) => keys[s.key]?.waiting);
   const no = checked.filter((s) => !keys[s.key]?.ok && !keys[s.key]?.waiting);
@@ -414,11 +450,11 @@ const retryable = (k) => !!k && !k.ok && !k.skip && (k.waiting || !moved(k));
 // a day per setting, or at once after a DeviceHub update.
 export function checkPlan(a, verified, info, { now = () => new Date(), version = null } = {}) {
   if (!verified?.checkedAt) return { why: 'never checked', only: null };
-  if (a.settings.some((s) => writable(s) && !verified.keys?.[s.key])) return { why: 'a setting was never checked', only: null };
+  if (a.settings.some((s) => checkable(s) && !verified.keys?.[s.key])) return { why: 'a setting was never checked', only: null };
   const fw = firmwareOf(info);
   if (fw && verified.firmware && fw !== verified.firmware) return { why: `its firmware changed (${verified.firmware} -> ${fw})`, only: null };
   if (fw && !verified.firmware) return { why: 'its firmware is known now', only: null };
-  const again = a.settings.filter((s) => writable(s) && retryable(verified.keys?.[s.key]));
+  const again = a.settings.filter((s) => checkable(s) && retryable(verified.keys?.[s.key]));
   if (!again.length) return null;
   const updated = !!version && verified.devicehub !== version;
   const t = now().getTime();
@@ -469,6 +505,27 @@ export async function recheck(id) {
   if (!a?.recheck) return { ran: false, why: 'this device has no driver from the device library to check' };
   return a.recheck();
 }
+// Try it / its answer for a write-only setting (the person's clicks; see the top). The caller holds the device's lock.
+export async function tryWrite(id, key) {
+  const a = guarded.get(id);
+  if (!a?.tryWrite) return { ok: false, why: 'this device has no driver from the device library' };
+  return a.tryWrite(key);
+}
+export async function tryAnswer(id, key, yes) {
+  const a = guarded.get(id);
+  if (!a?.tryAnswer) return { ok: false, why: 'this device has no driver from the device library' };
+  return a.tryAnswer(key, yes);
+}
+// a person's own driver (not guarded) may not use write-only settings: they need the guard's Turn on settings and Try it
+export function lockWriteOnly(a) {
+  const write = a.write;
+  a.write = async function (key, value, ...rest) {
+    const s = (Array.isArray(a.settings) ? a.settings : []).find((x) => x.key === key);
+    if (isWriteOnly(s)) throw new Error(`${s.label || key} is write-only: only drivers from the device library may change it (they ask you to check it by eye first)`);
+    return write.call(this, key, value, ...rest);
+  };
+  return a;
+}
 // "Turn on settings" (the person's click, rule 1 of safety round 2): kept in its library.json (settingsOn), then the
 // self-check runs now for the settings that need it. { ran, on, why?, counts? }. The caller holds the device's lock.
 export async function turnOn(id) {
@@ -512,8 +569,15 @@ export const connectedSettings = (name) => connectedNow.get(name) || null;
 // its settings on, for a driver with no real-device record), and each setting's hint says whether it is read-only and
 // why. Returns the adapter (the same object).
 export function guard(a, folder, mark, deps = null) {
-  const write = a.write, connect = a.connect;
+  const write = a.write, connect = a.connect, read = a.read;
   const hints = Object.fromEntries(a.settings.map((s) => [s.key, s.hint]));
+  // write-only settings (see the top): the trust and last-written records of this DeviceHub folder, and the model
+  // connected now (its USB product id: trust is per vid:pid)
+  const woStore = writeOnlyStore(path.resolve(folder, '..', '..'));
+  let pidNow = null;
+  const settingOf = (key) => (Array.isArray(a.settings) ? a.settings : []).find((x) => x.key === key);
+  const woKey = (key) => trustKey(a.id, vidOf(a), pidNow, key);
+  const pending = new Map();   // key -> { value, k, at }: a Try it waiting for its answer
   // an older Turn on settings record on a copy a library update already replaced (before 2 Nov 2026): the settings
   // the press turned on, from the record of the driver it was pressed for (pressedKeys), so a setting the update added
   // waits for a new press and is never self-checked before it
@@ -539,18 +603,38 @@ export function guard(a, folder, mark, deps = null) {
   const own = Object.getOwnPropertyDescriptor(a, 'settings');
   if (own?.get) {
     Object.defineProperty(a, 'settings', { configurable: true, enumerable: true,
-      get() { return own.get.call(this).map((s) => (marks[s.key] ? { ...s, hint: marks[s.key].hint, readOnly: !!(s.readOnly || marks[s.key].readOnly) } : s)); } });
+      get() { return own.get.call(this).map((s) => (marks[s.key] ? { ...s, hint: marks[s.key].hint, readOnly: !!(s.readOnly || marks[s.key].readOnly), ...(marks[s.key].writeOnlyState ? { writeOnlyState: marks[s.key].writeOnlyState, tryLine: marks[s.key].tryLine } : {}) } : s)); } });
   }
   const allowed = (key) => {
     if (ownDevice(a)) return { ok: false, why: "DeviceHub's own driver runs this device, so this library driver never writes to it" };
+    const st = settingOf(key);
+    if (isWriteOnly(st)) {
+      const bad = writeOnlyProblem(a, st);
+      if (bad) return { ok: false, why: `its write-only rule is not valid (${bad})` };
+      if (gated(key)) return { ok: false, why: `its settings are not turned on yet: press Turn on settings (${TURN_ON_LINE})`, gated: true };
+      const k = woKey(key);
+      if (!k) return { ok: false, why: 'DeviceHub does not know which model is connected, so it cannot tell whether you checked this setting on it', untrusted: true };
+      if (!woStore.trusted(k)) return { ok: false, why: `the ${String(a.kind || 'device').toLowerCase()} cannot report it back, so check it once by eye: press Try it`, untrusted: true };
+      return { ok: true, writeOnly: true };
+    }
     if (gated(key)) return { ok: false, why: `its settings are not turned on yet: press Turn on settings (${TURN_ON_LINE})`, gated: true };
     return writeAllowed(writeMark(), verified, key);
   };
   const relabel = () => {
     for (const s of a.settings) {
       // a display is a reading: always read-only, its hint as the driver wrote it
+      if (!(s.key in hints)) hints[s.key] = s.hint;   // a driver listing its settings per model: the hint as it wrote it
       if (!writable(s)) { s.readOnly = true; marks[s.key] = { hint: hints[s.key], readOnly: true }; continue; }
       const w = allowed(s.key);
+      if (isWriteOnly(s)) {
+        // gated: Turn on settings first; untrusted: Try it once; trusted: written, never read back
+        s.writeOnlyState = ownDevice(a) ? 'own' : w.ok ? 'trusted' : w.gated ? 'gated' : 'untrusted';
+        s.tryLine = tryLine(s, a.kind);
+        s.hint = w.ok ? hints[s.key] : [hints[s.key], `Read-only: ${w.gated ? 'press Turn on settings to change it' : w.why}.`].filter(Boolean).join(' ');
+        s.readOnly = !w.ok;
+        marks[s.key] = { hint: s.hint, readOnly: s.readOnly, writeOnlyState: s.writeOnlyState, tryLine: s.tryLine };
+        continue;
+      }
       const k = verified.keys?.[s.key];
       const why = ownDevice(a) ? "DeviceHub's own driver runs this device"
         : w.gated ? 'press Turn on settings to change it'
@@ -581,17 +665,33 @@ export function guard(a, folder, mark, deps = null) {
     // the setting's own name in every message (31 Oct 2026: "actuationLeft was not written")
     const name = st?.label || key;
     if (!w.ok) throw new Error(`${name} is read-only: ${w.why}`);
+    if (isWriteOnly(st) && !fits(st, value)) throw new Error(`${name}: ${JSON.stringify(value)} is not a value it takes`);
     // the maker's app before EVERY guarded write (final audit, 22 Oct 2026): the driver's own tasklist may answer "no
     // app" when it failed, so DeviceHub's own list is asked too (makerAppOf). Only "none open" is kept (MAKER_CACHE_MS); an
     // open app or "could not check" is asked again on the next write.
     const m = await makerNow();
     if (m.unknown) throw Object.assign(new Error(`${name} was not written: DeviceHub could not check whether the maker's app is open (${m.unknown}); it checks again on the next change`), { waiting: true });
     if (m.app) throw Object.assign(new Error(`${name} was not written: ${m.app} (the maker's app) is running: close it first`), { waiting: true });
-    return write.call(this, key, value);
+    if (!isWriteOnly(st)) return write.call(this, key, value);
+    // write-only: sent, never read back; what was sent is remembered (read() gives it)
+    await write.call(this, key, value);
+    try { woStore.remember(woKey(key), value); } catch (e) { console.log(`[my-devices] ${a.id}: ${name} sent, but not remembered: ${e.message}`); }
+    return value;
+  };
+  // read(): a write-only setting's value is the last one DeviceHub wrote on this model, or null (not set by DeviceHub yet)
+  a.read = async function (...args) {
+    const v = await read.apply(this, args);
+    const list = Array.isArray(a.settings) ? a.settings.filter(isWriteOnly) : [];
+    if (!list.length || !v || typeof v !== 'object') return v;
+    const out = { ...v };
+    // only what DeviceHub wrote since this connection began: the device forgets a write-only setting when it is unplugged,
+    // so an older value would be shown as set and a profile would skip it as "already matching" (a review, 1 Nov 2026)
+    for (const s of list) { const k = woKey(s.key); const last = k ? woStore.last(k) : null; const fresh = last && connectedAt && Date.parse(last.at) >= connectedAt; out[s.key] = fresh && fits(s, last.value) ? last.value : null; }
+    return out;
   };
   // one self-check run: only = the keys to check (null = all); the result laid over what was known. Settings still
   // waiting for Turn on settings are never in it.
-  const openKeys = () => a.settings.filter((s) => writable(s) && !gated(s.key)).map((s) => s.key);
+  const openKeys = () => a.settings.filter((s) => checkable(s) && !gated(s.key)).map((s) => s.key);
   const runCheck = async (only) => {
     const d = await depsNow();
     const version = d.version !== undefined ? d.version : versionAt(folder);
@@ -599,7 +699,7 @@ export function guard(a, folder, mark, deps = null) {
     const open = openKeys();
     const keys = (only || open).filter((k) => open.includes(k));
     if (!keys.length) return { ran: false, why: 'its settings are not turned on yet: press Turn on settings first' };
-    const all = keys.length === a.settings.filter(writable).length;
+    const all = keys.length === a.settings.filter(checkable).length;
     const r = await selfCheck(a, write, { folder, mark, ...rest, version, only: only || !all ? keys : null, previous: verified, log: (t, kind) => say?.(t, kind, a.id) });
     makerSeen = null;   // the check just asked; the next write asks again
     try { selfChecked?.(a, r); } catch {}
@@ -617,14 +717,20 @@ export function guard(a, folder, mark, deps = null) {
     return checkPlan({ settings: a.settings.filter((s) => open.includes(s.key)) }, verified, info, { now: d.now, version: d.version !== undefined ? d.version : versionAt(folder) });
   };
   let saidGated = false;
+  let connectedAt = 0;   // when this connection began: a write-only value remembered before it is not the device's now
   a.connect = async function (...args) {
     const ok = await connect.apply(this, args);
+    if (ok) connectedAt = Date.now();
     // asleep at connect: nothing to check against yet (a later connect where the device answers runs it)
-    if (!ok || ownDevice(a) || a.asleep) return ok;
+    if (!ok) return ok;
+    // the model connected now, for write-only trust (per vid:pid)
+    try { pidNow = (await connectedPid(a, null))?.toLowerCase() || null; } catch { pidNow = null; }
+    if (ownDevice(a) || a.asleep) { relabel(); return ok; }
     try {
       relabel();   // a driver whose settings depend on the model connected (Corsair) lists them only now
       let info = {};
       try { info = (await inTime(a.info(), 'reading its info')) || {}; } catch {}
+      if (!pidNow) { try { pidNow = (await connectedPid(a, async () => info))?.toLowerCase() || null; relabel(); } catch {} }
       await noteConnected(a, folder, info);
       const plan = planNow(info);
       if (plan) await runCheck(plan.only);
@@ -662,12 +768,68 @@ export function guard(a, folder, mark, deps = null) {
     let info = {};
     try { info = (await inTime(a.info(), 'reading its info')) || {}; } catch {}
     const plan = planNow(info);
+    if (!plan && !openKeys().length && a.settings.some(isWriteOnly)) return { ran: false, on: true, why: "its settings are write-only: press Try it on each one to check it by eye" };
     if (!plan) return { ran: false, on: true, why: 'nothing needed checking: the settings already passed their check' };
     return { on: true, ...(await runCheck(plan.only)) };
   };
   // for profiles (docs/handoff/profiles-added-devices.md): the same answer a write gets, asked before writing, and the
   // maker's-app check with the driver's own deps. Neither writes anything.
   a.mayWrite = (key) => allowed(key);
+  // Try it (a write-only setting, the person's click): its test value sent once, nothing read back; the page then asks
+  // the confirm question. { ok, sent, question } or { ok: false, why }. The caller holds the device's lock and took the backup.
+  const kindOf = () => String(a.kind || 'device').toLowerCase();
+  a.tryWrite = async function (key) {
+    const s = settingOf(key);
+    const name = s?.label || key;
+    if (!isWriteOnly(s)) return { ok: false, why: `${name} is not a write-only setting` };
+    if (ownDevice(a)) return { ok: false, why: "DeviceHub's own driver runs this device, so this library driver never writes to it" };
+    const bad = writeOnlyProblem(a, s);
+    if (bad) return { ok: false, why: `its write-only rule is not valid (${bad})` };
+    if (gated(key)) return { ok: false, gated: true, why: 'press Turn on settings first' };
+    const k = woKey(key);
+    if (!k) return { ok: false, why: 'DeviceHub does not know which model is connected' };
+    if (woStore.trusted(k)) return { ok: false, trusted: true, why: `${name} is already checked on this ${kindOf()}` };
+    const m = await makerNow();
+    if (m.unknown) return { ok: false, waiting: true, why: `DeviceHub could not check whether the maker's app is open (${m.unknown}), so nothing was sent` };
+    if (m.app) return { ok: false, waiting: true, why: `${m.app} (the maker's app) is running: close it first` };
+    const value = s.writeOnly.test;
+    const d = await depsNow();
+    try { await write.call(a, key, value); } catch (e) { d.log?.(`${a.title}: ${name} Try it not sent: ${e.message}`, 'bad', a.id); return { ok: false, why: `it was not sent: ${e.message}` }; }
+    pending.set(key, { value, k, at: Date.now() });
+    d.log?.(`${a.title}: ${name} Try it: sent ${showValue(s, value)} once, to check by eye`, 'info', a.id);
+    return { ok: true, key, sent: value, question: question(s, value) };
+  };
+  // the answer to that question: yes = trusted for this driver + model + key; no = the value before sent back (the last
+  // one DeviceHub wrote, else the driver's restore value), still locked. Logged either way.
+  a.tryAnswer = async function (key, yes) {
+    const s = settingOf(key);
+    const name = s?.label || key;
+    if (!isWriteOnly(s)) return { ok: false, why: `${name} is not a write-only setting` };
+    const p = pending.get(key);
+    if (!p || Date.now() - p.at > TRY_MS || p.k !== woKey(key)) return { ok: false, why: 'press Try it first' };
+    pending.delete(key);
+    const d = await depsNow();
+    const now = deps?.now ? deps.now() : new Date();
+    if (yes === true) {
+      try { woStore.trust(p.k, { at: now.toISOString(), value: p.value }); woStore.remember(p.k, p.value, now); } catch (e) { return { ok: false, why: `it could not be saved (${e.message}), so it stays locked` }; }
+      relabel();
+      d.log?.(`${a.title}: ${name} checked by eye (you saw ${showValue(s, p.value)}); DeviceHub changes it on this ${kindOf()} from now on`, 'good', a.id);
+      return { ok: true, trusted: true, line: `${name} is on. DeviceHub changes it from now on.` };
+    }
+    const last = woStore.last(p.k);
+    const r = s.writeOnly.restore;
+    const back = last && fits(s, last.value) ? last.value : r !== undefined && r !== 'previous' ? r : undefined;
+    let sent = false, why = null;
+    if (back !== undefined) {
+      try { await write.call(a, key, back); sent = true; } catch (e) { why = e.message; }   // not remembered: not checked (a review)
+    }
+    relabel();
+    const line = sent ? `${name} stays locked. DeviceHub sent ${showValue(s, back)} back.`
+      : back === undefined ? `${name} stays locked. DeviceHub has no earlier value to send back: unplug the ${kindOf()} and plug it in to undo it.`
+      : `${name} stays locked. Sending ${showValue(s, back)} back failed (${why}): unplug the ${kindOf()} and plug it in to undo it.`;
+    d.log?.(`${a.title}: ${name} Try it: you did not see it; ${sent ? `sent ${showValue(s, back)} back` : 'nothing sent back'}; it stays read-only`, sent ? 'info' : 'bad', a.id);
+    return { ok: true, trusted: false, putBack: sent ? back : null, line };
+  };
   a.makerAppNow = async () => makerAppOf(a, (await depsNow()).makerApp);
   guarded.set(a.id, a);
   return a;
@@ -783,6 +945,7 @@ async function loadOne(dir, name, { register, addSpec, taken, selfCheck: deps })
     // logged once and the device runs with its code driver alone
     const extra = coded && mark ? withLearned(a, folder) : null;
     if (mark) { guard(a, folder, mark, deps); watchDriverFile(a, folder); }
+    else lockWriteOnly(a);   // write-only settings need the guard (Turn on settings, Try it)
     stepAside(a);
     // a brand's model the entry does not list, matched by its protocol (device-library family): its product ids are
     // opened too, and the driver tries them (a.familyPids) after its own

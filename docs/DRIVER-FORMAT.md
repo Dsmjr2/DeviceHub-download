@@ -253,7 +253,9 @@ Every refusal says what is wrong in a sentence. A file is refused when:
 7. **A numeric write has no range**: a slider without `min` and `max` (for every model it shows on), or a value the
    page allows that does not encode into its placeholder.
 8. **A setting looks like a firmware, reset, flash or pairing control** by its key or label.
-9. **batteryCare is wrong**: a rule other than `lowBattery` / `charging`, a part other than `key` and `value`, a key
+9. **A setting says writeOnly**: write-only settings (sent, never read back, checked once by eye: helpers/my-devices.mjs
+   "Write-only settings") need a device.mjs; every driver.json write is read back.
+10. **batteryCare is wrong**: a rule other than `lowBattery` / `charging`, a part other than `key` and `value`, a key
    that is not one of the file's settings or is a reading, a value that setting does not take, or no `battery`.
 
 ## What it cannot express (then a device.mjs is still the way)

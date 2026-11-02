@@ -276,6 +276,31 @@ export function turnOn(id) {
   });
 }
 
+// Try it for a write-only setting (2 Nov 2026; helpers/my-devices.mjs, "Write-only settings"): the backup first, as
+// before any write, then its test value once under the device's lock, then a read. tryAnswer: the person's Yes / No.
+export function tryWrite(id, key) {
+  if (remote) return rcall('/api/agent/try-write', { id, key });
+  const a = devices[id]?.adapter;
+  if (!a?.tryWrite) return Promise.resolve({ ok: false, why: 'this device has no driver from the device library' });
+  return withDevice(id, async () => {
+    if (devices[id].status !== 'connected') return { ok: false, why: `${a.title} is not connected` };
+    try { await backupUnlocked(id, 'before Try it'); } catch (e) { return { ok: false, why: `the backup failed (${e.message}), so nothing was sent` }; }
+    const r = await a.tryWrite(key);
+    await refreshUnlocked(id, { full: true });
+    return r;
+  });
+}
+export function tryAnswer(id, key, yes) {
+  if (remote) return rcall('/api/agent/try-answer', { id, key, yes });
+  const a = devices[id]?.adapter;
+  if (!a?.tryAnswer) return Promise.resolve({ ok: false, why: 'this device has no driver from the device library' });
+  return withDevice(id, async () => {
+    const r = await a.tryAnswer(key, yes === true);
+    if (devices[id].status === 'connected') await refreshUnlocked(id, { full: true });
+    return r;
+  });
+}
+
 // The full raw dump (the keyboard's whole keymap and macros: ~2 s) is reused for the next backup while nothing
 // could have changed it: written keys the adapter calls raw-unaffected (lighting) leave it valid; any other write,
 // a reconnect or 10 minutes drop it, and the next backup dumps the device again.

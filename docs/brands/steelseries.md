@@ -306,6 +306,13 @@ Rival / Rival 300 and editions, Rival 500, Rival 700 / 710 (same bytes and repor
 `AA 01` on the Rival 650 Wireless (cable 172B, receiver 1726); 28 more named only (nothing sent: their only read is
 `90 00`, which DeviceHub never sends, or they have none). Their saves (`09 00`, `09`, `59 00`) are on the never list too.
 
+2 Nov 2026 (Shawn's rule for write-only settings, helpers/my-devices.mjs): the LIVE section 3 writes are offered as
+write-only settings, each locked until Turn on settings and one check by eye per model (Try it): DPI (one preset), polling
+rate, sleep timer, dim timer and zone colours on the Aerox 3 / 5 / 9 Wireless and editions and the Prime / Prime Mini
+Wireless; DPI, polling rate, four zone colours and the light effect on the Rival 3. The sleep / dim byte order is
+little-endian (rivalcfg handlers/range.py, helpers.py uint_to_little_endian_bytearray @ 779ea52). Never sent: any save,
+default lighting, buttons, reactive colour. Bytes and lines: device-library/steelseries-mouse/device.mjs "Write-only settings".
+
 ## Sources
 
 - HeadsetControl, shared protocol: [lib/devices/protocols/steelseries_protocol.hpp](https://github.com/Sapd/HeadsetControl/blob/master/lib/devices/protocols/steelseries_protocol.hpp)

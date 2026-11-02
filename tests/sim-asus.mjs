@@ -105,11 +105,14 @@ const roundTrip = async (key, to, d, m) => {
   ok(b.percent === 77 && b.charging === false, `battery ${b.percent}%, charging ${b.charging}`);
   ok(d.sent.slice(0, 3).map((s) => s.hex).join('|') === [pad([0x12, 0x07]), pad([0x12, 0x04, 0x00]), pad([0x12, 0x06])].join('|'), 'reads are 12 07, 12 04 00, 12 06 padded to 64');
 
-  d.sent.length = 0;
-  ok((await mouse.write('dpi2', 2400)) === 2400 && m.dpi[1] === 2400, 'DPI stage 2 -> 2400 lands');
-  ok(sets(d)[0].hex === pad([0x51, 0x31, 0x01, 0x00, 0x2f, 0x00, 0x00, 0xff, 0x00]), `DPI write bytes: 51 31 01 00 2f 00 + the stage's color read back (${sets(d)[0].hex.slice(0, 26)})`);
-  ok(d.sent.at(-1).hex === pad([0x50, 0x03]), 'saved after the read-back');
-  await mouse.write('dpi2', 1600);
+  // 2 Nov 2026: G-Helper gives this model separate X/Y DPI (HasXYDPI, read 12 04 02 at 5+4i): DPI is a reading, never written
+  {
+    const dpis = mouse.settings.filter((s) => /^dpi\d$/.test(s.key));
+    ok(dpis.length === 4 && dpis.every((s) => s.type === 'display' && s.readOnly === 'DPI on this model has separate X and Y values DeviceHub does not handle yet'), `Harpe Ace: DPI is a reading with its reason (${dpis.map((s) => s.type).join(',')})`);
+    d.sent.length = 0;
+    for (const [k, v] of [['dpi2', 2400], ['dpi1', 800], ['dpi4', 400]]) await refused(k, v, `a Harpe Ace DPI write (${k} ${v})`, d);
+    ok(!d.sent.some((s) => /^51 31 0[0-3] 00/.test(s.hex)) && m.dpi[1] === 1600, 'no DPI packet (51 31 00-03) reached the Harpe Ace');
+  }
   d.sent.length = 0;
   await roundTrip('pollingRate', 500, d, m);
   ok(sets(d)[0].hex === pad([0x51, 0x31, 0x04, 0x00, 0x02]), 'polling 500 Hz goes out as 51 31 04 00 02');
@@ -201,10 +204,11 @@ const roundTrip = async (key, to, d, m) => {
     const { selfCheck } = await import('../helpers/my-devices.mjs');
     const before = JSON.stringify(m); d.sent.length = 0;
     const r = await selfCheck(mouse, mouse.write, { backup: async () => true, makerApp: async () => null });
-    const want = ['dpi1', 'dpi2', 'dpi3', 'pollingRate', 'angleSnap', 'angleTune', 'liftOff', 'sleep', 'lowBattery', 'stageCount', 'onboardProfile'];
+    const want = ['pollingRate', 'angleSnap', 'angleTune', 'liftOff', 'sleep', 'lowBattery', 'stageCount', 'onboardProfile'];
     ok(want.every((k) => r.keys?.[k]?.ok), `self-check passes ${want.join(', ')} (${JSON.stringify(r.keys)})`);
     ok(JSON.stringify({ ...m, saves: 0 }) === JSON.stringify({ ...JSON.parse(before), saves: 0 }), 'the self-check left every raw value as it was');
-    for (const hexStart of ['51 31 00 00', '51 31 04 00 03', '51 31 06 00 00', '51 31 0b 00 00 00', '51 35 ff 00 ff 00', '51 37 00 00 03 00 14', '51 31 0a 00 03', '50 02 00', '51 31 02 00 3f 00 00 00 ff']) ok(d.sent.some((x) => x.hex.startsWith(hexStart)), `the self-check really sent ${hexStart}`);
+    for (const hexStart of ['51 31 04 00 03', '51 31 06 00 00', '51 31 0b 00 00 00', '51 35 ff 00 ff 00', '51 37 00 00 03 00 14', '51 31 0a 00 03', '50 02 00']) ok(d.sent.some((x) => x.hex.startsWith(hexStart)), `the self-check really sent ${hexStart}`);
+    ok(!d.sent.some((x) => /^51 31 0[0-3] 00/.test(x.hex)) && !['dpi1', 'dpi2', 'dpi3'].some((k) => r.keys?.[k]), 'the self-check sent no DPI packet to the Harpe Ace (DPI is a reading there)');
     // an angle-snapping byte that is neither 0 nor 1 is not reported, so it is never written back as one
     m.snap = 2; mouse.snap = null; d.sent.length = 0;
     ok(!('angleSnap' in (await mouse.read())), 'raw angle snapping 2 is not reported as on or off');
@@ -223,8 +227,9 @@ const roundTrip = async (key, to, d, m) => {
   const info = await mouse.info();
   ok(info.Model === 'ROG Harpe Ace Aim Lab Edition' && /Omni/.test(info.Connection) && /1A94/.test(info['Product id']) && /off/.test(info['8K booster']), `found behind Omni: ${info.Model}, ${info['Product id']}, booster ${info['8K booster']}`);
   d.sent.length = 0;
-  await roundTrip('dpi1', 1200, d, m);
-  ok(d.sent.every((s) => s.id === 3), 'every mouse request went out on report 03');
+  await refused('dpi1', 1200, 'a Harpe Ace DPI write through Omni', d);
+  await roundTrip('angleSnap', true, d, m);
+  ok(d.sent.every((s) => s.id === 3) && !d.sent.some((s) => /^51 31 0[0-3] 00/.test(s.hex)), 'every mouse request went out on report 03; no DPI packet');
   await roundTrip('pollingRate', 250, d, m);
   await refused('pollingRate', 8000, '8000 Hz through Omni (booster not documented)', d);
 
@@ -247,6 +252,9 @@ const roundTrip = async (key, to, d, m) => {
   ok(info.Model === 'ROG Keris Wireless AimPoint' && /^on/.test(info['8K booster']) && /read only/.test(info['Polling code']), `booster on: ${info['8K booster']}; ${info['Polling code']}`);
   ok(!mouse.settings.some((s) => s.key === 'pollingRate') && !('pollingRate' in (await mouse.read())), 'polling is not a setting while the booster is on');
   await refused('pollingRate', 1000, 'polling while the booster is on', d);
+  ok(mouse.settings.filter((s) => /^dpi\d$/.test(s.key)).every((s) => s.type === 'display') && (await mouse.read()).dpi1 === 800, 'Keris AimPoint: DPI is a reading (separate X/Y DPI in G-Helper)');
+  await refused('dpi1', 1600, 'a Keris AimPoint DPI write', d);
+  ok(!d.sent.some((s) => /^51 31 0[0-3] 00/.test(s.hex)), 'Keris AimPoint: no DPI packet');
   ok(!d.bad.length, `booster: only sheet commands (${d.bad.join('; ')})`);
 }
 
@@ -297,6 +305,13 @@ const roundTrip = async (key, to, d, m) => {
   m.noProfileRead = false;
   await refused('dpi1', 20000, 'DPI above the Gladius III\'s 19000', d);
   await roundTrip('dpi1', 19000, d, m);
+  // the Gladius III has one DPI per stage (G-Helper GladiusIIIWireless.cs: no HasXYDPI): DPI stays a setting
+  ok(mouse.settings.filter((s) => /^dpi\d$/.test(s.key)).every((s) => s.type === 'slider' && s.max === 19000), 'Gladius III: DPI is still a setting');
+  d.sent.length = 0;
+  ok((await mouse.write('dpi2', 2400)) === 2400 && m.dpi[1] === 2400, 'Gladius III: DPI stage 2 -> 2400 lands');
+  ok(sets(d)[0].hex === pad([0x51, 0x31, 0x01, 0x00, 0x2f, 0x00, 0x00, 0xff, 0x00]), `DPI write bytes: 51 31 01 00 2f 00 + the stage's color read back (${sets(d)[0].hex.slice(0, 26)})`);
+  ok(d.sent.at(-1).hex === pad([0x50, 0x03]), 'saved after the read-back');
+  await mouse.write('dpi2', 1600);
   ok(!d.bad.length, 'Gladius III: only sheet commands');
 }
 
@@ -308,7 +323,21 @@ const roundTrip = async (key, to, d, m) => {
   const keys = mouse.settings.map((s) => s.key);
   ok(keys.includes('lowBattery') && !keys.includes('angleTune') && !keys.some((k) => /Color$/.test(k)), `Gladius III Wireless: low battery only (${keys})`);
   ok((await mouse.read()).lowBattery === 20, 'and it reads');
+  ok(mouse.settings.filter((s) => /^dpi\d$/.test(s.key)).every((s) => s.type === 'slider'), 'Gladius III Wireless: DPI is still a setting');
+  await roundTrip('dpi3', 4000, d, m);
   ok(!d.bad.length, 'Gladius III Wireless: only sheet commands');
+}
+
+// ---- 6b2. Gladius III Wireless AimPoint (separate X/Y DPI in G-Helper GladiusIIIAimpoint.cs): DPI is a reading ----
+for (const pid of [0x1a70, 0x1a72]) {
+  const m = simMouse(), d = simDevice({ pid, m });
+  ok(await plug(d), `Gladius III AimPoint ${pid.toString(16)} connects`);
+  await mouse.info();
+  const dpis = mouse.settings.filter((s) => /^dpi\d$/.test(s.key));
+  ok(dpis.length === 4 && dpis.every((s) => s.type === 'display' && /separate X and Y/.test(s.readOnly)) && (await mouse.read()).dpi2 === 1600, `Gladius III AimPoint ${pid.toString(16)}: DPI is a reading with its reason`);
+  for (const k of ['dpi1', 'dpi2', 'dpi3', 'dpi4']) await refused(k, 1000, `a Gladius III AimPoint DPI write (${k})`, d);
+  ok(!d.sent.some((s) => /^51 31 0[0-3] 00/.test(s.hex)), `Gladius III AimPoint ${pid.toString(16)}: no DPI packet`);
+  ok(!d.bad.length, 'Gladius III AimPoint: only sheet commands');
 }
 
 // ---- 6c. an angle read outside the model's range (Keris AimPoint: -20..20 reads 25): read only, never written ----
@@ -340,7 +369,7 @@ const roundTrip = async (key, to, d, m) => {
   let e = null; try { await g.write('angleTune', 5); } catch (x) { e = x; }
   ok(/Turn on settings/.test(e?.message || '') && !d.sent.some((s) => /^(51|50)/.test(s.hex)), `guarded: a write before Turn on settings is refused (${e?.message})`);
   const on = await g.turnOn();
-  ok(on.on && ['angleTune', 'lowBattery', 'sleep', 'dpi1'].every((k) => on.keys?.[k]?.ok === true) && backups.length === 1, `after Turn on settings each setting passes its check (${JSON.stringify(on.keys || on)})`);
+  ok(on.on && ['angleTune', 'lowBattery', 'sleep', 'pollingRate'].every((k) => on.keys?.[k]?.ok === true) && !on.keys?.dpi1 && !d.sent.some((s) => /^51 31 0[0-3] 00/.test(s.hex)) && backups.length === 1,`after Turn on settings each setting passes its check (${JSON.stringify(on.keys || on)})`);
   ok(JSON.stringify({ ...m, saves: 0 }) === start, 'the mouse ends as it was');
   ok(!d.bad.length, `guarded: only sheet commands (${d.bad.join('; ')})`);
   fs.rmSync(folder, { recursive: true, force: true });

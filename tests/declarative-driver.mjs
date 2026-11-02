@@ -100,7 +100,8 @@ async function script(drv, devices) {
 
   // 1. Harpe Ace on its cable: every setting, the refusals, a write that does not stick, the vendor app
   await plug(cable.d); await look('cable');
-  await roundTrip('dpi2', 2400); await roundTrip('pollingRate', 500); await roundTrip('angleSnap', true);
+  // 2 Nov 2026: DPI is a reading on the Harpe Ace, Keris AimPoint and Gladius III AimPoint (G-Helper HasXYDPI): refused, nothing sent
+  await step('refuse Harpe Ace DPI', () => drv.write('dpi2', 2400)); await roundTrip('pollingRate', 500); await roundTrip('angleSnap', true);
   await roundTrip('liftOff', 'high'); await roundTrip('sleep', 10);
   // 1 Nov 2026 (G-Helper): angle tuning, the low-battery warning, a DPI stage color; then the refusals and a mismatch for each
   await roundTrip('angleTune', -30); await roundTrip('angleTune', 12); await roundTrip('lowBattery', 40); await step('refuse a stage color', () => drv.write('stage2Color', '#123456'));
@@ -115,7 +116,7 @@ async function script(drv, devices) {
 
   // 2. Harpe Ace behind the Omni receiver, a keyboard paired too; then asleep
   await plug(omni.d); await look('omni');
-  await roundTrip('dpi1', 1200); await roundTrip('pollingRate', 250);
+  await step('refuse Harpe Ace DPI through Omni', () => drv.write('dpi1', 1200)); await roundTrip('pollingRate', 250);
   await step('refuse 8000 Hz through Omni', () => drv.write('pollingRate', 8000));
   await roundTrip('angleTune', -20);
   ms[1].asleep = true;
@@ -129,6 +130,7 @@ async function script(drv, devices) {
   // 3. Keris AimPoint through Omni with the booster on: polling is not a setting
   await plug(keris.d); await look('booster');
   await step('refuse polling with booster', () => drv.write('pollingRate', 1000));
+  await step('refuse Keris AimPoint DPI', () => drv.write('dpi3', 3200));
   await step('refuse an angle read outside its range', () => drv.write('angleTune', 20));
 
   // 4. Omni with nothing this driver knows paired
@@ -146,7 +148,7 @@ async function script(drv, devices) {
   await plug(gladius.d); await look('gladius');
   await step('refuse 20000 DPI', () => drv.write('dpi1', 20000));
   await step('refuse a Gladius III angle', () => drv.write('angleTune', 0)); await step('refuse a Gladius III stage color', () => drv.write('stage1Color', '#000000')); await step('refuse a Gladius III low-battery warning', () => drv.write('lowBattery', 10));
-  await roundTrip('dpi1', 19000);
+  await roundTrip('dpi1', 19000); await roundTrip('dpi2', 2400);
   ms[6].asleep = true; await step('cable refuses everything', () => drv.info()); ms[6].asleep = false;
 
   // 7. a stage above the model's maximum: DPI becomes read only (device.mjs: dpiLocked)
@@ -189,7 +191,10 @@ const world = () => {
   ok(JSON.stringify(get('cable read')[2]) === JSON.stringify({ dpi1: 800, dpi2: 1600, dpi3: 3200, pollingRate: 1000, angleSnap: false, angleTune: 0, liftOff: 'low', sleep: 5, lowBattery: 20 }), `cable read: ${JSON.stringify(get('cable read')[2])}`);
   ok(B[0].d.sent.includes(`0: ${h([0x51, 0x31, 0x0b, 0x00, 0xe2, 0xff, ...new Array(58).fill(0)])}`) && B[0].d.sent.includes(`0: ${h([0x51, 0x37, 0x00, 0x00, 0x03, 0x00, 40, ...new Array(57).fill(0)])}`) && get('refuse a stage color')[1] === 'refused' && !B[0].d.sent.some((x) => x.startsWith(`0: ${h([0x51, 0x31, 0x01, 0x00, 0x1f, 0x00, 0x12, 0x34, 0x56])}`)), 'angle -30 goes out as 51 31 0b 00 e2 ff, low battery 40 as 51 37 00 00 <sleep 03> 00 28; a stage color is refused and nothing is sent (not offered, 2 Nov 2026)');
   ok(['angle', 'low'].every((k) => get(`${k} write that does not stick`)[1] === 'refused') && !get('booster settings')[2].some((s) => s.key === 'angleTune') && get('gladius settings')[2].every((s) => !/^(angleTune|lowBattery|stage\dColor)$/.test(s.key)), 'a mismatch is refused; an angle outside the model range is read only; the Gladius III has none of the three');
-  ok(get('write dpi2 2400')[1] === 'ok' && B[0].d.sent.includes(`0: ${h([0x51, 0x31, 0x01, 0x00, 0x2f, 0x00, 0x00, 0xff, 0x00, ...new Array(55).fill(0)])}`), 'DPI 2400 goes out as 51 31 01 00 2f 00 + the stage color read back');
+  ok(get('write dpi2 2400')[1] === 'ok' && B[6].d.sent.includes(`0: ${h([0x51, 0x31, 0x01, 0x00, 0x2f, 0x00, 0x00, 0xff, 0x00, ...new Array(55).fill(0)])}`), 'Gladius III: DPI 2400 goes out as 51 31 01 00 2f 00 + the stage color read back');
+  const dpiSent = (i) => B[i].d.sent.some((x) => /^\d+: 51 31 0[0-3] 00/.test(x)) || A[i].d.sent.some((x) => /^\d+: 51 31 0[0-3] 00/.test(x));
+  ok(['refuse Harpe Ace DPI', 'refuse Harpe Ace DPI through Omni', 'refuse Keris AimPoint DPI'].every((k) => get(k)[1] === 'refused') && ![0, 1, 2].some(dpiSent) && dpiSent(6)
+    && ['cable', 'omni', 'booster'].every((k) => get(`${k} settings`)[2].filter((s) => /^dpi/.test(s.key)).every((s) => s.type === 'display')), 'X/Y DPI models: DPI is a reading, a DPI write is refused and no DPI packet reaches them');
   ok(get('write that does not stick')[1] === 'refused' && get('write while Armoury Crate runs')[1] === 'refused', 'a write that does not stick and a write beside Armoury Crate are refused');
   ok(get('connect 1ace') && rb.filter((x) => x[0] === 'connect 1ace')[2][1] === 'refused', 'an Omni receiver with an unknown mouse paired is refused');
   ok(!page(rb.find((x) => x[0] === 'locked settings')[2]).some((s) => /^dpi/.test(s.key)), 'a DPI stage above the maximum makes DPI read only');
@@ -228,7 +233,7 @@ refuses('Wooting reset to bootloader (nibble wildcard)', mini({ vid: '31E3', mes
 refuses('a Logitech file', mini({ vid: '046D' }), /cannot be a driver\.json/);
 refuses('a write with no read of the same setting', mini({ settings: [{ key: 'mode', label: 'Mode', type: 'toggle', write: { message: 'set' } }] }), /every setting is read before it is written/);
 refuses('a setting read only on demand', (() => { const j = asus(); set(j, 'angleSnap').field = 'dpi1Color'; return j; })(), /read only on demand/);
-refuses('a numeric write without a range', (() => { const j = asus(); delete set(j, 'dpi1').max; return j; })(), /slider without a range/);
+refuses('a numeric write without a range', (() => { const j = asus(); delete j.settings.find((s) => s.key === 'dpi1' && s.type === 'slider').max; return j; })(), /slider without a range/);
 refuses('a value too big for its byte', (() => { const j = asus(); j.messages.setDpi1.bytes = '51 31 00 00 {value} {dpi1Color?}'; return j; })(), /cannot be sent .*does not fit in 1 byte/);
 refuses('a firmware / reset control', mini({ settings: [{ key: 'brightness', label: 'Factory reset', type: 'slider', min: 0, max: 100, write: { message: 'set' } }] }), /firmware, reset, flash or pairing/);
 refuses('an unknown checksum', mini({ transport: { report: 'output', len: 32, reportId: 0, checksum: { type: 'crc32', from: 0, to: 10, at: 11 } } }), /checksum\.type must be one of/);

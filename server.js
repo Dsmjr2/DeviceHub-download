@@ -934,6 +934,17 @@ async function api(req, res, url) {
   if (url.pathname === '/api/library' && req.method === 'GET') {
     try { const lib = await import('./helpers/device-library.mjs'); return send(res, 200, { matches: lib.match((await pcMap.get(url.searchParams.has('fresh'))).usb, { readOnly: true }) }); } catch (e) { return send(res, 500, { error: e.message }); }
   }
+  // a write-only setting (2 Nov 2026, helpers/my-devices.mjs "Write-only settings"): Try it sends its test value once;
+  // the answer (yes: trusted for this model; no: the value before sent back, still locked). POSTs only, this origin only.
+  if ((url.pathname === '/api/library/try-write' || url.pathname === '/api/library/try-answer') && req.method === 'POST') {
+    if (!agent) return send(res, 503, { ok: false, error: 'the background agent is not running' });
+    try {
+      const b = await readBody(req);
+      const body = { id: String(b.id || ''), key: String(b.key || ''), ...(url.pathname.endsWith('answer') ? { yes: b.yes === true } : {}) };
+      const r = await agent.op(url.pathname.endsWith('answer') ? 'try-answer' : 'try-write', body);
+      return send(res, r?.ok ? 200 : 400, r);
+    } catch (e) { return send(res, 400, { ok: false, error: e.message }); }
+  }
   // a "read-only" entry installs too: it loads guarded, each setting writable only once it passes its self-check
   // (helpers/my-devices.mjs); one with no real-device record only reads until the person presses Turn on settings
   // (safety round 2); it is loaded at once when the agent runs, else on the next start

@@ -109,7 +109,7 @@ function shareButton(d, shown) {
 const checkNote = {};
 function checkAgain(d, redraw = () => {}) {
   const lib = d.adapter?.library;
-  const ro = (d.adapter?.settings || []).filter((s) => s.type !== 'display' && s.readOnly);
+  const ro = (d.adapter?.settings || []).filter((s) => s.type !== 'display' && s.readOnly && !s.writeOnly);   // a write-only one has its own Try it
   if (!lib || d.status !== 'connected' || (!ro.length && !lib.turnOn)) return null;
   const kind = lib.turnOn ? 'turn-on' : 'check-again';
   const run = async () => {
@@ -138,7 +138,7 @@ function driverProblem(d) {
   const a = d.adapter || {};
   if (!a.library) return false;
   if (d.status === 'error' || a.notMine || a.library.notRun) return true;
-  return (a.settings || []).some((s) => s.type !== 'display' && s.readOnly) && !a.library.turnOn;
+  return (a.settings || []).some((s) => s.type !== 'display' && s.readOnly && !s.writeOnly) && !a.library.turnOn;
 }
 function askLibrary(d, redraw) {
   if (isDemo() || !driverProblem(d) || Date.now() - (libraryAsked[d.id] || 0) < 10 * 60 * 1000) return;
@@ -177,17 +177,68 @@ const nameOf = (list, v) => (list || []).find((o) => o.value === v)?.label ?? St
 // the reason is the visible line under its name (the hint the guard writes, "Read-only: ..."), never a tooltip
 const readOnlyOf = (s) => s.type !== 'display' && !!s.readOnly;
 const descOf = (s) => (readOnlyOf(s) && !/read-only/i.test(s.hint || '') ? [s.hint, 'Read-only.'].filter(Boolean).join(' ') : s.hint || null);
+// A write-only setting (2 Nov 2026, Shawn's rule; helpers/my-devices.mjs "Write-only settings"): the device takes it
+// but cannot report it back. Before Turn on settings it is read-only like any other. Then, until checked once by eye on
+// this model, it shows Try it and one line saying what will happen; Try it sends its test value once and asks the
+// driver's question with Yes / No. Once trusted it is a normal control showing the last value DeviceHub wrote, with a
+// small mark that the device cannot report it back.
+const tries = {};   // `${device}|${key}` -> { busy, question, line }
+const redraws = {};
+async function tryPost(path, body) {
+  try {
+    const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    return r.ok && j.ok ? j : { ok: false, why: j.why || j.error || r.statusText || 'DeviceHub did not answer' };
+  } catch (e) { return { ok: false, why: e.message }; }
+}
+function writeOnlyDesc(d, s) {
+  const st = s.writeOnlyState;
+  const plainHint = String(s.hint || '').replace(/\s*Read-only:.*$/, '') || null;
+  if (st !== 'untrusted' && st !== 'trusted') return descOf(s);
+  const id = `${d.id}|${s.key}`;
+  const t = tries[id] || {};
+  const redraw = () => redraws[d.id]?.();
+  const small = (text) => h('div', { class: 'faint', style: { fontSize: '12.5px', marginTop: '4px' } }, text);
+  if (st === 'trusted') {
+    const v = d.values?.[s.key];
+    return h('div', {}, plainHint, small(v == null ? "Not set by DeviceHub yet · this device can't report it back" : "applied · this device can't report it back"), t.line ? small(t.line) : null);
+  }
+  if (isDemo()) return h('div', {}, plainHint, small(s.tryLine || 'Try it once to unlock it.'));
+  const answer = async (yes) => {
+    tries[id] = { ...t, busy: true }; redraw();
+    const j = await tryPost('/api/library/try-answer', { id: d.id, key: s.key, yes });
+    tries[id] = { line: j.ok ? j.line : `Not done: ${j.why}` };
+    if (j.ok) toast(j.line, j.trusted ? 'good' : 'info');
+    redraw();
+  };
+  const go = async () => {
+    tries[id] = { busy: true, line: 'Sending…' }; redraw();
+    const j = await tryPost('/api/library/try-write', { id: d.id, key: s.key });
+    tries[id] = j.ok ? { question: j.question } : { line: `Not sent: ${j.why}` };
+    redraw();
+  };
+  const ask = t.question
+    ? h('div', { class: 'actions', style: { marginTop: '6px', alignItems: 'center' } },
+      h('span', { style: { fontSize: '13px' } }, `Sent. ${t.question}`),
+      button('Yes', () => answer(true), { kind: 'primary small', disabled: !!t.busy }),
+      button('No', () => answer(false), { kind: 'ghost small', disabled: !!t.busy }))
+    : h('div', { class: 'actions', style: { marginTop: '6px', alignItems: 'center' } },
+      button('Try it', go, { kind: 'ghost small', ic: 'plug', disabled: !!t.busy || d.status !== 'connected' }),
+      h('span', { class: 'faint', style: { fontSize: '12.5px' } }, t.line || s.tryLine || 'Try it once to unlock it.'));
+  return h('div', {}, plainHint, ask);
+}
 function settingRow(d, s) {
   const v = d.values?.[s.key];
   const off = readOnlyOf(s);
-  const desc = descOf(s);
+  const desc = s.writeOnly ? writeOnlyDesc(d, s) : descOf(s);
   const send = (x, label, display) => (off ? Promise.resolve() : write(d.id, s.key, x, { label, display }).catch(() => {}));
   if (s.type === 'display') return row(s.label, s.hint || null, readout({ value: v, unit: unitOf(s) }));
   if (s.type === 'color' && !s.zones) return row(s.label, desc, colorRow({ value: v, label: s.label, disabled: off, onCommit: (x) => send(x, s.label, x) }));
   if (s.type === 'color' || s.type === 'remap') {
     const obj = v && typeof v === 'object' ? v : {};
     const lines = s.type === 'color'
-      ? s.zones.map((z) => [z.label, colorRow({ value: obj[z.value], label: `${s.label}, ${z.label}`, disabled: off, onCommit: (x) => send({ ...obj, [z.value]: x }, `${s.label} (${z.label})`, x) })])
+      // a write-only colour DeviceHub has not set yet (no zone known): the other zones take the same colour
+      ? s.zones.map((z) => [z.label, colorRow({ value: obj[z.value], label: `${s.label}, ${z.label}`, disabled: off, onCommit: (x) => send({ ...(s.writeOnly ? Object.fromEntries(s.zones.map((y) => [y.value, obj[y.value] || x])) : obj), [z.value]: x }, `${s.label} (${z.label})`, x) })])
       : s.buttons.filter((b) => b.value in obj).map((b) => [b.label, remapSelect({ value: obj[b.value], targets: s.targets, label: `${s.label}, ${b.label}`, disabled: off,
         onCommit: (x) => send({ ...obj, [b.value]: x }, `${s.label} (${b.label})`, nameOf(s.targets, x)) })]);
     const r = row(s.label, desc, lineList(lines));
@@ -300,6 +351,7 @@ function control(d, s, off = false) {
 // whose Windows sound side the Headset page runs (core/devices.js headsetTwin), so one headset is one page.
 export function twinSettingsCard(d, redraw) {
   const a = d.adapter;
+  redraws[d.id] = redraw;
   const shown = (a.settings || []).filter((s) => d.values?.[s.key] !== undefined);
   return card([h('h2', {}, 'Battery & headset settings'), batteryPill(d)],
     turnOnBanner(d, redraw),
@@ -317,6 +369,7 @@ export function devicePage(id) {
     render(ctx = {}) {
       const d = devices[id];
       const a = d.adapter;
+      redraws[id] = () => ctx.redraw?.();
       if (a.battery) loadBatteryEstimates(() => ctx.redraw?.());
       askLibrary(d, () => ctx.redraw?.());
       const head = topbar(`${a.kind} · added on this PC`, a.title, null, h('div', { class: 'chips' }, undoButton(d), statusPill(d)), deviceHelp(d));

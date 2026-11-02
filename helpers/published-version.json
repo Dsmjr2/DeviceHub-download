@@ -1,10 +1,9 @@
 {
-  "version": "1.55",
-  "commit": "2ff305dadf3b",
+  "version": "1.56",
+  "commit": "e78ec3c6891a",
   "notes": [
-    "New driver settings wait for Turn on settings",
-    "Logitech zone lights, button remaps and G522 sidetone and auto sleep",
-    "Keychron snap click and lock lights, ASUS angle, low battery and…",
-    "Turbo mode described as Pulsar does"
+    "Write-only values last one connection",
+    "Write-only settings after one check by eye",
+    "ASUS DPI read only on the three mice G-Helper gives separate X and Y…"
   ]
 }

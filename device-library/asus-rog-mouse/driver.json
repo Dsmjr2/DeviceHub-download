@@ -23,15 +23,15 @@
         "note": "sheet section 2: booster probe, byte 5 = 01 means on" } ] }
   },
   "models": [
-    { "key": "harpe-ace-aim-lab", "name": "ROG Harpe Ace Aim Lab Edition", "pids": { "cable": ["1A92"], "dongle": ["1A94"] }, "paired": { "omni": ["1A94"] }, "vars": { "battery": true, "dpiMax": 36000, "angleTune": true, "angleMin": -30, "angleMax": 30, "dpiColors": true },
-      "note": "G-Helper HarpeAceAimLab.cs: HasAngleTuning, AngleTuningMin -30 / Max 30, HasDPIColors, HasLowBatteryWarning" },
-    { "key": "keris-wireless-aimpoint", "name": "ROG Keris Wireless AimPoint", "pids": { "cable": ["1A66"], "dongle": ["1A68"] }, "paired": { "omni": ["1A68", "1A6A"] }, "vars": { "battery": true, "dpiMax": 36000, "angleTune": true, "angleMin": -20, "angleMax": 20, "dpiColors": true },
-      "note": "G-Helper KerisWirelssAimpoint.cs: HasAngleTuning (AsusMouse.cs default range -20..20), HasDPIColors, HasLowBatteryWarning" },
+    { "key": "harpe-ace-aim-lab", "name": "ROG Harpe Ace Aim Lab Edition", "pids": { "cable": ["1A92"], "dongle": ["1A94"] }, "paired": { "omni": ["1A94"] }, "vars": { "battery": true, "dpiMax": 36000, "angleTune": true, "angleMin": -30, "angleMax": 30, "dpiColors": true, "xyDpi": true },
+      "note": "G-Helper HarpeAceAimLab.cs: HasAngleTuning, AngleTuningMin -30 / Max 30, HasDPIColors, HasLowBatteryWarning, HasXYDPI (DPI read only: see the dpi settings)" },
+    { "key": "keris-wireless-aimpoint", "name": "ROG Keris Wireless AimPoint", "pids": { "cable": ["1A66"], "dongle": ["1A68"] }, "paired": { "omni": ["1A68", "1A6A"] }, "vars": { "battery": true, "dpiMax": 36000, "angleTune": true, "angleMin": -20, "angleMax": 20, "dpiColors": true, "xyDpi": true },
+      "note": "G-Helper KerisWirelssAimpoint.cs: HasAngleTuning (AsusMouse.cs default range -20..20), HasDPIColors, HasLowBatteryWarning, HasXYDPI (DPI read only: see the dpi settings)" },
     { "key": "gladius-iii", "name": "ROG Gladius III", "pids": { "cable": ["197B"] }, "vars": { "battery": false, "dpiMax": 19000 } },
     { "key": "gladius-iii-wireless", "name": "ROG Gladius III Wireless", "pids": { "cable": ["197D"], "dongle": ["197F"] }, "vars": { "battery": true, "dpiMax": 19000 },
       "note": "G-Helper GladiusIIIWireless.cs: HasLowBatteryWarning; no angle tuning, no DPI colors" },
-    { "key": "gladius-iii-wireless-aimpoint", "name": "ROG Gladius III Wireless AimPoint", "pids": { "cable": ["1A70"], "dongle": ["1A72"] }, "paired": { "omni": ["1A72"] }, "vars": { "battery": true, "dpiMax": 36000, "angleTune": true, "angleMin": -20, "angleMax": 20, "dpiColors": true },
-      "note": "G-Helper GladiusIIIAimpoint.cs: HasAngleTuning (default range -20..20), HasDPIColors, HasLowBatteryWarning" },
+    { "key": "gladius-iii-wireless-aimpoint", "name": "ROG Gladius III Wireless AimPoint", "pids": { "cable": ["1A70"], "dongle": ["1A72"] }, "paired": { "omni": ["1A72"] }, "vars": { "battery": true, "dpiMax": 36000, "angleTune": true, "angleMin": -20, "angleMax": 20, "dpiColors": true, "xyDpi": true },
+      "note": "G-Helper GladiusIIIAimpoint.cs: HasAngleTuning (default range -20..20), HasDPIColors, HasLowBatteryWarning, HasXYDPI (DPI read only: see the dpi settings)" },
     { "key": "chakram-x", "name": "ROG Chakram X", "pids": { "cable": ["1A18"], "dongle": ["1A1A"] }, "vars": { "battery": true, "dpiMax": 36000, "doubleDpi": true, "pollingCable": true, "angleTune": true, "angleMin": -20, "angleMax": 20, "dpiColors": true },
       "note": "doubleDpi: libratbag doubles its DPI and G-Helper does not, so DPI stays read only; pollingCable: up to 8000 Hz on its cable (sheet section 4); G-Helper ChakramX.cs: HasAngleTuning (default range), HasDPIColors (stage colours not offered: see the colors message), HasLowBatteryWarning" }
   ],
@@ -40,7 +40,7 @@
   "messages": {
     "status": { "bytes": "12 07", "note": "sheet: battery level, charging, sleep, low-battery warning" },
     "profile": { "bytes": "12 04 00", "note": "sheet: DPI stages, polling rate, button response, angle snapping" },
-    "colors": { "bytes": "12 04 03", "note": "sheet: DPI stage colors, sent back unchanged with a DPI write. Not offered as settings: G-Helper and libratbag give all four stage-colour models separate X/Y DPI, read from 12 04 02 at byte 5+4i, while the colour write re-sends the raw DPI read from 12 04 00 at 5+2i; no source shows that round trip is right, so it is not offered (2 Nov 2026)" },
+    "colors": { "bytes": "12 04 03", "note": "sheet: DPI stage colors, sent back unchanged with a DPI write. Not offered as settings (2 Nov 2026): the colour goes out in the DPI packet, and G-Helper gives all four stage-colour models separate X/Y DPI (HasXYDPI: read from 12 04 02 at byte 5+4i, not 12 04 00 at 5+2i)" },
     "liftOffRead": { "bytes": "12 06", "note": "sheet: lift-off distance" },
     "save": { "bytes": "50 03", "note": "sheet: save, sent after each change" },
     "pairList": { "bytes": "A0 00 00", "reportId": 1, "note": "sheet section 2: Omni pair list" },
@@ -92,6 +92,15 @@
     "dpi4Color": { "from": "colors", "offset": 13, "size": 3, "type": "bytes" }
   },
   "settings": [
+    { "key": "dpi1", "label": "DPI stage 1", "type": "display", "unit": " DPI", "when": { "model.xyDpi": true }, "lockGroup": "dpi",
+      "hint": "Read only: DPI on this model has separate X and Y values DeviceHub does not handle yet.",
+      "note": "2 Nov 2026: G-Helper (master d7347c0) has HasXYDPI() = true on these three models and reads their DPI from 12 04 02 at byte 5+4i (AsusMouse.cs GetReadDPIPacket / ParseDPI); libratbag (master 8235b5b) gives them no SEPARATE_XY_DPI quirk. The sources disagree and nothing is measured, so no DPI packet is sent to them; a reading, never written" },
+    { "key": "dpi2", "label": "DPI stage 2", "type": "display", "unit": " DPI", "when": { "model.xyDpi": true }, "lockGroup": "dpi",
+      "hint": "Read only: DPI on this model has separate X and Y values DeviceHub does not handle yet." },
+    { "key": "dpi3", "label": "DPI stage 3", "type": "display", "unit": " DPI", "when": { "model.xyDpi": true }, "lockGroup": "dpi",
+      "hint": "Read only: DPI on this model has separate X and Y values DeviceHub does not handle yet." },
+    { "key": "dpi4", "label": "DPI stage 4", "type": "display", "unit": " DPI", "when": { "model.xyDpi": true }, "lockGroup": "dpi",
+      "hint": "Read only: DPI on this model has separate X and Y values DeviceHub does not handle yet." },
     { "key": "dpi1", "label": "DPI stage 1", "type": "slider", "min": 100, "max": "$model.dpiMax", "step": 50, "unit": " DPI", "when": { "model.doubleDpi": { "not": true } }, "lockGroup": "dpi",
       "write": { "message": "setDpi1", "needs": ["colors"], "then": "save" } },
     { "key": "dpi2", "label": "DPI stage 2", "type": "slider", "min": 100, "max": "$model.dpiMax", "step": 50, "unit": " DPI", "when": { "model.doubleDpi": { "not": true } }, "lockGroup": "dpi",

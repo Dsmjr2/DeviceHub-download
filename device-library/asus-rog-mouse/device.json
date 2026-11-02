@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-02T05:34:28Z",
+  "updated": "2026-11-02T05:56:44Z",
   "id": "asus-rog-mouse",
   "vendor": "ASUS",
   "product": "ROG mice (Harpe Ace, Keris Wireless AimPoint, Gladius III, Chakram X)",
@@ -30,7 +30,7 @@
   "works": [
     "battery level and charging (read)",
     "sleep after 1, 2, 3, 5, 10 min or never",
-    "DPI stages 1-4 in steps of 50 (read only on the Chakram X)",
+    "DPI stages 1-4 in steps of 50 on the Gladius III and Gladius III Wireless (read only on the others)",
     "polling rate 125-1000 Hz; up to 8000 Hz on the Chakram X's cable",
     "angle snapping on/off",
     "lift-off distance low/high (also resets the surface calibration)",
@@ -50,7 +50,8 @@
     "Bluetooth",
     "active DPI stage (the read's numbering is not documented)",
     "writing onboard profile contents (only selecting one)",
-    "DPI stage colors: G-Helper and libratbag give all four stage-colour models separate X/Y DPI, read from 12 04 02 at byte 5+4i, while the colour write re-sends the raw DPI read from 12 04 00 at 5+2i; no source shows that round trip is right, so it is not offered (2 Nov 2026)"
+    "changing DPI on the Harpe Ace Aim Lab, Keris Wireless AimPoint and Gladius III Wireless AimPoint: DPI on this model has separate X and Y values DeviceHub does not handle yet (G-Helper HasXYDPI reads it from 12 04 02 at byte 5+4i; libratbag has no X/Y quirk for them); shown as a reading only (2 Nov 2026)",
+    "DPI stage colors: the colour goes out in the DPI packet, and G-Helper gives all four stage-colour models separate X/Y DPI, so it is not offered (2 Nov 2026)"
   ],
   "status": "read-only",
   "tested": [],
