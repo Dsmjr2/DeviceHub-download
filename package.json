@@ -17,6 +17,7 @@
       "tests/check.mjs",
       "tests/dropdown.mjs",
       "tests/driver-dates.mjs",
+      "tests/failed-read.mjs",
       "tests/regressions.mjs",
       "tests/known-folders.mjs",
       "tests/device-page-layout.mjs",

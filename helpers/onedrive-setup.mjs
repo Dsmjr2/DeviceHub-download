@@ -11,7 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-const { writeAtomic } = createRequire(import.meta.url)('./safe-write.js');
+const { writeAtomic, readJsonForWrite } = createRequire(import.meta.url)('./safe-write.js');
 
 let ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 // this PC's files are in data\ (27 Oct 2026, helpers/data-dir.js)
@@ -102,7 +102,7 @@ export function read(pc) {
 export function dismiss(pc) {
   const st = status().others.find((o) => o.pc === pc);
   if (!st) return { ok: false };
-  const s = readJson(SETTINGS, {});
+  const s = readJsonForWrite(SETTINGS, {});
   s.oneDriveSeen = { ...(s.oneDriveSeen || {}), [pc]: st.savedAt };
   writeAtomic(SETTINGS, JSON.stringify(s, null, 2));
   return { ok: true };

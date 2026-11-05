@@ -17,7 +17,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { writeAtomic } = require('./safe-write.js');
+const { writeAtomic, readJsonForWrite } = require('./safe-write.js');
 const { dataFile } = require('./data-dir.js');
 
 export const TRUST_FILE = 'trusted-writes.json';
@@ -52,9 +52,10 @@ export function writeOnlyStore(root) {
   const s = {
     root: at,
     trusted: (k) => (k ? readJson(file(TRUST_FILE))[k]?.answer === 'yes' : false),
-    trust(k, rec) { const all = readJson(file(TRUST_FILE)); all[k] = { at: rec.at, value: rec.value, answer: 'yes' }; save(TRUST_FILE, all); },
+    // a record that is changed is read strictly (5 Nov 2026): a failed read never drops the other entries
+    trust(k, rec) { const all = readJsonForWrite(file(TRUST_FILE), {}); all[k] = { at: rec.at, value: rec.value, answer: 'yes' }; save(TRUST_FILE, all); },
     last: (k) => (k ? readJson(file(LAST_FILE))[k] || null : null),
-    remember(k, value, when = new Date()) { if (!k) return; const all = readJson(file(LAST_FILE)); all[k] = { at: when.toISOString(), value }; save(LAST_FILE, all); },
+    remember(k, value, when = new Date()) { if (!k) return; const all = readJsonForWrite(file(LAST_FILE), {}); all[k] = { at: when.toISOString(), value }; save(LAST_FILE, all); },
   };
   stores.set(at, s);
   return s;

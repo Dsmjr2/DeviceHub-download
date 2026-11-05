@@ -27,4 +27,23 @@ function cleanLeftovers(dir) {
   try { for (const f of fs.readdirSync(dir)) if (/^\..+\.\d+\.\d+\.tmp$/.test(f)) { try { fs.unlinkSync(path.join(dir, f)); } catch {} } } catch {}
 }
 
-module.exports = { writeAtomic, cleanLeftovers };
+// Read a data file before changing it (5 Nov 2026, the Manager's audit after a Misc script read a shared file, the read
+// failed, it took that as empty and wrote back only its own part): a missing file gives `missing`; a file that is
+// there but cannot be read (held by Windows past a short retry, empty, or not JSON) throws, so the caller writes nothing
+// over the saved copy. Only a read that is followed by a write uses this; plain reads keep their own defaults.
+function readJsonForWrite(file, missing) {
+  for (let i = 0; ; i++) {
+    let text;
+    try { text = fs.readFileSync(file, 'utf8'); }
+    catch (e) {
+      if (e.code === 'ENOENT') return missing;
+      if (i < 8 && ['EPERM', 'EBUSY', 'EACCES'].includes(e.code)) { const until = Date.now() + 25 * (i + 1); while (Date.now() < until) { /* wait */ } continue; }
+      throw new Error(`${path.basename(file)} could not be read (${e.code || e.message}); nothing was changed`);
+    }
+    const t = text.replace(/^\uFEFF/, '');
+    if (!t.trim()) throw new Error(`${path.basename(file)} is empty; nothing was changed`);
+    try { return JSON.parse(t); } catch { throw new Error(`${path.basename(file)} is not readable JSON; nothing was changed`); }
+  }
+}
+
+module.exports = { writeAtomic, cleanLeftovers, readJsonForWrite };

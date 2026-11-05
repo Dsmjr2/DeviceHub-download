@@ -128,8 +128,10 @@ export async function handle(url, req, res, { send, readBody, root = ROOT }) {
   const b = await readBody(req).catch(() => ({}));
   if (typeof b?.on !== 'boolean') { send(res, 400, { error: 'on must be true or false' }); return true; }
   const f = settingsOf(root);
-  const cur = readJson(f, {}) || {};
-  (await import('./safe-write.js')).default.writeAtomic(f, JSON.stringify({ ...cur, shareDrivers: b.on }, null, 2));
+  const sw = (await import('./safe-write.js')).default;
+  let cur;
+  try { cur = sw.readJsonForWrite(f, {}) || {}; } catch (e) { send(res, 500, { error: e.message }); return true; }
+  sw.writeAtomic(f, JSON.stringify({ ...cur, shareDrivers: b.on }, null, 2));
   const shared = b.on && !owner ? await shareAll({ root }) : [];
   send(res, 200, { choice: b.on, shared });
   return true;

@@ -9,7 +9,7 @@
 // and a change made on it stays there until the main PC next sends. Monitor and camera EQ are keyed by the device
 // itself, so another PC's monitors never land on this one.
 const fs = require('fs');
-const { writeAtomic } = require('./safe-write');  // crash-proof saving (helpers/safe-write.js)
+const { writeAtomic, readJsonForWrite } = require('./safe-write');  // crash-proof saving (helpers/safe-write.js)
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
@@ -43,12 +43,14 @@ async function repoUrl() {
 }
 
 // what this PC has now
+// (5 Nov 2026) read strictly: a settings or profiles file that is there but cannot be read stops the sync, so the main
+// PC never sends an empty list in place of its profiles, and the hash never mistakes a failed read for a change
 async function current() {
-  const settings = readJson(SETTINGS, {});
+  const settings = readJsonForWrite(SETTINGS, {});
   return {
     eq: eqapo && eqapo.installed() ? await eqapo.exportState() : null,
     options: Object.fromEntries(OPTIONS.filter((k) => k in settings).map((k) => [k, settings[k]])),
-    profiles: readJson(PROFILES, []),
+    profiles: readJsonForWrite(PROFILES, []),
   };
 }
 
@@ -60,12 +62,13 @@ async function apply(remote, local) {
   try { fs.mkdirSync(path.join(ROOT, 'backups'), { recursive: true }); } catch {}
   if (remote.eq && eqapo && eqapo.installed() && hash(remote.eq) !== hash(local.eq)) { await eqapo.importState(remote.eq); changed.push('sound'); }
   if (remote.options && hash(remote.options) !== hash(local.options)) {
-    const cur = readJson(SETTINGS, {});
+    const cur = readJsonForWrite(SETTINGS, {});
     if (fs.existsSync(SETTINGS)) fs.copyFileSync(SETTINGS, path.join(ROOT, 'backups', `settings-${new Date().toISOString().replace(/[:.]/g, '-')}.json`));
     for (const k of OPTIONS) if (k in remote.options) cur[k] = remote.options[k];
     writeAtomic(SETTINGS, JSON.stringify(cur, null, 2)); changed.push('options');
   }
-  if (Array.isArray(remote.profiles) && hash(remote.profiles) !== hash(local.profiles)) {
+  // an empty list from the main PC never empties this one's profiles (a copy sent before 5 Nov after a failed read)
+  if (Array.isArray(remote.profiles) && hash(remote.profiles) !== hash(local.profiles) && (remote.profiles.length || !local.profiles.length)) {
     if (fs.existsSync(PROFILES)) fs.copyFileSync(PROFILES, path.join(ROOT, 'backups', `profiles-${new Date().toISOString().replace(/[:.]/g, '-')}.json`));
     writeAtomic(PROFILES, JSON.stringify(remote.profiles, null, 2)); changed.push('profiles');
   }
@@ -77,7 +80,8 @@ let originOnce;
 async function sync() {
   if (busy) return status; busy = true;
   try {
-    const st = readJson(STATE, {});
+    // this PC's role read strictly: an unreadable state file never turns the main PC into a following one
+    const st = readJsonForWrite(STATE, {});
     if (readJson(SETTINGS, {}).settingsSync === false) { status = { ...status, enabled: false }; return status; }
     // the main PC only sends (27 Oct 2026, idle CPU: two git runs and a GitHub fetch every 2 minutes for nothing): with
     // nothing changed here since it last sent, there is nothing to do and git is not started
@@ -133,5 +137,5 @@ module.exports = {
   sync,
   status: () => status,
   // make this PC the main one (it sends, never receives), or a following one
-  setRole(role) { const st = readJson(STATE, {}); st.role = role === 'main' ? 'main' : 'follow'; if (st.role === 'main') st.lastLocal = null; writeAtomic(STATE, JSON.stringify(st)); status.role = st.role; return sync(); },
+  setRole(role) { const st = readJsonForWrite(STATE, {}); st.role = role === 'main' ? 'main' : 'follow'; if (st.role === 'main') st.lastLocal = null; writeAtomic(STATE, JSON.stringify(st)); status.role = st.role; return sync(); },
 };

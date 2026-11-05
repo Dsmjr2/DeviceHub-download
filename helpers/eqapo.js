@@ -9,7 +9,7 @@
 //   - any other speaker (the monitors): its own ten bands, separate from the headset's presets (Speakers page)
 // Every write backs up the old config.txt first (at most once per 10 minutes) and reads the file back.
 const fs = require('fs');
-const { writeAtomic } = require('./safe-write');  // crash-proof saving (helpers/safe-write.js)
+const { writeAtomic, readJsonForWrite } = require('./safe-write');  // crash-proof saving (helpers/safe-write.js)
 const path = require('path');
 const crypto = require('crypto');
 
@@ -58,7 +58,9 @@ const SPEAKER_START = { 'Small monitor speakers': [-12, -10, -3, 2, 0, -1.5, 1, 
 // more presence, less hiss
 const MIC_START = { 'Webcam mic': [-12, -10, -4, -1, -2, -1.5, 2, 3, 1, -2], Flat: Array(10).fill(0) };  // 250/500 Hz down: less room boom
 function load() {
-  let s; try { s = JSON.parse(fs.readFileSync(STORE, 'utf8')); } catch { return null; }
+  // (5 Nov 2026) only a missing store starts fresh (first()); one that cannot be read throws, so the saved presets stay
+  const s = readJsonForWrite(STORE, null);
+  if (!s) return null;
   s.extras = { ...EXTRAS(), ...(s.extras || {}) };
   // 19 Oct 2026: speakers used to pick one of the headset's presets; each now has its own bands (the preset's copied)
   let moved = false;

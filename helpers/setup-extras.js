@@ -11,7 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { writeAtomic } = require('./safe-write');
+const { writeAtomic, readJsonForWrite } = require('./safe-write');
 
 const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 const PICTURE = { png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp' };
@@ -96,7 +96,7 @@ function create({ root = path.join(__dirname, '..'), wallpapers = null } = {}) {
   // put them here; settings.json backed up first; never over a driver folder or picture already here
   function apply(x = {}) {
     const done = [];
-    const s = readSettings();
+    const s = readJsonForWrite(SETTINGS, {});   // strict: settings.json is written below (5 Nov 2026)
     let changed = false;
     const names = { ...(s.headsetNames || {}) };
     for (const [k, v] of Object.entries(x.headsetNames || {})) {

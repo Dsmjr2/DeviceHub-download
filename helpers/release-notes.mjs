@@ -72,6 +72,8 @@ export function plan({ cwd = ROOT, file = FILE } = {}) {
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   const p = plan();
   if (process.argv.includes('--bump')) {
+    // (5 Nov 2026) a published-version.json that is there but does not read would give 1.0 below every copy: stop
+    if (fs.existsSync(FILE) && !readPublished()) { console.error(`${path.basename(FILE)} is there but does not read; nothing was changed`); process.exit(1); }
     fs.writeFileSync(FILE, `${JSON.stringify(p, null, 2)}\n`);
     console.log(p.version);
   } else if (process.argv.includes('--dry-run')) {

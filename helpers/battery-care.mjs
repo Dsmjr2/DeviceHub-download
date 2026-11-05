@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
-const { writeAtomic } = require('./safe-write.js');
+const { writeAtomic, readJsonForWrite } = require('./safe-write.js');
 import { fits, writable, batteryCareProblem, makerAppNow as makerAppDefault } from './my-devices.mjs';
 import { showAdded } from '../public/core/profiles.js';
 
@@ -35,14 +35,15 @@ const CHARGING = {
   ],
 };
 
-let core = null, file = null, settingsFile = null, saved = {}, busy = false;
+let core = null, file = null, settingsFile = null, saved = {}, busy = false, unreadable = false;
 // game mode's switches held now (helpers/game-mode.mjs status().saved) -> the battery care settings they cover
 let heldBy = () => [];
 const HELD = { polling: ['mouse:pollingRate'] };
 const held = () => { try { return new Set((heldBy() || []).flatMap((k) => HELD[k] || [])); } catch { return new Set(); } };
 export const holdBy = (fn) => { heldBy = typeof fn === 'function' ? fn : () => []; };
 const on = () => { try { return JSON.parse(fs.readFileSync(settingsFile, 'utf8')).batteryCare !== false; } catch { return true; } };
-const save = () => { try { writeAtomic(file, JSON.stringify(saved, null, 1)); } catch {} };
+// (5 Nov 2026) a record that could not be read at start is never written over: the values it holds still go back by hand
+const save = () => { if (unreadable) return; try { writeAtomic(file, JSON.stringify(saved, null, 1)); } catch {} };
 
 async function tick() {
   if (busy) return; busy = true;
@@ -186,7 +187,7 @@ export function start(root, coreModule) {
   core = coreModule;
   file = require('./data-dir.js').dataFile('battery-care.json', root);
   settingsFile = require('./data-dir.js').dataFile('settings.json', root);
-  try { saved = JSON.parse(fs.readFileSync(file, 'utf8')) || {}; } catch { saved = {}; }
+  try { saved = readJsonForWrite(file, {}) || {}; unreadable = false; } catch (e) { saved = {}; unreadable = true; console.error('[battery-care]', e.message); }
   setInterval(() => tick().catch(() => {}), 20000).unref?.();  // every 20 s: a plugged-in headset goes dark soon after (it reads only DeviceHub's own state)
   setTimeout(() => tick().catch(() => {}), 30000).unref?.();
 }

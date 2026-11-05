@@ -37,7 +37,7 @@ let corsair = null;
 // Devices this PC has ever had (data\seen-devices.json, 19 Oct 2026): on someone else's PC the app shows
 // only the devices they own; until one is seen, all three are shown with what is supported.
 const fsSeen = createRequire(import.meta.url)('fs'), pathSeen = createRequire(import.meta.url)('path');
-const { writeAtomic } = createRequire(import.meta.url)('./safe-write.js');
+const { writeAtomic, readJsonForWrite } = createRequire(import.meta.url)('./safe-write.js');
 // (27 Oct 2026) this PC's files are in data\ (helpers/data-dir.js); APP_ROOT is DeviceHub's own folder
 const APP_ROOT = pathSeen.join(pathSeen.dirname(fileURLToPath(import.meta.url)), '..');
 const { dataFile } = createRequire(import.meta.url)('./data-dir.js');
@@ -75,7 +75,7 @@ async function pickHeadset(key) {
   const k = cleanPick(key);
   const a = core.devices.headset.adapter;
   if (!k || !(a.headsets || []).some((c) => c.key === k)) throw new Error('That headset is not plugged in.');
-  const cur = readJson(SETTINGS_FILE);
+  const cur = readJsonForWrite(SETTINGS_FILE, {});
   if (cur.headsetPick !== k) {
     // settings.json backed up first, then only this one key changed
     if (fsSeen.existsSync(SETTINGS_FILE)) fsSeen.copyFileSync(SETTINGS_FILE, pathSeen.join(APP_ROOT, 'backups', `settings-${new Date().toISOString().replace(/[:.]/g, '-')}.json`));
