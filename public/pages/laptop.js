@@ -4,11 +4,18 @@
 //   Battery: charge, on the charger, time left, health (how much of its new charge it still holds) and charge cycles
 //   Power mode: Windows' own switch (Settings > System > Power), changed on the person's click (POST /api/laptop/mode)
 //     and read back
+//   Sleep after (2 Nov 2026, Shawn: "make a dropdown field on the power plan where it decides when my pc sleeps so I can
+//     change it quickly"): the active plan's sleep timeout, plugged in and on battery (GET / POST /api/sleep,
+//     helpers/sleep-timer.js), backed up, read back, with Undo
 //   Lenovo Legion: its own power mode (Fn+Q), read only (no Legion here to test a change on), and its keyboard lights
 //     (the device library's lenovo-legion-spectrum driver)
 // Everything shows in place: no pop-ups.
 import { h, icon } from '../ui/dom.js';
-import { card, row, segmented, button, pill } from '../ui/controls.js';
+import { card, row, segmented, button } from '../ui/controls.js';
+import { powerRows, loadPower, sleepLabel } from '../ui/power-rows.js';
+import { acerCard } from '../ui/acer-card.js';
+import { batteryChart } from '../ui/battery-chart.js';
+export { sleepLabel };
 import { devices, isDemo } from '../core/devices.js';
 import { topbar } from './common.js';
 
@@ -25,8 +32,10 @@ const st = { info: null, error: null, at: 0, busy: false, note: null };
 let rerender = () => {};
 let timer = null;
 
+// sleep and screen-off timeouts: ui/power-rows.js (shared with the PC page on a PC without a battery, 3 Nov 2026)
 async function load() {
-  if (isDemo()) { st.info = st.info || structuredClone(DEMO); st.at = Date.now(); rerender(); return; }
+  if (isDemo()) { st.info = st.info || structuredClone(DEMO); await loadPower(); st.at = Date.now(); rerender(); return; }
+  await loadPower();
   try {
     const r = await fetch('/api/laptop');
     const j = await r.json();
@@ -64,20 +73,38 @@ export function healthLine(b) {
   return `It holds ${b.health}% of the charge it held when new.${b.cycles ? ` ${b.cycles} charge cycles.` : ''} ${age}`;
 }
 
+// what the battery is doing, in a word, and the time to full or empty from its own watts (3 Nov 2026: the card showed
+// "Health —" and nothing else on an Acer; a row with nothing to say is left out)
+export function batteryNow(b) {
+  if (!b) return null;
+  const full = b.percent >= 99 || (b.fullMWh && b.nowMWh && b.nowMWh >= b.fullMWh * 0.99);
+  const state = b.charger ? (b.chargeW ? 'charging' : full ? 'full' : 'plugged in, not charging') : 'on battery';
+  const toFull = b.charger && b.chargeW && b.fullMWh && b.nowMWh < b.fullMWh ? Math.round(((b.fullMWh - b.nowMWh) / 1000 / b.chargeW) * 60) : null;
+  const left = !b.charger ? b.minutesLeft || (b.dischargeW && b.nowMWh ? Math.round((b.nowMWh / 1000 / b.dischargeW) * 60) : null) : null;
+  const watts = b.charger ? (b.chargeW ? `${b.chargeW} W in` : null) : b.dischargeW ? `${b.dischargeW} W` : null;
+  return { state, toFull, left, watts };
+}
 function batteryCard(b) {
   if (!b) return card([h('h2', {}, 'Battery')], h('p', { class: 'faint', style: { margin: 0 } }, 'No battery reported.'));
-  return card([h('h2', {}, 'Battery'), pill(b.charger ? 'on the charger' : 'on battery')],
-    row('Charge', null, h('b', {}, b.percent != null ? `${b.percent}%` : '—')),
-    !b.charger && b.minutesLeft ? row('Time left', 'Windows\' estimate.', h('b', {}, hours(b.minutesLeft))) : null,
-    row('Health', healthLine(b), h('b', {}, b.health != null ? `${b.health}%` : '—')));
+  const n = batteryNow(b);
+  // what it is doing goes in the Charge row, not beside the title (3 Nov 2026, Shawn: no labels around titles)
+  const now = n.state[0].toUpperCase() + n.state.slice(1) + '.';
+  return card([h('h2', {}, 'Battery')],
+    row('Charge', b.fullMWh ? `${now} Holds ${(b.fullMWh / 1000).toFixed(1)} Wh when full.` : now, h('b', {}, b.percent != null ? `${b.percent}%` : '—')),
+    n.toFull != null ? row('Full in', 'At the speed it charges now.', h('b', {}, hours(n.toFull))) : null,
+    n.left != null ? row('Time left', 'At what the laptop uses now.', h('b', {}, hours(n.left))) : null,
+    n.watts ? row(b.charger ? 'Charging at' : 'Using', null, h('b', {}, n.watts)) : null,
+    b.health != null ? row('Health', healthLine(b), h('b', {}, `${b.health}%`)) : null);
 }
 
 function powerCard(info) {
-  return card([h('h2', {}, 'Power mode')],
-    row('Windows power mode', 'The same switch as Settings > System > Power. Best performance runs faster and warmer.',
-      segmented({ value: info.powerMode, options: MODES, disabled: st.busy || !['efficiency', 'balanced', 'performance'].includes(info.powerMode), onCommit: setMode })),
+  return card([h('h2', {}, 'Power')],
+    // the three-way switch under its words, full width (3 Nov 2026: beside them it squeezed the words into a column)
+    Object.assign(row('Windows power mode', 'Settings > System > Power. Best performance is faster and warmer.',
+      segmented({ value: info.powerMode, options: MODES, disabled: st.busy || !['efficiency', 'balanced', 'performance'].includes(info.powerMode), onCommit: setMode })), { className: 'srow stack' }),
     info.powerMode === 'other' ? h('p', { class: 'faint', style: { margin: '6px 0 0' } }, 'Your laptop maker has set its own power mode, so this switch is not available.') : null,
-    st.note ? h('p', { class: 'faint', style: { margin: '6px 0 0' } }, st.note) : null);
+    st.note ? h('p', { class: 'faint', style: { margin: '6px 0 0' } }, st.note) : null,
+    ...powerRows(rerender));
 }
 
 function legionCard(info) {
@@ -89,6 +116,16 @@ function legionCard(info) {
       lights ? button('Open', () => { location.hash = `#/${lights.id}`; }, { kind: 'ghost small' }) : button('Setup', () => { location.hash = '#/setup'; }, { kind: 'ghost small' })));
 }
 
+// the title: the model, its maker in front when the model does not already say it ("Acer Nitro ANV15-41"); a version
+// number is never a model (3 Nov 2026: the title read "V1.52" with an "Acer" chip beside it)
+export function laptopTitle(info) {
+  const model = info?.model && !/^(Default string|To be filled.*|[Vv]?\d+(\.\d+)+)$/i.test(info.model) ? info.model.trim() : null;
+  let maker = info?.maker && !/^(Default string|To be filled|System manufacturer)/i.test(info.maker) ? info.maker.trim() : null;
+  if (maker && /^[A-Z]{4,}$/.test(maker)) maker = maker[0] + maker.slice(1).toLowerCase();   // LENOVO -> Lenovo (HP, ASUS stay)
+  if (!model) return maker ? `${maker} laptop` : 'Laptop';
+  return maker && !model.toLowerCase().startsWith(maker.toLowerCase().split(/\s/)[0]) ? `${maker} ${model}` : model;
+}
+
 export default {
   id: 'laptop', title: 'Laptop', icon: 'bolt', accent: 'var(--signal)',
   watches: [],
@@ -97,8 +134,11 @@ export default {
     if (!st.info && !st.error && !st.loading) { st.loading = true; queueMicrotask(load); }
     keepFresh();
     const info = st.info;
-    const head = topbar('', info?.model && info.model !== 'Default string' ? info.model : 'Laptop', null, info?.maker ? h('div', { class: 'chips' }, pill(info.maker)) : null);
+    const head = topbar('', laptopTitle(info), null);
     if (!info) return h('div', {}, head, h('div', { class: 'panel empty' }, icon('bolt'), h('p', {}, st.error ? `Could not read the laptop: ${st.error}` : 'Reading the laptop…')));
-    return h('div', {}, head, h('div', { class: 'grid two top' }, batteryCard(info.battery), powerCard(info)), legionCard(info));
+    // the battery over the last day or week (3 Nov 2026): Windows' level every 5 minutes and each plug or unplug
+    // (helpers/battery-history.js, id "laptop"); green where it was on the charger
+    return h('div', {}, head, h('div', { class: 'grid two top' }, batteryCard(info.battery), powerCard(info)), acerCard({ redraw: rerender }),
+      info.battery && !isDemo() ? batteryChart('laptop', rerender, { heading: 'Battery over time', band: 'On the charger' }) : null, legionCard(info));
   },
 };

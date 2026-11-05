@@ -77,6 +77,21 @@ export const TOOLS = [
     after: 'Click Yes, I Agree, Next, Install, and Yes to the driver. Restart before learning.',
     restart: true,
   },
+  {
+    // Instant replay while gaming (2 Nov 2026, Shawn: "obs sounds much better" than NVIDIA's or Windows' own): OBS's
+    // replay buffer, which DeviceHub will start with a game and close after it. The SHA-256 is the one GitHub lists for
+    // this file on OBS's own release page (github.com/obsproject/obs-studio/releases/tag/33.0.1).
+    id: 'obs', name: 'OBS Studio', version: '33.0.1',
+    adds: 'Instant replay: save the last moments of a game.',
+    page: 'https://obsproject.com/',
+    url: 'https://github.com/obsproject/obs-studio/releases/download/33.0.1/OBS-Studio-33.0.1-Windows-x64-Installer.exe',
+    file: 'OBS-Studio-33.0.1-Windows-x64-Installer.exe', approxBytes: 186662440,
+    hosts: ['github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com'],
+    signer: null, sha256: '37ecde4d9a28e8aeeb07623c8469b5d558eb264e02ccf435bb859891c401758b',
+    marker: path.join(PF, 'obs-studio', 'bin', '64bit', 'obs64.exe'), uninstallName: /^OBS Studio/i,
+    after: 'Click Yes, Next, Next, Install, then untick Launch OBS and Finish. DeviceHub sets it up.',
+    restart: false,
+  },
 ];
 export const DIR = path.join(os.tmpdir(), 'DeviceHub-downloads');
 const MAX_BYTES = 200 * 1024 * 1024;

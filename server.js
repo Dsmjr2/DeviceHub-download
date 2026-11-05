@@ -244,6 +244,8 @@ function isolatedApi(req, res, url) {
     '/api/updates': { isolated: true, apps: [] }, '/api/openrgb': { running: false, isolated: true, controllers: [] }, '/api/openrgb/find': { running: false, isolated: true },
     '/api/board-lights': { isolated: true, pawnio: { installed: false, version: null }, setUp: false, task: false, copy: false, canSetUp: false, why: 'DeviceHub is in isolated test mode', partial: null, before: '', remove: '', busy: false },
     '/api/cpu-sensors': { isolated: true, pawnio: { installed: false, version: null }, setUp: false, task: false, copy: false, canSetUp: false, why: 'DeviceHub is in isolated test mode', partial: null, before: [], remove: [], busy: false },
+    '/api/acer': { isolated: true, acer: false, setUp: false, task: false, copy: false, canSetUp: false, why: 'DeviceHub is in isolated test mode', partial: null, busy: false, readings: null, before: '', remove: '' },
+    '/api/acer/read': { ok: true, readings: null },
     '/api/wifi-pause': { isolated: true, setUp: false, task: false, copy: false, canSetUp: false, why: 'DeviceHub is in isolated test mode', partial: null, show: false, inUse: false, scans: 'normal', paused: null, gaming: false, busy: false, before: '', remove: '' },
     '/api/lights/diagnose': { isolated: true, board: null, openrgb: { state: 'unknown' }, found: [], seen: [], verdict: null, problems: [], lines: [] },
   };
@@ -601,6 +603,53 @@ async function api(req, res, url) {
     });
     return;
   }
+  // Gaming mode (helpers/gaming-mode.mjs, 3 Nov 2026): one switch for Best performance, sleep never, Wi-Fi scans paused
+  // and instant replay on, all put back on Off; GET its state, POST { on }
+  if (url.pathname === '/api/gaming-mode') {
+    if (ISOLATED) return send(res, 200, { ok: false, why: 'not in isolated test mode' });
+    try {
+      const g = await gamingMode();
+      if (req.method === 'GET') return send(res, 200, g.status());
+      if (req.method !== 'POST') return send(res, 405, { ok: false, why: 'GET or POST' });
+      const b = await readBody(req).catch(() => ({}));
+      if (typeof b?.auto === 'boolean') return send(res, 200, g.setAuto(b.auto));   // "Turn on by itself while a game runs"
+      return send(res, 200, b?.on ? await g.on() : await g.off());
+    } catch (e) { return send(res, e.code || 500, { ok: false, why: e.message }); }
+  }
+  // Instant replay (helpers/replay.mjs): OBS's replay buffer while a game runs; its switch and length on the PC page
+  if (url.pathname.startsWith('/api/replay')) {
+    if (ISOLATED) return send(res, 200, { ok: false, why: 'not in isolated test mode' });
+    try {
+      const r = await replayCtl();
+      // the hotkey's clashes are looked at in the background (Windows is asked at most every 10 minutes): the card shows
+      // them on its next read
+      if (req.method === 'GET' && url.pathname === '/api/replay') { r.conflicts().catch(() => {}); return send(res, 200, r.status()); }
+      if (req.method !== 'POST') return send(res, 405, { ok: false, why: 'GET or POST' });
+      if (url.pathname === '/api/replay') { const out = await r.set(await readBody(req).catch(() => ({}))); await r.conflicts().catch(() => {}); return send(res, 200, r.status() || out); }
+      if (url.pathname === '/api/replay/save') return send(res, 200, { ok: true, ...(await r.save()) });
+      if (url.pathname === '/api/replay/open-obs') return send(res, 200, await r.openForPerson());
+      if (url.pathname === '/api/replay/folder') {
+        const dir = (await import('./helpers/replay.mjs')).clipsFolder();
+        fs.mkdirSync(dir, { recursive: true });
+        require('child_process').spawn('explorer.exe', [dir], { detached: true, stdio: 'ignore' }).unref();
+        return send(res, 200, { ok: true });
+      }
+      return send(res, 404, { ok: false, why: 'no such replay action' });
+    } catch (e) { return send(res, e.code || 500, { ok: false, why: e.message }); }
+  }
+  // the active power plan's "Sleep after", plugged in and on battery (helpers/sleep-timer.js): read, and changed on the
+  // person's pick on the Laptop page, backed up, read back, with Undo
+  if (url.pathname === '/api/sleep' || url.pathname === '/api/sleep/undo') {
+    if (ISOLATED) return send(res, 200, { ok: false, why: 'not in isolated test mode' });
+    sleepTimer = sleepTimer || require('./helpers/sleep-timer').create({ backupDir: BACKUPS, log: serverLog });
+    try {
+      if (req.method === 'GET' && url.pathname === '/api/sleep') return send(res, 200, await sleepTimer.read());
+      if (req.method !== 'POST') return send(res, 405, { ok: false, why: 'GET or POST' });
+      if (url.pathname === '/api/sleep/undo') return send(res, 200, await sleepTimer.revert());
+      const b = await readBody(req).catch(() => ({}));
+      return send(res, 200, await sleepTimer.change(String(b?.which || ''), Number(b?.value)));
+    } catch (e) { return send(res, e.code || 500, { ok: false, why: e.message }); }
+  }
   // a maker's app's saved setups (helpers/maker-profiles.mjs): G HUB's mouse setups, read from a copy, read-only
   if (url.pathname === '/api/maker-profiles' && req.method === 'GET') {
     try { return send(res, 200, await (await import('./helpers/maker-profiles.mjs')).status()); } catch (e) { return send(res, 200, { ok: false, why: e.message }); }
@@ -823,6 +872,9 @@ async function api(req, res, url) {
   if (url.pathname === '/api/monitors') {
     try { return send(res, 200, await monitors.list(url.searchParams.has('fresh'))); } catch (e) { return send(res, 500, { error: e.message }); }
   }
+  // Monitors > Sleep (helpers/sleep-monitors.ps1): screens off with Windows' message on a PC with S3 sleep; on a Modern
+  // Standby PC (3 Nov 2026), where that message is the whole PC going to standby, the screens are blanked instead and
+  // the PC keeps running
   if (url.pathname === '/api/monitors/sleep' && req.method === 'POST') {
     try {
       // Windows' own monitor-off message through its signed PowerShell (26 Oct 2026: no third-party nircmd.exe)
@@ -926,6 +978,8 @@ async function api(req, res, url) {
   // CPU temperature and fan speeds: LibreHardwareMonitor's library behind an on-demand elevated reader, set up or removed only on a click (helpers/cpu-sensors.mjs)
   if (url.pathname.startsWith('/api/cpu-sensors')) { try { if (await (await import('./helpers/cpu-sensors.mjs')).handle(url, req, res, send)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   // Pause Wi-Fi scans while gaming: two tasks set up on a click, a pause only in the Gaming profile with the person's switch on (helpers/wifi-pause.mjs)
+  // Acer fans, sensors and charge limit: five tasks set up on a click, each write the person's click (helpers/acer-control.mjs)
+  if (url.pathname.startsWith('/api/acer')) { try { if (await (await import('./helpers/acer-control.mjs')).handle(url, req, res, send)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   if (url.pathname.startsWith('/api/wifi-pause')) { try { if (await (await import('./helpers/wifi-pause.mjs')).handle(url, req, res, send)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   if (url.pathname.startsWith('/api/board-lights')) { try { if (await (await import('./helpers/board-lights.mjs')).handle(url, req, res, send)) return; } catch (e) { return send(res, 500, { error: e.message }); } }
   // the plain-words list of what DeviceHub supports (reads the library, opens no device)
@@ -1072,7 +1126,8 @@ async function api(req, res, url) {
       try { ahead = Number(require('child_process').execFileSync('git', ['rev-list', '--count', `${c}..HEAD`], { cwd: ROOT, windowsHide: true, timeout: 10000, encoding: 'utf8' }).trim()); } catch {}
     }
     let keyHere = null;
-    try { keyHere = (await import('./helpers/signing-key.mjs')).keyAvailable(); } catch {}
+    // the key is in Bitwarden (4 Nov 2026): this PC can sign when the setup repo's secrets tool is unlocked here
+    try { keyHere = (await import('./helpers/signing-key.mjs')).keyAvailable() || (fs.existsSync(path.join(require('os').homedir(), 'source', 'repos', 'setup', 'secrets.ps1')) && fs.existsSync(path.join(require('os').homedir(), '.secrets', 'bw-session'))); } catch {}
     if (publishRun?.state === 'running') {
       try { const t = fs.readFileSync(publishRun.log, 'utf8'); publishRun.step = /Published\./.test(t) ? 'published; finishing Setup.exe' : /Uploading/.test(t) ? 'Uploading' : /built .*Setup\.exe/.test(t) ? 'Uploading' : /built .*setup\.zip/.test(t) ? 'Building the installer' : /library bundle signed/.test(t) ? 'Packing the zip' : 'Building'; } catch {}
     }
@@ -1346,7 +1401,12 @@ http.createServer(async (req, res) => {
   if (!TEST) setTimeout(() => { require('./helpers/pc-check').check(true).catch(() => {}); }, 30000).unref();
   // start-up impact: watched for the first minutes after sign-in when DeviceHub started with Windows (helpers/startup-impact.js)
   if (!TEST && !ISOLATED) setTimeout(() => { const s = require('./helpers/startup-impact'); s._test.deps.log = (text) => serverLog({ kind: 'info', text }); s.measureAtSignIn(); }, 5000).unref();
+  // a screen blank cut short (helpers/sleep-monitors.ps1 on a Modern Standby PC) left the panel dark: its brightness put
+  // back, only when that file is there (nothing is run otherwise)
+  if (!TEST && fs.existsSync(path.join(ROOT, 'logs', 'sleep-monitors-brightness.json'))) require('child_process').execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'helpers', 'sleep-monitors.ps1'), '-Restore'], { windowsHide: true, timeout: 30000 }, () => {});
   // Wi-Fi pause: a pause left from before this start (a crash, a restart) is ended; only when it was set up (helpers/wifi-pause.mjs)
+  // Acer fans: left on Max by a DeviceHub that stopped (a crash) are set back to Auto (helpers/acer-control.mjs)
+  if (!TEST && !ISOLATED) setTimeout(() => import('./helpers/acer-control.mjs').then((a) => { a.deps.log = (text) => serverLog({ kind: 'info', text }); return a.onStart(); }).catch(() => {}), 15000).unref?.();
   if (!TEST) setTimeout(() => import('./helpers/wifi-pause.mjs').then((w) => { w.deps.log = (text) => serverLog({ kind: 'info', text }); return w.onStart(); }).catch(() => {}), 20000).unref?.();
   require('./helpers/hs80-direct').setLog(serverLog);
   if (agent) batteryHistory.start(ROOT, () => agent.state());
@@ -1384,6 +1444,83 @@ let agent = null, agentTried = false;
 let tray = false;
 let quitting = false;
 let laptopBusy = false;   // /api/laptop: one read or power-mode change at a time
+let sleepTimer = null;    // /api/sleep (helpers/sleep-timer.js), made on first use
+// helpers/laptop.ps1 (Windows' power mode, read and set), for the Laptop page's route and Gaming mode
+function runLaptopPs(mode = '') {
+  return new Promise((resolve) => require('child_process').execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'helpers', 'laptop.ps1'), ...(mode ? ['-Mode', mode] : [])],
+    { windowsHide: true, timeout: 30000 }, (e, out) => { let r = null; try { r = JSON.parse(String(out || '').trim().split(/\r?\n/).pop()); } catch {} resolve(r && typeof r === 'object' ? r : { ok: false, why: e ? e.message : 'no answer' }); }));
+}
+// the power plans (powercfg /list, /getactivescheme, /setactive): only for Gaming mode on a PC without Windows' power mode
+const PLAN_GUID = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\s+\(([^)]*)\)/i;
+const powercfg = (args) => new Promise((resolve, reject) => require('child_process').execFile('powercfg', args, { windowsHide: true, timeout: 15000 }, (e, out) => (e ? reject(new Error(String(e.message).split('\n')[0])) : resolve(String(out || '')))));
+// Gaming mode (helpers/gaming-mode.mjs): made on first use, with the real parts
+let gaming = null;
+async function gamingMode() {
+  if (gaming) return gaming;
+  const { createGamingMode } = await import('./helpers/gaming-mode.mjs');
+  const wifi = await import('./helpers/wifi-pause.mjs');
+  const file = dataFile('gaming-mode.json', ROOT);
+  sleepTimer = sleepTimer || require('./helpers/sleep-timer').create({ backupDir: BACKUPS, log: serverLog });
+  gaming = createGamingMode({
+    power: {
+      get: async () => (await runLaptopPs()).powerMode || null,
+      set: async (m) => { if (laptopBusy) throw new Error('the Laptop page is changing it now'); laptopBusy = true; try { return (await runLaptopPs(m)).powerMode || null; } finally { laptopBusy = false; } },
+    },
+    plan: {
+      active: async () => PLAN_GUID.exec(await powercfg(['/getactivescheme']))?.[1]?.toLowerCase() || null,
+      // Ultimate Performance, else High performance, from this PC's own list
+      fast: async () => {
+        const plans = (await powercfg(['/list'])).split(/\r?\n/).map((l) => PLAN_GUID.exec(l)).filter(Boolean).map((m) => ({ guid: m[1].toLowerCase(), name: m[2] }));
+        return plans.find((p) => p.guid === 'e9a42b02-d5df-448d-aa00-03f14749eb61') || plans.find((p) => p.guid === '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c') || null;
+      },
+      set: async (g) => { if (!/^[0-9a-f-]{36}$/.test(g)) throw new Error('not a plan'); await powercfg(['/setactive', g]); },
+    },
+    sleep: { read: () => sleepTimer.read(), change: (which, v, o) => sleepTimer.change(which, v, o) },
+    wifi: { status: () => wifi.status({ fresh: true }), pause: (why) => wifi.pause(why), resume: (why) => wifi.resume(why) },
+    replay: { status: async () => (await replayCtl()).status(), set: async (b) => (await replayCtl()).set(b) },
+    store: { read: () => readJsonFile(file, null), write: (s) => writeAtomic(file, JSON.stringify(s, null, 1)) },
+    backup: (d) => { try { fs.writeFileSync(path.join(BACKUPS, `gaming-mode-${d.at.replace(/[:.]/g, '-')}.json`), JSON.stringify(d, null, 1)); } catch {} },
+    log: (text, kind) => serverLog({ kind: kind === 'bad' ? 'bad' : kind === 'info' ? 'info' : 'good', text }),
+  });
+  return gaming;
+}
+// left on through a crash or a restart: everything put back, 25 s after start (after the Wi-Fi pause's own check)
+if (!ISOLATED && process.env.DEVICEHUB_TEST !== '1') setTimeout(() => { if (readJsonFile(dataFile('gaming-mode.json', ROOT), {})?.on) gamingMode().then((g) => g.onStart()).catch((e) => console.error('[gaming-mode]', e.message)); }, 25000).unref?.();
+// Instant replay (helpers/replay.mjs, 2 Nov 2026): made on first use; every 5 s, only while it is turned on (or still
+// recording), the running game is looked for: a program from the game folders (helpers/games.js) or a Game mode game
+let replay = null;
+async function replayCtl() {
+  if (replay) return replay;
+  const m = await import('./helpers/replay.mjs');
+  const file = dataFile('replay.json', ROOT);
+  replay = m.createReplay({ root: ROOT, settings: () => ({ ...m.DEFAULTS, ...readJsonFile(file, {}) }), saveSettings: (s) => writeAtomic(file, JSON.stringify(s, null, 1)),
+    log: (text, kind) => serverLog({ kind: kind === 'bad' ? 'bad' : kind === 'info' ? 'info' : 'good', text }) });
+  return replay;
+}
+async function runningGame() {
+  const games = require('./helpers/games');
+  const [running, names, titles] = await Promise.all([runningPrograms(false), games.names(), games.titles()]);
+  const now = new Set((running || []).map((x) => String(x).toLowerCase()));
+  const hit = (names || []).find((n) => now.has(n));
+  if (hit) return titles?.[hit] || hit.replace(/\.exe$/i, '');
+  for (const g of readJsonFile(dataFile('game-mode.json', ROOT), {}).games || []) if ((g.exes || []).some((e) => now.has(String(e).toLowerCase()))) return g.name;
+  // games the person added on the Instant replay card (3 Nov 2026: one DeviceHub's game folders miss)
+  for (const g of readJsonFile(dataFile('replay.json', ROOT), {}).games || []) if (now.has(String(g.exe).toLowerCase())) return g.name;
+  return null;
+}
+// one look at the running game every 5 s, for instant replay and Gaming mode's "while a game runs" (3 Nov 2026), only
+// while one of them wants it
+if (!ISOLATED) setInterval(async () => {
+  try {
+    const wantReplay = readJsonFile(dataFile('replay.json', ROOT), {}).on || replay?.status().phase === 'recording';
+    const gm = readJsonFile(dataFile('gaming-mode.json', ROOT), {});
+    const wantGaming = gm.auto || gm.byGame;
+    if (!wantReplay && !wantGaming) return;
+    const game = await runningGame();
+    if (wantReplay) await (await replayCtl()).tick(game);
+    if (wantGaming) await (await gamingMode()).tick(game);
+  } catch (e) { console.error('[game loop]', e.message); }
+}, 5000).unref?.();
 // code: 0 to quit, 3 to be started again (Restart); a signal's name (SIGINT) is a quit
 async function shutdown(code) {
   code = code === 3 ? 3 : 0;
@@ -1395,8 +1532,16 @@ async function shutdown(code) {
   try { batteryHistory.stop(); } catch {}
   try { receiverLight.stop(); } catch {}
   try { openrgb.stop(); } catch {}  // the bundled OpenRGB, if DeviceHub started it
+  // Gaming mode (3 Nov 2026): everything put back before DeviceHub goes, so a PC is not left on Best performance with
+  // sleep off until DeviceHub next starts (12 s at most; what is not back by then the next start puts back). First, so
+  // its own "instant replay off" still finds OBS.
+  try { if (readJsonFile(dataFile('gaming-mode.json', ROOT), {})?.on) await Promise.race([(await gamingMode()).off('DeviceHub quit'), new Promise((r) => setTimeout(r, 12000))]); } catch {}
+  // instant replay: the OBS DeviceHub started for a game is closed with it (5 s at most)
+  try { if (replay?.status().phase === 'recording') await Promise.race([replay.stop('DeviceHub quit'), new Promise((r) => setTimeout(r, 5000))]); } catch {}
   // Wi-Fi scans back on if DeviceHub paused them (best effort, 1.5 s at most; the task's own watcher and sign-in resume too)
   try { await (await import('./helpers/wifi-pause.mjs')).onQuit(); } catch {}
+  // the Acer fans back to Auto if DeviceHub set them to Max (2 s at most; the task's own watcher and sign-in do it too)
+  try { await (await import('./helpers/acer-control.mjs')).onQuit(); } catch {}
   try { require('./helpers/native').stop(); } catch {}
   quitting = true;
   process.exit(code);

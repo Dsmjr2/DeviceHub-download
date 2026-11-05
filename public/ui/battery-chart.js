@@ -72,7 +72,7 @@ function draw(box, id, rows, days, line = lineOf(id)) {
   const last = rows[rows.length - 1];
   if (last) {
     root.append(svg('circle', { cx: x(last.at), cy: y(last.pct), r: 4, fill: line, class: 'bc-dot' }));
-    const tx = svg('text', { x: Math.min(x(last.at), W - PAD.r) - 8, y: y(last.pct) - 9, class: 'bc-value', 'text-anchor': 'end' }); tx.textContent = `${last.pct}%`; root.append(tx);
+    const tx = svg('text', { x: Math.min(x(last.at), W - PAD.r) - 8, y: Math.max(PAD.t + 10, y(last.pct) - 9), class: 'bc-value', 'text-anchor': 'end' }); tx.textContent = `${last.pct}%`; root.append(tx);
   }
 
   // hover: a crosshair at the nearest reading, with a tooltip
@@ -100,17 +100,17 @@ function draw(box, id, rows, days, line = lineOf(id)) {
 }
 
 // The card: range control above, the graph, a key for the charging band, and the readings as a table.
-// opts (an added device): { title, kind }
-export function batteryChart(id, redraw, { title, kind } = {}) {
+// opts (an added device): { title, kind }; heading (the Laptop page: "Battery over time")
+export function batteryChart(id, redraw, { title, kind, heading = 'Battery', band = 'Charging' } = {}) {
   if (title) named[id] = title;
   const line = lineOf(id, kind);
   const days = ui.days[id] ?? 1;
   const box = h('div', { class: 'bc-box' }, h('div', { class: 'faint', style: { padding: '40px 0', textAlign: 'center' } }, 'Loading…'));
   const table = h('details', { class: 'bc-table' }, h('summary', {}, 'Readings'));
-  const el = card([h('h2', {}, 'Battery'), h('span', { class: 'spacer' }),
+  const el = card([h('h2', {}, heading), h('span', { class: 'spacer' }),
     segmented({ value: days, compact: true, options: [{ value: 1, label: '24 h' }, { value: 7, label: '7 days' }], onCommit: async (v) => { ui.days[id] = v; redraw(); } })],
     box,
-    h('div', { class: 'bc-key' }, h('i'), 'Charging'),
+    h('div', { class: 'bc-key' }, h('i'), band),
     table);
   load(id, days).then((rows) => {
     if (rows.length < 2) { box.replaceChildren(h('div', { class: 'faint', style: { padding: '40px 0', textAlign: 'center' } }, 'Not enough readings yet.')); return; }

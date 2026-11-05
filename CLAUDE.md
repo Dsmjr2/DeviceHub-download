@@ -109,7 +109,7 @@ not covered (a new device, a download nobody named), or when a step fails and th
    code: check it shows up with its layout. Ask before any download or install (Equalizer APO, USBPcap, a maker's
    app), and before a learning session (it needs the person at the PC changing settings in the maker's app).
 5. **Prove each device** (step 6) and run the checks before saying it works: `npm test`, or on a copy without npm,
-   `runtime\node.exe` on each script in package.json's `test` line, in order.
+   `runtime\node.exe tests\run-all.mjs` (it runs every file in package.json's `testFiles` and lists all failures).
 
 What cannot happen without the person: anything that needs a download or install, and learning a protocol that no
 open project documents (they change one setting at a time in the maker's app while you listen).
@@ -247,6 +247,8 @@ helpers/display.js         each screen's resolution, refresh rate, HDR, main scr
 helpers/pc-sensors.js      Temperatures and fans, read only (nvidia-smi, D3DKMT, ACPI zones); helpers/pc-check.js the PC check (a list of check functions); both on the PC page
 helpers/cpu-sensors.mjs    the CPU temperature and board fans add-on (LibreHardwareMonitor, on the person's click), read only
 helpers/wifi-pause.mjs     Pause Wi-Fi scans while gaming: two hash-pinned admin tasks on a click (helpers/wifi-pause.ps1); Gaming profile only, always resumes
+helpers/acer-control.mjs   Acer laptops: sensors, fans Auto/Max, charge limit through five hash-pinned admin tasks set up on a click (helpers/acer-control.ps1; docs/handoff/acer-control.md)
+helpers/replay.mjs         Instant replay: OBS Studio's replay buffer only while a game runs (obs-ws.mjs; Alt+F10; its own OBS profile)
 docs/FANS.md               BIOS fan curve settings; DeviceHub never writes to the board's fan chip (it would need a kernel driver)
 tests/                     npm test: offline checks, then every page opened live and in demo; npm run test:offline needs
                            no running DeviceHub; node tests/isolated.mjs opens every page in demo mode in a copy beside it
@@ -418,6 +420,9 @@ stand-in server written from OpenRGB's protocol document.
 
 - `npm test`: every script parses, no stray control characters, JSON valid, then every page opened live and in demo
   without a script error (the page part needs DeviceHub running). `npm run test:offline` is the first part only.
+  Both run `tests/run-all.mjs` over package.json `testFiles` (offline, then live): every file runs to the end and
+  every failure is listed (3 Nov 2026; a new test file goes in that list). `node tests/run-all.mjs replay pages` runs
+  only those.
 - The new building blocks' tests run in `npm test` (device-library, lamparray, std-battery, vendor-files).
   `powershell -NoProfile -ExecutionPolicy Bypass -File tests\app-ui.ps1` is optional (about 25 s; it opens a small
   test window on the second screen).
@@ -451,3 +456,12 @@ through the relay (relay/, see relay/README.md). It never sends from this PC (or
 `DeviceHub.vbs` starts it (the keep-running loop `helpers/keep-running.bat` restarts it after a crash) and opens the
 window; `DeviceHub.vbs /background` starts it in the tray only. `node server.js` runs it in a console for development.
 Only one DeviceHub talks to the devices at a time; quit it before running a learning tool that opens a device.
+
+## Publishing and the signing key
+
+Releases and the device library bundle are signed with one Ed25519 key, `DEVICEHUB_RELEASE_KEY`, kept only in Bitwarden
+(Automation folder; Dsmjr2/setup's `secrets`). Nothing on disk holds it. `helpers/publish-release.ps1` (and the Publish
+button) re-runs itself through `secrets run` to get it, so any PC with Bitwarden unlocked (`secrets unlock`) can publish:
+`secrets run powershell -NoProfile -ExecutionPolicy Bypass -File helpers\publish-release.ps1`. `helpers/signing-key.mjs`
+refuses a missing key, or one whose public half is not `helpers/release-public-key.pem`. Never make a new key: every
+installed copy would refuse its updates. Never print the key or write it to a file.

@@ -123,7 +123,9 @@ const call = async (method, p, body) => {
 };
 check((await call('GET', '/api/other')).handled === false, 'other paths are left to server.js');
 let g = await call('GET', '/api/installers');
-check(g.code === 200 && g.body.tools.length === 3 && g.body.busy === false, 'GET /api/installers');
+check(g.code === 200 && g.body.tools.length === 4 && g.body.busy === false, 'GET /api/installers');
+g = await call('GET', '/api/installers/plan?tool=obs');
+check(g.code === 200 && g.body.offer === 'install' && /SHA-256 the maker publishes/.test(g.body.check) && g.body.source === 'github.com', 'OBS Studio: offered to install, checked against its published SHA-256');
 g = await call('GET', '/api/installers/plan?tool=usbpcap');
 check(g.code === 200 && g.body.file === 'USBPcapSetup-1.5.4.0.exe', 'GET /api/installers/plan');
 g = await call('GET', '/api/installers/plan?tool=nope');

@@ -69,7 +69,7 @@ function monitorCard(m) {
     displayBlock(m, redraw));
   if (!m.ddc) return card([h('h2', {}, m.name)], h('p', { class: 'faint' }, 'No DDC/CI. Turn it on in the monitor\'s menu.'),
     displayBlock(m, redraw));
-  return card([icon('monitor'), h('h2', {}, m.name), h('span', { class: 'sub' }, m.model && m.model !== m.name ? m.model : null)],
+  return card([icon('monitor'), h('h2', {}, m.name)],
     // off or not answering (21 Oct 2026): its last settings stay here and changes wait for it
     m.away || m.waiting?.length ? h('p', { class: 'faint', style: { margin: '0 0 8px' } }, m.away ? 'Off: changes apply when it is on.' : 'Waiting…', m.waiting?.length ? ` Waiting: ${m.waiting.join(', ')}.` : '') : null,
     m.brightness ? row('Brightness', null, slider({ value: m.brightness.value, min: 0, max: m.brightness.max, unit: m.brightness.max === 100 ? '%' : '', live: live(m, 'brightness'), onCommit: (v) => set(m, 'brightness', v, `brightness ${v}`) })) : null,

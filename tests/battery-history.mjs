@@ -32,6 +32,12 @@ export async function run() {
       ],
     };
     bh._test.setFile(file, () => state);
+    // the laptop's own battery (3 Nov 2026): from helpers/power.js's last answer, under the id "laptop"
+    bh._test.setPower({ state: () => ({ hasBattery: true, onBattery: false, percent: 64 }) });
+    const lap = bh._test.rowsNow().find((r) => r.id === 'laptop');
+    check(lap && lap.pct === 64 && lap.charging === true, `the laptop's battery recorded as "laptop" (${JSON.stringify(lap)})`);
+    bh._test.setPower({ state: () => ({ hasBattery: false, onBattery: false, percent: null }) });
+    check(!bh._test.rowsNow().some((r) => r.id === 'laptop'), 'a desktop: no laptop row');
     const rows = bh._test.rowsNow();
     const by = Object.fromEntries(rows.map((r) => [r.id, r]));
     for (const id of ['mouse', 'headset']) {

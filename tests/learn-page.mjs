@@ -10,7 +10,8 @@ import { fileURLToPath } from 'node:url';
 const REAL = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const fails = [];
 const ok = (c, m) => { if (!c) fails.push(m); };
-const src = (f) => fs.readFileSync(path.join(REAL, f), 'utf8');
+// plain line endings: the checks below match "\n", which a CRLF file never has (3 Nov 2026)
+const src = (f) => fs.readFileSync(path.join(REAL, f), 'utf8').replace(/\r\n/g, '\n');
 const page = src('public/pages/learn.js');
 const code = page.replace(/\/\/.*$/gm, '');
 

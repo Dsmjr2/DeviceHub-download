@@ -34,7 +34,7 @@ export function pointerCard(redraw) {
   if (isDemo()) pointer = pointer || { ok: true, speed: 10, precision: false, scrollLines: 3, doubleClick: 500 };
   else if (!pointer) loadPointer(redraw);
   const p = pointer;
-  const head = [h('h2', {}, 'Windows pointer'), h('span', { class: 'sub' }, 'all mice')];
+  const head = [h('h2', {}, 'Windows pointer')];
   if (!p) return card(head, h('p', { class: 'faint' }, 'Reading…'));
   if (!p.ok) return card(head, h('p', { class: 'faint' }, `Not read: ${p.error}`));
   const page = p.scrollLines === -1;

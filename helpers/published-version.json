@@ -1,8 +1,11 @@
 {
-  "version": "1.57",
-  "commit": "ebaff1e4bc8f",
+  "version": "1.58",
+  "commit": "0cd9ff9fbae0",
   "notes": [
-    "Ornata V3 wave direction as openrazer sends it",
-    "Razer lighting effects as write-only settings, never saved on the…"
+    "Old board-lights admin task: shown on the Lighting page, replaced or…",
+    "Release signing key from Bitwarden (secrets run)",
+    "Equalizer speaker choices work again",
+    "Instant replay: lengths up to 20 min, each offered only when its…",
+    "Plus 27 more fixes and improvements"
   ]
 }

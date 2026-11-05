@@ -116,6 +116,19 @@ public static class Tray {
     try { System.Diagnostics.Process.Start(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "wscript.exe"), "\"" + Path.Combine(root, "DeviceHub.vbs") + "\""); } catch { }
   }
 
+  // One POST off the UI thread, its answer as a balloon (3 Nov 2026: Gaming mode and Save replay from the tray); said()
+  // turns the answer into the balloon's line, or null when it was not done
+  static void Run(string path, Dictionary<string, object> body, string title, Func<object, string> said) {
+    ThreadPool.QueueUserWorkItem(_ => {
+      var r = Api(path, body);
+      host.BeginInvoke((Action)(() => {
+        var line = r == null ? null : said(r);
+        if (line == null) icon.ShowBalloonTip(5000, title + ": not done", r == null ? "DeviceHub did not answer, or said no. Open DeviceHub to see why." : (Get(r, "why") as string ?? "Open DeviceHub to see why."), ToolTipIcon.Error);
+        else icon.ShowBalloonTip(3000, title, line, ToolTipIcon.Info);
+      }));
+    });
+  }
+
   // Applies a profile off the UI thread; the result comes back as a balloon.
   static void ApplyProfile(string name) {
     ThreadPool.QueueUserWorkItem(_ => {
@@ -211,6 +224,19 @@ public static class Tray {
     // sends only autoSwitch (the server merges); nothing is sent if DeviceHub did not answer the read
     asw.Click += (a, b) => { var s = Api("/api/settings"); if (s == null) return; Api("/api/settings", new Dictionary<string, object> { { "autoSwitch", !Equals(Get(s, "autoSwitch"), true) } }); };
     menu.Items.Add(asw);
+    // Gaming mode (ticked while on) and, while instant replay records, Save replay (3 Nov 2026)
+    var gm = Api("/api/gaming-mode");
+    if (Equals(Get(gm, "ok"), true)) {
+      bool on = Equals(Get(gm, "on"), true);
+      var g = new ToolStripMenuItem("Gaming mode") { Checked = on };
+      g.Click += (a, b) => Run("/api/gaming-mode", new Dictionary<string, object> { { "on", !on } }, on ? "Gaming mode off" : "Gaming mode on",
+        r => Equals(Get(r, "on"), !on) ? (on ? "Everything is back as it was." : "Best performance, no sleep, instant replay on.") : null);
+      menu.Items.Add(g);
+    }
+    if (Equals(Get(Api("/api/replay"), "phase"), "recording")) {
+      menu.Items.Add("Save replay (Record last)").Click += (a, b) => Run("/api/replay/save", new Dictionary<string, object>(), "Replay saved",
+        r => Equals(Get(r, "ok"), true) ? (Get(r, "file") as string ?? "OBS is writing it.") : null);
+    }
     menu.Items.Add(new ToolStripSeparator());
     menu.Items.Add("Quit DeviceHub").Click += (a, b) => { Api("/api/quit", new Dictionary<string, object>()); icon.Visible = false; Application.ExitThread(); };
     e.Cancel = false;

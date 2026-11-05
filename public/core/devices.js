@@ -553,7 +553,12 @@ export function startPolling() {
       if (d.status === 'asleep' && !(env.wakeEvents && d.id === 'mouse' && Date.now() - (asleepLook[d.id] || 0) < 300000)) { asleepLook[d.id] = Date.now(); refresh(d.id, { quiet: true }); }
       if ((d.status === 'missing' || d.status === 'idle') && (d.adapter.autoReconnect || env.agent)) {
         // Looking for a missing mouse or keyboard costs a device scan, so the agent does it every 20 s, not every 5.
-        if (env.agent && !d.adapter.pollRead && Date.now() - (lastTry[d.id] || 0) < 20000) continue;
+        // With Windows' device messages coming in (env.wakeEvents: the helper's window passes on every plug and unplug,
+        // and each one connects at once, helpers/agent.mjs), this is only a backstop: every 2 minutes (3 Nov 2026,
+        // measured: a laptop with its keyboard and headset at home scanned for them all day, the helper's largest idle cost)
+        if (env.agent && !d.adapter.pollRead && Date.now() - (lastTry[d.id] || 0) < (env.wakeEvents ? 120000 : 20000)) continue;
+        // the headset (pollRead) was looked for every 5 s; a USB or Bluetooth headset arriving sends the same messages
+        if (env.agent && d.adapter.pollRead && env.wakeEvents && Date.now() - (lastTry[d.id] || 0) < 60000) continue;
         connect(d.id, false);
       }
     }

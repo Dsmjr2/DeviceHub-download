@@ -18,12 +18,15 @@ const call = async (q, ms = 15000) => {
 };
 // a camera's own name, and Windows' device path as its id
 const shape = (c) => ({ id: c.path, name: c.name, controls: c.controls || {} });
+const isVirtual = (c) => (!c.id && !Object.keys(c.controls).length) || /virtual cam/i.test(c.name || '');
 
 async function list(fresh) {
   if (!fresh && cache.list && Date.now() - cache.at < 10000) return cache.list;
   return serial(async () => {
     const r = await call({ op: 'cameras' }, 20000);
-    cache = { at: Date.now(), list: r.cameras.map(shape) };
+    // a software camera (OBS Virtual Camera, 3 Nov 2026: it showed as "Camera: No picture settings" once OBS was in) has
+    // no device path and nothing to set: it is not a webcam, so it is left out
+    cache = { at: Date.now(), list: r.cameras.map(shape).filter((c) => !isVirtual(c)) };
     return cache.list;
   });
 }
@@ -55,4 +58,4 @@ async function set(id, key, value, auto) {
   return { name: cam.name, key, value: after.value, auto: after.auto };
 }
 
-module.exports = { start(nat, dir) { native = nat; backupDir = dir; }, list, set };
+module.exports = { start(nat, dir) { native = nat; backupDir = dir; }, list, set, isVirtual };

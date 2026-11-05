@@ -60,6 +60,11 @@ export const PAWNIO = {
   signer: [/(^|,\s*)CN=namazso\.eu(,|$)/, /(^|,\s*)O=namazso(,|$)/],
 };
 export const PAWNIO_REMOVE = 'PawnIO stays installed (remove it in Settings > Apps > Installed apps).';
+// an older DeviceHub's board lights (22 Oct 2026, removed the same day; docs/handoff/board-lights.md): the task
+// "DeviceHub OpenRGB" ran %LOCALAPPDATA%\Programs\OpenRGB\OpenRGB.exe with highest rights at sign-in. That folder is
+// the person's own, so any program could swap the file and run as administrator. Found on Shawn's PC 4 Nov 2026 (the
+// PC rebuild check); Add board lights and Remove board lights both take it away (helpers/uninstall-plan.mjs LEGACY_TASK).
+export const LEGACY = { task: 'DeviceHub OpenRGB', exe: path.join(process.env.LOCALAPPDATA || '', 'Programs', 'OpenRGB', 'OpenRGB.exe') };
 const user = () => `${process.env.USERDOMAIN || os.hostname()}\\${os.userInfo().username}`;
 
 // every file of the protected copy, flat beside OpenRGB.exe, with its pinned hash
@@ -73,6 +78,9 @@ const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
 const head = (result) => [
   "$ErrorActionPreference = 'Stop'",
   `$dest = ${q(BOARD.dir)}; $app = ${q(BOARD.app)}; $cfg = ${q(BOARD.config)}; $task = ${q(BOARD.task)}; $result = ${q(result)}`,
+  `$oldTask = ${q(LEGACY.task)}; $oldExe = ${q(LEGACY.exe)}`,
+  // the older DeviceHub's task, only when every action runs exactly its old copy; then only that copy's OpenRGB.exe stops
+  "function Drop-Old { $t = Get-ScheduledTask -TaskName $oldTask -ErrorAction SilentlyContinue; if ($t -and -not @($t.Actions | Where-Object { $_.Execute -ne $oldExe }).Count) { Stop-ScheduledTask -TaskName $oldTask -ErrorAction SilentlyContinue; Unregister-ScheduledTask -TaskName $oldTask -Confirm:$false }; $p = @(Get-Process -Name OpenRGB -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path -ieq $oldExe }); if ($p.Count) { $p | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 800 } }",
   // only an OpenRGB.exe running from the protected copy is stopped, never the person's own or DeviceHub's USB-only one
   "function Stop-Board { $p = @(Get-Process -Name OpenRGB -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($app + '\\', [StringComparison]::OrdinalIgnoreCase) }); if ($p.Count) { $p | Stop-Process -Force -ErrorAction SilentlyContinue; $p | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue } }",
   'function Drop-Task { if (Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue) { Stop-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue; Unregister-ScheduledTask -TaskName $task -Confirm:$false } }',
@@ -84,7 +92,7 @@ export function setupScript({ who = user(), result = RESULT, files = wanted() } 
     `$files = @(${files.map((f) => `@(${q(f.from)}, ${q(f.rel.replace(/\//g, '\\'))}, ${q(f.sha)})`).join(', ')})`,
     '$made = $false',
     'try {',
-    '  Drop-Task; Stop-Board',
+    '  Drop-Old; Drop-Task; Stop-Board',
     '  if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }',
     '  New-Item -ItemType Directory -Force -Path $app, $cfg | Out-Null',
     '  foreach ($f in $files) {',
@@ -116,7 +124,7 @@ export function removeScript({ result = RESULT } = {}) {
   return [
     ...head(result),
     'try {',
-    '  Drop-Task; Stop-Board',
+    '  Drop-Old; Drop-Task; Stop-Board',
     '  if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }',
     "  Set-Content -LiteralPath $result -Value 'ok' -Encoding UTF8",
     '  exit 0',
@@ -151,7 +159,7 @@ export const deps = {
     return parsePawnio(out);
   },
   // the logon task is there (read with the person's own rights)
-  task: () => new Promise((resolve) => execFile('schtasks.exe', ['/Query', '/TN', BOARD.task], { windowsHide: true, timeout: 15000 }, (err) => resolve(!err))),
+  task: (name = BOARD.task) => new Promise((resolve) => execFile('schtasks.exe', ['/Query', '/TN', name], { windowsHide: true, timeout: 15000 }, (err) => resolve(!err))),
   // one admin prompt: { ok, declined, code, error }. marks: { started, cancel } (uacMarks); signal: stops waiting
   elevate(script, { marks = null, signal } = {}) {
     const full = marks ? `${uacMarks(marks)}\r\n${script}` : script;
@@ -186,13 +194,15 @@ export async function status({ fresh = false } = {}) {
   return { ...(await cache.get(fresh)), busy: !!(job && !job.done) };
 }
 async function readStatus() {
-  const [pawn, task] = await Promise.all([deps.pawnio().catch(() => ({ app: false, service: false, version: null })), deps.task().catch(() => false)]);
+  const [pawn, task, oldTask] = await Promise.all([deps.pawnio().catch(() => ({ app: false, service: false, version: null })), deps.task().catch(() => false), deps.task(LEGACY.task).catch(() => false)]);
   const files = wanted(), lack = files.filter((f) => !deps.exists(f.from)).map((f) => f.rel);
   const copy = deps.exists(BOARD.exe), setUp = task && copy;
   const pawnio = { installed: pawn.app || pawn.service, version: pawn.version };
   const canSetUp = !lack.length;
   const value = {
     pawnio, setUp, task, copy, canSetUp,
+    // the older DeviceHub's administrator task (LEGACY): Add replaces it with the protected copy, Remove takes it away
+    legacy: oldTask,
     why: canSetUp ? null : `this copy of DeviceHub lacks ${lack.every((r) => r.endsWith('.bin')) ? "OpenRGB's board modules (tools\\openrgb\\board-modules)" : lack.length > 3 ? `${lack.length} of OpenRGB's files (tools\\openrgb)` : `${lack.join(', ')} (tools\\openrgb)`}; install DeviceHub again from its download`,
     partial: task !== copy ? (task ? 'The task is there but its OpenRGB copy is not.' : 'The OpenRGB copy is there but its task is not.') : null,
     // the one plain line before the click
@@ -323,6 +333,7 @@ export async function setUp() {
     step('Checking it is set up');
     const after = await status({ fresh: true });
     if (!after.setUp) return finish(false, `Not set up: ${after.partial || 'Windows did not keep the task'} Press Remove board lights, then try again.${kept()}`, { left: true });
+    if (after.legacy) return finish(false, `Set up, but the older DeviceHub's administrator task (${LEGACY.task}) is still there: it runs another file. Delete it in Task Scheduler.${kept()}`, { left: true });
     step('Waiting for OpenRGB to find the board (up to 45 s)');
     const up = await deps.waitServer(BOARD.port, 45000);
     return finish(true, up ? 'Board, fan and RAM lights are set up. Press Find lights.'
@@ -337,7 +348,7 @@ export async function remove() {
   try {
     step('Checking what is set up');
     const s = await status({ fresh: true });
-    if (!s.task && !s.copy) return finish(true, `Board lights are not set up; nothing to remove. ${PAWNIO_REMOVE}`, { already: true });
+    if (!s.task && !s.copy && !s.legacy) return finish(true, `Board lights are not set up; nothing to remove. ${PAWNIO_REMOVE}`, { already: true });
     fs.mkdirSync(DIR, { recursive: true });
     deps.clearResult(RESULT);
     const r = await elevateWatched(removeScript(), 'remove board lights', 'Removing the board-lights task');
@@ -346,7 +357,7 @@ export async function remove() {
     if (r.unanswered || r.declined) return finish(false, (r.unanswered ? unansweredText : declinedText)('Not removed'), { uac: r.unanswered ? 'unanswered' : 'declined', retry: true });
     if (!r.ok) return finish(false, `Not removed: ${said.startsWith('failed|') ? said.slice(7) : r.error || `code ${r.code}`}.`);
     const after = await status({ fresh: true });
-    if (after.task || after.copy) return finish(false, `Not fully removed: ${after.task ? 'the task' : 'the OpenRGB copy'} is still there. Press Remove board lights again.`);
+    if (after.task || after.copy || after.legacy) return finish(false, `Not fully removed: ${after.task ? 'the task' : after.legacy ? 'the older DeviceHub OpenRGB task' : 'the OpenRGB copy'} is still there. Press Remove board lights again.`);
     return finish(true, `Board lights removed: back to USB lights only. ${PAWNIO_REMOVE}`);
   } catch (e) {
     return finish(false, `Not removed: ${e.message}.`);

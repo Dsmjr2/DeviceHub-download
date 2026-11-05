@@ -35,6 +35,6 @@ export function deviceChecks({ redraw = () => {} } = {}) {
   });
   return h('section', { class: 'panel su-section su-checks' },
     h('header', { class: 'panel-head' }, h('h2', {}, 'Check your devices')),
-    h('p', { class: 'faint', style: { margin: '0 0 12px' } }, 'Quick checks so you know everything works. Each one starts only when you press its button.'),
-    h('div', { class: 'stack' }, ...cards));
+    h('div', { class: 'stack' }, ...cards),
+    h('p', { class: 'faint', style: { margin: '12px 0 0' } }, 'Each check starts only when you press its button.'));
 }

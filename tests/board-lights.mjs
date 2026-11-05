@@ -51,10 +51,12 @@ const R = bl.removeScript({ result: 'C:\\t\\r.txt' });
 check(R === [
   "$ErrorActionPreference = 'Stop'",
   `$dest = '${B.dir}'; $app = '${B.app}'; $cfg = '${B.config}'; $task = 'DeviceHub board lights'; $result = 'C:\\t\\r.txt'`,
+  `$oldTask = 'DeviceHub OpenRGB'; $oldExe = '${bl.LEGACY.exe}'`,
+  R.split('\r\n')[3],
   "function Stop-Board { $p = @(Get-Process -Name OpenRGB -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($app + '\\', [StringComparison]::OrdinalIgnoreCase) }); if ($p.Count) { $p | Stop-Process -Force -ErrorAction SilentlyContinue; $p | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue } }",
   'function Drop-Task { if (Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue) { Stop-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue; Unregister-ScheduledTask -TaskName $task -Confirm:$false } }',
   'try {',
-  '  Drop-Task; Stop-Board',
+  '  Drop-Old; Drop-Task; Stop-Board',
   '  if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }',
   "  Set-Content -LiteralPath $result -Value 'ok' -Encoding UTF8",
   '  exit 0',
@@ -64,6 +66,14 @@ check(R === [
   '}',
 ].join('\r\n'), 'remove: stop, delete the task and the folder, exactly');
 check(!/PawnIO/i.test(R), 'remove never touches PawnIO');
+// the older DeviceHub's administrator task (4 Nov 2026, found on Shawn's PC): dropped by both scripts, only when every action runs
+// exactly its old copy, and only that copy's OpenRGB.exe is stopped; its folder (the person's own) is left
+{
+  const old = R.split('\r\n')[3];
+  check(bl.LEGACY.task === 'DeviceHub OpenRGB' && /\\Programs\\OpenRGB\\OpenRGB\.exe$/.test(bl.LEGACY.exe), 'the older task and its copy, by name');
+  check(old.startsWith('function Drop-Old') && old.includes('Where-Object { $_.Execute -ne $oldExe }') && old.includes('$_.Path -ieq $oldExe') && !/Remove-Item/.test(old), 'Drop-Old: only that task running only that file, only that OpenRGB, no folder deleted');
+  check(bl.setupScript().includes('  Drop-Old; Drop-Task; Stop-Board') && R.includes('  Drop-Old; Drop-Task; Stop-Board'), 'Add and Remove both take the older task away first');
+}
 check(bl.elevateCommand === "try { $p = Start-Process powershell.exe -Verb RunAs -WindowStyle Hidden -ArgumentList '-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',$env:DH_SCRIPT -PassThru -Wait -ErrorAction Stop; \"exit|$($p.ExitCode)\" } catch { \"error|$($_.Exception.Message)\" }", 'Windows\' own admin prompt (RunAs); the script passed encoded, never as a file');
 
 // ---------- stand-ins ----------
@@ -82,9 +92,9 @@ d.signature = async () => pc.sig;
 d.sha256 = async () => pc.sha;
 d.run = async (file) => { calls.run.push(path.basename(file)); check(fs.existsSync(file), 'the installer runs from the checked download'); if (pc.run.started && pc.pawnInstalls) pc.pawn = { app: true, service: true, version: '2.2.0.0' }; return pc.run; };
 d.pawnio = async () => pc.pawn;
-d.task = async () => pc.task;
+d.task = async (name) => (name === bl.LEGACY.task ? !!pc.legacy : pc.task);
 d.exists = (f) => (f === B.exe ? pc.copy : files.some((x) => x.from === f) ? pc.files : fs.existsSync(f));
-d.elevate = async (script) => { calls.elevate.push(script); if (pc.elevate.ok && pc.makes) { if (/Register-ScheduledTask/.test(script)) { pc.task = true; pc.copy = true; } else { pc.task = false; pc.copy = false; } } return pc.elevate; };
+d.elevate = async (script) => { calls.elevate.push(script); if (pc.elevate.ok && pc.makes && /Drop-Old;/.test(script)) pc.legacy = false; if (pc.elevate.ok && pc.makes) { if (/Register-ScheduledTask/.test(script)) { pc.task = true; pc.copy = true; } else { pc.task = false; pc.copy = false; } } return pc.elevate; };
 let resultText = '';
 d.readResult = () => resultText;
 d.clearResult = () => {};
@@ -155,6 +165,14 @@ reset({ pawn: { app: true, service: true }, server: false });
 r = await setupOnce();
 check(r.ok && /has not answered yet/.test(r.text), `a slow OpenRGB: set up, said so (${r.text})`);
 
+// the older DeviceHub's administrator task (4 Nov 2026): Add replaces it in the same prompt; Remove alone takes it away
+reset({ pawn: { app: true, service: true }, legacy: true });
+r = await setupOnce();
+check(r.ok && !pc.legacy && calls.elevate.length === 1, `Add with the older task there: set up, the older task gone, one prompt (${r.text})`);
+reset({ pawn: { app: true, service: true }, legacy: true });
+r = await bl.remove();
+check(r.ok && !pc.legacy && calls.elevate.length === 1, `Remove with only the older task there: it is removed, one prompt (${r.text})`);
+
 // 7. this copy lacks the modules: refused before anything
 reset({ files: false });
 st = await bl.status({ fresh: true });
@@ -216,6 +234,10 @@ v = boardView({ ...ST, canSetUp: false, why: 'this copy of DeviceHub lacks its b
 check(!v.action && /cannot be added/.test(v.line), 'a copy without the modules: why, no button');
 v = boardView({ ...ST, task: true, partial: 'The task is there but its OpenRGB copy is not.' }, { done: true, ok: false, text: 'Not set up: x.' });
 check(v.action === 'setup' && v.also === 'ask-remove' && !v.result.ok && /Adding again replaces it/.test(v.line), 'a part left from a failed try: Add again or Remove');
+v = boardView({ ...ST, legacy: true }, null);
+check(v.action === 'setup' && v.label === 'Replace it' && v.also === 'ask-remove' && /older DeviceHub/.test(v.line) && /any program can change/.test(v.line), 'the older administrator task: said plainly, Replace it, Remove beside it');
+v = boardView({ ...ST, legacy: true, canSetUp: false, why: 'x' }, null);
+check(v.action === 'ask-remove' && v.label === REMOVE_LABEL, 'the older task on a copy without the modules: Remove only');
 check(DEMO_BOARD.demo && /as administrator/.test(DEMO_BOARD.before), 'demo mode has a pretend status');
 
 const smbus = { verdict: { kind: 'smbus' } };

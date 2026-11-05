@@ -16,6 +16,7 @@ const DEMO = [
   { id: 'eqapo', name: 'Equalizer APO', installed: true, version: '1.4.2', offer: 'page', page: 'https://sourceforge.net/projects/equalizerapo/' },
   { id: 'reaplugs', name: 'ReaPlugs', installed: false, version: null, offer: 'page', page: 'https://www.reaper.fm/reaplugs/' },
   { id: 'usbpcap', name: 'USBPcap', installed: false, version: null, offer: 'install', page: 'https://desowin.org/usbpcap/' },
+  { id: 'obs', name: 'OBS Studio', installed: false, version: null, offer: 'install', page: 'https://obsproject.com/' },
 ];
 let cache = null, cacheAt = 0, loading = null;
 export async function installerStatus(fresh) {
@@ -121,7 +122,7 @@ const inline = {};   // id -> { stage: 'closed'|'loading'|'plan'|'busy'|'done', 
 export function installerInline(id, { redraw = () => {}, onDone, kind = 'primary small' } = {}) {
   const s = inline[id] || (inline[id] = { stage: 'closed' });
   const set = (x) => { Object.assign(s, x); redraw(); };
-  const name = (cachedStatus() || []).find((t) => t.id === id)?.name || { eqapo: 'Equalizer APO', reaplugs: 'ReaPlugs', usbpcap: 'USBPcap' }[id] || id;
+  const name = (cachedStatus() || []).find((t) => t.id === id)?.name || { eqapo: 'Equalizer APO', reaplugs: 'ReaPlugs', usbpcap: 'USBPcap', obs: 'OBS Studio' }[id] || id;
   const open = async () => {
     set({ stage: 'loading', text: '' });
     try { set({ stage: 'plan', plan: isDemo() ? { id, ...DEMO_PLAN[id] } : await env.api(`/api/installers/plan?tool=${encodeURIComponent(id)}`) }); }
@@ -167,7 +168,7 @@ export function installerButton(id, { onDone, redraw, label, kind = 'primary sma
   // not read yet: read it once, then the page draws the right label ("Install" or "Get")
   if (!cachedStatus() && !loading) installerStatus().then(again, () => {});
   const st = (cachedStatus() || []).find((t) => t.id === id);
-  const name = st?.name || { eqapo: 'Equalizer APO', reaplugs: 'ReaPlugs', usbpcap: 'USBPcap' }[id] || id;
+  const name = st?.name || { eqapo: 'Equalizer APO', reaplugs: 'ReaPlugs', usbpcap: 'USBPcap', obs: 'OBS Studio' }[id] || id;
   const page = (offer || st?.offer) === 'page';
   const b = button(label || (page ? `Get ${name}` : `Install ${name}`), () => start(id, onDone, again), { kind, ic: page ? 'external' : 'plus' });
   if (style) Object.assign(b.style, style);

@@ -65,6 +65,23 @@ public static class PcReads {
     }
   }
 
+  // Each graphics card's power state from Windows' own record (3 Nov 2026: a laptop's NVIDIA card asleep in D3 was woken
+  // by nvidia-smi every few seconds while the PC page was open). DEVPKEY_Device_PowerData, PD_MostRecentPowerState at
+  // byte 4 (1 = D0 ... 4 = D3): read from the PnP manager, the card itself is never asked. [{ name, id, d }]
+  static DEVPROPKEY K_POWERDATA = new DEVPROPKEY("a45c254e-df1c-4efd-8020-67d146a850e0", 32);
+  public static List<Dictionary<string, object>> GpuPower() {
+    var r = new List<Dictionary<string, object>>();
+    foreach (var d in Devices(true)) {
+      if (!string.Equals(d.Class, "Display", StringComparison.OrdinalIgnoreCase)) continue;
+      uint type, size = 0; var k = K_POWERDATA;
+      CM_Get_DevNode_PropertyW(d.Inst, ref k, out type, null, ref size, 0);
+      int ds = -1;
+      if (size >= 8) { var buf = new byte[size]; if (CM_Get_DevNode_PropertyW(d.Inst, ref k, out type, buf, ref size, 0) == 0) ds = BitConverter.ToInt32(buf, 4) - 1; }
+      r.Add(new Dictionary<string, object> { { "name", d.Name }, { "id", d.Id }, { "d", ds } });
+    }
+    return r;
+  }
+
   // Status as Win32_PnPEntity names it: Unknown (not present), Error (a problem code), Degraded (waits for a restart), OK
   public static List<Dev> Devices(bool presentOnly) {
     var r = new List<Dev>();
@@ -343,6 +360,7 @@ public static class PcReads {
       case "pc-map": o["result"] = PcMap(); break;
       case "display-read": o["result"] = DisplayRead(); break;
       case "sensors": o["result"] = Sensors(); break;
+      case "gpu-power": o["result"] = GpuPower(); break;
       case "installed": o["result"] = Installed(); break;
       case "pc-check": o["result"] = PcCheck.Facts(); break;
       case "std-battery-bt": o["result"] = StdBatteryBt(); break;

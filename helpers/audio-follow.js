@@ -20,6 +20,7 @@ async function tick() {
   busy = true;
   try {
     const { endpoints, defaults } = await call('hs80-endpoints', {});
+    present = endpoints.length > 0;
     const wired = Object.fromEntries(FLOWS.map((f) => [f, endpoints.find((e) => e.flow === f && e.wired && e.state === 1) || null]));
     // the receiver's endpoints: active (1), or disabled (2) by us while the cable was live
     const wireless = Object.fromEntries(FLOWS.map((f) => [f, endpoints.find((e) => e.flow === f && e.wireless && (e.state === 1 || e.state === 2)) || null]));
@@ -97,7 +98,21 @@ async function tick() {
   } catch { /* the audio bridge is restarting; next tick */ } finally { busy = false; }
 }
 
-function start(corsairCall, logFn) { call = corsairCall; log = logFn; tick(); timer = setInterval(tick, 2000); }
+// Every 2 s while an HS80 is there; with none (3 Nov 2026, measured: a laptop without one asked Windows for its sound
+// devices every 2 s all day), every 30 s, as long as Windows' device messages arrive (useWindowsEvents, from the
+// agent): a receiver or cable plugged in is one, and the look then comes at once.
+let present = true, events = false, lastAt = 0;
+async function step() {
+  if (!present && events && Date.now() - lastAt < 30000) return;
+  lastAt = Date.now();
+  await tick();
+}
+function start(corsairCall, logFn) {
+  call = corsairCall; log = logFn; tick();
+  timer = setInterval(step, 2000);
+  try { require('./native').onDeviceChange(() => { lastAt = 0; setTimeout(step, 1500); }); } catch {}
+}
+function useWindowsEvents(on) { events = !!on; }
 function stop() { clearInterval(timer); }
 
-module.exports = { start, stop };
+module.exports = { start, stop, useWindowsEvents };

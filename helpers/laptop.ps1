@@ -39,8 +39,9 @@ $cs = Safely { Get-CimInstance Win32_ComputerSystem }
 $prod = Safely { Get-CimInstance Win32_ComputerSystemProduct }
 $enc = Safely { @(Get-CimInstance Win32_SystemEnclosure)[0] }
 $out.maker = if ($cs) { [string]$cs.Manufacturer } else { $null }
-# Lenovo puts the marketing name (Legion Pro 7 16IAX10H) in the product's Version, and a part number in the Model
-$out.model = if ($prod -and $prod.Version -and $prod.Version -notmatch '^(None|To be filled|System Version|Default string)') { [string]$prod.Version } elseif ($cs) { [string]$cs.Model } else { $null }
+# Lenovo puts the marketing name (Legion Pro 7 16IAX10H) in the product's Version, and a part number in the Model;
+# others (Acer) put a version there ("V1.52", 3 Nov 2026), so a Version that looks like a version number is skipped
+$out.model = if ($prod -and $prod.Version -and $prod.Version -notmatch '^(None|To be filled|System Version|Default string)' -and $prod.Version -notmatch '^[Vv]?\d+(\.\d+)+$') { [string]$prod.Version } elseif ($cs -and $cs.Model -and $cs.Model -notmatch '^(None|To be filled|System Product Name|Default string)') { [string]$cs.Model } else { $null }
 $chassis = if ($enc) { @($enc.ChassisTypes) } else { @() }
 $out.portable = [bool](@($chassis | Where-Object { $_ -in 8, 9, 10, 11, 12, 14, 18, 21, 30, 31, 32 }).Count)
 $bat = Safely { @(Get-CimInstance Win32_Battery)[0] }
@@ -48,11 +49,16 @@ if ($bat) {
   $design = Safely { (@(Get-CimInstance -Namespace root\wmi -ClassName BatteryStaticData)[0]).DesignedCapacity }
   $full = Safely { (@(Get-CimInstance -Namespace root\wmi -ClassName BatteryFullChargedCapacity)[0]).FullChargedCapacity }
   $cycles = Safely { (@(Get-CimInstance -Namespace root\wmi -ClassName BatteryCycleCount)[0]).CycleCount }
+  # watts in or out and the charge now in mWh, the battery's own record (3 Nov 2026: time to full, and the watts)
+  $bs = Safely { @(Get-CimInstance -Namespace root\wmi -ClassName BatteryStatus)[0] }
   $out.battery = [ordered]@{
     percent = $bat.EstimatedChargeRemaining
     charger = ($bat.BatteryStatus -in 2, 3, 6, 7, 8, 9)
     minutesLeft = if ($bat.EstimatedRunTime -and $bat.EstimatedRunTime -lt 71582788) { $bat.EstimatedRunTime } else { $null }
-    designMWh = $design; fullMWh = $full; cycles = $cycles
+    designMWh = $design; fullMWh = $full; cycles = $(if ($cycles) { $cycles } else { $null })
+    nowMWh = $(if ($bs) { $bs.RemainingCapacity } else { $null })
+    chargeW = $(if ($bs -and $bs.ChargeRate -gt 0) { [math]::Round($bs.ChargeRate / 1000, 1) } else { $null })
+    dischargeW = $(if ($bs -and $bs.DischargeRate -gt 0 -and $bs.DischargeRate -lt 1000000) { [math]::Round($bs.DischargeRate / 1000, 1) } else { $null })
     health = if ($design -and $full -and $design -gt 0) { [math]::Round(100 * $full / $design) } else { $null }
   }
 } else { $out.battery = $null }

@@ -17,8 +17,11 @@ const BUILT_IN = ['mouse', 'headset', 'keyboard'];
 const RESERVED = ['model', 'link', 'probe', 'value', 'zone', 'button'];
 const TYPES = ['slider', 'toggle', 'choice', 'display', 'color', 'remap'];
 const HEX = /^#[0-9a-f]{6}$/;
-const CHECKSUMS = ['none', 'xor', 'sum8', 'sum16le'];
+const CHECKSUMS = ['none', 'xor', 'sum8', 'sum16le', 'sub8'];
 const PLACE = { u8: 1, u16le: 2, u16be: 2, u32le: 4, u32be: 4, rgb: 3 };
+// a one-byte value followed by its check byte, (k - value) & 255 (2 Nov 2026, Pulsar-style memory: "u8c55" sends v, 55 - v)
+const CHECKED = /^u8c([0-9A-F]{2})$/i;
+const placeSize = (type) => (CHECKED.test(type || '') ? 2 : PLACE[type || 'u8']);
 const STEP_BACK_MS = 15000, SNAP_MS = 1000;
 
 class Refused extends Error {}
@@ -61,7 +64,7 @@ export function parseTemplate(text) {
   if (typeof text !== 'string' || !text.trim()) throw new Error('it has no bytes');
   return text.trim().split(/\s+/).map((t) => {
     if (/^[0-9A-F]{2}$/i.test(t)) return { byte: parseInt(t, 16) };
-    const m = /^\{([A-Za-z][A-Za-z0-9_]*)(?::(u8|u16le|u16be|u32le|u32be|bytes|rgb))?(\?)?\}$/.exec(t);
+    const m = /^\{([A-Za-z][A-Za-z0-9_]*)(?::(u8|u16le|u16be|u32le|u32be|bytes|rgb|u8c[0-9A-Fa-f]{2}))?(\?)?\}$/.exec(t);
     if (!m) throw new Error(`"${t}" is neither a byte (two hex digits) nor a placeholder like {value} or {value:u16le}`);
     return { name: m[1], type: m[2] || null, optional: !!m[3] };
   });
@@ -77,6 +80,12 @@ function parsePattern(text) {
 const nibbleOk = (p, b) => (p.hi == null || p.hi === b >> 4) && (p.lo == null || p.lo === (b & 15));
 
 function putNumber(out, v, type, what) {
+  const ck = CHECKED.exec(type || '');
+  if (ck) {
+    if (!Number.isInteger(v) || v < 0 || v > 255) throw new Refused(`${what} = ${v} does not fit in 1 byte`);
+    out.push(v, (parseInt(ck[1], 16) - v) & 0xff);
+    return;
+  }
   const size = PLACE[type || 'u8'];
   if (!Number.isInteger(v) || v < 0 || v >= 2 ** (8 * size)) throw new Refused(`${what} = ${v} does not fit in ${size} byte${size > 1 ? 's' : ''}`);
   const bytes = [];
@@ -92,7 +101,7 @@ function checksum(buf, c) {
   if (!c || c.type === 'none') return;
   let s = 0;
   for (let i = c.from; i <= c.to; i++) s = c.type === 'xor' ? s ^ buf[i] : s + buf[i];
-  if (c.type === 'sum16le') { buf[c.at] = s & 0xff; buf[c.at + 1] = (s >> 8) & 0xff; } else buf[c.at] = s & 0xff;
+  if (c.type === 'sum16le') { buf[c.at] = s & 0xff; buf[c.at + 1] = (s >> 8) & 0xff; } else if (c.type === 'sub8') buf[c.at] = (c.k - s) & 0xff; else buf[c.at] = s & 0xff;
 }
 function checksumOk(r, c) {
   if (!c || c.type === 'none') return true;
@@ -109,6 +118,8 @@ function decodeField(f, r, ctx) {
   let raw = readNumber(r, f.offset, size, f.endian);
   if (f.mask != null) raw &= num(f.mask);
   if (f.shift) raw >>= f.shift;
+  // a check byte after the value (Pulsar-style memory): a reply where it does not hold is not read at all
+  if (f.check != null && r[f.offset + 1] !== ((f.check - raw) & 0xff)) return null;
   if (f.absentIf != null && raw === num(f.absentIf)) return null;
   let value;
   if (f.map) { value = Object.entries(f.map).find(([k]) => num(k) === raw)?.[1]; if (value === undefined) value = f.default; if (value === undefined) return null; }
@@ -176,17 +187,17 @@ const KNOWN = {
   top: ['format', 'id', 'title', 'kind', 'vendor', 'about', 'source', 'note', 'vid', 'pids', 'hid', 'transport', 'links', 'models', 'replies', 'messages', 'reads', 'fields', 'settings', 'battery', 'batteryCare', 'info', 'stepBack', 'unsupported', 'never', 'byPid'],
   notice: ['reportId', 'starts', 'len', 'note'],
   byPid: ['transport', 'replies', 'messages', 'fields', 'notices', 'encode', 'note'],
-  transport: ['report', 'len', 'reportId', 'usagePage', 'timeoutMs', 'tries', 'waitMs', 'checksum', 'counter', 'note'],
+  transport: ['report', 'len', 'reportId', 'usagePage', 'timeoutMs', 'tries', 'waitMs', 'checksum', 'counter', 'session', 'note'],
   link: ['label', 'reportId', 'wireless', 'usagePage', 'pids', 'identify', 'probes', 'note'],
   model: ['key', 'name', 'pids', 'paired', 'vars', 'note'],
   replies: ['echo', 'error', 'ok', 'checksum', 'note'],
   message: ['bytes', 'reportId', 'note'],
   read: ['name', 'message', 'notice', 'when', 'onError', 'onDemand', 'asleepIf', 'note'],
-  field: ['from', 'offset', 'size', 'endian', 'type', 'mask', 'shift', 'absentIf', 'map', 'default', 'scale', 'add', 'when', 'note'],
+  field: ['from', 'offset', 'size', 'endian', 'type', 'mask', 'shift', 'absentIf', 'map', 'default', 'scale', 'add', 'check', 'when', 'note'],
   setting: ['key', 'label', 'type', 'min', 'max', 'step', 'unit', 'options', 'zones', 'buttons', 'targets', 'hint', 'live', 'selfCheck', 'when', 'field', 'lockGroup', 'write', 'note'],
   part: ['value', 'label', 'field', 'code', 'note'],
   target: ['value', 'label', 'note'],
-  write: ['message', 'needs', 'then', 'keep', 'encode', 'note'],
+  write: ['message', 'needs', 'then', 'keep', 'encode', 'bits', 'note'],
   battery: ['from', 'percent', 'charging', 'when', 'awake', 'note'],
   batteryCare: ['lowBattery', 'charging'],
 };
@@ -227,6 +238,7 @@ export function validate(obj) {
       if (!isObj(c) || !CHECKSUMS.includes(c.type)) no(`transport.checksum.type must be one of ${CHECKSUMS.join(', ')} (no other checksum is supported: then a device.mjs is the way)`);
       else if (c.type !== 'none' && !(Number.isInteger(c.from) && Number.isInteger(c.to) && Number.isInteger(c.at) && c.from >= 0 && c.from <= c.to && c.to < len && c.at >= 0 && c.at + (c.type === 'sum16le' ? 1 : 0) < len && (c.at < c.from || c.at > c.to)))
         no('transport.checksum needs from <= to and an "at" outside that range, all inside the report');
+      else if (c.type === 'sub8' && !(Number.isInteger(c.k) && c.k >= 0 && c.k <= 255)) no('transport.checksum of type sub8 needs "k" (0-255): the byte is k minus the sum');
     }
     // a rolling message number (23 Oct 2026, learned by Learn a device: tests/learn-bench.mjs): one byte at "at" that the
     // driver raises by "step" on every message it sends, the device repeating it in its reply
@@ -334,6 +346,7 @@ export function validate(obj) {
     if (f.type != null && !['number', 'bool', 'bytes'].includes(f.type)) no(`field "${name}": type must be number, bool or bytes`);
     if (f.map != null && (!isObj(f.map) || !Object.keys(f.map).every((k) => Number.isInteger(num(k))))) no(`field "${name}": map keys must be the codes (numbers) the device sends`);
     if (f.scale != null && !(typeof f.scale === 'string' ? f.scale.startsWith('$') : Number.isFinite(f.scale) && f.scale !== 0)) no(`field "${name}": scale must be a number other than 0`);
+    if (f.check != null && !(Number.isInteger(f.check) && f.check >= 0 && f.check <= 255 && size === 1 && f.type !== 'bytes' && f.mask == null && f.shift == null && Number.isInteger(f.offset) && f.offset + 2 <= rl)) no(`field "${name}": check (0-255) is for a one-byte value whose check byte follows it inside the reply`);
   }
   for (const r of reads) if (r?.name && r.asleepIf) for (const k of Object.keys(r.asleepIf)) if (!/^(model|link|probe)\./.test(k) && !fields[k]) no(`read "${r.name}": asleepIf names "${k}", which is not a field`);
 
@@ -354,7 +367,8 @@ export function validate(obj) {
     for (const [i, p] of parts.entries()) {
       if (p.byte != null) { lits[width] = p.byte; width++; continue; }
       if (p.optional && i !== parts.length - 1) no(`message "${name}": an optional placeholder ({${p.name}?}) may only be the last thing in it`);
-      if (p.name === 'value') { if (p.type === 'bytes') no(`message "${name}": {value} cannot be bytes`); width += PLACE[p.type || 'u8']; continue; }
+      if (p.name === 'value') { if (p.type === 'bytes') no(`message "${name}": {value} cannot be bytes`); width += placeSize(p.type); continue; }
+      if (CHECKED.test(p.type || '')) { no(`message "${name}": only {value} can carry a check byte (${p.type})`); continue; }
       if (p.name === 'zone' || p.name === 'button') { if (p.type && p.type !== 'u8') no(`message "${name}": {${p.name}} is one byte`); width += 1; continue; }
       if (p.type === 'rgb') no(`message "${name}": only {value:rgb} can be rgb`);
       const f = fields[p.name];
@@ -466,6 +480,16 @@ export function validate(obj) {
     if (s.write.then != null) msgUse(s.write.then, `${w} write "then"`);
     for (const n of s.write.needs || []) if (!readByName[n]) no(`${w}: needs the read "${n}", which "reads" does not have`); else if (readByName[n].notice) no(`${w}: needs "${n}", a notice, which cannot be asked for`);
     for (const k of s.write.keep || []) if (!fields[k]) no(`${w}: keep names "${k}", which is not a field`);
+    // a value sharing its byte with other options (3 Nov 2026, Learn a device: two values in one byte): the byte just
+    // read (bits.field, one plain byte) with only the mask's bits replaced, so the other options keep what they are
+    const bits = s.write.bits;
+    if (bits != null) {
+      const bf = isObj(bits) ? fields[bits.field] : null;
+      if (!isObj(bits) || !bf || bf.type === 'bytes' || (bf.size ?? 1) !== 1 || bf.mask != null || bf.shift != null || bf.map || bf.scale != null || bf.add != null) no(`${w}: bits.field must name a plain one-byte field (the byte as read)`);
+      else if (readByName[bf.from]?.notice || readByName[bf.from]?.onDemand) no(`${w}: bits.field must come from a regular read`);
+      if (!isObj(bits) || !(Number.isInteger(bits.mask) && bits.mask >= 1 && bits.mask <= 254) || !(Number.isInteger(bits.shift ?? 0) && (bits.shift ?? 0) >= 0 && (bits.shift ?? 0) <= 7)) no(`${w}: bits needs a mask (1-254) and a shift (0-7)`);
+      if ((parsed[s.write.message] || []).find((p) => p.name === 'value')?.type && (parsed[s.write.message] || []).find((p) => p.name === 'value').type !== 'u8') no(`${w}: a value with bits is one byte, {value}`);
+    }
     // every value the page can send must encode to a code that fits its placeholder
     if (!f || !messages[s.write.message]) continue;
     const slot = (parsed[s.write.message] || []).find((p) => p.name === 'value');
@@ -501,7 +525,12 @@ export function validate(obj) {
         if ((max - min) / step > 70000) { vals.push(null); candidates = [min, max]; } else for (let v = min; v <= max; v += step) candidates.push(v);
       }
       for (const v of candidates) {
-        try { const code = encodeValue(s, f, v, c); putNumber([], code, slot?.type, s.label); vals.push(code); } catch (e) { no(`${w}: ${JSON.stringify(v)} cannot be sent (${e.message})`); break; }
+        try {
+          const code = encodeValue(s, f, v, c);
+          const bm = s.write.bits;
+          if (bm && Number.isInteger(bm.mask)) { if (((code << (bm.shift || 0)) & ~bm.mask & 0xff) !== 0 || code < 0) throw new Error(`its code ${code} does not fit the bits ${bm.mask}`); vals.push(null); continue; }
+          putNumber([], code, slot?.type, s.label); vals.push(code);
+        } catch (e) { no(`${w}: ${JSON.stringify(v)} cannot be sent (${e.message})`); break; }
       }
     }
   }
@@ -554,6 +583,17 @@ export function validate(obj) {
     else for (const p of obj.stepBack.processes) { try { new RegExp(p, 'i'); } catch { no(`stepBack: "${p}" is not a valid pattern`); } }
   }
   if (obj.hid != null && !(isObj(obj.hid) && hex4(obj.hid.vid) && hex4(obj.hid.pid))) no('hid (the channel the agent opens) needs vid and pid, 4 hex digits each');
+
+  // a session around every request (2 Nov 2026, Pulsar-style "host control"): two fixed messages the driver sends before
+  // and after each request, nothing filled in, checked against the never lists like every other message
+  if (t?.session != null) {
+    const ss = t.session;
+    if (!isObj(ss) || typeof ss.open !== 'string' || typeof ss.close !== 'string' || ss.open === ss.close) no('transport.session needs "open" and "close": two different messages');
+    else for (const [part, n] of [['open', ss.open], ['close', ss.close]]) {
+      msgUse(n, `transport.session.${part}`);
+      if ((parsed[n] || []).some((p) => p.byte == null)) no(`transport.session.${part}: the message "${n}" must be fixed bytes only`);
+    }
+  }
 
   // the never lists: its own, then DeviceHub's
   const own = [];
@@ -645,7 +685,7 @@ function expand(parts, fields, values, codes) {
     if (p.byte != null) { out.push([p.byte]); continue; }
     if (p.name === 'zone' || p.name === 'button') { const c = codes?.[p.name]; out.push(c?.length ? [...new Set(c)] : null); continue; }
     if (p.name === 'value') {
-      const size = PLACE[p.type || 'u8'];
+      const size = placeSize(p.type);
       if (!values || !values.length || values.includes(null)) { for (let i = 0; i < size; i++) out.push(null); continue; }
       const per = [];
       for (const v of values) { const b = []; putNumber(b, v, p.type, 'value'); b.forEach((x, i) => (per[i] ||= new Set()).add(x)); }
@@ -826,8 +866,16 @@ function makeDriver(base) {
       return { reportId: m.reportId ?? def.links[this.link]?.reportId ?? t.reportId, data };
     },
 
-    // one request with its reply: { bytes, error }; `tries` tries on silence
+    // one request with its reply: { bytes, error }; `tries` tries on silence. With transport.session, the session's open
+    // goes first (refused or silent: the request is not sent) and its close after, whatever the request's answer.
     async ask(name, vars) {
+      const ss = t.session;
+      if (!ss || name === ss.open || name === ss.close) return this.askOne(name, vars);
+      const o = await this.askOne(ss.open);
+      if (o.error) return o;
+      try { return await this.askOne(name, vars); } finally { try { await this.askOne(ss.close); } catch {} }
+    },
+    async askOne(name, vars) {
       if (!this.dev) throw Object.assign(new Error(`the ${def.title} is not connected`), { gone: true });
       const msg = this.build(name, vars);
       let last;
@@ -1010,7 +1058,11 @@ function makeDriver(base) {
       if (s.lockGroup && this.locked.has(s.lockGroup)) throw new Refused(`${s.label} read outside its range, so it is read only`);
       const send = async (v) => {
         const more = this.fieldsOf(await this.extra(s.write.needs));
-        const r = await this.ask(s.write.message, { value: encodeValue(s, field, v, this.ctx(before.values)), raw: { ...before.raw, ...more.raw } });
+        let value = encodeValue(s, field, v, this.ctx(before.values));
+        // a value sharing its byte: the byte as just read, only the value's bits replaced
+        const bm = s.write.bits;
+        if (bm) { const was = before.raw[bm.field]; if (!Number.isInteger(was)) throw new Refused(`${s.label}: its byte was not read`); value = (was & ~bm.mask & 0xff) | ((value << (bm.shift || 0)) & bm.mask); }
+        const r = await this.ask(s.write.message, { value, raw: { ...before.raw, ...more.raw } });
         if (r.error) throw this.failed(s.label);
       };
       await send(value);

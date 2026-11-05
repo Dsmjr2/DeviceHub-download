@@ -160,7 +160,7 @@ export default {
           // while iCUE runs, what it reports that DeviceHub cannot change
           ...(direct ? [] : ICUE_ROWS.filter(([k]) => props[k] && !props[k].canWrite && k !== 'micEnabled').map(([k, label, show]) => row(label, 'Reported by iCUE.', pill(show(v[`prop:${k}`]), v[`prop:${k}`] ? 'good' : ''))))),
         // Lights & power, with Mic check under it (the two columns balance)
-        h('div', { class: 'stack' }, generic ? genericCard(a, redraw) : card([h('h2', {}, 'Lights & power'), h('span', { class: 'sub' }, direct ? null : 'iCUE controls these while open')],
+        h('div', { class: 'stack' }, generic ? genericCard(a, redraw) : card([h('h2', {}, 'Lights & power')],
           row('Headset color', null, h('div', { class: 'swatches compact' },
             // the colour the headset has now shows as chosen, as Off does (31 Oct 2026)
             ...SWATCHES.map((c) => h('button', { class: `swatch${String(v.led || '').toLowerCase() === c.toLowerCase() ? ' on sel' : ''}`, style: { '--s': c }, title: c, 'aria-label': `color ${c}`, 'aria-pressed': String(String(v.led || '').toLowerCase() === c.toLowerCase()), onclick: () => set('led', c, 'Headset Color', c).then(() => setGlow(c)).catch(() => {}) })),

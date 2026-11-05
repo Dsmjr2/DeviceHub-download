@@ -1,7 +1,7 @@
 // Builds the device library bundle (22 Oct 2026; docs/handoff/library-updates.md): dist\device-library.json holds every
 // device-library entry (its device.json fields, its device.mjs text and that text's SHA-256), the bundle's date and a
 // signed list of every entry's SHA-256. It is signed with the publisher's release key
-// (%APPDATA%\DeviceHub-signing\release-key.pem, the same one helpers/sign-release.mjs uses) over a payload of its own
+// (DEVICEHUB_RELEASE_KEY from Bitwarden through `secrets run`, the same one helpers/sign-release.mjs uses) over a payload of its own
 // (helpers/library-updates.mjs payload()), so a library bundle can never pass as an app release and an app release
 // never as a library bundle. Copies fetch it beside version.json and check it with helpers/release-public-key.pem.
 // It never makes a key: without the publisher's key it stops.
@@ -14,7 +14,6 @@ import { fileURLToPath } from 'node:url';
 import { KIND, FORMAT, payload, sha256, entryVersion, entryProblem } from './library-updates.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-export const KEY_FILE = path.join(process.env.APPDATA || '', 'DeviceHub-signing', 'release-key.pem');
 
 // { bundle, skipped: [{ name, why }] }. privateKey: a KeyObject or PEM; now: the bundle's date.
 export function makeBundle({ root = ROOT, privateKey, now = () => new Date() } = {}) {
@@ -52,8 +51,10 @@ export function makeBundle({ root = ROOT, privateKey, now = () => new Date() } =
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const out = path.resolve(process.argv[2] || path.join(ROOT, 'dist', 'device-library.json'));
-  if (!(await import('./signing-key.mjs')).keyAvailable()) { console.error(`no signing key at ${KEY_FILE}: the library bundle is signed only on the publishing PC`); process.exit(1); }
-  const { bundle, skipped } = makeBundle({ privateKey: (await import('./signing-key.mjs')).loadKey() });
+  const sk = await import('./signing-key.mjs');
+  if (!sk.keyAvailable()) { console.error('DEVICEHUB_RELEASE_KEY is not set: run it through secrets run (Bitwarden, Automation folder)'); process.exit(1); }
+  let privateKey; try { privateKey = sk.loadKey(); } catch (e) { console.error(e.message); process.exit(1); }
+  const { bundle, skipped } = makeBundle({ privateKey });
   // check it with the public key the app carries before it is published
   const pub = crypto.createPublicKey(fs.readFileSync(path.join(ROOT, 'helpers', 'release-public-key.pem')));
   if (!crypto.verify(null, Buffer.from(payload(bundle)), pub, Buffer.from(bundle.signature, 'base64'))) { console.error('the library bundle\'s signature does not match the app\'s public key'); process.exit(1); }

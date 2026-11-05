@@ -369,7 +369,9 @@ async function readStatus(fresh) {
   if (fresh) lastFind = { at: new Date().toISOString(), ok: value.running, reason: value.running ? null : value.reason, found: value.controllers.length };
   value.lastFind = lastFind;
   value.bundle = bundleInfo();
-  value.board = { setUp: deps.boardSetUp() };
+  // legacy: an older DeviceHub's elevated OpenRGB copy is on disk (helpers/board-lights.mjs LEGACY), so the Lighting page
+  // offers to replace it even while it is the OpenRGB answering
+  value.board = { setUp: deps.boardSetUp(), legacy: fs.existsSync(path.join(process.env.LOCALAPPDATA || '', 'Programs', 'OpenRGB', 'OpenRGB.exe')) };
   value.findTest = find.state();   // a Find my lights test still showing its colors (helpers/find-lights.js)
   return value;
 }

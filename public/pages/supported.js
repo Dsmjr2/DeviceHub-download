@@ -59,7 +59,7 @@ function anyCard() {
 }
 
 function groupCard(g) {
-  return card([h('h2', {}, g.title), h('span', { class: 'spacer' }), h('span', { class: 'faint' }, `${g.rows.length}`)], ...g.rows.map(driverRow));
+  return card([h('h2', {}, g.title)], ...g.rows.map(driverRow));
 }
 
 export default {

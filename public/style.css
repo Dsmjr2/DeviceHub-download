@@ -144,6 +144,8 @@ h1 { margin: 0; font-size: clamp(26px, 3vw, 36px); line-height: 1.1; letter-spac
 .srow-title { font-weight: 500; display: flex; align-items: center; gap: 8px; }
 .srow-desc { color: var(--faint); font-size: 12.5px; margin-top: 2px; max-width: 46ch; }
 .srow-ctl { flex: none; display: flex; align-items: center; gap: 10px; }
+/* a long value (a processor's name) wraps inside the card instead of running past it */
+.srow.wrap-value .srow-ctl { flex: 0 1 auto; min-width: 0; }
 /* small "?" hint next to a card title */
 .help { display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; border: 1px solid var(--line2); color: var(--faint); font: 600 11px var(--ui); cursor: help; }
 
@@ -694,7 +696,6 @@ html[data-art] .mic-muted .art.mark .led.mic { fill: #ff4d4d; filter: drop-shado
    faint text); then the preset dots (18px, no glow), the picked-color dot (ringed) and a small ghost Off, all on one line.
    The dots sit beside the name when the card is wide enough and wrap under it when not. */
 .pcl { display: grid; gap: 8px; }
-.pcl-intro { font-size: 12.5px; margin: 0 0 8px; }
 .pcl-sec { border: 1px solid var(--line); border-radius: 12px; background: var(--sunk); padding: 2px 10px; }
 .pcl-row { display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; row-gap: 4px; padding: 7px 0; min-height: 34px; }
 .pcl-rows .pcl-row { border-top: 1px solid var(--line); padding-left: 10px; }
@@ -746,7 +747,7 @@ html[data-art] .mic-muted .art.mark .led.mic { fill: #ff4d4d; filter: drop-shado
 .profile.is-active { border-color: color-mix(in srgb, var(--good) 45%, var(--line2)); }
 .prof-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .prof-when { color: var(--muted); font-size: 13.5px; margin-top: -6px; }
-.prof-label { font: 600 11.5px var(--ui); color: var(--faint); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .04em; }
+.prof-label { font: 600 12.5px var(--ui); color: var(--faint); margin-bottom: 5px; }
 .prof-sets { display: grid; gap: 8px; font-size: 13.5px; min-width: 0; }
 .prof-devs { display: grid; gap: 5px; padding: 8px 10px; border-radius: 12px; background: var(--sunk); border: 1px solid var(--line); }
 .prof-dev-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; min-width: 0; }
@@ -759,7 +760,7 @@ html[data-art] .mic-muted .art.mark .led.mic { fill: #ff4d4d; filter: drop-shado
 .prof-link:hover, .prof-link:focus-visible { color: var(--text); background: var(--raise); }
 .prof-details { display: grid; gap: 8px; padding-top: 4px; border-top: 1px solid var(--line); max-height: 220px; overflow-y: auto; padding-right: 4px; }
 .prof-detail-group { display: grid; gap: 2px; }
-.prof-detail-head { font: 600 11.5px var(--ui); color: var(--faint); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 2px; }
+.prof-detail-head { font: 600 12.5px var(--ui); color: var(--faint); margin-bottom: 2px; }
 .prof-line { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12.5px; padding: 2px 0; }
 .prof-line-k { color: var(--muted); }
 .prof-line-v { text-align: right; display: inline-flex; align-items: center; gap: 6px; }
@@ -1492,6 +1493,15 @@ html[data-art="blueprint"] .page.ov .bay-art > .art { position: relative; }
 .srow.stack .srow-desc { max-width: none; }
 .srow.stack .seg { width: 100%; min-width: 0; }
 .srow.stack .seg button { white-space: normal; line-height: 1.25; }
+/* Laptop page > Power: Windows' plan settings as a 2x2 grid, On battery and Plugged in (3 Nov 2026) */
+.power-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px 10px; align-items: center; }
+.power-grid > * { min-width: 0; }
+.power-grid .dd { width: 100%; min-width: 0; }
+.power-grid .pg-head { font-size: 12px; color: var(--muted); }
+.power-grid .pg-name { font-size: 13.5px; line-height: 1.3; }
+/* a narrow card: the setting's name above its two dropdowns */
+@container (max-width: 440px) { .power-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .power-grid > span:first-child { display: none; } .power-grid .pg-name { grid-column: 1 / -1; } }
+.panel:has(.power-grid) { container-type: inline-size; }
 .kind-list { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; align-items: center; }
 .kind-name { color: var(--muted); font-size: 13px; }
 .kind-ctl { display: flex; justify-content: flex-end; }
@@ -2684,7 +2694,7 @@ html[data-skin="coral-reef"]:not([data-art="live"]) .art.mark { filter: sepia(.2
 .learn-problem, .learn-check { margin: 10px 0 0; padding: 10px 12px 2px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--warn) 30%, var(--line)); background: color-mix(in srgb, var(--warn) 8%, transparent); }
 .learn-check { border-color: color-mix(in srgb, var(--good) 30%, var(--line)); background: color-mix(in srgb, var(--good) 8%, transparent); }
 .learn-colour { width: 64px; height: 34px; padding: 2px; border-radius: 8px; border: 1px solid var(--line2); background: transparent; cursor: pointer; }
-.learn-group { font-size: 12.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); margin: 14px 0 2px; font-weight: 600; }
+.learn-group { font-size: 13px; color: var(--faint); margin: 14px 0 2px; font-weight: 600; }
 
 /* Display settings on the Monitors page, and the PC page's Temperatures and fans and PC check cards (24 Oct 2026,
    public/ui/display-settings.js, public/ui/pc-health.js; docs/handoff/display-health.md) */
@@ -2745,7 +2755,7 @@ html[data-skin="coral-reef"]:not([data-art="live"]) .art.mark { filter: sepia(.2
 .cpu-sensors .actions { margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap; }
 /* PC check: short cells in two columns; what is fine in one line that opens */
 .pcc-net-strip { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 7px 12px; margin: 0 0 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); font-size: 12.5px; }
-.pcc-net-tag { font: 700 10px var(--ui); text-transform: uppercase; letter-spacing: .06em; color: var(--accent, var(--signal)); }
+.pcc-net-tag { font: 600 12.5px var(--ui); color: var(--accent, var(--signal)); }
 .pcc-net-tag.ok { color: var(--good, #10b981); }
 .pcc-net-tag.warn { color: var(--warn, #f59e0b); }
 .pcc-net-stat { display: inline-flex; align-items: baseline; gap: 4px; }
@@ -2760,7 +2770,6 @@ html[data-skin="coral-reef"]:not([data-art="live"]) .art.mark { filter: sepia(.2
 .pcc-dot.warn { background: var(--warn); }
 .pcc-head-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .pcc-title { display: inline; font-size: 12.5px; font-weight: 600; color: var(--text); }
-.pcc-tag { font: 600 10px var(--ui); padding: 1px 6px; border-radius: 999px; background: var(--raise); border: 1px solid var(--line); color: var(--muted); letter-spacing: .02em; }
 .pcc-line { display: block; color: var(--muted); margin-top: 1px; }
 .pcc-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .pcc-src { display: block; margin-top: 2px; font-size: 12px; }
@@ -3022,7 +3031,7 @@ html[data-skin="cyberpunk"] #main :is(.panel, .bay, .hero, .profile) {
 html[data-skin="cyberpunk"] :is(.bay:hover, .profile:hover) { border-color: var(--cyber-cyan); box-shadow: var(--rim), 0 0 24px -6px rgba(0, 240, 255, .4); }
 html[data-skin="cyberpunk"] h1 { color: #ffffff; text-shadow: 0 0 18px rgba(0, 240, 255, .38), 2px 0 0 rgba(255, 42, 133, .35); letter-spacing: -.01em; }
 html[data-skin="cyberpunk"] :is(h2, .panel-head h2, .modal h2) { color: var(--cyber-cyan); letter-spacing: .01em; }
-html[data-skin="cyberpunk"] :is(.theme-label, .prof-label, .nav-label, .bay-kind) { color: #ff6aa8; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; font-size: 11px; }
+html[data-skin="cyberpunk"] :is(.theme-label, .prof-label, .nav-label, .bay-kind) { color: #ff6aa8; font-weight: 600; }
 html[data-skin="cyberpunk"] :is(.gauge-text b, .slider output, .bcell-text b, .ov-bat b, .prof-line b, .kv b, .page.ov .bay .readout b) { color: var(--cyber-cyan); text-shadow: 0 0 10px rgba(0, 240, 255, .3); }
 html[data-skin="cyberpunk"] .nav { border-radius: var(--r-sm); }
 html[data-skin="cyberpunk"] .nav:hover { background: rgba(0, 240, 255, .1); color: #fff; }
@@ -3133,7 +3142,7 @@ html[data-skin="terminal"] #main :is(.panel, .bay, .hero, .profile) {
   -webkit-backdrop-filter: none; backdrop-filter: none; }
 html[data-skin="terminal"] :is(.bay:hover, .profile:hover) { border-color: var(--crt); box-shadow: var(--rim), 0 0 16px -4px rgba(74, 246, 38, .4); transform: none; }
 html[data-skin="terminal"] :is(h1, h2, h3, .panel-head h2, .modal h2) { color: var(--crt); text-shadow: 0 0 10px rgba(74, 246, 38, .38); }
-html[data-skin="terminal"] :is(.theme-label, .prof-label, .nav-label, .bay-kind) { color: var(--crt); letter-spacing: .05em; text-transform: uppercase; font-size: 11px; }
+html[data-skin="terminal"] :is(.theme-label, .prof-label, .nav-label, .bay-kind) { color: var(--crt); }
 html[data-skin="terminal"] :is(.gauge-text b, .slider output, .bcell-text b, .ov-bat b, .prof-line b, .kv b, .page.ov .bay .readout b) { color: var(--crt-hi); text-shadow: 0 0 8px rgba(74, 246, 38, .4); }
 html[data-skin="terminal"] :is(.nav, .btn, .text, .seg, .cmd-hint, .pill) { border-radius: var(--r-sm); }
 html[data-skin="terminal"] .nav:hover { background: rgba(74, 246, 38, .12); color: var(--crt-hi); }
@@ -3246,4 +3255,4 @@ html[data-skin="koi-pond"] .dd-opt.active { background: rgba(240, 138, 75, .2); 
 .srow.stage-on .srow-title { color: var(--accent); }
 /* an added device's settings in groups (pages/my-device.js settingsList, 1 Nov 2026) */
 .set-group + .set-group { margin-top: 14px; }
-.set-group > h3 { margin: 0 0 4px; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.set-group > h3 { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--muted); }

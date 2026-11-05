@@ -63,7 +63,7 @@ check(/settingsList\(d, shown\.filter\(\(s\) => !staged\.has\(s\.key\)\)\)/.test
 check(/staged\.size \? stagesCard\(d, shown\) : null/.test(page), 'the stage settings leave the settings list for the stages card');
 check(/\/mouse\/i\.test\(a\.kind \|\| ''\) \? pointerCard\(/.test(page), 'every added mouse page has the Windows pointer card');
 check(/import \{ pointerCard \} from '\.\.\/ui\/pointer-card\.js'/.test(src('public/pages/mouse.js')) && !/function pointerCard/.test(src('public/pages/mouse.js')), 'the Pulsar page uses the same card');
-check(/shownDevices\(\)\.some\(\(x\) => x\.id === 'mouse' \|\| \/mouse\/i\.test\(x\.adapter\?\.kind \|\| ''\)\) \? null : h\('div', \{ class: 'grid two top' \}, pointerCard\(rerender\)\)/.test(src('public/pages/fans.js')), 'with no mouse page, the PC page has it');
+check(/shownDevices\(\)\.some\(\(x\) => x\.id === 'mouse' \|\| \/mouse\/i\.test\(x\.adapter\?\.kind \|\| ''\)\) \? null : pointerCard\(rerender\)/.test(src('public/pages/fans.js')), 'with no mouse page, the PC page has it (beside Instant replay)');
 
 if (fails.length) { console.log(`device-page-layout: FAILED:\n- ${fails.join('\n- ')}`); process.exit(1); }
 console.log('device-page-layout (DPI stages in one card, the pointer card for every mouse): all good');

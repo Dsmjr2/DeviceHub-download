@@ -37,7 +37,9 @@ const DEMO_TEMPS = () => {
 };
 let temps = null, tempsErr = null, tempsTimer = null, fastTimer = null, onScreen = false, observer = null, redrawTemps = () => {};
 const canRead = (page) => shouldRead({ hash: location.hash, page, hidden: document.hidden, onScreen });
-// the CPU temperature over the last 2 minutes (one reading every 5 s; the graphics card keeps 2 minutes too), kept only while the page is open
+// the CPU temperature over the last 5 minutes (one reading a second while the page shows, 3 Nov 2026; the graphics card
+// the same), kept only while the page is open
+const READ_MS = 1000, KEEP = 300;
 let cpuHistory = [];
 let loadingTemps = false, lastTempsSig = '', observedEl = null;
 async function loadTemps() {
@@ -45,7 +47,7 @@ async function loadTemps() {
   loadingTemps = true;
   try { temps = isDemo() ? DEMO_TEMPS() : await env.api('/api/temps'); tempsErr = null; } catch (e) { tempsErr = e.message; }
   loadingTemps = false;
-  const t = temps?.cpu?.tempC; if (t != null) { cpuHistory.push(t); if (cpuHistory.length > 24) cpuHistory.shift(); }
+  const t = temps?.cpu?.tempC; if (t != null) { cpuHistory.push(t); if (cpuHistory.length > KEEP) cpuHistory.shift(); }
   // While the sensor reader is starting up, poll every 1.2s so CPU temperature appears as soon as it is ready
   if (temps?.cpuSensors?.state === 'starting' && !fastTimer) {
     fastTimer = setTimeout(() => { fastTimer = null; if (location.hash === '#/fans' && !document.hidden) loadTemps(); }, 1200);
@@ -61,7 +63,7 @@ function keepTemps(page) {
   tempsTimer = everyVisible(() => {
     if (!canRead(page)) { tempsTimer?.(); tempsTimer = null; return; }
     return loadTemps();
-  }, 5000);
+  }, READ_MS);
 }
 function watchVisible(el, page) {
   if (observedEl === el && observer) return;
@@ -116,7 +118,7 @@ export function tempsCard(rerender, page = 'fans') {
   const rows = (temps?.readings || []).filter((r) => r.kind !== 'cpu' && !(r.kind === 'gpu' && /nvidia-smi/.test(r.source || '')) && !(r.kind === 'fan' && cpuFan && r.name === cpuFan));
   const fans = rows.filter((r) => r.kind === 'fan');
   const boardTemps = rows.filter((r) => r.kind !== 'fan');
-  const el = card([h('h2', {}, 'Motherboard & case fans'), h('span', { class: 'sub' }, 'Board sensors')],
+  const el = card([h('h2', {}, 'Motherboard & case fans')],
     tempsErr ? h('p', { class: 'faint' }, `Could not read sensors: ${tempsErr}`) : null,
     rows.length ? h('div', { class: 'tf-list' },
       ...[...fans, ...boardTemps].map((r) => {
@@ -160,14 +162,17 @@ export function historyGraph(values, everyS) {
     mx === mn ? h('span', {}, `${mx} °C`) : [h('span', {}, `${mx} °C`), h('span', {}, `${mn} °C`)], h('small', { class: 'faint' }, spanText)));
 }
 const pctOf = (v, top) => (v == null ? null : Math.max(0, Math.min(100, Math.round((v / top) * 100))));
-export function chipCard({ title, name, tempC, fan, loadPct, history, everyS, rows = [], note = null }) {
-  return card([h('h2', {}, title), name ? h('span', { class: 'sub' }, name) : null],
+// fan: null leaves the fan out (3 Nov 2026: a laptop that reports no fan showed "—"); a row with no value is left out;
+// tempLabel names where the temperature comes from; tempText replaces the number (a card asleep: "idle")
+export function chipCard({ title, name, tempC, tempText = null, tempLabel = 'temperature', fan, loadPct, history, everyS, rows = [], note = null }) {
+  // the chip's name once, as the last row (3 Nov 2026, Shawn: no labels beside a title)
+  return card([h('h2', {}, title)],
     h('div', { class: 'pc-meters' },
-      meter({ ic: 'thermo', pct: pctOf(tempC, 95), value: tempC == null ? '—' : `${Math.round(tempC)} °C`, label: 'temperature', big: true }),
-      meter({ ic: 'fan', pct: fan?.pct ?? null, value: fan?.value ?? '—', label: fan?.label || 'fan', big: true }),
+      meter({ ic: 'thermo', pct: pctOf(tempC, 95), value: tempText || (tempC == null ? '—' : `${Math.round(tempC)} °C`), label: tempLabel, big: true }),
+      fan ? meter({ ic: 'fan', pct: fan.pct ?? null, value: fan.value ?? '—', label: fan.label || 'fan', big: true }) : null,
       meter({ ic: 'gauge', pct: loadPct, value: loadPct == null ? '—' : `${Math.round(loadPct)}%`, label: 'load', big: true })),
-    historyGraph(history, everyS),
-    ...rows.map(([label, value]) => row(label, null, h('b', {}, value ?? '—'))),
+    history ? historyGraph(history, everyS) : null,   // null: no graph (a card asleep)
+    ...[...rows, ['Model', name]].filter(([, value]) => value != null).map(([label, value]) => Object.assign(row(label, null, h('b', { style: { textAlign: 'right', whiteSpace: 'normal' } }, value)), { className: 'srow wrap-value' })),
     note ? h('p', { class: 'faint tf-note' }, note) : null);
 }
 
@@ -182,10 +187,13 @@ export function cpuCard() {
   if (!c) return card([h('h2', {}, 'Processor')], h('p', { class: 'faint' }, tempsErr ? `Not read: ${tempsErr}` : 'Not read on this PC.'));
   const fanRow = c.fanRpm == null ? (c.sensors ? (c.fanCount ? 'None detected' : 'Not reported') : 'Needs sensor add-on') : c.fanGuess ? `CPU_FAN (${c.fanName})` : c.fanName;
   return chipCard({
-    title: 'Processor', name: shortCpu(c.name), tempC: c.tempC, loadPct: c.loadPct, history: cpuHistory, everyS: 5,
-    fan: { pct: pctOf(c.fanRpm, 2500), value: c.fanRpm == null ? '—' : `${c.fanRpm} RPM`, label: 'CPU fan' },
-    rows: [['Clock speed', c.clockMHz == null ? null : `${(c.clockMHz / 1000).toFixed(2)} GHz`], ['Peak core temp', c.coresMaxC == null ? null : `${c.coresMaxC} °C`], ['Cooler header', fanRow]],
-    note: c.sensors ? null : 'Enable the sensor reader in Motherboard & case fans to read CPU temperature and fan RPM.',
+    title: 'Processor', name: shortCpu(c.name), tempC: c.tempC, loadPct: c.loadPct, history: cpuHistory, everyS: READ_MS / 1000,
+    tempLabel: c.tempSource === 'Laptop sensor (approximate)' ? 'laptop sensor, approx.' : 'temperature',
+    // the CPU fan only when something reads it (a laptop's fans are not on a board fan chip)
+    fan: c.fanRpm == null ? null : { pct: pctOf(c.fanRpm, 6000), value: `${c.fanRpm} RPM`, label: 'CPU fan' },
+    rows: [['Clock speed', c.clockMHz == null ? null : `${(c.clockMHz / 1000).toFixed(2)} GHz`], ['Peak core temp', c.coresMaxC == null ? null : `${c.coresMaxC} °C`],
+      ['Cooler header', c.fanRpm == null ? null : fanRow], ['Temperature from', c.tempSource]],
+    note: c.sensors ? null : c.tempSource ? 'For the CPU\'s own temperature, add the sensor reader in Motherboard & case fans.' : 'Enable the sensor reader in Motherboard & case fans to read CPU temperature and fan RPM.',
   });
 }
 
@@ -229,25 +237,6 @@ async function runFix(l) {
   fixing = null;
   await runCheck(true);
 }
-const CHECK_TAG = {
-  'power-plan': 'FPS & Gaming',
-  'game-mode': 'FPS & Gaming',
-  'bg-record': 'FPS & Gaming',
-  'gpu-scheduling': 'FPS & Gaming',
-  'windowed-games': 'FPS & Gaming',
-  'rebar': 'FPS & Gaming',
-  'ram-speed': 'FPS & Gaming',
-  'ram-channels': 'FPS & Gaming',
-  'refresh': 'FPS & Gaming',
-  'gpu-driver': 'FPS & Gaming',
-  'mouse-accel': 'FPS & Gaming',
-  'wifi-band': 'Wi-Fi & Ping',
-  'wifi-signal': 'Wi-Fi & Ping',
-  'wifi-speed': 'Wi-Fi & Ping',
-  'wifi-power': 'Wi-Fi & Ping',
-  'network-jitter': 'Wi-Fi & Ping',
-  'ethernet': 'Wi-Fi & Ping',
-};
 async function turnOffMouseAccel() {
   if (fixing) return;
   if (isDemo()) { appNote = 'Demo mode: turns off Windows Enhance pointer precision.'; redrawCheck(); return; }
@@ -273,11 +262,10 @@ const resultLink = (l, id) => {
   return act;
 };
 const cell = (r) => {
-  const tag = CHECK_TAG[r.id];
   return h('div', { class: 'pcc-cell' },
     h('span', { class: `pcc-dot ${r.level}`, 'aria-label': r.level === 'warn' ? 'Look at this' : r.level === 'ok' ? 'Fine' : 'Note' }),
     h('div', { style: { flex: 1, minWidth: 0 } },
-      h('div', { class: 'pcc-head-row' }, h('b', { class: 'pcc-title' }, r.title), tag ? h('span', { class: 'pcc-tag' }, tag) : null),
+      h('div', { class: 'pcc-head-row' }, h('b', { class: 'pcc-title' }, r.title)),
       h('span', { class: 'pcc-line' }, r.line),
       resultLink(r.link, r.id)));
 };

@@ -66,21 +66,37 @@ const LHM_SRC = 'LibreHardwareMonitor';
 // (the board's header named CPU, else the pump). Many boards' fan chips are not named by LibreHardwareMonitor and read
 // "Fan #1", "Fan #2" (24 Oct 2026, Shawn: "why doesnt mine show the cpu fan speed?"): then Fan #1, the chip's first input,
 // which is the CPU_FAN header on ITE (Gigabyte) and Nuvoton (ASUS, MSI, ASRock) boards; the card says it is a guess.
-function cpuCard(win, lhm) {
+const ACER_SRC = "The laptop's own sensors (Acer)";
+// acer: helpers/acer-control.mjs readings, once its fan and charge controls are set up (3 Nov 2026): the laptop's own CPU
+// temperature and fan speed, as NitroSense shows them; before LibreHardwareMonitor's, after it nothing else
+function cpuCard(win, lhm, zones = [], acer = null) {
   const c = lhm?.setUp && lhm.state === 'ok' ? (lhm.cpu || [])[0] || null : null;
+  const a = acer?.cpuC != null ? acer.cpuC : null;
+  // without the add-on, a laptop's ACPI zone is shown as an approximate CPU temperature, said so (3 Nov 2026: the card
+  // read "—", or Shawn could not tell which sensor the number was); the add-on's reading is the CPU's own
+  const zone = c?.packageC == null && a == null ? (zones || []).map(zoneTemp).filter((t) => t != null && t >= 25 && t <= 110).sort((a, b) => b - a)[0] ?? null : null;
   const fans = lhm?.setUp && lhm.state === 'ok' ? lhm.fans || [] : [];
   const named = fans.find((f) => /cpu/i.test(f.name) && !/opt/i.test(f.name)) || fans.find((f) => /cpu|pump|aio/i.test(f.name)) || null;
   const fan = named || (fans.some((f) => /cpu|system|chassis|pump/i.test(f.name)) ? null : fans.find((f) => /^fan #?1$/i.test(f.name.trim())) || null);
+  const acerFan = !fan && acer?.cpuFanRpm != null ? acer.cpuFanRpm : null;
   if (!win?.name && !c) return null;
   return {
     name: win?.name || c?.name || 'Processor',
-    tempC: c?.packageC ?? null, coresMaxC: c?.coresMaxC ?? null,
+    tempC: c?.packageC ?? a ?? (zone != null ? Math.round(zone) : null), coresMaxC: c?.coresMaxC ?? null,
+    // short, to fit the card's row (3 Nov 2026: the add-on's full name ran out of the card)
+    tempSource: c?.packageC != null ? 'CPU sensor' : a != null ? 'Laptop sensor (Acer)' : zone != null ? 'Laptop sensor (approximate)' : null,
     loadPct: win?.loadPct ?? null, clockMHz: win?.clockMHz ?? null,
-    fanRpm: fan?.rpm ?? null, fanName: fan?.name ?? null, fanGuess: !!fan && !named, fanCount: fans.length, sensors: !!c,
+    fanRpm: fan?.rpm ?? acerFan, fanName: fan?.name ?? (acerFan != null ? 'CPU fan' : null), fanGuess: !!fan && !named, fanCount: fans.length || (acerFan != null ? 1 : 0), sensors: !!c || a != null,
   };
 }
-function decide({ nvidia = null, kmt = [], zones = [], pawnio: hasPawnio = false, lhm = null, cpu = null } = {}) {
+function decide({ nvidia = null, kmt = [], zones = [], pawnio: hasPawnio = false, lhm = null, cpu = null, acer = null } = {}) {
   const readings = [];
+  if (acer) {
+    if (acer.cpuC != null) readings.push({ name: 'CPU', kind: 'cpu', tempC: acer.cpuC, fanPct: null, fanRpm: null, source: ACER_SRC });
+    if (acer.systemC != null) readings.push({ name: 'Inside the case', kind: 'board', tempC: acer.systemC, fanPct: null, fanRpm: null, source: ACER_SRC });
+    if (acer.cpuFanRpm != null) readings.push({ name: 'CPU fan', kind: 'fan', tempC: null, fanPct: null, fanRpm: acer.cpuFanRpm, source: ACER_SRC });
+    if (acer.gpuFanRpm != null) readings.push({ name: 'Graphics card fan', kind: 'fan', tempC: null, fanPct: null, fanRpm: acer.gpuFanRpm, source: ACER_SRC });
+  }
   const lhmOk = lhm?.setUp && lhm.state === 'ok';
   if (lhmOk) {
     for (const c of lhm.cpu || []) {
@@ -108,7 +124,7 @@ function decide({ nvidia = null, kmt = [], zones = [], pawnio: hasPawnio = false
   const notReadable = [];
   if (!readings.some((r) => r.kind === 'gpu')) notReadable.push({ what: 'Graphics card temperature', why: "Its driver does not report it to Windows.", need: "An up-to-date driver from the card's maker usually adds it." });
   const lhmNeed = hasPawnio ? `PawnIO is already installed, so only ${LHM.name} (free, open source) is needed.` : `${LHM.name} (free, open source) with the PawnIO driver is needed.`;
-  if (!lhm?.setUp) {
+  if (!lhm?.setUp && acer?.cpuC == null) {
     notReadable.push({ what: 'CPU temperature', why: 'Needs the add-on below.', need: lhmNeed, link: LHM.url });
     notReadable.push({ what: 'CPU and case fan speeds', why: "They sit on the board's fan chip (SuperIO).", need: lhmNeed, link: LHM.url });
   } else if (lhmOk) {
@@ -117,7 +133,7 @@ function decide({ nvidia = null, kmt = [], zones = [], pawnio: hasPawnio = false
   }
   if (!nv.length && readings.some((r) => r.kind === 'gpu' && r.fanRpm == null)) notReadable.push({ what: 'Graphics card fan speed', why: 'Its driver reports the temperature but not the fan.', need: "The card maker's own app shows it." });
   const sensors = lhm ? { setUp: !!lhm.setUp, state: lhm.state || null, why: lhm.why || null, idleFans: lhm.idleFans || 0 } : { setUp: false, state: null, why: null, idleFans: 0 };
-  return { readings, notReadable, cpuSensors: sensors, cpu: cpuCard(cpu, lhm) };
+  return { readings, notReadable, cpuSensors: sensors, cpu: cpuCard(cpu, lhm, zones, acer) };
 }
 
 // ---- the CPU from Node itself (24 Oct 2026, Shawn: "make the processor be read quicker when I open the pc area") ----
@@ -154,18 +170,24 @@ function sessionNow() {
   if (!asking) asking = askReader().then((v) => { if (v) lastSession = v; return v; }).finally(() => { asking = null; });
   return Promise.race([asking, new Promise((r) => setTimeout(() => r(lastSession), FIRST_WAIT_MS))]);
 }
+// the Acer laptop's own sensors once their controls are set up (helpers/acer-control.mjs; nothing on any other PC)
+const acerRead = async () => (await import('./acer-control.mjs')).read();
 async function read({ gpu = require('./gpu'), cpuReader = require('./cpu-sensors-read') } = {}) {
-  const ttl = cache.value?.cpuSensors?.state === 'starting' || cache.value?.cpu?.tempC == null ? 900 : 3500;
+  // the PC page asks every second while it is on screen (3 Nov 2026); the helper's reader is long-lived, so this is cheap
+  const ttl = 900;
   if (cache.value && Date.now() - cache.at < ttl) return cache.value;
   if (pending) return pending;
   pending = (async () => {
     if (process.platform !== 'win32') return { readings: [], notReadable: [], errors: ['only on Windows'] };
-    const [nvidia, s, pw, rawLhm, nc] = await Promise.all([gpu.read().catch(() => null), sessionNow(), pawnioInstalled(), cpuReader.read().catch((e) => ({ setUp: true, state: 'error', why: e.message })), nodeCpu().catch(() => null)]);
+    const [nvidia, s, pw, rawLhm, nc, ar] = await Promise.all([gpu.read().catch(() => null), sessionNow(), pawnioInstalled(), cpuReader.read().catch((e) => ({ setUp: true, state: 'error', why: e.message })), nodeCpu().catch(() => null), acerRead().catch(() => null)]);
+    const acer = ar?.fresh && !ar.error ? ar : null;
     if (rawLhm?.state === 'ok' && rawLhm.anything) lastLhm = { at: Date.now(), value: rawLhm };
     const lhm = rawLhm?.state === 'starting' && lastLhm.value && Date.now() - lastLhm.at < 60000 ? lastLhm.value : rawLhm;
     // the CPU: Node's name and load at once; the reader's name (Windows' own wording) and live clock when it has answered
-    const cpu = nc || s?.cpu ? { name: s?.cpu?.name || nc?.name || null, loadPct: nc?.loadPct ?? s?.cpu?.loadPct ?? null, clockMHz: s?.cpu?.clockMHz ?? null } : null;
-    const v = { ...decide({ nvidia, kmt: s?.gpus || [], zones: s?.zones || [], pawnio: pw, lhm, cpu }), pawnio: pw, errors: s ? s.errors || [] : asking ? [] : ['the sensor reader did not answer'], at: new Date().toISOString() };
+    // load: Windows' "% Processor Utility", the counter Task Manager shows (3 Nov 2026: Node's busy time read lower than
+    // Task Manager and Acer's app); Node's only until the reader has answered
+    const cpu = nc || s?.cpu ? { name: s?.cpu?.name || nc?.name || null, loadPct: s?.cpu?.loadPct ?? nc?.loadPct ?? null, clockMHz: s?.cpu?.clockMHz ?? null } : null;
+    const v = { ...decide({ nvidia, kmt: s?.gpus || [], zones: s?.zones || [], pawnio: pw, lhm, cpu, acer }), pawnio: pw, errors: s ? s.errors || [] : asking ? [] : ['the sensor reader did not answer'], at: new Date().toISOString() };
     cache = { at: Date.now(), value: v };
     return v;
   })();

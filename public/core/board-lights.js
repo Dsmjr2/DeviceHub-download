@@ -21,6 +21,11 @@ export function boardView(st, job = null, { confirmRemove = false } = {}) {
   if (!st) return { line: 'Checking board lights…', result, action: null };
   // the box was declined or not answered (job.retry): the same action again, as Try again
   if (job?.done && !job.ok && job.retry) return { line: job.kind === 'remove' ? st.remove : st.before, result, action: job.kind === 'remove' ? 'remove' : 'setup', label: 'Try again' };
+  // an older DeviceHub's task runs OpenRGB as administrator from a folder any program can change (4 Nov 2026)
+  if (st.legacy && !st.setUp) {
+    if (confirmRemove) return { line: st.remove, result: null, action: 'remove', label: 'Yes, remove' };
+    return { line: 'An older DeviceHub starts OpenRGB as administrator from a folder any program can change. Replace it with the protected copy; Windows asks once.', result, action: st.canSetUp ? 'setup' : 'ask-remove', label: st.canSetUp ? 'Replace it' : REMOVE_LABEL, also: st.canSetUp ? 'ask-remove' : null };
+  }
   if (st.setUp) {
     if (confirmRemove) return { line: st.remove, result: null, action: 'remove', label: 'Yes, remove' };
     return { line: 'Board, fan and RAM lights are on.', result, action: 'ask-remove', label: REMOVE_LABEL };

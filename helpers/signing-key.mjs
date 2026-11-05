@@ -1,42 +1,35 @@
-// The publisher's signing key, loaded for helpers/sign-release.mjs and helpers/make-library-bundle.mjs (22 Oct 2026,
-// Shawn: yes to "put a password on that signing key"). Since helpers/protect-signing-key.ps1 ran, the key is
-// release-key.dpapi: Windows DPAPI, readable only by Shawn's Windows login on this PC, so a copy of the file (a backup, a
-// stolen disk) is useless. The password-protected release-key.backup.pem restores it after a Windows reinstall
-// (node helpers/signing-key.mjs --restore). Before that ran, the plain release-key.pem is read as it was.
+// The publisher's signing key, loaded for helpers/sign-release.mjs and helpers/make-library-bundle.mjs. Since 4 Nov 2026
+// (Shawn: Bitwarden is the one place for every secret, so any PC with Claude and GitHub can publish) it is
+// DEVICEHUB_RELEASE_KEY, an item in Bitwarden's Automation folder that `secrets run` (Dsmjr2/setup) hands to the
+// process as an environment variable; publishing runs that way (helpers/publish-release.ps1). It is never on disk: the
+// DPAPI-locked release-key.dpapi it replaced (22 Oct) is gone. A key that is not the one the app trusts
+// (helpers/release-public-key.pem) is refused, so a wrong item can never sign a release.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { execFileSync } from 'node:child_process';
 
-export const DIR = path.join(process.env.APPDATA || '', 'DeviceHub-signing');
-export const PLAIN = path.join(DIR, 'release-key.pem');
-export const LOCKED = path.join(DIR, 'release-key.dpapi');
-export const BACKUP = path.join(DIR, 'release-key.backup.pem');
+export const NAME = 'DEVICEHUB_RELEASE_KEY';
+const PUBLIC = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), 'release-public-key.pem');
 
-const ps = (script, input) => execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { input, encoding: 'utf8', windowsHide: true, timeout: 30000 });
-const UNPROTECT = "Add-Type -AssemblyName System.Security; $b = [Convert]::FromBase64String([Console]::In.ReadToEnd().Trim()); [Text.Encoding]::ASCII.GetString([Security.Cryptography.ProtectedData]::Unprotect($b, $null, 'CurrentUser'))";
-const PROTECT = "Add-Type -AssemblyName System.Security; $b = [Text.Encoding]::ASCII.GetBytes([Console]::In.ReadToEnd()); [Convert]::ToBase64String([Security.Cryptography.ProtectedData]::Protect($b, $null, 'CurrentUser'))";
+export const keyAvailable = () => !!(process.env[NAME] || '').trim();
 
-export const keyAvailable = () => fs.existsSync(LOCKED) || fs.existsSync(PLAIN);
+// a PEM, or the base64 of the PKCS#8 form (one line, as a Bitwarden Password field holds it)
+export function keyFromValue(value) {
+  const v = String(value || '').trim();
+  return v.includes('-----BEGIN') ? crypto.createPrivateKey(v) : crypto.createPrivateKey({ key: Buffer.from(v, 'base64'), format: 'der', type: 'pkcs8' });
+}
+
+// the private key's public half is the one in helpers/release-public-key.pem
+export function matchesPublic(key) {
+  const mine = crypto.createPublicKey(key).export({ type: 'spki', format: 'der' });
+  return mine.equals(crypto.createPublicKey(fs.readFileSync(PUBLIC)).export({ type: 'spki', format: 'der' }));
+}
 
 // the private key (a KeyObject); throws in plain words when it cannot be had
 export function loadKey() {
-  if (fs.existsSync(LOCKED)) {
-    let pem;
-    try { pem = ps(UNPROTECT, fs.readFileSync(LOCKED, 'utf8')); } catch { throw new Error('the signing key is locked to another Windows login (or this Windows was reinstalled): restore it from the backup with node helpers/signing-key.mjs --restore'); }
-    return crypto.createPrivateKey(pem);
-  }
-  if (fs.existsSync(PLAIN)) return crypto.createPrivateKey(fs.readFileSync(PLAIN));
-  throw new Error(`no signing key in ${DIR}`);
-}
-
-// locks a PEM to this Windows login (used by protect-signing-key.ps1 and --restore)
-export function lockPem(pem) { fs.writeFileSync(LOCKED, ps(PROTECT, pem).trim() + '\n', { mode: 0o600 }); }
-
-// node helpers/signing-key.mjs --restore: the backup and its password give back the locked key on this PC
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')) && process.argv[2] === '--restore') {
-  const pass = fs.readFileSync(0, 'utf8').replace(/\r?\n$/, '');
-  const key = crypto.createPrivateKey({ key: fs.readFileSync(BACKUP), passphrase: pass });
-  lockPem(key.export({ type: 'pkcs8', format: 'pem' }));
-  console.log('the signing key is back, locked to this Windows login');
+  if (!keyAvailable()) throw new Error(`${NAME} is not set: publish through \`secrets run\` (Bitwarden, Automation folder), e.g. secrets run powershell -File helpers\\publish-release.ps1`);
+  let key;
+  try { key = keyFromValue(process.env[NAME]); } catch { throw new Error(`${NAME} is not a signing key (check the Bitwarden item's Password field)`); }
+  if (!matchesPublic(key)) throw new Error(`${NAME} is not the key the app trusts (helpers/release-public-key.pem): nothing was signed. Never make a new key; installed copies would refuse every update`);
+  return key;
 }

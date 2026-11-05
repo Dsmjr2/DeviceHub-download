@@ -135,7 +135,7 @@ function buildRail() {
     p.id === 'backups' ? h('span', { class: 'nav-shield', title: 'Checking backups…' }, icon('shield')) : null);
   if (!document.querySelector('.art-defs')) document.body.prepend(artDefs());
   rail.replaceChildren(
-    h('div', { class: 'brand' }, h('img', { class: 'brand-mark', src: '/icon-64.png', alt: '' }), h('div', {}, 'DeviceHub', DEMO ? h('small', {}, 'DEMO MODE') : null)),
+    h('div', { class: 'brand' }, h('img', { class: 'brand-mark', src: '/icon-64.png', alt: '' }), h('div', {}, 'DeviceHub', DEMO ? h('small', {}, 'Demo mode') : null)),
     navBtn(PAGES[0]),
     // Setup, right under the Overview (22 Oct 2026, Shawn: "I want the setup to all be on one page"; pages/setup.js)
     navBtn(PAGES.find((p) => p.id === 'setup')),

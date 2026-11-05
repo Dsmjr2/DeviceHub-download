@@ -7,6 +7,17 @@
 param([string]$Tag = 'v1.0', [string]$Repo = 'Dsmjr2/DeviceHub-download')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
+# THE SIGNING KEY (4 Nov 2026): DEVICEHUB_RELEASE_KEY lives in Bitwarden (Automation folder) and nowhere on disk. Without it
+# in the environment this script runs itself again through `secrets run` (Dsmjr2/setup), which hands it over; checked
+# before anything is built or committed.
+if (-not $env:DEVICEHUB_RELEASE_KEY) {
+  $secrets = @((Join-Path $HOME 'source\repos\setup\secrets.ps1')) + @((Get-Command secrets.ps1 -ErrorAction SilentlyContinue).Source) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+  if (-not $secrets) { throw 'the signing key (DEVICEHUB_RELEASE_KEY) is not set and the setup repo is not here (~/source/repos/setup): clone Dsmjr2/setup and run secrets unlock. Nothing was built' }
+  if ($env:DEVICEHUB_PUBLISH_VIA_SECRETS) { throw 'secrets run did not provide DEVICEHUB_RELEASE_KEY: run secrets unlock, and check the item is in Bitwarden''s Automation folder. Nothing was built' }
+  $env:DEVICEHUB_PUBLISH_VIA_SECRETS = '1'
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $secrets run powershell.exe -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath -Tag $Tag -Repo $Repo
+  exit $LASTEXITCODE
+}
 $dist = Join-Path $root 'dist'
 
 # READABLE VERSION (27 Oct 2026, helpers/release-notes.mjs; friends saw commit ids like 003fa1d): the next number

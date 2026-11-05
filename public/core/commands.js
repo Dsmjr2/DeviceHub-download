@@ -28,6 +28,33 @@ const reloadExtras = () => {
 const headsetSet = (key, value, label, display) => write('headset', key, value, { label, display }).catch(() => {});
 const pct = (n) => n != null && n >= 0 && n <= 100;
 
+// the minutes the Sleep after and Screen off after lists offer (helpers/sleep-timer.js CHOICES), 0 = Never
+export const SLEEP_MINUTES = [1, 2, 3, 5, 10, 15, 20, 30, 45, 60, 120, 180, 300, 0];
+const postOr = async (path, body, done, fail) => {
+  if (isDemo()) { toast(done, 'good', { detail: 'Demo: Windows is not changed.' }); return; }
+  try { const r = await env.api(path, body); if (r?.ok === false) throw new Error(r.why || 'not done'); toast(done, 'good'); } catch (e) { toast(fail, 'bad', { detail: e.message }); }
+};
+// one typed line -> one command for the PC's own switches, or null
+export function pcCommands(q) {
+  let m;
+  if ((m = /^(?:gaming|game)\s*(?:mode|boost)\s+(on|off)$/.exec(q))) {
+    const on = m[1] === 'on';
+    return { dynamic: true, group: 'PC', icon: 'bolt', label: `Gaming mode ${m[1]}`, run: () => postOr('/api/gaming-mode', { on }, on ? 'Gaming mode on' : 'Gaming mode off: everything put back', 'Gaming mode not changed') };
+  }
+  if (/^(?:save\s+(?:a\s+)?(?:replay|clip)|record\s+last|replay\s+save|clip(?:\s+that|\s+it)?)$/.test(q)) {
+    return { dynamic: true, group: 'PC', icon: 'play', label: 'Save replay (Record last)', run: () => postOr('/api/replay/save', {}, 'Replay saved', 'Replay not saved') };
+  }
+  const sl = /^(sleep|screen\s+off)\s+(?:after\s+)?(?:(\d{1,3})\s*(min|mins|minutes?|h|hours?)?|(never))$/.exec(q);
+  if (sl) {
+    const minutes = sl[4] ? 0 : Number(sl[2]) * (/^h/.test(sl[3] || '') ? 60 : 1);
+    if (!SLEEP_MINUTES.includes(minutes)) return null;
+    const what = sl[1] === 'sleep' ? 'Sleep after' : 'Screen off after', which = sl[1] === 'sleep' ? 'ac' : 'screenAc';
+    const shown = minutes === 0 ? 'Never' : minutes >= 60 && minutes % 60 === 0 ? `${minutes / 60} h` : `${minutes} min`;
+    return { dynamic: true, group: 'PC', icon: 'sleep', label: `${what} ${shown} (plugged in)`, run: () => postOr('/api/sleep', { which, value: minutes * 60 }, `${what}: ${shown}`, `${what} not changed`) };
+  }
+  return null;
+}
+
 const COLORS = { orange: '#ff6a1a', red: '#ff2d55', pink: '#ff5d8f', purple: '#b48cff', blue: '#5b6cff', cyan: '#3fe0ff', teal: '#2fd4c0', green: '#3ddc97', lime: '#c6ff3d', yellow: '#ffd23f', white: '#ffffff' };
 const ok = (id) => devices[id]?.status === 'connected';
 const mouseSet = (key, value, label, display) => write('mouse', key, value, { label, display }).catch(() => {});
@@ -100,6 +127,10 @@ export function commands(q, { go, pages }) {
         try { await env.api('/api/monitors/sleep', {}); closeAfterScreensOff(); } catch (e) { toast('Sleep failed', 'bad', { detail: e.message }); }
       } });
   }
+  // the PC's own switches (3 Nov 2026): "gaming mode on|off", "save replay" / "record last", "sleep after 30 min" /
+  // "sleep never", "screen off after 10 min" (the same routes as the PC and Laptop pages: backed up, read back)
+  const pc = pcCommands(q);
+  if (pc) out.push(pc);
   // monitors: "brightness 40" (every monitor) or "brightness 40 oled" / "ips" / part of a name; contrast the same
   const mon = q.match(/^(brightness|bright|contrast)\s*(\d{1,3})%?\s*(.*)$/);
   if (mon && pct(Number(mon[2])) && monitors.length) {

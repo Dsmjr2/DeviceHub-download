@@ -13,6 +13,9 @@ import { boardLights } from '../ui/board-lights.js';
 import { env } from '../core/env.js';
 import { isDemo, shownDevices } from '../core/devices.js';
 import { pointerCard } from '../ui/pointer-card.js';
+import { replayCard } from '../ui/replay-card.js';
+import { powerCard } from '../ui/power-rows.js';
+import { gamingCard } from '../ui/gaming-card.js';
 import { topbar } from './common.js';
 import { everyVisible } from '../core/visible-timer.js';
 // Temperatures and fans, and the PC check (24 Oct 2026, docs/handoff/display-health.md): this page became "PC" so the
@@ -21,14 +24,16 @@ import { tempsCard, pcCheckCard, cpuCard, chipCard } from '../ui/pc-health.js';
 
 const DEMO = { available: true, gpus: [{ name: 'NVIDIA GeForce RTX 4070', tempC: 62, fanPct: 38, loadPct: 71, powerW: 142, powerLimitW: 200, memUsedMB: 6100, memTotalMB: 12282, clockMHz: 2610, headroomC: 22 }] };
 let gpu = null, error = null, timer = null, lastGpuSig = '', rerender = () => {};
-// the temperature over the last 2 minutes, kept only while the page is open (one reading every 3 s)
+// the temperature over the last 5 minutes, kept only while the page is open (one reading a second while it shows,
+// 3 Nov 2026, Shawn: "update quick and be accurate when I have the app open or viewing that page")
 let history = [];
-const READ_MS = 3000;
+const READ_MS = 1000, KEEP = 300;
 
 async function load() {
   if (isDemo()) { gpu = { ...DEMO, gpus: [{ ...DEMO.gpus[0], tempC: 60 + Math.round(Math.random() * 5) }] }; }
   else try { gpu = await env.api('/api/gpu'); error = null; } catch (e) { error = e.message; }
-  const t = gpu?.gpus?.[0]?.tempC; if (t != null) { history.push(Math.round(t)); if (history.length > 40) history.shift(); }
+  if (gpu?.gpus?.[0]?.idle) history = [];   // asleep: the old readings are not joined to the next ones
+  const t = gpu?.gpus?.[0]?.tempC; if (t != null) { history.push(Math.round(t)); if (history.length > KEEP) history.shift(); }
   const sig = JSON.stringify([gpu, error]);
   if (sig !== lastGpuSig) { lastGpuSig = sig; rerender(); }
 }
@@ -50,8 +55,10 @@ function keepFresh() {
 // the same card as the processor's (ui/pc-health.js chipCard, 24 Oct 2026: one look for both)
 function gpuCard(g) {
   return chipCard({
-    title: 'Graphics card', name: g.name.replace(/^NVIDIA (GeForce )?/i, ''), tempC: g.tempC, loadPct: g.loadPct, history, everyS: READ_MS / 1000,   // 31 Oct 2026: the graph's "last N" from the real 3 s reading
-    fan: { pct: g.fanPct, value: g.fanPct == null ? '—' : g.fanPct === 0 ? 'Stopped' : `${g.fanPct}%`, label: 'fans' },
+    title: 'Graphics card', name: g.name.replace(/^NVIDIA (GeForce )?/i, ''), tempC: g.tempC, loadPct: g.loadPct, history: g.idle ? null : history, everyS: READ_MS / 1000,   // 31 Oct 2026: the graph's "last N" from the real reading
+    // asleep (a laptop's card with nothing on it): "idle", as Acer's app says, and it is not woken to read it (helpers/gpu.js)
+    tempText: g.idle ? 'idle' : null,
+    fan: g.idle || g.fanPct == null ? null : { pct: g.fanPct, value: g.fanPct === 0 ? 'Stopped' : `${g.fanPct}%`, label: 'fans' },
     rows: [['Power', g.powerW == null ? null : `${Math.round(g.powerW)} of ${Math.round(g.powerLimitW || 0)} W`],
       ['Headroom', g.headroomC == null ? null : `${g.headroomC} °C before it slows`],
       ['Video memory', g.memUsedMB == null ? null : `${(g.memUsedMB / 1024).toFixed(1)} of ${(g.memTotalMB / 1024).toFixed(0)} GB`]],
@@ -159,8 +166,10 @@ export default {
         tag(cpuCard(), 'pc-cpu'),
         tag(tempsCard(rerender, 'fans'), 'pc-temps'),
         tag(pcCheckCard(rerender), 'pc-check')),
-      // no mouse page on this PC (none DeviceHub runs): Windows' pointer settings here, as they are on every mouse's page
-      // (1 Nov 2026, ui/pointer-card.js)
-      shownDevices().some((x) => x.id === 'mouse' || /mouse/i.test(x.adapter?.kind || '')) ? null : h('div', { class: 'grid two top' }, pointerCard(rerender)));
+      // under the grid: Instant replay (2 Nov 2026, ui/replay-card.js) and, with no mouse page on this PC (none DeviceHub
+      // runs), Windows' pointer settings, as they are on every mouse's page (1 Nov 2026, ui/pointer-card.js)
+      // Sleep and screen (3 Nov 2026): on a PC without a battery; a laptop has them on its Laptop page
+      h('div', { class: 'grid two top' }, gamingCard(rerender), replayCard(rerender), powerCard(rerender),
+        shownDevices().some((x) => x.id === 'mouse' || /mouse/i.test(x.adapter?.kind || '')) ? null : pointerCard(rerender)));
   },
 };

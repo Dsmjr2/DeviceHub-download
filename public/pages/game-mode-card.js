@@ -146,9 +146,11 @@ export function gameModeCard(rerender) {
   redrawFn = rerender;
   if (st.games === null) { st.games = []; load(); }
   const line = gameModeLine();
-  return card([h('h2', {}, 'Game mode'), h('span', { class: 'spacer' }), line ? h('span', { class: 'pill accent' }, line) : null],
-    h('p', { class: 'faint', style: { margin: '0 0 4px' } }, 'Changes only what you pick while the game runs. Puts it all back when it quits.'),
+  // what it is doing and what it does, once at the bottom (3 Nov 2026, Shawn: no labels around titles)
+  return card([h('h2', {}, 'Game mode')],
     ...(st.games || []).map(gameBlock),
     st.error ? h('div', { class: 'bad', style: { marginTop: '8px' } }, st.error) : null,
+    line ? h('p', { style: { margin: '10px 0 0' } }, h('b', {}, `${line}.`)) : null,
+    h('p', { class: 'faint', style: { margin: '6px 0 0' } }, 'Changes only what you pick while the game runs. Puts it all back when it quits.'),
     st.picking ? picker() : h('div', { class: 'actions', style: { marginTop: '12px' } }, button('Add a game', openPicker, { kind: 'small', ic: 'plus' })));
 }

@@ -52,7 +52,7 @@ const timers = {};
 function band(sp, i, disabled) {
   const stages = () => drafts[sp.guid] || sp.stages;
   const v = stages()[i];
-  const input = h('input', { type: 'range', min: -12, max: 12, step: 0.5, value, disabled, 'aria-label': `${sp.name} ${BANDS[i]} Hz` });
+  const input = h('input', { type: 'range', min: -12, max: 12, step: 0.5, value: v, disabled, 'aria-label': `${sp.name} ${BANDS[i]} Hz` });
   input.value = v;
   const box = h('input', { class: 'eq-val', type: 'text', inputmode: 'decimal', value: fmtBox(v), disabled, title: `${BANDS[i]} Hz in dB` });
   const send = (next, quiet) => { drafts[sp.guid] = next; clearTimeout(timers[sp.guid]); timers[sp.guid] = setTimeout(() => put(sp.guid, { stages: next }, quiet).then(() => { if (!quiet) delete drafts[sp.guid]; }), quiet ? 80 : 0); };

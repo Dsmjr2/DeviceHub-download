@@ -48,7 +48,7 @@ check(/Click Yes in Windows' prompt \(if hidden, the blinking taskbar shield\)/.
   const d = bl.deps;
   const pc = { task: false };
   d.pawnio = async () => ({ app: true, service: true, version: '2.2.0.0' });
-  d.task = async () => pc.task;
+  d.task = async (name) => (name === bl.LEGACY.task ? false : pc.task);   // no older DeviceHub task on this pretend PC
   d.exists = (f) => (f === bl.BOARD.exe ? pc.task : /uac-(started|cancel)-/.test(f) ? fs.existsSync(f) : true);
   d.readResult = () => ''; d.clearResult = () => {}; d.stopBundled = () => {}; d.forget = () => {};
   d.waitServer = async () => true;

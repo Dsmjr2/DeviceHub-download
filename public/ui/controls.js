@@ -4,10 +4,16 @@ import { h, icon, clamp, svgEl } from './dom.js';
 import { dropdown } from './dropdown.js';
 export { dropdown } from './dropdown.js';
 
+// A failed change puts the control back. A mistake in DeviceHub's own code (a name that does not exist, a property of
+// nothing) is not a device saying no: it is reported as an error as well, so tests and the console see it (4 Nov 2026,
+// Shawn: the Equalizer's speaker choices did nothing; a ReferenceError in the redraw was swallowed and the choice
+// went back to Headset).
+const codeBug = (e) => { if (e instanceof ReferenceError || e instanceof TypeError || e instanceof SyntaxError || e instanceof RangeError) { try { reportError(e); } catch { console.error(e); } } };
+
 // "pending" (the blink) only if the change takes longer than 500 ms (a mouse change is ~0.4 s), so quick changes just happen
 async function run(el, fn) {
   const t = setTimeout(() => el.classList.add('pending'), 500);
-  try { return await fn(); } finally { clearTimeout(t); el.classList.remove('pending'); }
+  try { return await fn(); } catch (e) { codeBug(e); throw e; } finally { clearTimeout(t); el.classList.remove('pending'); }
 }
 
 // Moves at once on a click (21 Oct 2026: it waited for the device, 0.1-0.5 s, and felt late); the page then redraws
@@ -81,7 +87,7 @@ export function slider({ value, min, max, step = 1, onCommit, live, grab, disabl
   const pump = () => {
     if (busy || next == null || next === sent) return;
     const v = next; next = null; sent = v; moved = true;
-    busy = Promise.resolve().then(() => live(v)).catch(() => {}).finally(() => { busy = null; pump(); });
+    busy = Promise.resolve().then(() => live(v)).catch(codeBug).finally(() => { busy = null; pump(); });
   };
   if (grab) input.addEventListener('pointerdown', () => grab());
   input.addEventListener('input', () => { const v = Number(input.value); out.textContent = show(v); paint(); if (live) { next = v; pump(); } });
@@ -172,7 +178,7 @@ export function button(label, onclick, { kind = '', ic, title, disabled } = {}) 
     b.dataset.busy = '1';
     const t = setTimeout(() => b.classList.add('pending'), 500);
     // a failure is said by what failed (a write's own message); it does not also go to the console as unhandled
-    try { await onclick(e); } catch {} finally { clearTimeout(t); delete b.dataset.busy; b.classList.remove('pending'); }
+    try { await onclick(e); } catch (x) { codeBug(x); } finally { clearTimeout(t); delete b.dataset.busy; b.classList.remove('pending'); }
   });
   return b;
 }

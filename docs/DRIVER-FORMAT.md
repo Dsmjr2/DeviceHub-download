@@ -45,6 +45,8 @@ byte-for-byte equal to its `device.mjs` by `tests\declarative-driver.mjs`.
     "checksum": { "type": "xor", "from": 2, "to": 87, "at": 88 }   optional, see below
     "counter": { "at": 1, "step": 1 }   optional: a message number the driver writes at "at", raised by "step" on every
                                          message (before the checksum); templates leave that byte 00 (23 Oct 2026)
+    "session": { "open": "takeControl", "close": "handBack" }   optional: two messages of fixed bytes sent before and
+                                         after EVERY request; a refused or silent open stops that request (2 Nov 2026)
   },
   "links": {                             how the device is reached; each model maps its pids to links
     "cable":  { "label": "USB cable", "reportId": 0, "wireless": false },
@@ -97,7 +99,10 @@ byte-for-byte equal to its `device.mjs` by `tests\declarative-driver.mjs`.
       "field": "dpi1",                   which field reads it (default: the key)
       "write": { "message": "setDpi1", "needs": ["colors"], "then": "save",
                  "keep": [],              fields that must read the same after the write
-                 "encode": { "map": { "true": 1, "false": 0 } } } }   optional; default: the field read backwards
+                 "encode": { "map": { "true": 1, "false": 0 } },   optional; default: the field read backwards
+                 "bits": { "field": "liftByte", "mask": 3, "shift": 0 } } }   optional (3 Nov 2026): the value shares its
+                                         byte with other options: that byte as just read (a plain one-byte field), only
+                                         the mask's bits replaced by the value (shifted); {value} is then one byte
   ],
   "battery": { "from": "status", "percent": "battery", "charging": "charging", "when": { "model.battery": true },
                "awake": true },          awake: offer awake() (one quick status read) on wireless links
@@ -115,6 +120,8 @@ byte-for-byte equal to its `device.mjs` by `tests\declarative-driver.mjs`.
 
 A message's `bytes` is a list of tokens: a byte (`51`), or a placeholder:
 - `{value}` / `{value:u16le}`: the setting's new value, encoded (`u8` default, `u16le`, `u16be`, `u32le`, `u32be`).
+- `{value:u8c55}`: one byte of value followed by its check byte, `(0x55 - value) & 255` (any two hex digits for the
+  constant; Pulsar-style memory, 2 Nov 2026). Only `{value}` may carry one; the never lists see both bytes as sent.
   A value that does not fit is refused before anything is sent. A `color` sends `{value:rgb}`: three bytes, red, green,
   blue; only a color may use `rgb`.
 - `{zone}` / `{button}`: one byte, the `code` of the color zone or remap button being written. Only the write of a
@@ -128,7 +135,8 @@ The rest of the report is zeros, then the checksum (if any) is written at `at`.
 
 `offset`, `size` (1, 2 or 4; any length for `type: "bytes"`), `endian` (`little` default, `big`), then in order:
 `mask`, `shift` (right), `absentIf` (raw value meaning "not reported"), and the value: `map` (code -> value, with
-`default`), `type: "bool"` (not 0), or the number `raw * scale + add`. Fields decode in file order, so a field's `when`
+`default`), `type: "bool"` (not 0), or the number `raw * scale + add`. `check` (0-255, a one-byte field): the byte
+after it must be `(check - raw) & 255`, else the field is not read at all (so it cannot be written either). Fields decode in file order, so a field's `when`
 may use fields above it.
 
 ### Settings
@@ -213,7 +221,8 @@ included), its problems starting "on product id XXXX:". Settings, links and mode
 ### Checksums
 
 `none`, `xor` (XOR of bytes `from`..`to`, one byte at `at`; this is Razer's "crc"), `sum8` (low byte of the sum),
-`sum16le` (the sum's low 16 bits, little-endian at `at`, `at+1`; ROCCAT's Sum16). No other checksum or CRC is
+`sum16le` (the sum's low 16 bits, little-endian at `at`, `at+1`; ROCCAT's Sum16), `sub8` (`k` minus the sum, low
+byte; the Pulsar's `55 - (8 + sum)` is `k: 0x4D`, 2 Nov 2026). No other checksum or CRC is
 supported: a device that needs one stays a device.mjs.
 
 ### Counter (23 Oct 2026)

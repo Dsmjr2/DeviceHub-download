@@ -6,7 +6,7 @@
 // - PC lights: the lights OpenRGB controls (helpers/openrgb.js), when OpenRGB runs with its SDK server. DeviceHub
 //   never writes to the motherboard's SMBus itself.
 import { h } from '../ui/dom.js';
-import { card, button, pill, skeleton, isOff, OFF } from '../ui/controls.js';
+import { card, button, skeleton, isOff, OFF } from '../ui/controls.js';
 import { SWATCHES } from '../core/color.js';
 import { groupLights, applyLocal, liveWriter } from '../core/light-groups.js';
 import { env } from '../core/env.js';
@@ -268,18 +268,18 @@ function pcLights() {
       fanHelp(),
       boardSection());
   }
-  return card([...head, h('span', { class: 'spacer' }), pill(`${o.controllers.length} found`, 'good')],
-    !o.bundled && o.board?.setUp ? h('p', { class: 'faint pcl-intro' }, 'Board, fan and RAM lights included.') : null,
-    o.bundled ? h('p', { class: 'faint pcl-intro' }, `USB lights only${o.readOnly ? '; read-only' : ''}.`) : null,
+  return card(head,
     o.controllers.length ? h('div', { class: 'pcl' }, ...lightSections()) : h('p', { class: 'faint' }, 'No lights found.'),
     // Find my lights: one color per zone, the person names what lit (ui/find-lights.js)
     findLights(o, redraw),
     h('div', { class: 'actions' },
       button('Undo', async () => { pcStopLive(); if (isDemo()) { st.orgb = DEMO_ORGB(); redraw(); toast('PC lights undone', 'good'); return; } try { await env.api('/api/openrgb/restore', {}); toast('PC lights undone', 'good'); } catch (e) { toast(undoFailed(e), 'bad', { detail: e.message }); } loadPc(true); }, { kind: 'small', ic: 'undo' }),
       button('Look again', () => loadPc(true), { kind: 'ghost small', ic: 'refresh' })),
+    // what it reaches, once at the bottom (3 Nov 2026, Shawn: no labels around titles)
+    o.bundled ? h('p', { class: 'faint' }, `USB lights only${o.readOnly ? '; read-only' : ''}.`) : null,
     // the built-in OpenRGB reaches USB lights only: the way to the board and RAM stays one click away
     fanHelp(),
-    o.bundled || o.board?.setUp ? boardSection() : null);
+    o.bundled || o.board?.setUp || o.board?.legacy ? boardSection() : null);
 }
 
 // PC lights on its own, as the Lighting page's third column. It redraws only itself (Find my lights, Look again, a

@@ -82,10 +82,22 @@ below for what the wizard refuses." And in the Map:
 - `learn-hid-list.ps1` ran once on this PC (read-only) and listed the Pulsar and HS80 collections correctly.
 - No learned driver has driven a real device; feature-report drivers also depend on hid-host's untried FSET/FGET.
 - The page was not opened in a browser (needs the server.js line and a restart). `tests/pages.mjs` will open it.
-- Known limits: two values that both fit one byte make it a one-byte number (the range check then refuses a range
-  above it: "learn it again with values further apart"); the write is found by "same first byte", so a protocol with
-  the value in byte 0 is not learned; wireless (receiver) links, several product ids and `stepBack` (the maker's app
-  name) are not set: the wizard says to close the maker's app before saving.
+- Known limits (as written 22 Oct): two values that both fit one byte make it a one-byte number (the range check then
+  refuses a range above it: "learn it again with values further apart"); the write is found by "same first byte", so a
+  protocol with the value in byte 0 is not learned; wireless (receiver) links, several product ids and `stepBack` (the
+  maker's app name) are not set: the wizard says to close the maker's app before saving.
+  3 Nov 2026, where each stands (tests/learn-bench.mjs, 32 of 32):
+  - a value in byte 0: learned since 23 Oct (`value-first`, feature reports) and for plain output reports
+    (`value-first-output`);
+  - two values in one byte (a setting beside other options in the same byte): the wizard learns only the bits that
+    move with the setting when the byte's other bits are set, and the driver writes that byte as just read with only
+    those bits replaced (driver.json `write.bits`), so an option changed since the recording is kept (`bitfield` and
+    `toggle-bit` now change the other options before driving; the wizard before this learned the whole byte and
+    could not even read the setting back then: 29 of 31);
+  - a receiver and a cable (several product ids): learned on each id and joined (`addPid`, since 22 Oct), now driven
+    end to end on both ids in the bench (`receiver-and-cable`, the receiver adding a device-slot byte);
+  - a value range above one byte from values that fit one: still refused with "learn it again with values further
+    apart" (the safe answer: nothing shows the second byte belongs to it).
 - `helpers/library-updates.mjs` and `make-library-bundle.mjs` (signed library bundles) still carry device.mjs only; a
   shared driver.json-only entry ships with the next release, not between releases, until they learn it too.
 
@@ -151,3 +163,26 @@ kept out of git, they are other people's files) were run through the reader and 
   other things): the shortest is used and the evidence says so; the read after every write checks it took.
 The bench gained `checksum-first` and the same devices recorded as pcapng and usbmon (tests/lib/usb-recording.mjs
 `pcapng()`, `usbmon()`), colour, colour-twice and two-messages: 25 of 25.
+
+### The Pulsar's protocol (2 Nov 2026)
+
+Shawn: "Get devicehub to start working on better learning new devices again". A test on the real Pulsar was dropped
+(it needed USBPcap and a session on this laptop; Shawn: "I do not want to do this"). Instead the Pulsar's protocol, known
+from public/devices/pulsar.js, became four bench styles. The wizard as it was learned none of them (25 of 29); now it
+learns all of them (29 of 29):
+- **a constant minus the sum** (`checksum.type: 'sub8'` with `k`): the Pulsar's byte 15 is `55 - (8 + sum of 0-14)`.
+  `findChecksum` tries it after xor, sum8 and sum16le, the constant read off the first message and holding on every
+  message of that report (`minus-sum`, where the value moves the checksum);
+- **a value with its check byte** (`{value:u8c55}`, field `check`): the Pulsar stores each setting as
+  `[value, 55 - value]`. When plain encodings fail and exactly two neighbouring bytes moved with a constant sum, the
+  value is learned from the first; the read must carry the same check byte after it, and the driver refuses a reply
+  where it does not hold (`pulsar-debounce`, `pulsar-polling` as codes, `pulsar-toggle`);
+- **a session around every request** (`transport.session`): the Pulsar app sends `03 .. 01` before each request and
+  `03 .. 00` after, and the mouse ignores anything without it. `findSession` takes it when, in every recording, the
+  first and last messages are the same two (not the read, write or save), alternate at least twice with everything
+  else between them, and the device answered each open. The driver sends the open before and the close after each
+  request; `mergeDriver` refuses to add settings whose session differs from the driver's.
+With both bytes of a [value, 55 - value] pair in a message, the Pulsar's checksum does not move, so it is kept as recorded.
+Still untried on a real device: all of the above, and the three parts listed under "not tried" above.
+`helpers/learn-proof.mjs` (branch learn-proof-pulsar) runs the same analysis on real recordings of the Pulsar and
+compares with pulsar.js, for whenever a session happens.

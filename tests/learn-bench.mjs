@@ -22,6 +22,41 @@ const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 const hexColour = (b) => `#${b.map((x) => x.toString(16).padStart(2, '0')).join('')}`;
 const be16 = (a, o) => (a[o] << 8) | a[o + 1], le16 = (a, o) => a[o] | (a[o + 1] << 8);
 
+// The Pulsar's protocol (2 Nov 2026, from public/devices/pulsar.js, which drives Shawn's X-Lite): report 8, 16 bytes,
+// [cmd, status, addrHi, addrLo, len, data x10, check] with check = 55 - (8 + sum of bytes 0-14); settings live in the
+// mouse's memory as [value, 55 - value]; 03 01 takes control before every request and 03 00 hands it back, and the mouse
+// ignores anything else without it. A pretend mouse with that memory, and a pretend Pulsar app that reads the setting's
+// chunk, writes it and reads it again, each inside its own 03 01 ... 03 00, as pulsar.js does.
+const pulsarPacket = (cmd, addr = 0, len = 0, data = []) => { const p = pad([cmd, 0, addr >> 8, addr & 255, len, ...data], 16); p[15] = (0x4d - sum8(p, 0, 14)) & 255; return p; };
+function pulsarStyle(name, about, { addr, chunk, setting, values, next, codes, start, range }) {
+  const byte = (v) => (codes ? codes[v] : setting.kind === 'toggle' ? (v ? 1 : 0) : v);
+  return {
+    name, about, vid: 0x2011, pid: 0x5406, report: 'output', len: 16, reportId: 8, ids: true,
+    setting, values, next, range, codes,
+    state: () => { const mem = new Array(256).fill(0); for (let a = 0; a < 256; a += 2) { mem[a] = 1; mem[a + 1] = 0x54; } mem[addr] = byte(start); mem[addr + 1] = (0x55 - byte(start)) & 255; return { mem, online: false, get value() { return setting.kind === 'toggle' ? this.mem[addr] === 1 : this.mem[addr]; } }; },
+    handle(s, q) {
+      if (q[15] !== ((0x4d - sum8(q, 0, 14)) & 255)) return null;               // a wrong check byte: ignored
+      const at = (q[2] << 8) | q[3], n = q[4];
+      if (q[0] === 0x03) { s.online = q[5] === 1; return pulsarPacket(0x03, 0, 0, [1]); }
+      if (!s.online) return null;                                                 // not in control: nothing answers
+      if (q[0] === 0x08) return pulsarPacket(0x08, at, n, s.mem.slice(at, at + n));
+      if (q[0] === 0x07) {
+        if (n !== 2 || q[6] !== ((0x55 - q[5]) & 255)) { const r = pulsarPacket(0x07, at, n); r[1] = 1; r[15] = (0x4d - sum8(r, 0, 14)) & 255; return r; }
+        s.mem[at] = q[5]; s.mem[at + 1] = q[6];
+        return pulsarPacket(0x07, at, n);
+      }
+      return null;
+    },
+    app(talk, v) {
+      const inControl = (q) => { talk(pulsarPacket(0x03, 0, 0, [1])); talk(q); talk(pulsarPacket(0x03, 0, 0, [0])); };
+      inControl(pulsarPacket(0x08, chunk, 10));
+      inControl(pulsarPacket(0x07, addr, 2, [byte(v), (0x55 - byte(v)) & 255]));
+      inControl(pulsarPacket(0x08, chunk, 10));
+    },
+    check: (s) => s.mem.every((b, i) => i === addr || i === addr + 1 || (i % 2 ? b === 0x54 : b === 1)) || 'another setting in the memory moved',
+  };
+}
+
 // ---------------------------------------------------------------- the styles
 // Each: the device's protocol as a tiny program (handle(request) -> reply or null) over a state with the learned
 // setting and the device's other settings; app(talk, v) is what the maker's app sends when the person changes it to v.
@@ -186,6 +221,27 @@ const STYLES = [
     app(talk, v) { talk(pad([0x40, 0x80], 32)); talk(pad([0x40, 0x01, v, v], 32)); talk(pad([0x40, 0x80], 32)); },
     check: (s, v) => s.right === v || 'only one of the two places was written (the right channel kept its old value)',
   },
+  // ---- the Pulsar's protocol (2 Nov 2026): a constant minus the sum, a check byte per value, control taken per request ----
+  pulsarStyle('pulsar-debounce', 'Pulsar: debounce in memory at 169 as [v, 55 - v], check = 55 - (8 + sum), 03 01 / 03 00 around every request',
+    { addr: 169, chunk: 165, setting: { label: 'Debounce', kind: 'number', unit: ' ms' }, values: [2, 4, 8], range: { min: 0, max: 15, step: 1 }, next: 6, start: 4 }),
+  pulsarStyle('pulsar-polling', 'Pulsar: polling rate as a code at 0 (125 = 8, 500 = 2, 1000 = 1, 8000 = 64) with its check byte',
+    { addr: 0, chunk: 0, setting: { label: 'Polling rate', kind: 'choice', unit: ' Hz' }, values: ['125', '500', '1000', '8000'], next: '500', codes: { 125: 8, 500: 2, 1000: 1, 8000: 64 }, start: '1000' }),
+  pulsarStyle('pulsar-toggle', 'Pulsar: motion sync on/off at 171 with its check byte',
+    { addr: 171, chunk: 165, setting: { label: 'Motion sync', kind: 'toggle' }, values: [true, false], next: true, start: false }),
+  {
+    name: 'minus-sum', about: 'the last byte is a constant minus the sum of the others (as the Pulsar checks its messages, with a value that moves it)',
+    vid: 0x2012, pid: 0x0001, report: 'output', len: 16, reportId: 0,
+    setting: { label: 'DPI', kind: 'number', unit: ' DPI' }, values: [800, 1600, 3200], range: { min: 100, max: 26000, step: 50 }, next: 1200,
+    state: () => ({ value: 400 }),
+    handle(s, q) {
+      const m = (a) => { const p = pad(a, 16); p[15] = (0x4d - sum8(p, 0, 14)) & 255; return p; };
+      if (q[15] !== ((0x4d - sum8(q, 0, 14)) & 255)) return null;
+      if (q[0] === 0x21) return m([0x21, 0, ...u16le(s.value)]);
+      if (q[0] === 0x22) { s.value = le16(q, 2); return m([0x22, 0]); }
+      return null;
+    },
+    app(talk, v) { const m = (a) => { const p = pad(a, 16); p[15] = (0x4d - sum8(p, 0, 14)) & 255; return p; }; talk(m([0x21])); talk(m([0x22, 0, ...u16le(v)])); talk(m([0x21])); },
+  },
   // ---- messier, as real apps and devices are (23 Oct 2026, second batch) ----
   {
     name: 'lighting-stream', about: 'the app streams lighting frames (a moving colour) the whole time, as iCUE and Synapse do',
@@ -229,7 +285,55 @@ const STYLES = [
       return null;
     },
     app(talk, v, s) { talk(pad([0x41], 16)); talk(pad([0x42, s.flags | this.codes[v]], 16)); talk(pad([0x41], 16)); },
-    check: (s) => s.flags === 0xa0 || 'the other options sharing the byte were changed',
+    // 3 Nov 2026: another option in the same byte is changed after the recording (in the device's own app, say): a driver
+    // that writes the whole recorded byte would put it back; one that learned the value's bits keeps it
+    beforeDrive: (s) => { s.flags = 0x50; },
+    check: (s) => s.flags === 0x50 || `the other options sharing the byte were changed (0x50 became 0x${s.flags.toString(16)})`,
+  },
+  // ---- known limits (3 Nov 2026): a value in byte 0 of a plain output report, an on/off bit beside others, a receiver ----
+  {
+    name: 'receiver-and-cable', about: 'one mouse on two USB ids: the cable takes [05 cmd value]; its receiver puts the device slot (02) in front',
+    vid: 0x2015, pid: 0x3001, report: 'output', len: 16, reportId: 0,
+    setting: { label: 'Sleep timer', kind: 'number', unit: ' min' }, values: [1, 5], range: { min: 1, max: 30, step: 1 }, next: 10,
+    state: () => ({ value: 3 }),
+    handle(s, q) {
+      if (q[0] === 0x05 && q[1] === 0x81) return pad([0x05, 0x81, s.value], 16);
+      if (q[0] === 0x05 && q[1] === 0x01) { s.value = q[2]; return pad([0x05, 0x01], 16); }
+      return null;
+    },
+    app(talk, v) { talk(pad([0x05, 0x81], 16)); talk(pad([0x05, 0x01, v], 16)); talk(pad([0x05, 0x81], 16)); },
+    second: {
+      pid: 0x3002,
+      handle(s, q) {
+        if (q[0] !== 0x02) return null;
+        if (q[1] === 0x05 && q[2] === 0x81) return pad([0x02, 0x05, 0x81, s.value], 16);
+        if (q[1] === 0x05 && q[2] === 0x01) { s.value = q[3]; return pad([0x02, 0x05, 0x01], 16); }
+        return null;
+      },
+      app(talk, v) { talk(pad([0x02, 0x05, 0x81], 16)); talk(pad([0x02, 0x05, 0x01, v], 16)); talk(pad([0x02, 0x05, 0x81], 16)); },
+    },
+  },
+  {
+    name: 'value-first-output', about: 'the value in byte 0 of an output report with no report id (the command is in byte 1)',
+    vid: 0x2013, pid: 0x0001, report: 'output', len: 8, reportId: 0,
+    setting: { label: 'Brightness', kind: 'number', unit: '%' }, values: [20, 80], range: { min: 0, max: 100, step: 1 }, next: 50,
+    state: () => ({ value: 50 }),
+    handle(s, q) { if (q[1] === 0xee) return pad([s.value, 0xee], 8); if (q[1] === 0x01) { s.value = q[0]; return pad([s.value, 0x01], 8); } return null; },
+    app(talk, v) { talk(pad([0, 0xee], 8)); talk(pad([v, 0x01], 8)); talk(pad([0, 0xee], 8)); },
+  },
+  {
+    name: 'toggle-bit', about: 'an on/off in bit 4 of a byte whose other bits hold the polling rate and lights (both kept)',
+    vid: 0x2014, pid: 0x0001, report: 'feature', len: 16, reportId: 5,
+    setting: { label: 'Angle snapping', kind: 'toggle' }, values: [true, false], next: true,
+    state: () => ({ on: false, rest: 0x23, get value() { return this.on; } }),
+    handle(s, q) {
+      if (q[0] === 0x51) return pad([0x51, s.rest | (s.on ? 0x10 : 0)], 16);
+      if (q[0] === 0x52) { s.on = !!(q[1] & 0x10); s.rest = q[1] & ~0x10; return pad([0x52, q[1]], 16); }
+      return null;
+    },
+    app(talk, v, s) { talk(pad([0x51], 16)); talk(pad([0x52, s.rest | (v ? 0x10 : 0)], 16)); talk(pad([0x51], 16)); },
+    beforeDrive: (s) => { s.rest = 0x41; },
+    check: (s) => s.rest === 0x41 || `the polling rate and lights in the same byte were changed (0x41 became 0x${s.rest.toString(16)})`,
   },
   {
     name: 'double-send', about: 'the app sends the same write twice (a common "make sure" habit)',
@@ -374,7 +478,7 @@ async function run(st) {
   const rg = lw.withRange(a.learned, st.range || {});
   if (!rg.setting) return { ...out, why: rg.why };
   out.stage = 'build';
-  const def = lw.buildDriver({ vid: hex4(st.vid), pid: hex4(st.pid), title: `Bench ${st.name}`, kind: 'Mouse', usagePage: 'FF00', usage: '0001', settings: [rg.setting] });
+  let def = lw.buildDriver({ vid: hex4(st.vid), pid: hex4(st.pid), title: `Bench ${st.name}`, kind: 'Mouse', usagePage: 'FF00', usage: '0001', settings: [rg.setting] });
   const v = validate(def);
   if (!v.ok) return { ...out, why: `validate: ${v.problems.join('; ')}`, def };
   const seen = lw.verifySeen(def, [rg.setting]);
@@ -398,6 +502,39 @@ async function run(st) {
   } catch (e) {
     return { ...out, why: `driving it: ${e.message}`, def };
   } finally { setDeviceProvider(null); }
+  // the same device on its second USB id (3 Nov 2026, a known limit: a receiver and a cable): learned there too, joined
+  // to the same driver (lw.addPid), then driven on the receiver, and again on the cable
+  if (st.second) {
+    out.stage = 'second id';
+    const st2 = { ...st, ...st.second }, sim2 = st.state(), hx = hex4(st2.pid);
+    const takes2 = [];
+    for (const v of st.values) {
+      const t = lw.takeMessages([record(st2, sim2, v)], { vid: hex4(st2.vid), pid: hx, idsOut: !!st2.ids, idsIn: !!st2.ids });
+      if (!t.found) return { ...out, why: 'the receiver was not found in its own recording' };
+      takes2.push({ value: v, messages: t.messages });
+    }
+    const a2 = lw.analyze(takes2, st.setting);
+    if (!a2.ok) return { ...out, why: `on the receiver: ${[].concat(a2.why).join(' ')}` };
+    const rg2 = lw.withRange(a2.learned, st.range || {});
+    const def2 = lw.buildDriver({ vid: hex4(st.vid), pid: hx, title: `Bench ${st.name}`, kind: 'Mouse', usagePage: 'FF00', usage: '0001', settings: [rg2.setting] });
+    let merged;
+    try { merged = lw.addPid(def, def2, { pid: hx, link: 'receiver' }); } catch (e) { return { ...out, why: `joining the receiver: ${e.message}` }; }
+    const v2 = validate(merged.def);
+    if (!v2.ok) return { ...out, why: `validate (two ids): ${v2.problems.join('; ')}` };
+    const seen2 = lw.verifySeen(merged.def, [rg2.setting], { pid: hx });
+    if (seen2.length) return { ...out, why: `verifySeen (receiver): ${seen2.join('; ')}` };
+    for (const [label, style] of [['receiver', st2], ['cable', st]]) {
+      const s3 = st.state(), dev3 = fakeDevice(style, s3);
+      setDeviceProvider(() => dev3);
+      try {
+        const drv = fromJson(merged.def);
+        if (!(await drv.connect(false))) return { ...out, why: `the joined driver did not connect on the ${label}` };
+        await drv.write(rg2.setting.key, st.next);
+        if (s3.value !== st.next) return { ...out, why: `on the ${label} the device holds ${s3.value} after writing ${st.next}` };
+      } catch (e) { return { ...out, why: `driving it on the ${label}: ${e.message}` }; } finally { setDeviceProvider(null); }
+    }
+    def = merged.def;
+  }
   return { ...out, stage: 'done', ok: true, def, evidence: a.learned.evidence };
 }
 
@@ -441,6 +578,40 @@ const safety = [];
   safety.push([!ok(frontFilled), 'a template that puts something in a front checksum byte is refused']);
   const behind = front(); behind.transport.checksum = { type: 'sum8', from: 0, to: 2, at: 3 }; behind.messages.setDpi.bytes = '00 53 00 00 {value:u16le}';
   safety.push([!ok(behind), 'a template reaching past a checksum behind its range is still refused']);
+  // the Pulsar's pieces (2 Nov 2026): a constant minus the sum, a value with its check byte, a session around requests
+  const pul = () => { const d = base(); delete d.transport.counter; d.transport.checksum = { type: 'sub8', from: 0, to: 30, at: 31, k: 0x4d };
+    d.transport.session = { open: 'open', close: 'close' };
+    d.messages = { open: { bytes: '03 00 00 00 00 01' }, close: { bytes: '03' }, read1: { bytes: '08 00 00 A5 0A' }, setDpi: { bytes: '07 00 00 A9 02 {value:u8c55}' } };
+    d.fields.dpi = { from: 'read1', offset: 9, check: 0x55 }; d.settings[0] = { key: 'dpi', label: 'Debounce', type: 'slider', min: 0, max: 15, step: 1, write: { message: 'setDpi' } }; return d; };
+  safety.push([ok(pul()), 'a Pulsar-style driver (sub8, a check byte, a session) passes']);
+  const noK = pul(); delete noK.transport.checksum.k;
+  safety.push([!ok(noK), 'a sub8 checksum without its constant is refused']);
+  const ckField = pul(); ckField.fields.other = { from: 'read1', offset: 2, size: 2 }; ckField.messages.setDpi.bytes = '07 00 00 A9 02 {other:u8c55}';
+  safety.push([!ok(ckField), 'a check byte on anything but {value} is refused']);
+  const ckOut = pul(); ckOut.fields.dpi.offset = 31;
+  safety.push([!ok(ckOut), 'a field check whose check byte would fall outside the reply is refused']);
+  const sesVal = pul(); sesVal.messages.open.bytes = '03 00 {value}';
+  safety.push([!ok(sesVal), 'a session message with a placeholder is refused']);
+  const sesMissing = pul(); sesMissing.transport.session.close = 'nothere';
+  safety.push([!ok(sesMissing), 'a session naming a message the file does not have is refused']);
+  const sesNever = pul(); sesNever.never = [{ bytes: '03 00 00 00 00 01', why: 'test: never send this' }];
+  safety.push([!ok(sesNever), 'a session message on a never list is refused']);
+  // write.bits (3 Nov 2026): a value sharing its byte
+  const bitsDef = () => { const d = base(); delete d.transport.counter;
+    d.messages = { read1: { bytes: '41' }, setLift: { bytes: '42 {value}' } };
+    d.fields = { lift: { from: 'read1', offset: 1, mask: 3, map: { 0: '1', 1: '2', 2: '3' } }, liftByte: { from: 'read1', offset: 1 } };
+    d.settings = [{ key: 'lift', label: 'Lift-off', type: 'choice', options: [{ value: '1' }, { value: '2' }, { value: '3' }], write: { message: 'setLift', bits: { field: 'liftByte', mask: 3 } } }]; return d; };
+  safety.push([ok(bitsDef()), 'a value in two bits of a byte (write.bits) passes']);
+  const bitsBad = bitsDef(); bitsBad.settings[0].write.bits.mask = 0;
+  safety.push([!ok(bitsBad), 'write.bits without a mask is refused']);
+  const bitsField = bitsDef(); bitsField.settings[0].write.bits.field = 'lift';
+  safety.push([!ok(bitsField), 'write.bits on a field that is not the plain byte is refused']);
+  const bitsFit = bitsDef(); bitsFit.fields.lift.map = { 0: '1', 1: '2', 4: '3' };
+  safety.push([!ok(bitsFit), 'a code that does not fit the bits is refused']);
+  const bitsNever = bitsDef(); bitsNever.never = [{ bytes: '42 FF', why: 'test: never send this' }];
+  safety.push([!ok(bitsNever), 'the never lists see a byte with bits as any value']);
+  const ckNever = pul(); ckNever.never = [{ bytes: '07 00 00 A9 02 0F 46', why: 'test: never send this' }];
+  safety.push([!ok(ckNever), 'the never lists see a value with its check byte (15, 46) as it is sent']);
 }
 // 1 Nov 2026 (helpers/learned-extras.mjs): every style learned above can also sit beside a driver written as code as its
 // learned.json, and is refused there when the code driver already has the same key or is another vendor's

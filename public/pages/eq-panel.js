@@ -18,13 +18,17 @@ const DEMO_EQ = () => ({ available: true, icueRunning: true, slots: [{ slot: 2, 
   { id: 'b3', name: 'Bass Boost', stages: [4, 6, 4, 0, -3, -3, -2, 1, 2, 2], builtIn: true }] });
 
 const ui = { eq: null, sel: null, draft: null, loading: false, saving: false, error: null, focus: null, at: 0, target: 'headset' };
+// ?demo&apo: the Equalizer APO card with two monitor speakers, so the Headset | speaker choice is drawn and tested
+// (tests/choices-click.mjs; 4 Nov 2026, the speaker choices did nothing and no demo page had them)
+const DEMO_APO = () => ({ ...DEMO_EQ(), engine: 'eqapo', activeId: 'c1', slots: undefined, bands: [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000],
+  speakers: [{ guid: 'd1', name: 'IPS', on: true, stages: [-12, -10, -3, 2, 0, -1.5, 1, 1.5, 1, -1] }, { guid: 'd2', name: 'OLED', on: false, stages: [-12, -8, -2, 2, 1, -1.5, 1, 2, 1.5, 0] }] });
 let rerender = () => {};
 
 async function load() {
   if (ui.loading) return;
   ui.loading = true; ui.at = Date.now();
   try {
-    const next = isDemo() ? (ui.eq || DEMO_EQ()) : await env.api('/api/eq');
+    const next = isDemo() ? (ui.eq || (/[?&]apo\b/.test(location.search) ? DEMO_APO() : DEMO_EQ())) : await env.api('/api/eq');
     // nothing changed: no redraw (the 10 s re-read must not touch the page)
     if (ui.eq && !ui.error && JSON.stringify(next) === JSON.stringify(ui.eq)) { ui.loading = false; return; }
     ui.eq = next;
@@ -159,7 +163,7 @@ function eqCard(redraw) {
   // read iCUE's presets again when the page is drawn and the list is older than 15 s (a preset added in iCUE or by
   // DeviceHub shows up), never while a change is unsaved or saving
   if (!ui.loading && !ui.saving && !dirty() && (!ui.eq ? !ui.error : Date.now() - ui.at > 15000)) load();
-  const head = [h('h2', {}, 'Equalizer'), APO() || !ui.eq?.available ? null : h('span', { class: 'sub' }, 'runs through iCUE')];
+  const head = [h('h2', {}, 'Equalizer')];
   if (ui.error) return card(head, h('p', { class: 'faint' }, /fetch/i.test(ui.error) ? 'DeviceHub not answering. Retrying…' : `EQ not read: ${ui.error}`), button('Try again', () => load(), { kind: 'ghost small', ic: 'refresh' }));
   if (!ui.eq) return card(head, h('p', { class: 'faint' }, 'Reading the equalizer…'));
   // no Equalizer APO on this PC (20 Oct 2026): what it is for and the official download, in place of iCUE's message
@@ -178,7 +182,9 @@ function eqCard(redraw) {
   if (!targets.some((t) => t.value === ui.target)) ui.target = 'headset';
   const pick = targets.length > 1 ? segmented({ value: ui.target, options: targets, compact: true, onCommit: async (v) => { ui.target = v; rerender(); } }) : null;
   if (ui.target !== 'headset') return card([...head, h('span', { class: 'spacer' }), pick], speakerSection(ui.target, rerender, ui.eq));
-  return card([...head, h('span', { class: 'spacer' }), APO() || ui.eq.icueRunning ? null : pill('iCUE closed', 'warn'), pick],
+  return card([...head, h('span', { class: 'spacer' }), pick],
+    // in the card, not beside its title (3 Nov 2026, Shawn: no labels around titles)
+    APO() || ui.eq.icueRunning ? null : h('p', { class: 'faint', style: { margin: '0 0 8px' } }, 'iCUE is closed. This equalizer runs through iCUE.'),
     // Equalizer APO installed but not switched on for the headset's sound devices (a new driver gives new ones)
     ui.eq.notOn?.length ? h('div', { class: 'eq-off' }, icon('shield'),
       h('span', { class: 'grow' }, `Not on for ${[...new Set(ui.eq.notOn.map((d) => d.name))].join(' and ')} yet. Turn it on, tick ${ui.eq.notOn.length > 1 ? 'them' : 'it'}, click OK, restart.`),

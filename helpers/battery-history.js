@@ -10,6 +10,7 @@ const { writeAtomic } = require('./safe-write');  // crash-proof saving (helpers
 const path = require('path');
 
 let file, timer, watchTimer, getState;
+let power = () => require('./power');
 const KEEP_MS = 7 * 24 * 3600 * 1000;
 // a device id the graph and the estimate take: the built-in two, or an added device's id (helpers/my-devices.mjs problem())
 const ID = /^[a-z][a-z0-9-]{1,30}$/;
@@ -37,6 +38,12 @@ function rowsNow() {
       rows.push({ at: now, id: d.id, pct: b.percent, raw: b.reported ?? undefined, mv: b.mv ?? undefined, charging: !!b.charging || (d.id === 'headset' && /cable/i.test(d.info?.Control || '')) });
     }
   }
+  // the laptop's own battery (3 Nov 2026, the Laptop page's graph): Windows' level, already read by helpers/power.js;
+  // "charging" here means on the charger
+  try {
+    const p = power().state();
+    if (p.hasBattery && p.percent != null) rows.push({ at: now, id: 'laptop', pct: p.percent, charging: !p.onBattery });
+  } catch {}
   return rows;
 }
 
@@ -94,4 +101,4 @@ function history(id, days = 7) {
   return read().filter((r) => r.id === id && r.at >= since).sort((a, b) => a.at - b.at).map((r) => ({ at: r.at, pct: r.pct, charging: !!r.charging }));
 }
 
-module.exports = { start, stop, estimates, history, validId, _test: { rowsNow, append, read, setFile: (f, stateFn) => { file = f; getState = stateFn; } } };
+module.exports = { start, stop, estimates, history, validId, _test: { rowsNow, append, read, setFile: (f, stateFn) => { file = f; getState = stateFn; }, setPower: (p) => { power = () => p; } } };

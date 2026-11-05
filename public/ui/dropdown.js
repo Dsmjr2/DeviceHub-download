@@ -61,8 +61,13 @@ export function dropdown({ options = [], value, onChange, label, disabled, cls =
     // the control went away (the page was redrawn) or scrolled out of sight: close
     if (!el.isConnected || (!r.width && !r.height) || r.bottom < 0 || r.top > innerHeight) { close(false); return; }
     list.style.maxHeight = ''; list.style.width = ''; list.style.minWidth = `${Math.round(r.width)}px`;
-    const p = placeList(r, list.scrollHeight, list.offsetWidth, { w: innerWidth, h: innerHeight });
+    let p = placeList(r, list.scrollHeight, list.offsetWidth, { w: innerWidth, h: innerHeight });
     Object.assign(list.style, { top: `${p.top}px`, left: `${p.left}px`, width: `${p.width}px`, maxHeight: `${p.maxHeight}px` });
+    // a list that scrolls: its scrollbar's width goes on top, not out of the text (4 Nov 2026: long options were cut off)
+    if (list.scrollHeight > list.clientHeight + 1) {
+      p = placeList(r, list.scrollHeight, p.width + list.offsetWidth - list.clientWidth, { w: innerWidth, h: innerHeight });
+      Object.assign(list.style, { left: `${p.left}px`, width: `${p.width}px` });
+    }
     list.classList.toggle('above', p.above);
   };
   const later = (e) => { if (e && list && (e.target === list || list.contains(e.target))) return; if (!raf) raf = requestAnimationFrame(place); };

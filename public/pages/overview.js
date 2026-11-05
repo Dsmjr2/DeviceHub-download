@@ -351,6 +351,24 @@ const wantGpu = async () => {
   gpuWanted = on;
   try { await env.api('/api/events/want', { stream: id, gpu: on }); } catch { gpuWanted = false; }
 };
+// Gaming mode on and instant replay recording, at a glance (3 Nov 2026): two chips that open the PC page, read at most
+// every 10 s while the Overview shows (the page redraws itself only when one changes)
+let pcNow = { gaming: false, recording: null }, pcAt = 0, pcTimer = null;
+function pcChips(go, redraw) {
+  // the Overview redraws on device changes only: a look of its own every 10 s while it shows (and the window is seen)
+  if (!pcTimer && !isDemo()) pcTimer = setInterval(() => { if (!onOverview()) { clearInterval(pcTimer); pcTimer = null; return; } if (!document.hidden) pcChips(go, redraw); }, 10000);
+  if (!isDemo() && Date.now() - pcAt > 9000) {
+    pcAt = Date.now();
+    Promise.all([env.api('/api/gaming-mode').catch(() => null), env.api('/api/replay').catch(() => null)]).then(([g, r]) => {
+      const now = { gaming: !!g?.on, recording: r?.phase === 'recording' ? r.game || 'a game' : null };
+      if (JSON.stringify(now) !== JSON.stringify(pcNow)) { pcNow = now; if (onOverview()) redraw(); }
+    });
+  }
+  return [
+    pcNow.gaming ? h('button', { class: 'pill accent', title: 'Gaming mode is on (PC page)', onclick: () => go('fans') }, 'Gaming mode on') : null,
+    pcNow.recording ? h('button', { class: 'pill good', title: 'Instant replay is recording (PC page)', onclick: () => go('fans') }, `Recording ${pcNow.recording}`) : null,
+  ];
+}
 function gpuChip(go) {
   const el = h('button', { class: 'pill gpu-chip', title: 'GPU temperature', onclick: () => go('fans') }, icon('thermo'), h('span', {}, gpuText || 'GPU'));
   const tick = async () => {
@@ -433,7 +451,7 @@ export default {
         : h('div', { class: 'bays', style: { '--bays': list.length } }, ...list.map((d) => bay(d, go, redraw))),
       batteries(redraw),
       h('div', { class: 'grid ov-bottom' },
-        card([h('h2', {}, 'Profiles'), h('span', { class: 'spacer' }), gameModeLine() ? h('span', { class: 'pill accent' }, gameModeLine()) : null, button('Manage', () => go('profiles'), { kind: 'ghost small' })],
+        card([h('h2', {}, 'Profiles'), h('span', { class: 'spacer' }), ...pcChips(go, redraw), gameModeLine() ? h('span', { class: 'pill accent' }, gameModeLine()) : null, button('Manage', () => go('profiles'), { kind: 'ghost small' })],
           profiles?.length
             ? h('div', { class: 'ov-profiles' }, ...profiles.map((p, i) => button(p.name, async () => {
               const r = await apply(p);

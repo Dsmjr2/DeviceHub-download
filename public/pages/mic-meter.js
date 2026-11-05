@@ -83,10 +83,10 @@ function paint() {
 }
 
 export function micMeter(redraw) {
-  const head = [h('h2', {}, 'Mic check'), h('span', { class: 'sub' }, 'nothing is saved'), h('span', { class: 'spacer' }),
+  const head = [h('h2', {}, 'Mic check'), h('span', { class: 'spacer' }),
     ui.on ? button('Stop', () => stop(redraw), { kind: 'ghost small' }) : button('Start', () => start(redraw), { kind: 'primary small', ic: 'mic' })];
   if (ui.error) return card(head, h('p', { class: 'faint' }, ui.error), testSection(redraw));
-  if (!ui.on) return card(head, h('p', { class: 'faint', style: { margin: 0 } }, 'Aim for the green band.'), testSection(redraw));
+  if (!ui.on) return card(head, testSection(redraw));
   const z = (from, to, c) => h('i', { style: { left: `${pct(from)}%`, width: `${pct(to) - pct(from)}%`, background: c } });
   return card(head,
     h('div', { id: 'mic-meter' },

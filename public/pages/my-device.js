@@ -272,7 +272,7 @@ function stagesCard(d, shown) {
   const count = shown.find((s) => s.key === 'stageCount');
   const inUse = Number(d.values?.stageCount);
   const valueFor = (i) => (active?.type === 'choice' ? (active.options || []).find((o) => Number(o.value) === i)?.value ?? i : i);
-  return card([h('h2', {}, 'DPI stages'), h('span', { class: 'sub' }, active || count ? "the mouse's DPI button steps through them" : 'saved on the mouse')],
+  return card([h('h2', {}, 'DPI stages')],
     count ? settingRow(d, count) : null,
     ...per.map((s) => {
       const i = Number(STAGE_DPI.exec(s.key)[1]);

@@ -177,7 +177,7 @@ function knobPanel(s) {
     h('span', { class: 'knob-now' }, keyName(code)),
     button(isSel ? 'Choosing…' : 'Change', () => pick(isSel ? null : target), { kind: 'small' }));
   const t = ui.target;
-  return card([h('h2', {}, 'Knob'), h('span', { class: 'sub' }, ui.layer ? `on the ${LAYER_NAMES[ui.layer]} layer` : null)],
+  return card([h('h2', {}, 'Knob')],
     row('Turn left', null, enc[0], { type: 'enc', cw: false }, t?.type === 'enc' && !t.cw),
     row('Turn right', null, enc[1], { type: 'enc', cw: true }, t?.type === 'enc' && t.cw),
     press == null ? null : row('Press', null, press, { type: 'key', r: kk.row, c: kk.col }, t?.type === 'key' && t.r === kk.row && t.c === kk.col));
@@ -206,7 +206,7 @@ function macroPanel(s) {
     target.setSelectionRange(start + tok.length, start + tok.length);
     target.dispatchEvent(new Event('input'));
   };
-  return card([h('h2', {}, 'Macros'), h('span', { class: 'sub' }, 'Bind to any key in Key mapping above'), h('span', { class: 'spacer' }),
+  return card([h('h2', {}, 'Macros'), h('span', { class: 'spacer' }),
     button(ui.allMacros ? 'Show used only' : `All ${m.mi.count} slots`, async () => { ui.allMacros = !ui.allMacros; rerender(); }, { kind: 'ghost small' })],
     h('div', { class: 'macro-bar' },
       h('span', { class: 'faint macro-hint' }, 'Insert special key:'),
@@ -391,9 +391,8 @@ export default {
           macroPanel(s)),
         h('div', { style: { marginTop: '18px' } }, card([h('h2', {}, 'Device'), h('span', { class: 'spacer' }), deviceActions(dev)], kv(dev.info), h('div', { style: { marginTop: '14px' } }, vendorNote(a)))));
     }
-    const changed = s.original ? s.keymap.reduce((n, l, li) => n + l.reduce((m, r, ri) => m + r.filter((k, ci) => k !== s.original[li][ri][ci]).length, 0), 0) : 0;
     return h('div', {}, head, awayBanner(dev), viaGate(dev),
-      card([h('h2', {}, 'Key mapping'), h('span', { class: 'sub' }, changed ? `${changed} key${changed === 1 ? '' : 's'} changed this session` : null),
+      card([h('h2', {}, 'Key mapping'),
         h('span', { class: 'spacer' }),
         ui.tester ? h('span', { class: 'tester-count faint', style: { fontSize: '12.5px' } }, testerCount()) : null,
         ui.tester && ui.tested.size ? button('Reset', () => { ui.tested.clear(); rerender(); }, { kind: 'ghost small' }) : null,

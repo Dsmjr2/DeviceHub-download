@@ -307,12 +307,16 @@ export async function start({ port, corsairHelper }) {
       if (on === wakeOn) return;
       wakeOn = on;
       const r = await nat.request('tray', on ? 'WAKE ON' : 'WAKE OFF', 5000).catch(() => 'NO');
-      if (r === 'OK') { env.wakeEvents = true; useWindowsEvents(true); require('./hs80-direct').useWindowsEvents(true); } else wakeOn = false;
+      if (r === 'OK') { env.wakeEvents = true; useWindowsEvents(true); require('./hs80-direct').useWindowsEvents(true); for (const m of ['./audio-follow', './receiver-light']) { try { require(m).useWindowsEvents?.(true); } catch {} } } else wakeOn = false;
     };
     core.onChange((id) => { if (id === 'mouse' && core.devices.mouse) wakeWatch(core.devices.mouse.status === 'asleep'); });
     // whether the helper's window (Windows' device messages, the mouse's wake) is there: asked a few seconds after start
     // and after the helper restarts, then the slower fallback checks apply (hid-host.mjs, hs80-direct.js, devices.js)
-    const events = (on) => { env.wakeEvents = on; useWindowsEvents(on); require('./hs80-direct').useWindowsEvents(on); };
+    const events = (on) => {
+      env.wakeEvents = on; useWindowsEvents(on); require('./hs80-direct').useWindowsEvents(on);
+      // the HS80 loops of the server (3 Nov 2026): slower looks while nothing is plugged in, as plugs are heard
+      for (const m of ['./audio-follow', './receiver-light']) { try { require(m).useWindowsEvents?.(on); } catch {} }
+    };
     const probe = async () => { if (wakeOn) return; const r = await nat.request('tray', 'WAKE OFF', 5000).catch(() => 'NO'); if (r === 'OK') events(true); else setTimeout(probe, 30000); };
     setTimeout(probe, 5000);
     nat.onExit(() => { wakeOn = false; events(false); env.dpiEvents = false; setTimeout(probe, 5000); });

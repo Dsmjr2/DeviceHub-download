@@ -21,7 +21,7 @@
 // (beside it for a driver written as code), read-only until Turn on settings; the recordings still go to Shawn.
 // 2 Nov 2026: only when the person presses Save on the Sent step (saveStep); nothing is saved or installed before.
 import { h } from '../ui/dom.js';
-import { card, row, segmented, button, pill } from '../ui/controls.js';
+import { card, row, segmented, button } from '../ui/controls.js';
 import { installerButton } from '../ui/installer-button.js';
 import { isDemo, devices } from '../core/devices.js';
 import { env } from '../core/env.js';
@@ -282,11 +282,12 @@ function pickStep() {
   const openPage = (d) => { location.hash = runningCopy(d)?.page || d.ready?.page || '#/setup'; };
   return h('div', {},
     card([h('h2', {}, learnable.length ? 'Pick the device to learn' : 'Nothing to learn')],
-      learnable.length ? faint('Open its maker\'s app first if you have it. DeviceHub changes a few settings there and watches what the device is sent. It only listens.')
-        : p(working.length ? 'Every device here already works with DeviceHub. Learn a device is only for one it cannot control yet: plug it in, then press Look again.' : 'Everything plugged in already works with DeviceHub, or has nothing to set. Learn a device is only for a mouse, keyboard or headset it cannot control yet: plug it in, then press Look again.'),
+      learnable.length ? null : p(working.length ? 'Every device here already works with DeviceHub. Learn a device is only for one it cannot control yet: plug it in, then press Look again.' : 'Everything plugged in already works with DeviceHub, or has nothing to set. Learn a device is only for a mouse, keyboard or headset it cannot control yet: plug it in, then press Look again.'),
       st.want && !wanted ? faint('The device you picked is not plugged in, or there is nothing on it to learn.') : null,
       ...learnable.map(learnRow),
       problems(),
+      // how it works, once at the bottom (3 Nov 2026, Shawn: no subtitles under titles)
+      learnable.length ? faint('Open its maker\'s app first if you have it. DeviceHub changes a few settings there and watches what the device is sent. It only listens.') : null,
       h('div', { class: 'actions', style: { marginTop: '12px' } }, button('Look again', loadDevices, { kind: 'ghost small', ic: 'refresh' }))),
     working.length ? card([h('h2', {}, 'Already working')],
       h('p', { class: 'learn-works', style: { margin: '0 0 10px' } }, ['These have a driver, so there is nothing to learn. Change them on their own page: ', ...working.flatMap((d, i) => [i ? ', ' : '', h('a', { href: runningCopy(d)?.page || d.ready?.page || '#/setup', onclick: (e) => { e.preventDefault(); openPage(d); } }, nameOf(d))]), '.']),
@@ -640,7 +641,6 @@ function autoItem(x, app) {
 function autoStep() {
   const a = auto.s || {};
   const name = a.device?.name || 'device', app = a.app?.name || 'the maker\'s app';
-  const working = !AUTO_OVER.includes(a.phase);
   const ask = a.ask;
   const items = a.items?.length ? h('div', { class: 'auto-items' }, ...a.items.map((x) => autoItem(x, app))) : null;
   const log = a.steps?.length ? h('div', { class: 'auto-log' }, ...a.steps.map((x) => h('div', { class: x.ok ? 'faint' : 'auto-warn' }, x.text))) : null;
@@ -679,7 +679,7 @@ function autoStep() {
     : ask?.kind === 'prompt' ? h('div', { class: 'auto-ask', role: 'status' }, h('div', { class: 'uac-wait' }, ask.line), ask.note ? faint(ask.note) : null)
       : h('div', { class: 'loadbar-wrap' }, h('div', { class: 'loadbar sweep', role: 'progressbar', 'aria-label': AUTO_DOING[a.phase] || 'Working' }, h('span')),
         h('span', { class: 'loadbar-text' }, a.phase === 'app' && a.app ? `Opening ${app}` : a.phase === 'learn' && a.items?.some((x) => x.status === 'driving') ? `Changing it in ${app}` : AUTO_DOING[a.phase] || 'Working'));
-  return card([h('h2', {}, `Learning the ${name}`), h('span', { class: 'spacer' }), working ? pill('listening only') : null],
+  return card([h('h2', {}, `Learning the ${name}`)],
     now, items, log,
     a.phase === 'learn' && !ask ? faint(`Leave ${app} alone for now.`) : null,
     // Stop's own answer is shown at once (31 Oct 2026: in demo the page stayed on "Working" for good, with no way back)
@@ -696,7 +696,7 @@ function autoDone(a) {
   };
   // the person's part ends here (24 Oct 2026): the recordings went to Shawn by themselves
   const sent = a.sent;
-  return card([h('h2', {}, sent?.sent || sent?.queued ? 'Sent' : `Your ${name} is learned`), h('span', { class: 'spacer' }), sent?.sent || sent?.queued ? null : pill(f?.done ? 'on' : 'reads only, for now', f?.done ? 'good' : '')],
+  return card([h('h2', {}, sent?.sent || sent?.queued ? 'Sent' : `Your ${name} is learned`), ],
     sent ? h('div', { class: sent.sent || sent.queued ? 'learn-check' : 'learn-problem', role: 'status' }, p(sent.line)) : null,
     p(`Recorded: ${(r.learned || []).join(', ')}.`, 'faint'),
     ...(r.skipped || []).map((x) => faint(`Not learned: ${x.label}${x.why && x.why !== 'skipped' ? ` (${x.why})` : ''}.`)),
@@ -955,13 +955,13 @@ function savedStep() {
   const otherWay = sv.canSecond ? [h('h3', { style: { margin: '14px 0 6px' } }, 'Cable or receiver too?'),
     p('Learn it there too if its USB id differs.', 'faint')] : [];
   if (sv.second) {
-    return card([h('h2', {}, `Added USB ${d.vid}:${d.pid}`), h('span', { class: 'spacer' }), pill('reads only, for now')],
+    return card([h('h2', {}, `Added USB ${d.vid}:${d.pid}`)],
       p(sv.note || ''), ...otherWay,
       h('div', { class: 'actions' },
         sv.canSecond ? button('Learn again', again, { kind: 'ghost' }) : null,
         button('Learn another device', () => { fresh(); redrawPage(); }, { kind: 'ghost' })));
   }
-  return card([h('h2', {}, 'Saved'), h('span', { class: 'spacer' }), pill('reads only, for now')],
+  return card([h('h2', {}, 'Saved')],
     null,
     p('Read-only until you press Turn on settings.'),
     sv.note ? p(sv.note) : p(sv.loaded ? 'Its page is in the sidebar.' : 'Restart DeviceHub to load it.'),

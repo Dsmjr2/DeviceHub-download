@@ -28,12 +28,20 @@ async function tick() {
   } finally { busy = false; }
 }
 
-let stopped = false;
+// Unplugged: looked for every 2 s until Windows' device messages are known to arrive (useWindowsEvents, from the agent);
+// then a plug is heard at once and the timed look is a 60 s backstop (3 Nov 2026: each look is a USB scan, all day on a
+// PC without the receiver)
+let stopped = false, events = false;
 function loop() {
   if (stopped) return;
-  tick().catch(() => {}).finally(() => { if (!stopped) timer = setTimeout(loop, require('./power').every(opened ? 5000 : 2000)); });
+  clearTimeout(timer);
+  tick().catch(() => {}).finally(() => { if (!stopped) timer = setTimeout(loop, require('./power').every(opened ? 5000 : events ? 60000 : 2000)); });
 }
-function startLight(icueCheck, logFn) { icueRunning = icueCheck; log = logFn; stopped = false; loop(); }
+function startLight(icueCheck, logFn) {
+  icueRunning = icueCheck; log = logFn; stopped = false; loop();
+  native.onDeviceChange(() => { if (!opened && !stopped) { clearTimeout(timer); timer = setTimeout(loop, 1500); } });
+}
+function useWindowsEvents(on) { events = !!on; }
 function stopLight() { stopped = true; clearTimeout(timer); if (opened) line('CLOSE', 3000); opened = false; }
 
-module.exports = { start: startLight, stop: stopLight };
+module.exports = { start: startLight, stop: stopLight, useWindowsEvents };

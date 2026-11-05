@@ -247,12 +247,12 @@ function selfRow() {
     : s.behind && s.blocked && s.zip ? button('Update anyway', () => runSelfUpdate({ overwrite: true }), { kind: 'primary small', ic: 'refresh' })
     : s.git === false && !s.zip ? null : button('Check', () => loadSelf(), { kind: 'ghost small', ic: 'refresh' }));
 }
-// Optional tools (22 Oct 2026, helpers/installers.mjs): Equalizer APO, ReaPlugs and USBPcap, each with its state and
+// Optional tools (22 Oct 2026, helpers/installers.mjs): Equalizer APO, ReaPlugs, USBPcap and OBS Studio (2 Nov 2026), each with its state and
 // its button (ui/installer-button.js), so nobody needs Claude to install them. Settings must still fit one screen at
 // 1650 x 910 (measured: three tools in a line need about 400 px, the column has 330), so the card keeps ONE row: what
 // is installed, in a line, and Show, which lists the three with their buttons in DeviceHub's own dialog.
 let tools = null, toolsAt = 0, toolsList = null;
-const TOOL_USE = { eqapo: 'EQ and mic filters', reaplugs: 'mic Even volume', usbpcap: 'learning a device' };
+const TOOL_USE = { eqapo: 'EQ and mic filters', reaplugs: 'mic Even volume', usbpcap: 'learning a device', obs: 'instant replay in games' };
 function loadTools(fresh) {
   toolsAt = Date.now();
   return installerStatus(fresh).then((t) => { const changed = JSON.stringify(t) !== JSON.stringify(tools); tools = t; if (changed) { rerender(); toolsList?.(); } }, () => {});

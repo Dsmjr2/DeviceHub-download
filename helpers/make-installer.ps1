@@ -148,7 +148,8 @@ try {
   if ($filesInfo) { $vj.files = $filesInfo }
   $vj | ConvertTo-Json -Compress | Set-Content -Path (Join-Path $dist 'version.json') -Encoding ascii -NoNewline
   Remove-Item $helperDir -Recurse -Force -ErrorAction SilentlyContinue
-  # signed with the publisher's key, kept only on this PC (helpers/sign-release.mjs): copies install only what it signs.
+  # signed with the publisher's key, DEVICEHUB_RELEASE_KEY from Bitwarden (helpers/sign-release.mjs, publish-release.ps1
+  # runs through secrets run): copies install only what it signs.
   # -NoSign: a test build left unsigned (copies refuse it as an update), so the key is not used for it.
   if ($args -notcontains '-NoSign') {
     & (Get-Command node).Source (Join-Path $PSScriptRoot 'sign-release.mjs') (Join-Path $dist 'version.json')

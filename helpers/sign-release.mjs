@@ -1,17 +1,15 @@
 // Signs a release (21 Oct 2026, security review): version.json gets an Ed25519 signature over its version, size and
-// SHA-256, made with the publisher's private key, which lives only on the publishing PC
-// (%APPDATA%\DeviceHub-signing\release-key.pem, never in git or the zip). Copies check it against the public key in
+// SHA-256, made with the publisher's private key, DEVICEHUB_RELEASE_KEY from Bitwarden through `secrets run` (since 4 Nov
+// 2026, helpers/signing-key.mjs; never in git, the zip or on disk). Copies check it against the public key in
 // helpers/release-public-key.pem (helpers/self-update.js) and install only what it signs, so someone who got into the
-// GitHub account could not push an update. The first run makes the key pair.
+// GitHub account could not push an update. It never makes a key: every installed copy would refuse the update.
 //   node helpers/sign-release.mjs dist/version.json
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { keyAvailable, loadKey } from './signing-key.mjs';   // locked to this Windows login since 22 Oct 2026
+import { keyAvailable, loadKey } from './signing-key.mjs';   // from Bitwarden since 4 Nov 2026
 import { readPublished, cleanNotes } from './release-notes.mjs';
 
-const dir = path.join(process.env.APPDATA || '', 'DeviceHub-signing');
-const priv = path.join(dir, 'release-key.pem');
 const pub = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), 'release-public-key.pem');
 
 // what is signed: these fields, in this order (helpers/self-update.js releasePayload reads it the same way)
@@ -34,32 +32,23 @@ export function signRelease(v, key) {
 
 if (process.argv[2]) {
   if (!keyAvailable()) {
-    if (fs.existsSync(pub)) {
-      // plain words for the publisher (23 Oct 2026): what to do, in order; a new key pair is never made here, as every
-      // installed copy would then refuse the update
-      const backup = fs.existsSync(path.join(dir, 'release-key.backup.pem'));
-      console.error([
-        `The signing key is not on this PC (looked in ${dir}). Nothing was uploaded.`,
-        'Copies only install an update signed with the same key that signed the version they have, so:',
-        '  1. Publish from the PC that published last time (the key is in that PC\'s %APPDATA%\\DeviceHub-signing).',
-        backup ? '  2. Or restore it here from release-key.backup.pem: node helpers/signing-key.mjs --restore (type its password, Enter).'
-          : '  2. Or copy release-key.backup.pem from that PC into this folder, then: node helpers/signing-key.mjs --restore (type its password, Enter).',
-        '  Do not make a new key: every installed copy would refuse the update.',
-      ].join('\n'));
-      process.exit(1);
-    }
-    const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(priv, privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 });
-    fs.writeFileSync(pub, publicKey.export({ type: 'spki', format: 'pem' }));
-    console.log(`made the signing key ${priv} and the public key ${pub}`);
+    // plain words for the publisher (23 Oct 2026; Bitwarden since 4 Nov): what to do; a new key pair is never made, as
+    // every installed copy would then refuse the update
+    console.error([
+      'The signing key (DEVICEHUB_RELEASE_KEY) is not set. Nothing was signed or uploaded.',
+      '  Publish through secrets run (Dsmjr2/setup), which reads it from Bitwarden\'s Automation folder:',
+      '  secrets run powershell -NoProfile -ExecutionPolicy Bypass -File helpers\\publish-release.ps1 (or the Publish button).',
+      '  Bitwarden locked on this PC: secrets unlock. Do not make a new key: every installed copy would refuse the update.',
+    ].join('\n'));
+    process.exit(1);
   }
   const file = process.argv[2];
   const v = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^﻿/, ''));
   // the version number and what's new, from helpers/published-version.json (27 Oct 2026; publish-release.ps1 writes it)
   const pv = readPublished();
   if (pv) { v.version = pv.version; v.notes = cleanNotes(pv.notes); }
-  const signed = signRelease(v, loadKey());
+  let key; try { key = loadKey(); } catch (e) { console.error(e.message); process.exit(1); }
+  const signed = signRelease(v, key);
   // check it with the public key the app carries before it is published
   const pk = crypto.createPublicKey(fs.readFileSync(pub));
   if (!crypto.verify(null, Buffer.from(payload(signed)), pk, Buffer.from(signed.signature, 'base64'))

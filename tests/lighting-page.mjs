@@ -105,7 +105,9 @@ check(C.hsvToHex(0, 1, 1) === '#ff0000' && C.hsvToHex(120, 1, 1) === '#00ff00' &
 { const v = C.hexToHsv('#ff6a1a'); check(C.hsvToHex(v.h, v.s, v.v) === '#ff6a1a', 'hex round trip'); }
 
 // 4. the page source: color changes update in place, no redraw
-const src = (f) => fs.readFileSync(path.join(ROOT, 'public', f), 'utf8');
+// read with plain line endings: body() cuts each function at a newline-brace-newline, which a CRLF file never has, so
+// the cut ran to the end of the file and found later redraws (3 Nov 2026)
+const src = (f) => fs.readFileSync(path.join(ROOT, 'public', f), 'utf8').replace(/\r\n/g, '\n');
 const body = (text, start, end) => { const a = text.indexOf(start); return a < 0 ? '' : text.slice(a, end ? text.indexOf(end, a + start.length) : undefined); };
 const pc = src('pages/pc-lights.js'), lighting = src('pages/lighting.js'), picker = src('ui/color-picker.js');
 for (const [name, fn] of [['sendWrites', body(pc, 'async function sendWrites', '\n}\n')], ['pcPick', body(pc, 'export function pcPick', '\n}\n')], ['useRow', body(pc, 'const useRow', '\n')], ['presetRow', body(pc, 'const presetRow', '\n')], ['offRow', body(pc, 'const offRow', '\n')], ['setLive', body(pc, 'function setLive', '\n}\n')], ['applyPc', body(pc, 'export async function applyPc', '\n}\n')]]) {

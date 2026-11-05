@@ -37,7 +37,7 @@ function cameraCard(cam, redraw) {
       toggle({ value: c.auto, label: `${label} auto`, onCommit: (on) => set(cam, key, label, on ? { auto: true, value: c.value } : { value: c.value >= c.min && c.value <= c.max ? c.value : c.default }, redraw) })) : null;
     return row(label, null, auto ? h('div', { class: 'cam-ctl' }, auto, s) : s);
   });
-  return card([icon('camera'), h('h2', {}, 'Camera'), h('span', { class: 'sub' }, cam.name)],
+  return card([icon('camera'), h('h2', {}, cam.name || 'Camera')],
     rows.length ? rows : h('p', { class: 'faint' }, 'No picture settings.'));
 }
 

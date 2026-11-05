@@ -24,9 +24,10 @@ const other = crypto.generateKeyPairSync('ed25519').privateKey;
 check(await refused({ ...base, signature: crypto.sign(null, Buffer.from(payload(base)), other).toString('base64') }), 'a release signed with another key was accepted');
 check(await refused({ ...base, signature: 'not a signature' }), 'a release with a broken signature was accepted');
 
-const key = path.join(process.env.APPDATA || '', 'DeviceHub-signing', 'release-key.pem');
-if (fs.existsSync(key)) {
-  const mine = crypto.createPrivateKey(fs.readFileSync(key));
+// the publisher's key, when this run has it (secrets run: DEVICEHUB_RELEASE_KEY from Bitwarden, since 4 Nov 2026)
+const sk = await import('../helpers/signing-key.mjs');
+if (sk.keyAvailable()) {
+  const mine = sk.loadKey();
   const good = { ...base, signature: crypto.sign(null, Buffer.from(payload(base)), mine).toString('base64') };
   served = good; let ok = false; try { ok = (await releaseInfo()).sha256 === base.sha256; } catch {}
   check(ok, 'a release signed by the publisher was refused');
@@ -34,6 +35,17 @@ if (fs.existsSync(key)) {
   check(await refused({ ...good, appCommit: 'f'.repeat(40) }), 'a signed release pointing at other code was accepted');
   // (27 Oct 2026) a properly signed release with a version number slipped in unsigned is refused by releaseInfo itself
   check(await refused({ ...good, version: '9.9', notes: ['Free money'], signature2: good.signature }), 'a signed release with an added, unsigned version number was accepted');
+}
+// the key from the environment (4 Nov 2026): missing, not a key, or not the app's key: refused, nothing signed
+{
+  const saved = process.env[sk.NAME];
+  const refusedWith = (v) => { if (v == null) delete process.env[sk.NAME]; else process.env[sk.NAME] = v; try { sk.loadKey(); return null; } catch (e) { return e.message; } };
+  check(/not set/.test(refusedWith(null) || ''), 'a missing DEVICEHUB_RELEASE_KEY was not refused in plain words');
+  check(/not a signing key/.test(refusedWith('hello') || ''), 'a DEVICEHUB_RELEASE_KEY that is not a key was not refused');
+  const stranger = crypto.generateKeyPairSync('ed25519').privateKey;
+  check(/not the key the app trusts/.test(refusedWith(stranger.export({ type: 'pkcs8', format: 'der' }).toString('base64')) || ''), 'a key the app does not trust (base64) was accepted');
+  check(/not the key the app trusts/.test(refusedWith(stranger.export({ type: 'pkcs8', format: 'pem' })) || ''), 'a key the app does not trust (PEM) was accepted');
+  if (saved == null) delete process.env[sk.NAME]; else process.env[sk.NAME] = saved;
 }
 // readable versions (27 Oct 2026): version and notes are signed by signature2; signature stays over the old fields, so a
 // copy from before 27 Oct (which checks only that) still accepts the new version.json. With a throwaway key pair.
@@ -60,4 +72,4 @@ if (fs.existsSync(key)) {
 }
 srv.close();
 if (fails.length) { console.log(`release signing: ${fails.length} problem(s)\n${fails.map((f) => `- ${f}`).join('\n')}`); process.exit(1); }
-console.log(`release signing: all checks passed${fs.existsSync(key) ? '' : ' (publisher key not on this PC: signed case skipped)'}`);
+console.log(`release signing: all checks passed${sk.keyAvailable() ? ' (publisher key checked)' : ' (DEVICEHUB_RELEASE_KEY not set: signed case skipped)'}`);

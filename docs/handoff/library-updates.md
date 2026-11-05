@@ -15,8 +15,8 @@ tests/library-updates.mjs         offline test against a local http server and a
 version, sha256, metaSha256 }], entries: [{ name, version, sha256, meta, mjs }], signature }`. `meta` is the entry's
 device.json, `mjs` its device.mjs text, `sha256` that text's SHA-256, `metaSha256` the SHA-256 of `JSON.stringify(meta)`.
 `version` is device.json `"updated"` (a date the sharer sets when changing an entry) or else its newest `tested[].date`.
-Examples (`_` names) and broken entries are left out. The signature is Ed25519 with the same key file as app releases
-(`%APPDATA%\DeviceHub-signing\release-key.pem`), over
+Examples (`_` names) and broken entries are left out. The signature is Ed25519 with the same key as app releases
+(`DEVICEHUB_RELEASE_KEY` from Bitwarden through `secrets run`, since 4 Nov 2026), over
 `"devicehub-library-bundle/1\n" + JSON.stringify([builtAt, list as [name, version, sha256, metaSha256]])`. An app
 release signs `JSON.stringify([commit, builtAt, appCommit, size, sha256])` (starts with `[`), so neither signature can
 ever pass as the other. The builder never makes a key; it checks its signature against `helpers/release-public-key.pem`

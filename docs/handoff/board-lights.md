@@ -11,6 +11,12 @@ second, whole OpenRGB to `%LOCALAPPDATA%\Programs\OpenRGB` and made a task "Devi
 runs an exe from a folder the user can write is a way for any program to get administrator silently. The new copy lives
 where only administrators can write.
 
+A PC that still has that older task (Shawn's did, found 4 Nov 2026): GET /api/board-lights says `legacy: true` and
+Lighting > PC lights shows the board-lights part with "An older DeviceHub starts OpenRGB as administrator from a folder
+any program can change" and **Replace it** (Remove beside it). Both admin scripts first drop "DeviceHub OpenRGB", only
+when every action runs exactly `%LOCALAPPDATA%\Programs\OpenRGB\OpenRGB.exe`, and stop only that OpenRGB; the folder is
+left (the uninstaller tells the person to delete it).
+
 ## What the person sees
 
 - **Lighting > PC lights**: a "Board, fan and RAM lights" part (always, when OpenRGB is not running or runs as

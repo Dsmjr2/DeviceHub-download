@@ -46,6 +46,10 @@ const timeouts = new Map();          // chan -> { n, since }
 let dogTimer = null, restarts = [];
 const waiters = new Map();          // `${chan} ${seq}` -> resolve
 const eventHandlers = new Map();    // chan -> fn(id, value)
+// Windows' device messages (the helper's "dev" events) for anyone else who wants them (3 Nov 2026: the HS80 loops look
+// at once on a plug instead of every 2 s); the agent keeps its own handler through onEvent('dev')
+const deviceListeners = new Set();
+const onDeviceChange = (fn) => { deviceListeners.add(fn); return () => deviceListeners.delete(fn); };
 const exitHandlers = new Set();
 // problems for the automatic problem reports (helpers/auto-report.mjs, 22 Oct 2026): the build failed, the helper could
 // not start, or it stopped by itself 3 times in an hour. Kept until server.js listens (the first build runs before it).
@@ -92,7 +96,12 @@ function start() {
       const a = l.indexOf(' '), b = l.indexOf(' ', a + 1);
       if (a < 0 || b < 0) continue;
       const chan = l.slice(0, a), tag = l.slice(a + 1, b), rest = l.slice(b + 1);
-      if (tag === 'EVT') { const [id, v] = rest.split(' '); eventHandlers.get(chan)?.(parseInt(id, 16), Number(v)); continue; }
+      if (tag === 'EVT') {
+        const [id, v] = rest.split(' ');
+        eventHandlers.get(chan)?.(parseInt(id, 16), Number(v));
+        if (chan === 'dev') for (const fn of deviceListeners) { try { fn(); } catch {} }
+        continue;
+      }
       const w = waiters.get(`${chan} ${tag}`);
       if (w) { waiters.delete(`${chan} ${tag}`); w(rest); }
     }
@@ -170,4 +179,4 @@ function stop() { const p = proc; proc = null; if (p) p.stdin.end(); }
 // is the helper running now (helpers/helper-reads.js asks it only then: a read never starts or builds it, so a test or
 // script that reads the PC does not start a helper of its own)
 const running = () => !!(proc && proc.stdin.writable);
-module.exports = { request, onEvent, onExit, onProblem, stop, start, heartbeat, callCounts, running, buildHelper: build };
+module.exports = { request, onEvent, onDeviceChange, onExit, onProblem, stop, start, heartbeat, callCounts, running, buildHelper: build };
