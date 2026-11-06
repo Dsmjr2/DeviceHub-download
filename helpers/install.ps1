@@ -263,7 +263,8 @@ Write-Host '   Settings > Apps > DeviceHub (Uninstall removes it)'
 # and Settings > Update brings a new version together with them (helpers/self-update.js) instead of copying over them.
 # Without git, or offline, it updates as whole versions, and never over a changed file (release-files.json).
 $rel = $null; try { $rel = Get-Content -LiteralPath (Join-Path $Target 'release.json') -Raw | ConvertFrom-Json } catch {}
-if ($rel.appCommit -and (Get-Command git -ErrorAction SilentlyContinue)) {
+# only a whole 40-character signed id is used (5 Nov 2026, security audit): a short one could name another commit
+if ($rel.appCommit -match '^[0-9a-f]{40}$' -and (Get-Command git -ErrorAction SilentlyContinue)) {
   Step 'Connecting to updates'
   $ErrorActionPreference = 'Continue'
   $g = { & git -C $Target @args 2>&1 | Out-Null; $LASTEXITCODE -eq 0 }

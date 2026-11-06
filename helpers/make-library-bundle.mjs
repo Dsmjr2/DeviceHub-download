@@ -51,6 +51,10 @@ export function makeBundle({ root = ROOT, privateKey, now = () => new Date() } =
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const out = path.resolve(process.argv[2] || path.join(ROOT, 'dist', 'device-library.json'));
+  // (6 Nov 2026, security audit) a driver taken in from the public relay is not signed into the library until it passes
+  // the same gate as a publish (untested until reviewed, every message on the allow-list)
+  const shareProblems = (await import('./accept-driver-shares.mjs')).libraryProblems(ROOT);
+  if (shareProblems.length) { console.error(`not signed: a shared library driver may not be published:\n  ${shareProblems.join('\n  ')}`); process.exit(1); }
   const sk = await import('./signing-key.mjs');
   if (!sk.keyAvailable()) { console.error('DEVICEHUB_RELEASE_KEY is not set: run it through secrets run (Bitwarden, Automation folder)'); process.exit(1); }
   let privateKey; try { privateKey = sk.loadKey(); } catch (e) { console.error(e.message); process.exit(1); }

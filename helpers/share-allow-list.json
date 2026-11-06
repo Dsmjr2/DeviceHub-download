@@ -1,0 +1,4 @@
+{
+  "about": "Device messages a driver shared through the public relay may send (6 Nov 2026, security audit; helpers/accept-driver-shares.mjs). The relay takes anonymous posts, so a share's bytes are never trusted by themselves: every message in it (reads, writes, identify, probes, session) must be one Shawn read and added here, or one a reviewed DeviceHub library driver for that USB vendor already sends. vid: the USB vendor id; reportId: the report id it goes out on; bytes: the message template exactly as the driver.json writes it; what: what it does; reviewed: the date Shawn read it. node helpers/accept-driver-shares.mjs prints the line to add for each message not here yet.",
+  "messages": []
+}

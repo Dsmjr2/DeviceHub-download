@@ -17,14 +17,24 @@ PC with nothing to learn or click.
   passed) and `### Driver` (driver.json deflated and base64'd; must fit the relay's 12,000-character body).
 
 ## Shawn's copy
-- `node helpers/accept-driver-shares.mjs` (check only), `--apply` writes `device-library/<brand>-<title>/` with the
-  driver.json as sent and a device.json with status `tested` and a works-shaped record (`realRecord` counts it for
-  exactly that driver text). It refuses a share whose driver does not match its record's SHA-256, fails validate(), is
+- `node helpers/accept-driver-shares.mjs` (check only), `--apply 12,15` writes `device-library/<brand>-<title>/` with
+  the driver.json as sent and a device.json with status `untested` (6 Nov 2026; before that `tested`): what the share
+  says passed is kept under `shared.claimed` as a claim, never as a test record, so a PC installs it with one click and
+  its settings stay off until Turn on settings. It refuses a share whose driver does not match its record's SHA-256, fails validate(), is
   for a refused vendor, holds anything personal, names settings the driver does not write, or whose USB id or id the
   library already has. It never commits, pushes or closes; it prints the close commands. Then commit and Publish.
 - The relay labels these `driver` (relay/worker.js `labelOf`) once redeployed (`npx --yes wrangler@4 deploy` in
   relay/); before that they arrive labeled `problem`, and the accept command reads both (it goes by the mark in the body).
 - Look over each driver before --apply: the relay takes anonymous posts, so a share is checked (validate, the never
-  list on every send) but not trusted blindly.
+  list on every send) but not trusted blindly. Since 5 Nov 2026 (security audit) the check-only run prints every
+  message each share sends by itself on connect, warns when its USB vendor has no never list, and `--apply 12,15`
+  adds only the shares named by issue number (plain `--apply` writes nothing).
+- Allow-list (6 Nov 2026, the Manager for Shawn): every message a shared driver can send (all of `messages`, byPid's
+  too, on its report id) must be in `helpers/share-allow-list.json` (Shawn adds a line, with a `reviewed` date, after
+  reading it; the check-only run prints the line for each one) or already be sent by a reviewed (`tested`, not shared)
+  library driver for that USB vendor. Anything else is refused and never reaches `--apply`.
+- Publish gate: `tests/shared-drivers.mjs` (in npm test, run by publish-release.ps1 and make-library-bundle.mjs before
+  anything is built or signed) fails on a shared entry marked `tested` without `shared.reviewed` (a date Shawn sets by
+  hand after trying it), one with code, or one whose messages are not all on the allow-list.
 
 Tests: `tests/driver-share.mjs`, `tests/relay.mjs` (labels).

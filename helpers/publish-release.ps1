@@ -32,6 +32,10 @@ Push-Location $root
 try {
   & (Get-Command node).Source (Join-Path $root 'tests\driver-dates.mjs')
   if ($LASTEXITCODE) { throw 'a library driver changed after its "updated" date (above); set the date, commit, then publish again. Nothing was built' }
+  # (6 Nov 2026, security audit) a driver taken in from the public relay stays untested until reviewed, and every message
+  # it sends must be on helpers/share-allow-list.json
+  & (Get-Command node).Source (Join-Path $root 'tests\shared-drivers.mjs')
+  if ($LASTEXITCODE) { throw 'a shared library driver may not be published (above). Nothing was built' }
 } catch { Pop-Location; throw }
 try {
   $next = (& (Get-Command node).Source (Join-Path $PSScriptRoot 'release-notes.mjs') --bump | Select-Object -Last 1)

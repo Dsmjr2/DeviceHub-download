@@ -62,7 +62,7 @@ export function readPublished(file = FILE) {
 export function plan({ cwd = ROOT, file = FILE } = {}) {
   const last = readPublished(file);
   const git = (args) => execFileSync('git', args, { cwd, encoding: 'utf8', windowsHide: true }).trim();
-  const head = git(['rev-parse', '--short=12', 'HEAD']);
+  const head = git(['rev-parse', 'HEAD']);
   let subjects = [];
   try { subjects = git(['log', '--no-merges', '--format=%s', `${last.commit}..HEAD`]).split(/\r?\n/); }
   catch { subjects = git(['log', '--no-merges', '--format=%s', '-n', '10', 'HEAD']).split(/\r?\n/); }   // no last publish known

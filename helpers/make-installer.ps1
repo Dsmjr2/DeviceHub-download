@@ -10,7 +10,7 @@ $root = Split-Path $PSScriptRoot -Parent
 # the code goes to the public download repository first (helpers/publish-code.ps1; only a committed version): an
 # installed copy is tied to that commit, so its updates can merge with changes made on its PC. -NoPublish for a test build.
 $appCommit = $null
-if ($args -notcontains '-NoPublish') { $appCommit = (& (Join-Path $PSScriptRoot 'publish-code.ps1') | Select-Object -Last 1); if ($appCommit -notmatch '^[0-9a-f]{7,40}$') { $appCommit = $null } }
+if ($args -notcontains '-NoPublish') { $appCommit = (& (Join-Path $PSScriptRoot 'publish-code.ps1') | Select-Object -Last 1); if ($appCommit -notmatch '^[0-9a-f]{40}$') { $appCommit = $null } }
 Push-Location $root
 try {
   # the makers' product photos (public/img xlite, hs80, p75) stay on the publisher's PC (27 Oct 2026, Shawn: "just keep
@@ -72,7 +72,7 @@ try {
     $w = New-Object System.IO.StreamWriter $e.Open(); $w.Write($lic); $w.Dispose()
     # which version this is (21 Oct 2026): a copy installed from the zip compares it with the newest release's
     # version.json to offer updates (helpers/self-update.js)
-    $commit = (git rev-parse --short=12 HEAD).Trim()
+    $commit = (git rev-parse HEAD).Trim()
     if (git status --porcelain --untracked-files=no) { $commit += '-modified' }
     $builtAt = (Get-Date).ToUniversalTime().ToString('o')
     $e = $z.CreateEntry((Ent 'release.json'))

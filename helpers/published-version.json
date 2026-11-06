@@ -1,7 +1,8 @@
 {
-  "version": "1.59",
-  "commit": "377ac66b703c",
+  "version": "1.60",
+  "commit": "5b053fac5b0ac3d7aa86d477d8e114f7a1ab688b",
   "notes": [
-    "A failed read never writes: strict reads before every in-place save…"
+    "Driver shares go in untested and need every message on an allow-list",
+    "Updates need the public key and a whole signed commit id"
   ]
 }

@@ -50,13 +50,21 @@ function verifyRelease(v, keyPem) {
     return !!v.signature3 && crypto.verify(null, Buffer.from(releasePayload3(v)), key, Buffer.from(v.signature3, 'base64'));
   } catch { return false; }
 }
-async function releaseInfo() {
+// (5 Nov 2026, security audit) a copy without the publisher's public key refuses every update instead of believing an
+// unsigned one, as the library update already does (helpers/library-updates.mjs); keyFile is for the test only
+const KEY_MISSING = 'the publisher\'s public key (helpers/release-public-key.pem) is missing or unreadable, so no update is believed; install DeviceHub again to get it back';
+async function releaseInfo(keyFile = PUBLIC_KEY) {
+  let pem;
+  try { pem = fs.readFileSync(keyFile); if (!pem.length) throw new Error('empty'); } catch { throw Object.assign(new Error(KEY_MISSING), { keyMissing: true }); }
   const r = await fetch(RELEASE + 'version.json', { signal: AbortSignal.timeout(20000) });
   if (!r.ok) throw new Error(`the download page answered ${r.status}`);
   const v = await r.json();
-  if (fs.existsSync(PUBLIC_KEY) && !verifyRelease(v, fs.readFileSync(PUBLIC_KEY))) throw new Error('the update is not signed by DeviceHub\'s publisher; not used');
+  if (!verifyRelease(v, pem)) throw new Error('the update is not signed by DeviceHub\'s publisher; not used');
   return v;
 }
+// (5 Nov 2026, security audit) the signed app commit is a whole 40-character id: a short one could be matched by a
+// different commit pushed to the download repository, and git would merge that one
+const fullCommit = (c) => typeof c === 'string' && /^[0-9a-f]{40}$/.test(c);
 // the readable version of a release or of this copy (helpers/release-notes.mjs): "1.5" and up to 5 short lines
 const MAX_NOTES = 5;
 const versionName = (v) => (typeof v === 'string' && /^\d{1,4}\.\d{1,6}$/.test(v) ? v : undefined);
@@ -107,7 +115,7 @@ async function zipStatus() {
     // version, versionAt: the signed version's id and date (the update pop-up, helpers/update-notice.mjs); versionName,
     // notes: its number and what's new; current: this copy's own number (27 Oct 2026)
     return { git: false, zip: true, current: ownVersion(), ...(newer ? named(rel) : {}), behind: newer ? 1 : 0, blocked: blocked.length ? blockedText(blocked) : undefined, blockedFiles: blocked.length ? blocked : undefined, latest: newer ? `a new version from ${new Date(rel.builtAt).toLocaleDateString()}` : null, at: own.builtAt, skipped: failed === rel.commit ? 'the newest version' : undefined, version: newer ? rel.commit : undefined, versionAt: newer ? rel.builtAt : undefined };
-  } catch (e) { return { git: false, zip: true, error: e.message }; }
+  } catch (e) { return { git: false, zip: true, error: e.message, ...(e.keyMissing ? { keyMissing: true } : {}) }; }
 }
 // How far an update has got (21 Oct 2026, for Settings' loading bar): the step in words and, while downloading, a
 // percentage (null = a step whose length is not known). GET /api/self-update/progress.
@@ -221,9 +229,11 @@ async function statusNow() {
     const shared = /DeviceHub-download/.test(await git(['remote', 'get-url', 'origin']).catch(() => ''));
     let target = '@{u}', behind, rel = null;
     if (shared) {
+      // a lost public key comes back from this copy's own checkout first (never from the download repository)
+      if (!fs.existsSync(PUBLIC_KEY)) await git(['checkout', 'HEAD', '--', 'helpers/release-public-key.pem']).catch(() => {});
       rel = await releaseInfo();
       const signed = rel.appCommit;
-      if (!signed || !/^[0-9a-f]{7,40}$/.test(signed)) behind = 0;
+      if (!fullCommit(signed)) behind = 0;
       else {
         await git(['cat-file', '-e', `${signed}^{commit}`]).catch(() => git(['fetch', '--quiet', 'origin', signed], 30000));
         target = await git(['rev-parse', `${signed}^{commit}`]);
@@ -251,7 +261,7 @@ async function statusNow() {
       } catch { localFiles = changed ? ['(could not tell which)'] : []; }
     }
     return { git: true, shared, behind, changed, latest: shownLatest, at, target, current: ownVersion(), ...(shared && behind ? { version: target, versionAt, localFiles, ...named(rel) } : {}) };
-  } catch (e) { return { git: true, error: e.message }; }
+  } catch (e) { return { git: true, error: e.message, ...(e.keyMissing ? { keyMissing: true } : {}) }; }
 }
 
 // pulls the new changes; the caller restarts DeviceHub afterwards
@@ -372,4 +382,4 @@ function confirm(log) {
   return true;
 }
 
-module.exports = { status, update, confirm, getProgress, releaseInfo, cleanDownloads, _test: { changedFiles, keepChanged, blockedText, verifyRelease, ownVersion, named } };
+module.exports = { status, update, confirm, getProgress, releaseInfo, cleanDownloads, _test: { changedFiles, keepChanged, blockedText, verifyRelease, ownVersion, named, fullCommit } };

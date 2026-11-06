@@ -46,4 +46,5 @@ if (G status --porcelain) {
   G push -q origin app | Out-Null
   Write-Host "   code published: DeviceHub $private"
 } else { Write-Host '   code already published' }
-(G rev-parse --short=12 HEAD).Trim()
+# the whole 40-character id (5 Nov 2026, security audit): it is what the release signs and what copies merge
+(G rev-parse HEAD).Trim()

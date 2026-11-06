@@ -10,6 +10,7 @@ import { payload } from '../helpers/sign-release.mjs';
 const require = createRequire(import.meta.url);
 const fails = [];
 const check = (ok, what) => { if (!ok) fails.push(what); };
+const src0 = (f) => fs.readFileSync(new URL(`../helpers/${f}`, import.meta.url), 'utf8');
 
 let served = {};
 const srv = http.createServer((q, r) => { r.setHeader('content-type', 'application/json'); r.end(JSON.stringify(served)); });
@@ -24,6 +25,32 @@ const other = crypto.generateKeyPairSync('ed25519').privateKey;
 check(await refused({ ...base, signature: crypto.sign(null, Buffer.from(payload(base)), other).toString('base64') }), 'a release signed with another key was accepted');
 check(await refused({ ...base, signature: 'not a signature' }), 'a release with a broken signature was accepted');
 
+// (5 Nov 2026, security audit) a copy without the public key refuses every update, even one with no signature at all
+{
+  served = base; let msg = '';
+  try { await releaseInfo(path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/(\w:)/, '$1')), 'no-such-key.pem')); } catch (e) { msg = e.message; }
+  check(/public key .* is missing/.test(msg), 'a copy without the public key believed an unsigned update');
+  // (6 Nov 2026) an empty key file is refused the same way, and the refusal is named so Settings can say it plainly
+  const empty = path.join(fs.mkdtempSync(path.join((await import('node:os')).tmpdir(), 'dh-key-')), 'release-public-key.pem');
+  fs.writeFileSync(empty, '');
+  let e2 = null; try { await releaseInfo(empty); } catch (e) { e2 = e; }
+  check(e2?.keyMissing === true && /missing or unreadable/.test(e2.message), 'a copy with an empty public key file did not refuse the update as key missing');
+  const su = fs.readFileSync(new URL('../helpers/self-update.js', import.meta.url), 'utf8');
+  check((su.match(/e\.keyMissing \? \{ keyMissing: true \}/g) || []).length === 2, 'the update check does not pass the missing key on to the app (zip and git copies)');
+  check(/s\.keyMissing \? 'Updates are refused: the publisher\\'s key is missing on this PC/.test(fs.readFileSync(new URL('../public/pages/settings.js', import.meta.url), 'utf8')), 'Settings does not say plainly that updates are refused without the key');
+  // (6 Nov 2026) the zip copy's own version id is the whole commit too; a copy on 1.59 or older compares it as a plain
+  // string (rel.commit !== own.commit plus builtAt), so a 40-character id is simply a newer version to it
+  check(/\$commit = \(git rev-parse HEAD\)\.Trim\(\)/.test(src0('make-installer.ps1')), 'make-installer.ps1 still writes a short version commit id');
+  check(/git\(\['rev-parse', 'HEAD'\]\)/.test(src0('release-notes.mjs')), 'release-notes.mjs still records a short commit for the published version');
+  check(/rel\.commit !== own\.commit && rel\.builtAt > own\.builtAt/.test(su), 'the zip update check no longer compares versions the way older copies do');
+  const { fullCommit } = require('../helpers/self-update.js')._test;
+  check(fullCommit('0123456789abcdef0123456789abcdef01234567'), 'a whole 40-character commit id was refused');
+  check(!fullCommit('0123456789ab') && !fullCommit('abc1234') && !fullCommit(null) && !fullCommit('g'.repeat(40)), 'a short or malformed signed commit id was accepted for merging');
+  const src = (f) => fs.readFileSync(new URL(`../helpers/${f}`, import.meta.url), 'utf8');
+  check(/\(G rev-parse HEAD\)\.Trim\(\)\s*$/.test(src('publish-code.ps1')) && !/\(G rev-parse --short/.test(src('publish-code.ps1')), 'publish-code.ps1 does not hand the whole commit id to the release');
+  check(/\$appCommit -notmatch '\^\[0-9a-f\]\{40\}\$'/.test(src('make-installer.ps1')), 'make-installer.ps1 still signs a short app commit id');
+  check(/\$rel\.appCommit -match '\^\[0-9a-f\]\{40\}\$'/.test(src('install.ps1')), 'install.ps1 still ties a copy to a short app commit id');
+}
 // the publisher's key, when this run has it (secrets run: DEVICEHUB_RELEASE_KEY from Bitwarden, since 4 Nov 2026)
 const sk = await import('../helpers/signing-key.mjs');
 if (sk.keyAvailable()) {
