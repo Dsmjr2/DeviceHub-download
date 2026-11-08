@@ -135,3 +135,14 @@ with me (`helpers/guided-test.mjs`, `public/core/guided-values.js`, `public/ui/g
   - at least one "Yes".
 - It carries `seen`: the settings the person saw change.
 - Reports from before this have no `seen` and are still valid.
+
+## Several reporters (8 Nov 2026, security audit)
+A works report is a public GitHub issue: anyone with an account can write its record by hand, and no install can prove
+it is one (DeviceHub's code and ids are public). So one report never counts by itself. `accept-works-reports.mjs`
+promotes a driver only once **3 different GitHub accounts**, each at least 30 days old (`gh api users/<login>`,
+read-only), reported its current driver, or the publisher (`Dsmjr2`) did; an account counts once per driver. Until
+then each report prints "waiting: N of 3", nothing is written and the issue stays open. Each record keeps its author as
+`reporter`. The same rule is applied by `my-devices.mjs hasRealRecord` (a copy is "proven" only on enough accounts' works
+records) and by the publish gate (`worksProblems`, run by `tests/shared-drivers.mjs` and `make-library-bundle.mjs`).
+Copies from 1.60 and before still trust one works record, but only the signed library bundle can carry one to them, and
+the publish gate refuses it.

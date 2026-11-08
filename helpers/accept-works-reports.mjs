@@ -13,18 +13,28 @@
 // valid record becomes { status: "tested", real: true, ... } in that driver's `tested` list (the shape
 // helpers/my-devices.mjs realRecord accepts), the entry's status becomes "tested" and its "updated" today, so the next
 // library bundle carries it. It never commits, never pushes, never closes or comments on an issue.
+//
+// Several reporters (8 Nov 2026, security audit): an issue is public and anyone can write its record by hand; no install
+// can prove it is one (its code and ids are public). So a driver is promoted only once WORKS_MIN_REPORTERS different
+// GitHub accounts, each at least MIN_ACCOUNT_DAYS old, reported its current driver (or the publisher, WORKS_OWNER, did);
+// one account counts once per driver. Until then each report is "waiting", nothing is written, and its issue stays open.
+// Each record keeps its author as reporter; helpers/my-devices.mjs hasRealRecord and the publish gate (worksProblems,
+// tests/shared-drivers.mjs, make-library-bundle.mjs) apply the same rule.
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parseRecord, issueRecordProblem, toTested, personalIn, REPO, LABEL, TITLE_START } from './works-report.mjs';
 import { validateMeta, driverFileOf, loadDriver } from './device-library.mjs';
-import { driverShaOf, realRecord, writable } from './my-devices.mjs';
+import { driverShaOf, realRecord, writable, worksEnough, WORKS_MIN_REPORTERS, WORKS_OWNER } from './my-devices.mjs';
 import { personalNames } from './share-device.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const NAME = /^[a-z0-9][a-z0-9-]{1,60}$/;
-const FIELDS = 'number,title,body,labels';
+const FIELDS = 'number,title,body,labels,author';
+export const MIN_ACCOUNT_DAYS = 30;
+const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
+const isOwner = (login) => String(login || '').toLowerCase() === WORKS_OWNER.toLowerCase();
 
 const gh = (args) => new Promise((resolve, reject) => execFile('gh', args, { windowsHide: true, timeout: 60000, maxBuffer: 16 * 1024 * 1024 }, (e, out, err) => (e ? reject(new Error(String(err || e.message).trim().split('\n')[0])) : resolve(String(out || '')))));
 // the open works issues, read-only: labeled "works", and titled "Works on my device:" (each issue once)
@@ -36,13 +46,21 @@ export async function listIssues(run = gh) {
   return [...seen.values()].sort((a, b) => a.number - b.number);
 }
 
+// when a GitHub account was made (read-only: gh api users/<login>), as a Date, or null
+export async function accountMade(login, run = gh) {
+  if (!LOGIN.test(String(login || ''))) return null;
+  try { const d = new Date(JSON.parse(await run(['api', `users/${login}`]) || '{}').created_at); return Number.isNaN(d.getTime()) ? null : d; } catch { return null; }
+}
+
 const readJson = (f) => JSON.parse(fs.readFileSync(f, 'utf8').replace(/^﻿/, ''));
 
 // each issue checked: [{ number, ok, driver?, record?, why? }]. Nothing is written.
-export async function evaluate(issues, { root = ROOT, names = personalNames() } = {}) {
+export async function evaluate(issues, { root = ROOT, names = personalNames(), account = accountMade, now = () => new Date() } = {}) {
   const out = [];
   const keysOf = new Map();   // driver -> its writable setting keys ([] when its list depends on the model connected)
   const adding = new Set();   // issue numbers already taken in this run
+  const ages = new Map();     // login -> Date | null
+  const counted = new Set();  // driver + login already counted in this run
   for (const i of issues || []) {
     const n = i?.number;
     const fail = (why, driver) => out.push({ number: n, ok: false, why, ...(driver ? { driver } : {}) });
@@ -74,11 +92,53 @@ export async function evaluate(issues, { root = ROOT, names = personalNames() } 
     const personal = personalIn(r, `${i.title || ''}\n${JSON.stringify(r, null, 2)}`, names);
     if (personal.length) { fail(`it holds something personal (${[...new Set(personal.map((x) => x.why))].join(', ')})`, r.driver); continue; }
     if ((meta.tested || []).some((t) => t?.issue === n)) { fail(`already in device-library/${r.driver}/device.json`, r.driver); continue; }
-    const record = toTested(r, n);
+    const login = i.author?.login;
+    if (typeof login !== 'string' || !LOGIN.test(login)) { fail('it does not say which GitHub account filed it', r.driver); continue; }
+    if (!isOwner(login)) {
+      if (!ages.has(login)) ages.set(login, await account(login));
+      const made = ages.get(login);
+      if (!made) { fail(`the age of the account ${login} could not be read`, r.driver); continue; }
+      if (now() - made < MIN_ACCOUNT_DAYS * 864e5) { fail(`the account ${login} is under ${MIN_ACCOUNT_DAYS} days old`, r.driver); continue; }
+    }
+    const who = `${r.driver}
+${login.toLowerCase()}`;
+    if (counted.has(who) || (meta.tested || []).some((t) => t?.driverSha === sha && String(t?.reporter || '').toLowerCase() === login.toLowerCase())) { fail(`the account ${login} already reported this driver: one account counts once`, r.driver); continue; }
+    const record = { ...toTested(r, n), reporter: login };
     // the gate itself: the record must count as a real-device record for exactly this driver
     if (!realRecord(record, meta.status, sha)) { fail('it would not count as a real-device record (realRecord refused it)', r.driver); continue; }
     adding.add(n);
-    out.push({ number: n, ok: true, driver: r.driver, record, note: keys.length ? null : 'its settings list depends on the model connected, so the setting names were not compared' });
+    counted.add(who);
+    out.push({ number: n, ok: true, sha, driver: r.driver, record, note: keys.length ? null : 'its settings list depends on the model connected, so the setting names were not compared' });
+  }
+  // promoted only together: this run's valid reports plus the records already in the library, from enough accounts
+  for (const driver of new Set(out.filter((x) => x.ok).map((x) => x.driver))) {
+    const mine = out.filter((x) => x.ok && x.driver === driver);
+    let meta = {};
+    try { meta = readJson(path.join(root, 'device-library', driver, 'device.json')); } catch {}
+    const all = [...(Array.isArray(meta.tested) ? meta.tested : []), ...mine.map((x) => x.record)];
+    const enough = worksEnough(all, mine[0].sha);
+    if (enough.ok) continue;
+    for (const x of mine) Object.assign(x, { ok: false, waiting: true, why: `waiting: ${enough.reporters} of ${WORKS_MIN_REPORTERS} different GitHub accounts have reported this driver (nothing written; leave the issue open)` });
+  }
+  return out;
+}
+
+// The publish gate (8 Nov 2026): every library entry whose works records would count must have them from enough
+// accounts; a works record without its reporter, or a "tested" entry resting on too few, is a problem. [] = all good.
+export function worksProblems(root = ROOT) {
+  const out = [];
+  let entries = [];
+  try { entries = fs.readdirSync(path.join(root, 'device-library'), { withFileTypes: true }).filter((e) => e.isDirectory()); } catch {}
+  for (const e of entries) {
+    let meta; try { meta = readJson(path.join(root, 'device-library', e.name, 'device.json')); } catch { continue; }
+    const works = (Array.isArray(meta?.tested) ? meta.tested : []).filter((t) => t && typeof t === 'object' && (t.by === 'works report' || 'driverSha' in t || 'real' in t));
+    if (!works.length) continue;
+    const noWho = works.filter((t) => typeof t.reporter !== 'string');
+    if (noWho.length) out.push(`${e.name}: ${noWho.length} works record(s) without the GitHub account that filed them (reporter)`);
+    const sha = driverShaOf(path.join(root, 'device-library', e.name));
+    const other = (meta.tested || []).some((t) => !works.includes(t) && realRecord(t, meta.status));
+    const enough = worksEnough(works, sha, meta.status);
+    if (meta.status === 'tested' && !other && !enough.ok) out.push(`${e.name}: "tested" on works reports from ${enough.reporters} account(s); it needs ${WORKS_MIN_REPORTERS} different accounts or the publisher's own`);
   }
   return out;
 }
@@ -119,10 +179,11 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
   try {
     issues = deps.list ? await deps.list() : fromAt >= 0 ? readJson(path.resolve(argv[fromAt + 1] || '')) : await listIssues();
   } catch (e) { print(`Could not read the works issues: ${e.message}. Is gh installed and signed in (gh auth status)?`); return 2; }
-  const results = await evaluate(issues, { root, ...(deps.names ? { names: deps.names } : {}) });
-  const good = results.filter((x) => x.ok), bad = results.filter((x) => !x.ok);
-  print(`${results.length} open works report${results.length === 1 ? '' : 's'}: ${good.length} valid, ${bad.length} refused.`);
-  for (const x of good) print(`  #${x.number} ${x.driver}: valid, ${x.record.settings.length} of ${x.record.checked} settings passed (${x.record.model}${x.record.firmware ? `, ${x.record.firmware}` : ''})${x.note ? `; ${x.note}` : ''}`);
+  const results = await evaluate(issues, { root, ...(deps.names ? { names: deps.names } : {}), ...(deps.account ? { account: deps.account } : {}), ...(deps.now ? { now: deps.now } : {}) });
+  const good = results.filter((x) => x.ok), wait = results.filter((x) => x.waiting), bad = results.filter((x) => !x.ok && !x.waiting);
+  print(`${results.length} open works report${results.length === 1 ? '' : 's'}: ${good.length} valid, ${wait.length} waiting for more accounts, ${bad.length} refused.`);
+  for (const x of wait) print(`  #${x.number} ${x.driver}: ${x.why}`);
+  for (const x of good) print(`  #${x.number} ${x.driver} (${x.record.reporter}): valid, ${x.record.settings.length} of ${x.record.checked} settings passed (${x.record.model}${x.record.firmware ? `, ${x.record.firmware}` : ''})${x.note ? `; ${x.note}` : ''}`);
   for (const x of bad) print(`  #${x.number}${x.driver ? ` ${x.driver}` : ''}: refused: ${x.why}`);
   if (!good.length) return 0;
   if (!doApply) { print('Nothing was written. Run again with --apply to add the valid ones.'); return 0; }

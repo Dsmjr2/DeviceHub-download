@@ -251,7 +251,27 @@ const READ_ONLY_HOW = /nothing written|settings read|read[- ]only/i;
 // record itself, real: true, the date, DeviceHub's version, the SHA-256 of the driver it was checked with, the model, the
 // firmware (text or null) and the settings that passed (at least one). No other field. When the driver's own SHA-256 is
 // known (provenCopy), the record counts only for that exact driver text: a changed driver needs a new report.
-export const WORKS_RECORD_FIELDS = ['status', 'real', 'by', 'how', 'date', 'devicehub', 'driver', 'driverSha', 'model', 'firmware', 'settings', 'checked', 'seen', 'issue'];
+export const WORKS_RECORD_FIELDS = ['status', 'real', 'by', 'how', 'date', 'devicehub', 'driver', 'driverSha', 'model', 'firmware', 'settings', 'checked', 'seen', 'issue', 'reporter'];
+// Who filed it (8 Nov 2026, security audit): works reports are public GitHub issues anyone can write by hand, and nothing
+// can prove a report came from a real install (its code and ids are public). So one report never counts by itself:
+// works records count only when WORKS_MIN_REPORTERS different GitHub accounts reported this exact driver, or the
+// publisher (WORKS_OWNER) did. reporter is the issue author's login, written by helpers/accept-works-reports.mjs.
+export const WORKS_MIN_REPORTERS = 3;
+export const WORKS_OWNER = 'Dsmjr2';
+const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
+const isWorks = (t) => !!t && typeof t === 'object' && ('real' in t || 'driverSha' in t || t.by === 'works report');
+// { ok, reporters, owner }: the distinct accounts behind the valid works records for driverSha (any driver when null)
+export function worksEnough(tested, driverSha = null, status = 'tested') {
+  const who = new Set();
+  for (const t of Array.isArray(tested) ? tested : []) {
+    if (!isWorks(t) || worksRecordProblem(t) !== null || typeof t.reporter !== 'string') continue;
+    if (driverSha && t.driverSha !== driverSha) continue;
+    if ((t.status ?? status) !== 'tested') continue;
+    who.add(t.reporter.toLowerCase());
+  }
+  const owner = who.has(WORKS_OWNER.toLowerCase());
+  return { ok: owner || who.size >= WORKS_MIN_REPORTERS, reporters: who.size, owner };
+}
 const SETTING_KEY = /^[A-Za-z0-9_:.-]{1,40}$/;
 export function worksRecordProblem(t) {
   if (!plain(t)) return 'it is not an object';
@@ -272,6 +292,7 @@ export function worksRecordProblem(t) {
   // seen (29 Oct 2026, Test it with me; optional, older reports have none): settings the person saw change, all of them in settings
   if ('seen' in t && (!Array.isArray(t.seen) || !t.seen.length || !t.seen.every((k) => t.settings.includes(k)) || new Set(t.seen).size !== t.seen.length)) return 'seen must list settings that passed (at least one)';
   if (!Number.isInteger(t.issue) || t.issue < 1) return 'issue must be the GitHub issue number';
+  if ('reporter' in t && (typeof t.reporter !== 'string' || !LOGIN.test(t.reporter))) return "reporter must be the issue author's GitHub login";
   return null;
 }
 const claimsWorks = (t) => 'real' in t || 'driverSha' in t || t.by === 'works report';
@@ -279,7 +300,9 @@ export const realRecord = (t, status, driverSha = null) => !!t && typeof t === '
   && (t.status ?? status ?? 'tested') === 'tested' && !READ_ONLY_HOW.test(String(t.how || ''))
   // a record that claims to be a works record counts only in its full shape, and only for the driver it was made with
   && (!claimsWorks(t) || (worksRecordProblem(t) === null && (!driverSha || t.driverSha === driverSha)));
-export const hasRealRecord = (meta, { driverSha = null } = {}) => Array.isArray(meta?.tested) && meta.tested.some((t) => realRecord(t, meta.status, driverSha));
+// works records count only together, from enough different accounts (worksEnough); any other real record by itself
+export const hasRealRecord = (meta, { driverSha = null } = {}) => Array.isArray(meta?.tested) && meta.tested.some((t) => realRecord(t, meta.status, driverSha)
+  && (!isWorks(t) || worksEnough(meta.tested, driverSha && driverSha !== 'none' ? driverSha : t.driverSha, meta.status).ok));
 // the SHA-256 a works record names: the driver's text with Windows line ends made plain, so a git checkout with CRLF and
 // one with LF give the same answer
 export const driverSha = (text) => createHash('sha256').update(String(text).replace(/\r\n/g, '\n'), 'utf8').digest('hex');

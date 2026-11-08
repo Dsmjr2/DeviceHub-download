@@ -53,7 +53,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const out = path.resolve(process.argv[2] || path.join(ROOT, 'dist', 'device-library.json'));
   // (6 Nov 2026, security audit) a driver taken in from the public relay is not signed into the library until it passes
   // the same gate as a publish (untested until reviewed, every message on the allow-list)
-  const shareProblems = (await import('./accept-driver-shares.mjs')).libraryProblems(ROOT);
+  // (8 Nov 2026) and no entry is "tested" on works reports from too few GitHub accounts (accept-works-reports.mjs)
+  const shareProblems = [...(await import('./accept-driver-shares.mjs')).libraryProblems(ROOT), ...(await import('./accept-works-reports.mjs')).worksProblems(ROOT)];
   if (shareProblems.length) { console.error(`not signed: a shared library driver may not be published:\n  ${shareProblems.join('\n  ')}`); process.exit(1); }
   const sk = await import('./signing-key.mjs');
   if (!sk.keyAvailable()) { console.error('DEVICEHUB_RELEASE_KEY is not set: run it through secrets run (Bitwarden, Automation folder)'); process.exit(1); }

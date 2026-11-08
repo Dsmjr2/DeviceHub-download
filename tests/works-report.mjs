@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { realRecord, hasRealRecord, worksRecordProblem, provenCopy, driverSha, driverShaOf, needsTurnOn, guard } from '../helpers/my-devices.mjs';
 import { buildRecord, makeIssue, parseRecord, issueRecordProblem, toTested, report, personalIn, options as worksOptions, LABEL, REPO } from '../helpers/works-report.mjs';
-import { evaluate, apply, main, listIssues, closeCommand } from '../helpers/accept-works-reports.mjs';
+import { evaluate, apply, main, listIssues, closeCommand, worksProblems, MIN_ACCOUNT_DAYS } from '../helpers/accept-works-reports.mjs';
 import { turnOnAll, lineFor, waitingForTurnOn } from '../helpers/turn-on-all.mjs';
 import { open as helpOpen, options as helpOptions, SAFE_URL, ISSUES } from '../helpers/get-help.mjs';
 import { installFromLibrary, installNote } from '../helpers/device-library.mjs';
@@ -65,7 +65,12 @@ try {
   };
   for (const [what, r] of Object.entries(weaker)) ok(!realRecord(r, 'tested') && !hasRealRecord({ status: 'tested', tested: [r] }), `a weaker record does not count: ${what}`);
   ok(realRecord({ by: 'Sam', date: '2026-10-23', devicehub: '0.2.0', status: 'tested', how: 'each setting written once and read back' }), "a share-device record (no works fields) keeps today's rule");
-  ok(hasRealRecord({ status: 'untested', tested: [rec] }, { driverSha: SHA }) && !hasRealRecord({ status: 'untested', tested: [rec] }, { driverSha: '0'.repeat(64) }), 'hasRealRecord compares the driver SHA-256 when it is given');
+  // works records count only from several accounts (8 Nov 2026): one alone, even a perfect one, does not
+  const trio = ['alice', 'bob', 'carol'].map((reporter, i) => ({ ...rec, issue: 7 + i, reporter }));
+  ok(!hasRealRecord({ status: 'untested', tested: [rec] }, { driverSha: SHA }) && !hasRealRecord({ status: 'untested', tested: [trio[0]] }, { driverSha: SHA }), 'one works record alone is not a real-device record');
+  ok(hasRealRecord({ status: 'untested', tested: trio }, { driverSha: SHA }) && !hasRealRecord({ status: 'untested', tested: trio }, { driverSha: '0'.repeat(64) }), 'hasRealRecord compares the driver SHA-256 when it is given');
+  ok(hasRealRecord({ status: 'tested', tested: [{ by: 'Sam', date: '2026-10-23', devicehub: '0.2.0', status: 'tested', how: 'each setting written once and read back' }] }), 'a share-device record still counts by itself');
+  ok(worksRecordProblem({ ...rec, reporter: 'bad login!' }) !== null && worksRecordProblem({ ...rec, reporter: 'alice-b' }) === null, 'reporter must be a GitHub login');
 
   // ---- 2. the record on this PC: only after the check passed, nothing personal, only what passed
   setMark({ ...MARK }); setVerified({ dpi: { ok: true, value: 800, readBack: 800 }, sleep: { ok: true, value: 1, readBack: 1 } });
@@ -124,8 +129,13 @@ try {
 
   // ---- 4. the accept script
   const body = (rec2) => makeIssue(rec2, []).body;
+  // who filed each issue, and when each account was made (8 Nov 2026: several accounts, none brand new)
+  const by = (login) => ({ author: { login } });
+  const MADE = { alice: '2020-01-01', bob: '2019-05-05', carol: '2021-03-03', newbie: '2026-10-20' };
+  const account = async (login) => (MADE[login] ? new Date(MADE[login]) : null);
+  const NOW = () => new Date('2026-10-25T09:00:00Z');
   const issues = [
-    { number: 7, title: makeIssue(b.record).title, body: issue.body },
+    { number: 7, title: makeIssue(b.record).title, body: issue.body, ...by('alice') },
     { number: 8, title: 'Works on my device: x', body: body({ ...b.record, driverSha: 'a'.repeat(64) }) },
     { number: 9, title: 'Works on my device: x', body: body({ ...b.record, driver: 'acme-nothing' }) },
     { number: 10, title: 'Works on my device: x', body: body({ ...b.record, serial: 'AB12CD34' }) },
@@ -134,9 +144,13 @@ try {
     { number: 13, title: 'Works on my device: x', body: 'it works!' },
     { number: 14, title: 'Works on my device: x', body: body({ ...b.record, settings: ['batt'], checked: 1, seen: ['batt'] }) },
   ];
-  let ev = await evaluate(issues, { root, names: NAMES });
+  for (const i of issues.slice(1)) Object.assign(i, by('alice'));
+  const opts = { root, names: NAMES, account, now: NOW };
+  let ev = await evaluate(issues, opts);
   const at = (n) => ev.find((x) => x.number === n);
-  ok(at(7)?.ok && at(7).record.seen?.join() === 'dpi' && at(7).record.real === true && at(7).record.issue === 7 && at(7).record.status === 'tested', `a valid report is accepted (${JSON.stringify(at(7))})`);
+  // ONE valid report never promotes a driver: anyone can file the issue by hand (8 Nov 2026)
+  ok(!at(7)?.ok && at(7)?.waiting && /1 of 3 different GitHub accounts/.test(at(7)?.why || ''), `a single valid report waits for more accounts (${JSON.stringify(at(7))})`);
+  ok(at(7)?.record?.seen?.join() === 'dpi' && at(7).record.real === true && at(7).record.issue === 7 && at(7).record.reporter === 'alice', `the waiting record is the right shape, with its reporter (${JSON.stringify(at(7)?.record)})`);
   ok(/current driver/.test(at(8)?.why || ''), `another driver text is refused (${at(8)?.why})`);
   ok(/no device-library\/acme-nothing/.test(at(9)?.why || ''), `an unknown driver is refused (${at(9)?.why})`);
   ok(/never has \(serial\)/.test(at(10)?.why || ''), `an extra field is refused (${at(10)?.why})`);
@@ -144,20 +158,60 @@ try {
   ok(/does not have \(rgb\)/.test(at(12)?.why || ''), `a setting the driver does not have is refused (${at(12)?.why})`);
   ok(/Record/.test(at(13)?.why || ''), `an issue with no record is refused (${at(13)?.why})`);
   ok(/does not have \(batt\)/.test(at(14)?.why || ''), `a reading (never written) is not a setting that passed (${at(14)?.why})`);
-  ok(ev.filter((x) => x.ok).length === 1, 'only the valid one');
+  ok(ev.filter((x) => x.ok).length === 0 && ev.filter((x) => x.waiting).length === 1, 'nothing valid alone; one waiting');
+  // who filed it: no author, an account under 30 days old, an unreadable account, the same account twice
+  const who = await evaluate([
+    { number: 20, title: 't', body: issue.body },
+    { number: 21, title: 't', body: issue.body, ...by('newbie') },
+    { number: 22, title: 't', body: issue.body, ...by('ghost') },
+    { number: 23, title: 't', body: issue.body, ...by('alice') },
+    { number: 24, title: 't', body: issue.body, ...by('alice') },
+    { number: 25, title: 't', body: issue.body, ...by('bob') },
+  ], opts);
+  const w = (n) => who.find((x) => x.number === n);
+  ok(/which GitHub account/.test(w(20)?.why || ''), `a report with no author is refused (${w(20)?.why})`);
+  ok(new RegExp(`under ${MIN_ACCOUNT_DAYS} days old`).test(w(21)?.why || ''), `a brand-new account is refused (${w(21)?.why})`);
+  ok(/could not be read/.test(w(22)?.why || ''), `an account whose age cannot be read is refused (${w(22)?.why})`);
+  ok(/one account counts once/.test(w(24)?.why || ''), `the same account twice counts once (${w(24)?.why})`);
+  ok(w(23)?.waiting && w(25)?.waiting && /2 of 3/.test(w(25)?.why || ''), `two different accounts still wait (${w(25)?.why})`);
+  // three different, old enough accounts: promoted
+  const three = [{ ...issues[0] }, { number: 15, title: 't', body: issue.body, ...by('bob') }, { number: 16, title: 't', body: issue.body, ...by('carol') }];
+  const ev3 = await evaluate(three, opts);
+  ok(ev3.length === 3 && ev3.every((x) => x.ok) && ev3.map((x) => x.record.reporter).join() === 'alice,bob,carol', `three different accounts are accepted together (${JSON.stringify(ev3.map((x) => x.why || x.record.reporter))})`);
+  // the publisher's own report counts by itself
+  const own = await evaluate([{ number: 30, title: 't', body: issue.body, ...by('Dsmjr2') }], { ...opts, account: async () => null });
+  ok(own[0]?.ok && own[0].record.reporter === 'Dsmjr2', `the publisher's own report counts alone, with no age lookup (${JSON.stringify(own[0]?.why)})`);
 
   const before = fs.readFileSync(path.join(root, 'device-library/acme-glide/device.json'), 'utf8');
   const lines = [];
-  ok(await main([], { root, names: NAMES, list: async () => issues, print: (l) => lines.push(l) }) === 0 && fs.readFileSync(path.join(root, 'device-library/acme-glide/device.json'), 'utf8') === before, 'without --apply nothing is written');
+  // --apply with only one account's report: nothing is written, no close command, the issue stays open
+  ok(await main(['--apply'], { root, names: NAMES, account, now: NOW, list: async () => issues, print: (l) => lines.push(l) }) === 0 && fs.readFileSync(path.join(root, 'device-library/acme-glide/device.json'), 'utf8') === before, 'one account: --apply writes nothing');
+  ok(lines.some((l) => /#7 acme-glide: waiting: 1 of 3/.test(l)) && !lines.some((l) => /gh issue close/.test(l)), `one account: it says waiting and prints no close command (${lines.join(' | ')})`);
+  lines.length = 0;
+  const issues3 = [...issues, ...three.slice(1)];
+  ok(await main([], { root, names: NAMES, account, now: NOW, list: async () => issues3, print: (l) => lines.push(l) }) === 0 && fs.readFileSync(path.join(root, 'device-library/acme-glide/device.json'), 'utf8') === before, 'without --apply nothing is written');
   ok(lines.some((l) => /Nothing was written/.test(l)) && !lines.some((l) => /gh issue close/.test(l)), 'without --apply: no close commands');
   lines.length = 0;
-  ok(await main(['--apply'], { root, names: NAMES, list: async () => issues, print: (l) => lines.push(l), now: () => new Date('2026-10-25T09:00:00Z') }) === 0, 'with --apply it runs');
+  ok(await main(['--apply'], { root, names: NAMES, account, list: async () => issues3, print: (l) => lines.push(l), now: NOW }) === 0, 'with --apply it runs');
   const meta = readJ('device-library/acme-glide/device.json');
-  ok(meta.status === 'tested' && meta.updated === '2026-10-25' && meta.tested.length === 1 && meta.tested[0].issue === 7 && worksRecordProblem(meta.tested[0]) === null, `the record is added and the entry promoted (${JSON.stringify(meta)})`);
+  ok(meta.status === 'tested' && meta.updated === '2026-10-25' && meta.tested.length === 3 && meta.tested.map((t) => t.issue).join() === '7,15,16' && meta.tested.every((t) => worksRecordProblem(t) === null && t.reporter), `three accounts' records are added and the entry promoted (${JSON.stringify(meta)})`);
+  ok(worksProblems(root).length === 0, `the publish gate accepts three accounts (${worksProblems(root).join('; ')})`);
+  // the runtime gate (my-devices.mjs hasRealRecord): one works record never makes a copy proven, three do, the publisher's alone does
+  ok(!hasRealRecord({ ...meta, tested: meta.tested.slice(0, 1) }, { driverSha: SHA }) && !hasRealRecord({ ...meta, tested: meta.tested.slice(0, 2) }, { driverSha: SHA }), 'one or two accounts: not a real-device record');
+  ok(!hasRealRecord({ ...meta, tested: [meta.tested[0], { ...meta.tested[0], issue: 99 }, { ...meta.tested[0], issue: 98 }] }, { driverSha: SHA }), 'one account three times: not a real-device record');
+  ok(!hasRealRecord({ ...meta, tested: meta.tested.map(({ reporter, ...t }) => t) }, { driverSha: SHA }), 'works records without reporters: not a real-device record');
+  ok(hasRealRecord({ ...meta, tested: [{ ...meta.tested[0], reporter: 'Dsmjr2' }] }, { driverSha: SHA }), "the publisher's own works record counts alone");
+  // the publish gate: "tested" on one account's report, or a record without its reporter, may not be published
+  const metaFile = path.join(root, 'device-library/acme-glide/device.json'), full = fs.readFileSync(metaFile, 'utf8');
+  fs.writeFileSync(metaFile, JSON.stringify({ ...meta, tested: meta.tested.slice(0, 1) }, null, 2));
+  ok(worksProblems(root).some((x) => /from 1 account\(s\)/.test(x)), `the publish gate refuses "tested" on one account (${worksProblems(root).join('; ')})`);
+  fs.writeFileSync(metaFile, JSON.stringify({ ...meta, tested: meta.tested.map(({ reporter, ...t }) => t) }, null, 2));
+  ok(worksProblems(root).some((x) => /without the GitHub account/.test(x)), `the publish gate refuses works records without a reporter (${worksProblems(root).join('; ')})`);
+  fs.writeFileSync(metaFile, full);
   ok(hasRealRecord(meta, { driverSha: SHA }), 'the added record is a real-device record for the current driver');
   ok(lines.some((l) => l === `  ${closeCommand({ number: 7, driver: 'acme-glide' })}`) && lines.some((l) => /Nothing was committed or pushed/.test(l)), 'it prints the close command and says nothing was committed');
-  ok(!lines.some((l) => /gh issue close (8|9|1\d)\b/.test(l)), 'no close command for a refused report');
-  ev = await evaluate(issues.slice(0, 1), { root, names: NAMES });
+  ok(!lines.some((l) => /gh issue close (8|9|1[0-4])\b/.test(l)), 'no close command for a refused report');
+  ev = await evaluate(issues.slice(0, 1), opts);
   ok(!ev[0].ok && /already in/.test(ev[0].why), 'a report already added is not added twice');
   ok(apply([], { root }).length === 0, 'nothing valid: nothing written');
 

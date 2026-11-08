@@ -1,8 +1,7 @@
 {
-  "version": "1.60",
-  "commit": "5b053fac5b0ac3d7aa86d477d8e114f7a1ab688b",
+  "version": "1.61",
+  "commit": "d65f0ed636a524f47c79e9bf04be3ea8eba3ad5d",
   "notes": [
-    "Driver shares go in untested and need every message on an allow-list",
-    "Updates need the public key and a whole signed commit id"
+    "Works reports count only from 3 different GitHub accounts (30+ days…"
   ]
 }
