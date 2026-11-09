@@ -72,7 +72,10 @@ export const TOOLS = [
     url: 'https://github.com/desowin/usbpcap/releases/download/1.5.4.0/USBPcapSetup-1.5.4.0.exe',
     file: 'USBPcapSetup-1.5.4.0.exe', approxBytes: 195040,
     hosts: ['github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com'],
-    signer: /^(Tomasz Mo\S{1,2}|Wireshark Foundation)$/i, signerName: 'Tomasz Moń (its author) or the Wireshark Foundation', sha256: null,
+    signer: /^(Tomasz Mo\S{1,2}|Wireshark Foundation)$/i, signerName: 'Tomasz Moń (its author) or the Wireshark Foundation',
+    // pinned 9 Nov 2026 from the official 1.5.4.0 release (195,040 bytes, signed CN=Tomasz Moń, Certum Code Signing CA
+    // SHA2); the release publishes no checksum. Both the signature and this hash must pass.
+    sha256: '87a7edf9bbbcf07b5f4373d9a192a6770d2ff3add7aa1e276e82e38582ccb622', pinned: true, needsBoth: true,
     marker: path.join(PF, 'USBPcap', 'USBPcapCMD.exe'), uninstallName: /^USBPcap/i,
     after: 'Click Yes, I Agree, Next, Install, and Yes to the driver. Restart before learning.',
     restart: true,
@@ -232,7 +235,7 @@ export async function plan(id) {
   if (size == null) {
     try { const r = await deps.head(t); size = r.size; if (size) sizes.set(t.id, { size, at: Date.now() }); } catch (e) { sizeNote = e.message; }
   }
-  const check = t.signer ? `Windows checks its digital signature is valid and from ${t.signerName || t.signer.source}` + (t.sha256 ? ', or that it matches the SHA-256 the maker publishes' : '')
+  const check = t.signer ? `Windows checks its digital signature is valid and from ${t.signerName || t.signer.source}` + (t.sha256 ? (t.needsBoth ? ', and that it matches the SHA-256 pinned from its official download' : ', or that it matches the SHA-256 the maker publishes') : '')
     : t.sha256 ? 'It must match the SHA-256 the maker publishes' : null;
   return {
     id: t.id, name: t.name, version: t.version, adds: t.adds, page: t.page,
@@ -251,7 +254,14 @@ export async function verify(id, file) {
     const s = await deps.signature(file);
     // (9 Nov 2026, security audit run-2) the pattern must match the certificate's whole common name (CN), not any part
     // of the subject: "Tomasz Morawski" or "Not the Wireshark Foundation Inc" is somebody else
-    if (s.status === 'Valid' && t.signer.test(cnOnly(s.signer))) return { ok: true, how: `signed by ${cn(s.signer)}` };
+    const signed = s.status === 'Valid' && t.signer.test(cnOnly(s.signer));
+    if (signed && !t.needsBoth) return { ok: true, how: `signed by ${cn(s.signer)}` };
+    if (!signed && t.needsBoth) return { ok: false, why: s.status === 'Valid' ? `it is signed by ${cn(s.signer)}, not by ${t.name}'s maker` : s.status === 'NotSigned' ? 'it is not digitally signed' : `its signature is not valid (${s.status})` };
+    if (signed && t.needsBoth) {
+      const h = await deps.sha256(file);
+      if (h.toLowerCase() === t.sha256.toLowerCase()) return { ok: true, how: `signed by ${cn(s.signer)} and matches the SHA-256 pinned from its official download` };
+      return { ok: false, why: 'it is signed, but it does not match the SHA-256 pinned from its official download' };
+    }
     if (!t.sha256) return { ok: false, why: s.status === 'Valid' ? `it is signed by ${cn(s.signer)}, not by ${t.name}'s maker` : s.status === 'NotSigned' ? 'it is not digitally signed' : `its signature is not valid (${s.status})` };
   }
   if (t.sha256) {

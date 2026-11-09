@@ -22,6 +22,9 @@ d.installedApps = async () => pc.apps;
 d.head = async (t) => { calls.head++; if (t.id === 'reaplugs') throw new Error('offline'); return { size: 195040, finalUrl: t.url }; };
 d.download = async (t, dest, onBytes) => { calls.download++; fs.writeFileSync(dest, 'pretend installer'); onBytes(50, 100); onBytes(100, 100); };
 d.signature = async () => pc.signature;
+// a download's hash: the real USBPcap file's pinned hash unless a test says otherwise (pc.hash), else the real hash
+const realSha = d.sha256;
+d.sha256 = async (file) => pc.hash !== undefined ? pc.hash : /USBPcap/i.test(file) ? T('usbpcap').sha256 : realSha(file);
 d.run = async (file) => { calls.run.push(file); check(fs.existsSync(file), 'the installer runs from the downloaded file'); if (pc.installs) pc.installs(); return pc.run; };
 
 // --- status ---
@@ -49,6 +52,7 @@ check(threw, 'an unknown tool is refused');
 const f = path.join(inst.DIR, 'verify-test.bin');
 fs.mkdirSync(inst.DIR, { recursive: true });
 fs.writeFileSync(f, 'abc');
+pc.hash = T('usbpcap').sha256;   // the file stands in for the real USBPcap download
 check((await inst.verify('usbpcap', f)).ok, 'valid signature from the expected signer passes');
 pc.signature = { status: 'Valid', signer: 'CN=Someone Else, O=Else' };
 let v = await inst.verify('usbpcap', f);
@@ -58,6 +62,19 @@ v = await inst.verify('usbpcap', f);
 check(!v.ok && /not digitally signed/.test(v.why), 'an unsigned file fails');
 pc.signature = { status: 'HashMismatch', signer: 'CN=Tomasz Moń' };
 check(!(await inst.verify('usbpcap', f)).ok, 'a tampered file (HashMismatch) fails even with the right name');
+pc.signature = { status: 'Valid', signer: 'CN=Tomasz Moń, O=Tomasz Moń, C=PL' };
+// (9 Nov 2026) USBPcap's pin: a real SHA-256, and a right signer is not enough on its own
+check(/^[0-9a-f]{64}$/.test(T('usbpcap').sha256 || '') && !/^(.)\1+$/.test(T('usbpcap').sha256), 'the USBPcap pin is a real 64-hex SHA-256');
+check(T('usbpcap').needsBoth && T('usbpcap').signer, 'USBPcap needs both its signature and the pin');
+pc.hash = '0'.repeat(64);
+v = await inst.verify('usbpcap', f);
+check(!v.ok && /does not match the SHA-256 pinned/.test(v.why), `the right signer with the wrong hash fails (${v.why})`);
+pc.hash = T('usbpcap').sha256.toUpperCase();
+check((await inst.verify('usbpcap', f)).ok, 'the right signer with the pinned hash passes (case does not matter)');
+pc.signature = { status: 'NotSigned', signer: null };
+check(!(await inst.verify('usbpcap', f)).ok, 'the pinned hash without the signature fails');
+pc.signature = { status: 'Valid', signer: 'CN=Tomasz Moń, O=Tomasz Moń, C=PL' };
+delete pc.hash;
 const abc = crypto.createHash('sha256').update('abc').digest('hex');
 const hashed = { ...T('reaplugs'), id: 'hashed', sha256: abc.toUpperCase() };
 check((await inst.verify(hashed, f)).ok, 'the SHA-256 fallback passes on a match (case does not matter)');

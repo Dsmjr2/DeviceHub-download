@@ -1,7 +1,7 @@
 {
-  "version": "1.63",
-  "commit": "13310f3329a1ed1509e470b6122f7755f51de5ac",
+  "version": "1.64",
+  "commit": "a75d02be711f4e9b54b083ccf6673276a5cf0ac0",
   "notes": [
-    "Security audit run 2, wave 2: a driver file's channel report id must…"
+    "USBPcap installer pinned: needs both its signature and the SHA-256…"
   ]
 }

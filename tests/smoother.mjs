@@ -29,6 +29,7 @@ check(/Click Yes in Windows' prompt \(if hidden, the blinking taskbar shield\)/.
   d.exists = () => false; d.installedApps = async () => [];
   d.download = async (t, dest, on) => { fs.writeFileSync(dest, 'x'); on(1, 1); };
   d.signature = async () => ({ status: 'Valid', signer: 'CN=Tomasz Moń, O=Tomasz Moń, C=PL' });
+  d.sha256 = async () => inst.TOOLS.find((t) => t.id === 'usbpcap').sha256;   // stands in for the real USBPcap download
   const seen = [];
   d.run = async (file, o = {}) => { seen.push(inst.getProgress()?.text); return { started: false, unanswered: true, error: 'not answered' }; };
   let r = await inst.install('usbpcap');

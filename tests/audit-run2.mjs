@@ -103,7 +103,7 @@ const require = createRequire(import.meta.url);
 {
   const inst = await import('../helpers/installers.mjs');
   const real = inst.deps.signature;
-  const as = async (signer) => { inst.deps.signature = async () => ({ status: 'Valid', signer }); return (await inst.verify('usbpcap', 'x.exe')).ok; };
+  const as = async (signer) => { inst.deps.signature = async () => ({ status: 'Valid', signer }); inst.deps.sha256 = async () => inst.TOOLS.find((t) => t.id === 'usbpcap').sha256; return (await inst.verify('usbpcap', 'x.exe')).ok; };
   check(await as('CN=Tomasz Moń, O=Tomasz Moń, C=PL'), 'its author\'s certificate passes');
   check(await as('CN=Wireshark Foundation, O=Wireshark Foundation, C=US'), 'the Wireshark Foundation\'s certificate passes');
   check(!(await as('CN=Tomasz Morawski, O=Tomasz Morawski, C=PL')), 'a different Tomasz Mo... is refused');
