@@ -28,7 +28,7 @@ import { declinedText, unansweredText } from './uac.mjs';
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PF = process.env.ProgramFiles || 'C:\\Program Files';
 export const SOURCE = path.join(ROOT, 'helpers', 'acer-control.ps1');
-export const SCRIPT_SHA256 = 'bec2812ddfd2d787cbe1c14807e2164dd6fe6d19effd7407bb76b53867a2d031';
+export const SCRIPT_SHA256 = '88ea8798470313d17a61047328aba9dfc0a639f8a5615c7b40e1a3a14eda016e';
 export const ACER = {
   dir: path.join(PF, 'DeviceHub Acer'),
   script: path.join(PF, 'DeviceHub Acer', 'acer-control.ps1'),

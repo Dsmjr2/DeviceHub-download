@@ -51,9 +51,15 @@ function settingsOf(captures) {
   return [...by.values()];
 }
 
+// (9 Nov 2026, security audit run-2) input reports the device sends by itself never leave the PC: on a keyboard or a
+// combined receiver they are the keys the person types, and a recording cannot tell them apart from the maker's own
+// reports. What the maker's app sends, and the device's feature replies, are what a driver is made from.
+const typedInput = (m) => m.dir === 'in' && m.type === 'input';
 export function compose(data, level) {
   const L = head(data);
-  const sets = settingsOf(data.captures);
+  const kept = (data.captures || []).map((c) => ({ ...c, messages: (c.messages || []).filter((m) => !typedInput(m)) }));
+  const inputs = (data.captures || []).reduce((n, c) => n + (c.messages || []).filter(typedInput).length, 0);
+  const sets = settingsOf(kept);
   let left = 0;
   L.push('', `### Recordings (${plural(sets.length, 'setting')}, ${plural((data.captures || []).length, 'recording')})`);
   for (const s of sets) {
@@ -73,6 +79,7 @@ export function compose(data, level) {
     });
   }
   L.push('');
+  if (inputs) L.push(`Not sent: ${plural(inputs, 'input report')} the device sent by itself (on a keyboard these are typed keys). They stay on the PC in learn\\wizard\\.`, '');
   if (left) L.push(`Left out to fit: ${plural(left, 'message')} (${level >= 3 ? 'every message; the counts stay' : level >= 1 ? 'the ones that were the same in every recording of a setting, and the device\'s replies' : ''}${level >= 2 ? ', and bytes past the 24th of each message' : ''}). The recordings stay on the PC in learn\\wizard\\.`);
   return { body: L.join('\n'), left };
 }

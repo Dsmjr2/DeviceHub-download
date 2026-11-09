@@ -18,6 +18,7 @@
       "tests/dropdown.mjs",
       "tests/driver-dates.mjs",
       "tests/shared-drivers.mjs",
+      "tests/audit-run2.mjs",
       "tests/failed-read.mjs",
       "tests/regressions.mjs",
       "tests/known-folders.mjs",

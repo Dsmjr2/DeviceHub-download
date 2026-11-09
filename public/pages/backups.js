@@ -240,6 +240,8 @@ function setupAsk(c) {
     [h('div', { class: 'bk-sub' }, `It holds: ${has.join(', ') || 'nothing DeviceHub knows'}.`),
       h('div', { class: 'bk-sub' }, `${plural(c.count, 'setting')} will change:`), changeList(rows.slice(0, LIST_MAX), rows.length - LIST_MAX),
       p.notConnected.length ? h('div', { class: 'bk-sub' }, `Not connected, skipped: ${p.notConnected.join(', ')}.`) : null,
+      // (9 Nov 2026, security audit run-2) an added device is a driver: program code that runs on this PC once loaded
+      x.myDevices?.length ? h('div', { class: 'bk-sub' }, `Its ${plural(x.myDevices.length, 'added device')} (${x.myDevices.map((d) => d.name).filter(Boolean).slice(0, 4).join(', ')}) ${x.myDevices.length === 1 ? 'is a driver' : 'are drivers'}: program code that runs on this PC after DeviceHub restarts. Load it only if you made this file yourself.`) : null,
       h('div', { class: 'bk-sub' }, 'Added devices and pictures are kept.')],
     'Yes, load it', yesSetup);
 }

@@ -1239,6 +1239,11 @@ async function api(req, res, url) {
 }
 
 http.createServer(async (req, res) => {
+  // (9 Nov 2026, security audit run-2) no other site may show the dashboard inside a frame: a framed dashboard's own
+  // clicks pass the API's same-origin checks, so a disguised frame could trick two clicks (Uninstall, delete a picture)
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
+  res.setHeader('X-Content-Type-Options', 'nosniff');
   // DNS rebinding guard: a page on another name that resolves to 127.0.0.1 still sends its own Host.
   if (!HOSTS.has(String(req.headers.host).toLowerCase())) return send(res, 421, 'wrong host', 'text/plain');
   // a request line URL() cannot read ("GET //:99999") is refused, not thrown: it stopped the server (31 Oct 2026)

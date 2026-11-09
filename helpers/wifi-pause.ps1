@@ -10,6 +10,9 @@
 # 7 the 4-hour resume could not be set (nothing paused).
 param([string]$Mode = '', [string]$Expect = '')
 $ErrorActionPreference = 'Stop'
+# (9 Nov 2026, security audit run-2) modules only from Windows' own folder: this runs as administrator, and PowerShell
+# would otherwise load a cmdlet's module from the person's own Documents folder or a PSModulePath they set themselves
+$env:PSModulePath = [IO.Path]::Combine([Environment]::SystemDirectory, 'WindowsPowerShell\v1.0\Modules')
 
 # 1. only two modes, exact
 if (@('pause', 'resume') -cnotcontains $Mode) { exit 2 }
@@ -18,10 +21,11 @@ $me = $PSCommandPath
 $h = (Get-FileHash -LiteralPath $me -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($Expect -notmatch '^[0-9a-f]{64}$' -or $h -ne $Expect) { exit 3 }
 # 3. only the protected copy runs
-$dest = Join-Path $env:ProgramFiles 'DeviceHub Wi-Fi pause'
+$dest = [IO.Path]::Combine([Environment]::GetFolderPath('ProgramFiles'), 'DeviceHub Wi-Fi pause')
 if (-not [string]::Equals((Split-Path -Parent $me), $dest, [StringComparison]::OrdinalIgnoreCase)) { exit 5 }
 
-$netsh = Join-Path $env:SystemRoot 'System32\netsh.exe'
+# netsh from Windows' own System32 folder as Windows reports it, never from an environment variable the person can set
+$netsh = [IO.Path]::Combine([Environment]::SystemDirectory, 'netsh.exe')
 $pauseTask = 'DeviceHub Wi-Fi pause'
 $resumeTask = 'DeviceHub Wi-Fi resume'
 $maxHours = 4

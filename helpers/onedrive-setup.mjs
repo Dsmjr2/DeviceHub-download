@@ -78,7 +78,9 @@ export function status() {
   const s = readJson(SETTINGS, {}), dir = folder(), me = pcName();
   const out = { on: s.oneDriveCopy === true, folder: dir, pc: me, mine: null, others: [] };
   if (!dir || !fs.existsSync(dir)) return out;
-  for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(SUFFIX))) {
+  // (9 Nov 2026, security audit run-2) other PCs' copies are offered only on a PC that keeps its own copy there: a file
+  // in that folder on a PC that never turned OneDrive copies on was not put there by DeviceHub (a shared folder, say)
+  for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(SUFFIX) && (out.on || x.slice(0, -SUFFIX.length) === me))) {
     const pc = f.slice(0, -SUFFIX.length), full = path.join(dir, f);
     const at = fs.statSync(full).mtime.toISOString();
     if (pc === me) out.mine = { savedAt: at };

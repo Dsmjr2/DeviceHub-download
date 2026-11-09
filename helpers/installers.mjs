@@ -72,7 +72,7 @@ export const TOOLS = [
     url: 'https://github.com/desowin/usbpcap/releases/download/1.5.4.0/USBPcapSetup-1.5.4.0.exe',
     file: 'USBPcapSetup-1.5.4.0.exe', approxBytes: 195040,
     hosts: ['github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com'],
-    signer: /Tomasz Mo|Wireshark Foundation/i, signerName: 'Tomasz Moń (its author) or the Wireshark Foundation', sha256: null,
+    signer: /^(Tomasz Mo\S{1,2}|Wireshark Foundation)$/i, signerName: 'Tomasz Moń (its author) or the Wireshark Foundation', sha256: null,
     marker: path.join(PF, 'USBPcap', 'USBPcapCMD.exe'), uninstallName: /^USBPcap/i,
     after: 'Click Yes, I Agree, Next, Install, and Yes to the driver. Restart before learning.',
     restart: true,
@@ -249,7 +249,9 @@ export async function verify(id, file) {
   const t = tool(id);
   if (t.signer) {
     const s = await deps.signature(file);
-    if (s.status === 'Valid' && t.signer.test(s.signer || '')) return { ok: true, how: `signed by ${cn(s.signer)}` };
+    // (9 Nov 2026, security audit run-2) the pattern must match the certificate's whole common name (CN), not any part
+    // of the subject: "Tomasz Morawski" or "Not the Wireshark Foundation Inc" is somebody else
+    if (s.status === 'Valid' && t.signer.test(cnOnly(s.signer))) return { ok: true, how: `signed by ${cn(s.signer)}` };
     if (!t.sha256) return { ok: false, why: s.status === 'Valid' ? `it is signed by ${cn(s.signer)}, not by ${t.name}'s maker` : s.status === 'NotSigned' ? 'it is not digitally signed' : `its signature is not valid (${s.status})` };
   }
   if (t.sha256) {
@@ -260,6 +262,7 @@ export async function verify(id, file) {
   }
   return { ok: false, why: 'there is no way to check it' };
 }
+const cnOnly = (subject) => /CN=("?)([^,"]+)\1/.exec(subject || '')?.[2]?.trim() || '';
 const cn = (subject) => (/CN=("?)([^,"]+)\1/.exec(subject || '')?.[2] || subject || 'nobody');
 
 // ---- install: download, verify, run, re-check. One at a time; progress for GET /api/installers/progress ----

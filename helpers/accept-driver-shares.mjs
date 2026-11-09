@@ -62,21 +62,38 @@ function neverCovers(root, vid) {
 }
 // (6 Nov 2026, the Manager for Shawn: an allow-list, not only the never list) every message a driver can send, on its
 // own report id: [{ name, reportId, bytes }]; byPid's own messages too
+// (9 Nov 2026, security audit run-2) a message is reviewed together with how it goes out: every report id it can be sent
+// on (a message without its own id goes out on each link's id, else the transport's) and the transport's framing (output
+// or feature report, usage page, length, checksum and counter bytes the driver writes after the template). The same
+// template under other framing puts other bytes on the wire, so it is a different message to review.
+export function frameOf(t, hid) {
+  const o = (x) => (x && typeof x === 'object' ? x : null);
+  const c = o(t?.checksum) && t.checksum.type !== 'none' ? `${t.checksum.type}@${t.checksum.at}:${t.checksum.from}-${t.checksum.to}${t.checksum.k != null ? `k${t.checksum.k}` : ''}` : '-';
+  const n = o(t?.counter) ? `${t.counter.at}+${t.counter.step ?? 1}` : '-';
+  return [t?.report || 'output', t?.usagePage || '-', t?.len ?? '-', c, n, hid?.page || '-'].join(' ').toUpperCase();
+}
 export function sentMessages(def) {
   const out = [];
-  const add = (where, msgs, rid) => { for (const [name, m] of Object.entries(msgs || {})) out.push({ name: `${where}${name}`, reportId: m?.reportId ?? rid ?? null, bytes: String(m?.bytes ?? '') }); };
-  add('', def?.messages, def?.transport?.reportId);
-  for (const [pid, o] of Object.entries(def?.byPid || {})) add(`${pid} `, o?.messages, o?.transport?.reportId ?? def?.transport?.reportId);
+  const linkIds = Object.values(def?.links || {}).map((l) => l?.reportId).filter((x) => x != null);
+  const add = (where, msgs, t) => {
+    const frame = frameOf(t, def?.hid);
+    for (const [name, m] of Object.entries(msgs || {})) {
+      const ids = m?.reportId != null ? [m.reportId] : [...new Set([...(linkIds.length ? linkIds : []), t?.reportId ?? null])];
+      for (const rid of ids) out.push({ name: `${where}${name}`, reportId: rid, bytes: String(m?.bytes ?? ''), frame });
+    }
+  };
+  add('', def?.messages, def?.transport);
+  for (const [pid, o] of Object.entries(def?.byPid || {})) add(`${pid} `, o?.messages, { ...(def?.transport || {}), ...(o?.transport || {}) });
   return out;
 }
-const msgKey = (rid, bytes) => `${rid ?? ''}|${String(bytes).trim().toUpperCase().replace(/\s+/g, ' ')}`;
+const msgKey = (rid, bytes, frame) => `${rid ?? ''}|${String(bytes).trim().toUpperCase().replace(/\s+/g, ' ')}|${String(frame ?? '').toUpperCase()}`;
 export const ALLOW_LIST = path.join('helpers', 'share-allow-list.json');
 // the messages a shared driver for this USB vendor may send: the ones Shawn read and added to helpers/share-allow-list.json
 // (with a "reviewed" date), and the ones a reviewed library driver for that vendor already sends ("tested", and not
 // itself taken in from a share). Nothing an anonymous poster writes can add to it.
 export function reviewedMessages(root, vid) {
   const set = new Set();
-  for (const m of readJson(path.join(root, ALLOW_LIST), {})?.messages || []) if (m && hex4(m.vid) === hex4(vid) && typeof m.bytes === 'string' && typeof m.reviewed === 'string' && m.reviewed) set.add(msgKey(m.reportId ?? null, m.bytes));
+  for (const m of readJson(path.join(root, ALLOW_LIST), {})?.messages || []) if (m && hex4(m.vid) === hex4(vid) && typeof m.bytes === 'string' && typeof m.reviewed === 'string' && m.reviewed) set.add(msgKey(m.reportId ?? null, m.bytes, m.frame));
   let entries = [];
   try { entries = fs.readdirSync(path.join(root, 'device-library'), { withFileTypes: true }).filter((e) => e.isDirectory()); } catch {}
   for (const e of entries) {
@@ -84,11 +101,11 @@ export function reviewedMessages(root, vid) {
     const meta = readJson(path.join(dir, 'device.json'), null);
     if (!meta || meta.status !== 'tested' || meta.shared || hex4(meta.vid) !== hex4(vid)) continue;
     const d = readJson(path.join(dir, 'driver.json'), null);
-    if (d) for (const m of sentMessages(d)) set.add(msgKey(m.reportId, m.bytes));
+    if (d) for (const m of sentMessages(d)) set.add(msgKey(m.reportId, m.bytes, m.frame));
   }
   return set;
 }
-export const unreviewedOf = (root, def, vid) => { const ok = reviewedMessages(root, vid); return sentMessages(def).filter((m) => !ok.has(msgKey(m.reportId, m.bytes))); };
+export const unreviewedOf = (root, def, vid) => { const ok = reviewedMessages(root, vid); return sentMessages(def).filter((m) => !ok.has(msgKey(m.reportId, m.bytes, m.frame))); };
 export function autoSent(def) {
   const msgs = def?.messages || {}, out = [];
   const add = (use, name) => { if (name) out.push({ use, name, bytes: String(msgs[name]?.bytes ?? '(missing)') }); };
@@ -229,7 +246,7 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
     if (x.unreviewed?.length) {
       print(`      read each one; to allow it, add its line to the "messages" list in ${ALLOW_LIST.replace(/\\/g, '/')}, then run this again:`);
       const day = (deps.now ? deps.now() : new Date()).toISOString().slice(0, 10);
-      for (const m of x.unreviewed) print(`      ${JSON.stringify({ vid: m.vid, reportId: m.reportId, bytes: m.bytes, what: m.name, reviewed: day })}`);
+      for (const m of x.unreviewed) print(`      ${JSON.stringify({ vid: m.vid, reportId: m.reportId, bytes: m.bytes, frame: m.frame, what: m.name, reviewed: day })}`);
     }
   }
   const at = argv.indexOf('--apply');

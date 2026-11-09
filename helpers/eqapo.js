@@ -131,12 +131,16 @@ function headsetFilters(s, stages, model = 'HS80') {
   return [...(x.correction && model === 'HS80' ? HS80_CORRECTION : []), ...bandsOf(stages), ...x.filters.map((f) => ['PK', f.f, f.g, f.q])];
 }
 // ctx: { headset: [guid], mic: [guid], speakers: [{ guid, name }] } from the native helper
-function text(s, stages, name, ctx) {
+// (9 Nov 2026, security audit run-2) a name written into config.txt stays on its own comment line: Windows takes device
+// names from the devices themselves, and a line break in one would start a live Equalizer APO command (VSTPlugin, Include)
+const oneLine = (v) => String(v ?? '').replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, ' ').slice(0, 160);
+function text(s, stages, rawName, ctx) {
   const x = s.extras, out = ['# Written by DeviceHub (Headset page); DeviceHub replaces this file when its sound settings change.', ''];
-  const model = ctx.headsetModel || 'HS80';
+  const name = oneLine(rawName);
+  const model = ctx.headsetModel ? oneLine(ctx.headsetModel) : 'HS80';
   const chain = headsetFilters(s, stages, model);
   const activeChain = chain.filter(([t, , g]) => !(t === 'PK' && Math.abs(g) < 0.005));
-  out.push(`# Headset: ${name}${x.correction && model === 'HS80' ? ' + HS80 correction' : ''}${model !== 'HS80' ? ` (${model})` : ''}`, `Device: ${ctx.headset.length ? ctx.headset.join('; ') : '*HS80*'}`);
+  out.push(`# Headset: ${name}${x.correction && model === 'HS80' ? ' + HS80 correction' : ''}${model !== 'HS80' ? ` (${model})` : ''}`, `Device: ${ctx.headset.length ? ctx.headset.map(oneLine).join('; ') : '*HS80*'}`);
   if (activeChain.length || x.loudness || x.balance) {
     // with "Prevent distortion" off the boost still stops at +12 dB in all (31 Oct 2026: 20 extra filters at one
     // frequency could add up to over +200 dB)
@@ -167,7 +171,7 @@ function text(s, stages, name, ctx) {
     // a mic's gate and leveler come after its EQ
     const after = sp.kind === 'mic' ? [...(v.gate && fs.existsSync(REAGATE) ? GATE(REAGATE) : []), ...(v.level && fs.existsSync(REACOMP) ? [CAMERA_LIFT, ...LEVELER(REACOMP)] : [])] : [];
     if (!f.length && !after.length) continue;
-    out.push('', `# ${sp.name}`, `Device: ${sp.guid}`);
+    out.push('', `# ${oneLine(sp.name)}`, `Device: ${oneLine(sp.guid)}`);
     if (f.length) out.push(`Preamp: ${fmt(s.headroom !== false ? -peak(f) : 0)} dB`, ...f.map((q, i) => line(q, i + 1)));
     out.push(...after);
   }
@@ -384,3 +388,4 @@ module.exports = (icueEq, allDevices, backupDir) => {
 module.exports.HS80_CORRECTION = HS80_CORRECTION;
 module.exports.gainAt = gainAt;
 module.exports.clearApoDefault = clearApoDefault;
+module.exports.configText = text;   // tests/audit-run2.mjs

@@ -8,7 +8,7 @@
   "source": "docs/brands/asus-rog.md",
   "vid": "0B05",
   "pids": ["1A92", "1A94", "1A66", "1A68", "197B", "197D", "197F", "1A70", "1A72", "1A18", "1A1A", "1ACE"],
-  "hid": { "vid": "0B05", "pid": "1A92", "pids": ["1A92", "1A94", "1A66", "1A68", "197B", "197D", "197F", "1A70", "1A72", "1A18", "1A1A", "1ACE"], "page": "FF01", "len": 64, "reportId": 0, "replyMs": 300,
+  "hid": { "vid": "0B05", "pid": "1A92", "pids": ["1A92", "1A94", "1A66", "1A68", "197B", "197D", "197F", "1A70", "1A72", "1A18", "1A1A", "1ACE"], "page": "FF01", "len": 64, "reportId": 0, "reportIds": [1], "replyMs": 300,
     "paths": { "cable": "mi_00", "dongle": "mi_00", "omniPairing": "mi_02&col01", "omniMouse": "mi_02&col03" } },
   "transport": { "report": "output", "len": 64, "reportId": 0, "usagePage": "FF01", "timeoutMs": 600, "tries": 3,
     "note": "sheet section 5: G-Helper's 300 ms and 3 tries, plus the helper's wait" },

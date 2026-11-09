@@ -183,6 +183,10 @@ function check(s, v) {
 }
 
 // ---------------------------------------------------------------- validate
+// what a driver file's `hid` may hold (9 Nov 2026, security audit run-2): the rest of hid-host's channel options stay
+// for code drivers only
+const HID_KEYS = ['vid', 'pid', 'pids', 'byPid', 'page', 'usage', 'len', 'reportId', 'reportIds', 'replyMs', 'reply', 'paths', 'note'];
+const HID_PID_KEYS = ['vid', 'page', 'usage', 'len', 'reportId', 'reportIds', 'replyMs', 'reply', 'paths', 'note'];
 const KNOWN = {
   top: ['format', 'id', 'title', 'kind', 'vendor', 'about', 'source', 'note', 'vid', 'pids', 'hid', 'transport', 'links', 'models', 'replies', 'messages', 'reads', 'fields', 'settings', 'battery', 'batteryCare', 'info', 'stepBack', 'unsupported', 'never', 'byPid'],
   notice: ['reportId', 'starts', 'len', 'note'],
@@ -583,6 +587,36 @@ export function validate(obj) {
     else for (const p of obj.stepBack.processes) { try { new RegExp(p, 'i'); } catch { no(`stepBack: "${p}" is not a valid pattern`); } }
   }
   if (obj.hid != null && !(isObj(obj.hid) && hex4(obj.hid.vid) && hex4(obj.hid.pid))) no('hid (the channel the agent opens) needs vid and pid, 4 hex digits each');
+  // (9 Nov 2026, security audit run-2) every other part of hid becomes the helper's channel name and the report id the
+  // device really gets, so each must be exactly what DeviceHub expects: a known key, a plain number or 4 hex digits.
+  // No '*' page or usage and no interface/collection choice in a file (they open collections the never lists cannot
+  // place), and no line break anywhere (the helper reads one request per line).
+  const hidPart = (h, where, top) => {
+    if (!isObj(h)) { no(`${where} must be an object`); return; }
+    for (const k of Object.keys(h)) if (!(top ? HID_KEYS : HID_PID_KEYS).includes(k)) no(`${where} has "${k}", which a driver file may not set`);
+    if (h.page != null && !hex4(h.page)) no(`${where}.page must be 4 hex digits (a usage page, not "*")`);
+    if (h.usage != null && !hex4(h.usage)) no(`${where}.usage must be 4 hex digits (not "*")`);
+    if (h.len != null && !(Number.isInteger(h.len) && h.len >= 1 && h.len <= 1024)) no(`${where}.len must be a whole number 1-1024`);
+    if (h.reportId != null && !(Number.isInteger(h.reportId) && h.reportId >= 0 && h.reportId <= 255)) no(`${where}.reportId must be a whole number 0-255`);
+    if (h.reportIds != null && !(Array.isArray(h.reportIds) && h.reportIds.length <= 16 && h.reportIds.every((x) => Number.isInteger(x) && x >= 0 && x <= 255))) no(`${where}.reportIds must be a list of whole numbers 0-255`);
+    if (h.replyMs != null && !(Number.isInteger(h.replyMs) && h.replyMs >= 0 && h.replyMs <= 60000)) no(`${where}.replyMs must be a whole number of milliseconds`);
+    if (h.reply != null && h.reply !== 'raw') no(`${where}.reply can only be "raw"`);
+    if (h.paths != null && !(isObj(h.paths) && Object.values(h.paths).every((p) => typeof p === 'string' && /^[A-Za-z0-9_&]{1,40}$/.test(p)))) no(`${where}.paths must name interfaces like "mi_00"`);
+    if (h.vid != null && !hex4(h.vid)) no(`${where}.vid must be 4 hex digits`);
+    if (h.pid != null && !hex4(h.pid)) no(`${where}.pid must be 4 hex digits`);
+  };
+  if (isObj(obj.hid)) {
+    hidPart(obj.hid, 'hid', true);
+    if (obj.hid.pids != null && !(Array.isArray(obj.hid.pids) && obj.hid.pids.every(hex4))) no('hid.pids must be a list of 4-hex product ids');
+    if (obj.hid.byPid != null) {
+      if (!isObj(obj.hid.byPid)) no('hid.byPid must be an object');
+      else for (const [k, v] of Object.entries(obj.hid.byPid)) { if (!hex4(k)) no(`hid.byPid "${k}" must be a 4-hex product id`); hidPart(v, `hid.byPid.${k}`, false); }
+    }
+    // the channel's vendor is the file's vendor: a file cannot open another maker's device under its own name
+    for (const v of [obj.hid.vid, ...Object.values(isObj(obj.hid.byPid) ? obj.hid.byPid : {}).map((x) => x?.vid)].filter((x) => x != null)) {
+      if (hex4(v) && hex4(obj.vid) && up4(v) !== up4(obj.vid)) no(`hid vid ${v} is not the file's own vid ${obj.vid}`);
+    }
+  }
 
   // a session around every request (2 Nov 2026, Pulsar-style "host control"): two fixed messages the driver sends before
   // and after each request, nothing filled in, checked against the never lists like every other message
@@ -602,12 +636,19 @@ export function validate(obj) {
     try { own.push({ ...n, pat: parsePattern(n.bytes), from: 'its own never list' }); } catch (e) { no(`never "${n?.bytes}": ${e.message}`); }
   }
   const vid = hex4(obj.vid) ? up4(obj.vid) : null;
-  const pages = new Set([t?.usagePage, ...Object.values(links || {}).map((l) => l?.usagePage)].filter(hex4).map(up4));
+  // the pages the channel really opens: transport and links, and the hid channel's own (9 Nov 2026, security audit run-2)
+  const hidPids = isObj(obj.hid) && isObj(obj.hid.byPid) ? Object.values(obj.hid.byPid).filter(isObj) : [];
+  const pages = new Set([t?.usagePage, ...Object.values(links || {}).map((l) => l?.usagePage), isObj(obj.hid) ? obj.hid.page : null, ...hidPids.map((x) => x.page)].filter(hex4).map(up4));
   const builtIn = (never.commands || []).filter((c) => c.bytes && (c.vid === '*' || [].concat(c.vid).map(up4).includes(vid))
     && (!c.pids || c.pids.map(up4).some((p) => pids.includes(p))) && (!c.page || pages.has(up4(c.page))))
     .map((c) => ({ ...c, why: `${c.what}; ${c.source}`, pat: parsePattern(c.bytes), from: `DeviceHub's never list (${c.brand})` }));
   const linkIds = new Set([t?.reportId ?? 0, ...Object.values(links || {}).map((l) => l?.reportId).filter((x) => x != null)]);
+  // the report ids the hid channel itself sends on (its own reportId, per product too): a report goes out on these
+  for (const x of [isObj(obj.hid) ? obj.hid.reportId : null, ...hidPids.map((p) => p.reportId), ...[obj.hid, ...hidPids].flatMap((h) => (isObj(h) && Array.isArray(h.reportIds) ? h.reportIds : []))]) if (Number.isInteger(x)) linkIds.add(x);
   for (const [name, parts] of Object.entries(parsed)) {
+    // (9 Nov 2026, security audit run-2) a message names a report id only when the channel sends on it: the helper puts
+    // the channel's id on the wire, so a different declared id would be checked here as one report and sent as another
+    if (messages[name].reportId != null && !linkIds.has(messages[name].reportId)) no(`message "${name}" names report ${messages[name].reportId}, which none of the file's channels sends on (${[...linkIds].join(', ')})`);
     const ids = messages[name].reportId != null ? new Set([messages[name].reportId]) : linkIds;
     const slots = expand(parts, fields, valueSets[name], codeSets[name]);
     const cs = t?.checksum && t.checksum.type !== 'none' ? t.checksum : null;

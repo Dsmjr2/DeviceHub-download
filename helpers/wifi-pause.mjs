@@ -30,7 +30,7 @@ import { declinedText, unansweredText } from './uac.mjs';
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PF = process.env.ProgramFiles || 'C:\\Program Files';
 export const SOURCE = path.join(ROOT, 'helpers', 'wifi-pause.ps1');
-export const SCRIPT_SHA256 = '72effc774daf6dd236f5785e282ff0818621a278a31484c4ee3fb05586bc19bf';
+export const SCRIPT_SHA256 = 'feed07e6af4afbd700b57858f083fa1ad29668b3b5104baecc25ed7a05cb9a5d';
 export const WIFI = {
   dir: path.join(PF, 'DeviceHub Wi-Fi pause'),
   script: path.join(PF, 'DeviceHub Wi-Fi pause', 'wifi-pause.ps1'),

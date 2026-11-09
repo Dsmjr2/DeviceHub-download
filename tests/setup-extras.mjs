@@ -73,6 +73,8 @@ try {
   fs.writeFileSync(path.join(a, 'data', 'profiles.json'), '[{"name":"Games"}]');
   let reads = 0;
   const core = { devices: { mouse: {}, headset: {} }, copyFor: async (id) => { reads++; return id === 'mouse' ? { device: 'mouse', takenAt: new Date().toISOString(), data: { settings: { dpi0: 800 } } } : null; } };
+  // this PC keeps OneDrive copies (the setting the offer below depends on)
+  fs.writeFileSync(path.join(a, 'data', 'settings.json'), JSON.stringify({ ...(fs.existsSync(path.join(a, 'data', 'settings.json')) ? JSON.parse(fs.readFileSync(path.join(a, 'data', 'settings.json'), 'utf8')) : {}), oneDriveCopy: true }));
   const s1 = await od.save(core, A);
   check(s1.saved && fs.existsSync(s1.file), 'first copy written');
   const f1 = JSON.parse(fs.readFileSync(s1.file, 'utf8'));
@@ -81,6 +83,13 @@ try {
   check(s2.unchanged, 'unchanged: not written again');
   // another PC's copy shows up, and Not now puts it away until it changes
   fs.writeFileSync(path.join(odDir, 'DeviceHub', 'LAPTOP.devicehub-setup.json'), JSON.stringify(f1));
+  // (9 Nov 2026, security audit run-2) only on a PC that keeps OneDrive copies itself: with the setting off, a file
+  // that turned up in the folder is never offered as "your settings from another PC"
+  const settingsFile = path.join(a, 'data', 'settings.json');
+  const prevSettings = fs.existsSync(settingsFile) ? JSON.parse(fs.readFileSync(settingsFile, 'utf8')) : {};
+  fs.writeFileSync(settingsFile, JSON.stringify({ ...prevSettings, oneDriveCopy: false }));
+  check(od.status().others.length === 0, 'with OneDrive copies off, another PC\'s file in the folder is not offered');
+  fs.writeFileSync(settingsFile, JSON.stringify({ ...prevSettings, oneDriveCopy: true }));
   let st = od.status();
   check(st.mine && st.others.length === 1 && st.others[0].pc === 'LAPTOP' && !st.others[0].seen, 'the other PC is listed');
   check(od.read('LAPTOP').kind === 'devicehub-setup', 'the other PC\'s copy can be read');

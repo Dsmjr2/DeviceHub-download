@@ -1,7 +1,8 @@
 {
-  "version": "1.61",
-  "commit": "d65f0ed636a524f47c79e9bf04be3ea8eba3ad5d",
+  "version": "1.62",
+  "commit": "65eeeef8313dfab87e5b83b7d0314736eeccb29e",
   "notes": [
-    "Works reports count only from 3 different GitHub accounts (30+ days…"
+    "ASUS ROG library entry: updated date for its driver.json change",
+    "Security audit run 2 fixes: driver channel fields checked, no line…"
   ]
 }

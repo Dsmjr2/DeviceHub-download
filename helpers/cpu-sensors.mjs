@@ -94,6 +94,9 @@ export function readerScript({ files = FILES, sourceSha } = {}) {
     "foreach ($p in $pins) { $b = [IO.File]::ReadAllBytes([IO.Path]::Combine($dir, $p[0])); if ([BitConverter]::ToString($hash.ComputeHash($b)).Replace('-', '').ToLowerInvariant() -ne $p[1]) { exit 5 }; $bytes[$p[0]] = $b }",
     "foreach ($p in $pins) { if ($p[0].EndsWith('.dll')) { $null = [Reflection.Assembly]::LoadFrom([IO.Path]::Combine($dir, $p[0])) } }",
     '$cp = [CodeDom.Compiler.CompilerParameters]::new(); $cp.GenerateInMemory = $true; $cp.GenerateExecutable = $false; $cp.CompilerOptions = \'/optimize+\'',
+    // (9 Nov 2026, security audit run-2) the compiler's own files (the source, its response file, the assembly it then
+    // loads) go in this admin-only folder, not the person's TEMP, where a program of theirs could swap them mid-compile
+    '$cp.TempFiles = [CodeDom.Compiler.TempFileCollection]::new($dir, $false)',
     "$null = $cp.ReferencedAssemblies.Add('System.dll'); $null = $cp.ReferencedAssemblies.Add([IO.Path]::Combine($dir, 'LibreHardwareMonitorLib.dll'))",
     "$r = [Microsoft.CSharp.CSharpCodeProvider]::new().CompileAssemblyFromSource($cp, [Text.Encoding]::UTF8.GetString($bytes['reader.cs']))",
     'if ($r.Errors.HasErrors) { exit 6 }',

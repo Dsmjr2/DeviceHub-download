@@ -144,6 +144,9 @@ const callCounts = () => ({ ...calls });
 
 // One request on one channel; resolves with the reply text, or 'TIMEOUT'.
 function request(chan, cmd, ms = 8000) {
+  // (9 Nov 2026, security audit run-2) one request per line: a channel name with a space or a line break, or a command
+  // with a line break, would be read by the helper as more than one request, so it is refused before anything is written
+  if (/\s/.test(String(chan)) || /[\r\n]/.test(String(cmd))) { console.log('[native] refused a request with a space or line break in its channel or a line break in its command'); return Promise.resolve('ERR refused: line break in a helper request'); }
   // a library driver's Corsair Bragi channel ("bragi" tag): the never list first, before the helper even starts
   // (helpers/bragi-guard.js, final audit 22 Oct 2026). DeviceHub's own HS80 channels have no tag and are not checked.
   if (bragiGuard.isBragi(chan)) { const no = bragiGuard.refusal(chan, cmd); if (no) { console.log(`[never] ${chan} ${String(cmd).split(' ')[0]}: ${no}`); return Promise.resolve(`ERR ${no}`); } }

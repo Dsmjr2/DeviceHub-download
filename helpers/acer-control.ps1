@@ -28,6 +28,9 @@
 # fan speed, a fan table, a power profile or anything else; the firmware's own thermal protection is never touched.
 param([ValidateSet('read', 'fans-auto', 'fans-max', 'health-on', 'health-off')][string]$Mode = 'read', [string]$Want = '')
 $ErrorActionPreference = 'Stop'
+# (9 Nov 2026, security audit run-2) modules only from Windows' own folder: this runs as administrator, and PowerShell
+# would otherwise load a cmdlet's module from the person's own Documents folder or a PSModulePath they set themselves
+$env:PSModulePath = [IO.Path]::Combine([Environment]::SystemDirectory, 'WindowsPowerShell\v1.0\Modules')
 $dir = $PSScriptRoot
 $readings = Join-Path $dir 'readings.json'
 $result = Join-Path $dir 'result.json'

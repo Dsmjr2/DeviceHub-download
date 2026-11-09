@@ -174,6 +174,9 @@ class HostDevice {
     if (s.reply === 'raw') return this.sendRaw(id, bytes);
     await this.followCable();
     const other = id !== s.reportId && Array.isArray(s.reportIds) && s.reportIds.includes(id);
+    // (9 Nov 2026, security audit run-2) a plain REQ goes out on the channel's own report id, whatever id the driver
+    // named: the never list is checked against that one too, so a report checked as one id is never sent as another
+    if (!other && id !== s.reportId) this.checkNever(s.reportId, bytes, s.page);
     const req = `${other ? `REQR ${hex2(id)} ` : 'REQ '}${s.echo(bytes)} ${s.replyMs} ${bytes.map((b) => b.toString(16).padStart(2, '0')).join(' ')}`;
     let reply = await this.line(req, s.replyMs + 3000);
     // the cable was pulled: carry on over the dongle
@@ -372,7 +375,28 @@ const hosts = SPECS.map((s) => new HostDevice(s));
 // echo(bytes): how many leading bytes of a request its reply repeats (1 unless the device file says otherwise)
 // One channel per call; a driver with several product ids gets one call per id (helpers/my-devices.mjs hidSpecs).
 // Options for library drivers: channelOpts above, and on the HostDevice reply 'raw', routes, reportIds.
+// (9 Nov 2026, security audit run-2) a library or my-devices channel's fields become the helper's channel name and the
+// report id on the wire: each must be a plain number or hex id, so nothing in a driver file can break the helper's
+// one-request-per-line protocol or name a report other than the one it sends
+export function specProblem(spec) {
+  const hex = (v) => typeof v === 'string' && /^[0-9A-Fa-f]{4}$/.test(v);
+  const pg = (v) => v == null || v === '*' || hex(v);
+  const int = (v, lo, hi) => v == null || (Number.isInteger(v) && v >= lo && v <= hi);
+  if (!hex(spec?.vid) || !hex(spec?.pid)) return 'vid and pid must be 4 hex digits';
+  if (!pg(spec.page) || !pg(spec.usage)) return 'page and usage must be 4 hex digits or *';
+  if (!int(spec.len, 1, 1024)) return 'len must be a whole number 1-1024';
+  if (!int(spec.reportId, 0, 255)) return 'reportId must be a whole number 0-255';
+  if (!int(spec.replyMs, 0, 60000)) return 'replyMs must be a whole number of milliseconds';
+  for (const k of ['iface', 'col']) if (!int(spec[k], 0, 255)) return `${k} must be a small whole number`;
+  for (const k of ['inputLen', 'outputLen', 'featureLen']) if (!int(spec[k], 1, 4096)) return `${k} must be a whole number 1-4096`;   // Roccat feature reports reach 2081
+  if (spec.reportIds != null && !(Array.isArray(spec.reportIds) && spec.reportIds.every((x) => x != null && int(x, 0, 255)))) return 'reportIds must be whole numbers 0-255';
+  if (spec.cablePid != null && !hex(spec.cablePid)) return 'cablePid must be 4 hex digits';
+  if (spec.dongles != null && !(Array.isArray(spec.dongles) && spec.dongles.every(hex))) return 'dongles must be 4-hex product ids';
+  return null;
+}
 export function addSpec(spec) {
+  const bad = specProblem(spec);
+  if (bad) throw new Error(`the device channel was refused: ${bad}`);
   const s = normalize(spec);
   s.never = true;   // a library or my-devices driver's channel: the never list is checked before every send (checkNever)
   SPECS.push(s); hosts.push(new HostDevice(s));
