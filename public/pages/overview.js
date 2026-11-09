@@ -76,6 +76,9 @@ function pluginReadouts(d) {
   return out.slice(0, 3);
 }
 
+// the mic as the Headset page shows it: the HS80's own mute, or for any other headset Windows' mute (a generic
+// headset's tile read "Mic —" while its page said On)
+export const micOn = (d) => d?.values?.['prop:micEnabled'] ?? (d?.adapter?.mode === 'generic' && typeof d.values?.['mute:recording'] === 'boolean' ? !d.values['mute:recording'] : undefined);
 function readouts(d, redraw) {
   const v = d.values;
   if (d.status !== 'connected') return [];
@@ -83,7 +86,7 @@ function readouts(d, redraw) {
   if (d.id === 'headset' && !v.headsetOn) return [];
   // values as small gauges in the battery's style (ui/gauges.js); the EQ name and lift-off stay words
   if (d.id === 'mouse') return [['DPI', dots({ n: v.dpiStage, of: v.stageCount || 4, value: fmt(v[`dpi${(v.dpiStage || 1) - 1}`]) })], ['Polling', signal({ hz: v.pollingRate })], ['Lift-off', LIFT_OFF[v.liftOff] || '—']];
-  if (d.id === 'headset') return [['Volume', meter({ ic: 'volume', pct: v['vol:playback'], value: v['vol:playback'] != null ? `${v['vol:playback']}%` : '—' })], ['Mic', micState({ on: v['prop:micEnabled'] })], ['EQ Profile', eqName(redraw)]];
+  if (d.id === 'headset') return [['Volume', meter({ ic: 'volume', pct: v['vol:playback'], value: v['vol:playback'] != null ? `${v['vol:playback']}%` : '—' })], ['Mic', micState({ on: micOn(d) })], ['EQ Profile', eqName(redraw)]];
   if (d.id === 'keyboard') {
     const layers = d.adapter.session?.info.layers;
     const pctB = v.brightness != null ? (v.brightness >= 250 ? 100 : Math.round((v.brightness / 255) * 100)) : null;
@@ -226,7 +229,7 @@ function bay(d, go, redraw) {
   const ro = readouts(d, redraw);
   const bat = d.battery?.percent;
   const sub = d.status === 'connected' ? (d.id === 'headset' && !d.values.headsetOn ? 'Receiver connected · headset off' : 'Ready') : d.status === 'asleep' ? 'Asleep: move to wake' : d.error || (d.id === 'headset' ? 'Plug in receiver or cable' : isRemote() ? 'Not plugged in' : d.id === 'keyboard' ? 'One click after Chrome restarts' : 'Not connected yet');
-  const muted = d.id === 'headset' && d.values?.['prop:micEnabled'] === false;
+  const muted = d.id === 'headset' && micOn(d) === false;
   const off = d.status === 'connected' && d.id === 'headset' && !d.values.headsetOn;
   const el = h('div', { class: `bay ${d.status}${muted ? ' mic-muted' : ''}${off ? ' off' : ''}`, 'data-dev': d.id, 'data-shape': `${d.status}|${ro.length}|${bat != null}`, role: 'button', tabindex: 0, style: { '--cc': colorFor(d) }, onclick: () => go(d.id), onkeydown: (e) => { if (e.key === 'Enter') go(d.id); } },
     // the pill carries the state: CONNECTED, ASLEEP, HEADSET OFF ... (no "Ready" line under the name)

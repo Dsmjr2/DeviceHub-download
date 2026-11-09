@@ -354,6 +354,8 @@ export async function finish() {
     await d.sleep(1000);
   }
   if (st?.status !== 'connected') return { ok: false, error: 'Not connected to its new driver yet. Replug it, then press Turn on settings again.' };
+  // (9 Nov 2026, audit run-2 wave 2) only the driver this session saved: the device under that id must be its folder
+  if (res.saved.name && st?.adapter?.plugin && st.adapter.plugin !== res.saved.name) return { ok: false, error: 'Another driver answers to its name. Restart DeviceHub, then press Turn on settings on its page.' };
   try {
     const t = await d.post('/api/agent/turn-on', { id });
     res.turnedOn = { ran: !!t.ran, on: !!t.on, counts: t.counts || null, why: t.why || null };

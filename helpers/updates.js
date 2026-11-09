@@ -33,13 +33,26 @@ async function installedApps() {
 
 const cmp = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); } return 0; };
 
-async function page(url) {
+// (9 Nov 2026, security audit run-2 wave 2) redirects are followed by hand, only over HTTPS and only within the maker's own
+// site: a redirect anywhere else (127.0.0.1:5577 included) is refused, so a vendor page cannot steer this request
+async function page(url, { fetchFn = fetch } = {}) {
   const ac = new AbortController();
   const t = setTimeout(() => ac.abort(), 12000);
+  const base = new URL(url).hostname.replace(/^www\./, '');
   try {
-    const r = await fetch(url, { signal: ac.signal, headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) DeviceHub update check' } });
-    if (!r.ok) throw new Error(`${r.status} from ${new URL(url).host}`);
-    return await r.text();
+    let u = url;
+    for (let hop = 0; hop < 5; hop++) {
+      const r = await fetchFn(u, { signal: ac.signal, redirect: 'manual', headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) DeviceHub update check' } });
+      const loc = r.status >= 300 && r.status < 400 ? r.headers.get('location') : null;
+      if (loc) {
+        const next = new URL(loc, u);
+        if (next.protocol !== 'https:' || !(next.hostname === base || next.hostname.endsWith(`.${base}`))) throw new Error(`refused a redirect from ${new URL(u).host} to ${next.host}`);
+        u = next.href; continue;
+      }
+      if (!r.ok) throw new Error(`${r.status} from ${new URL(u).host}`);
+      return await r.text();
+    }
+    throw new Error(`too many redirects from ${base}`);
   } finally { clearTimeout(t); }
 }
 
@@ -102,3 +115,5 @@ function close(app) {
 function init(root) { cacheFile = require('./data-dir').dataFile('updates-cache.json', root); }
 
 module.exports = { init, status, open, close, PAGES };
+
+module.exports.page = page;   // tests/audit-run2.mjs

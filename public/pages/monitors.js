@@ -29,7 +29,7 @@ addEventListener('dropdown-closed', () => { listOpen = false; letGo(); });
 
 // shown at once from DeviceHub's last reading, then read again in the background when that came back quicker than any
 // DDC/CI read can (helpers/monitors.js list): the page never waits on the monitors when a reading exists
-let refreshed = 0;
+let refreshed = 0, failedAt = 0;
 async function load(fresh) {
   if (loading) return; loading = true;
   const t = Date.now();
@@ -37,7 +37,7 @@ async function load(fresh) {
     list = await env.api(`/api/monitors${fresh ? '?fresh=1' : ''}`); error = null;
     if (!fresh && Date.now() - t < 300 && Date.now() - refreshed > 10000) { refreshed = Date.now(); setTimeout(() => load(true), 0); }
   }
-  catch (e) { error = e.message; }
+  catch (e) { error = e.message; failedAt = Date.now(); }
   finally { loading = false; if (fresh) refreshed = Date.now(); redraw(); }
 }
 
@@ -143,13 +143,17 @@ export default {
     if (isDemo()) return h('div', {}, topbar('Displays and camera', 'Monitors', null, sleepBtn, helpHere('monitors')), card([h('h2', {}, 'Monitors')], h('p', { class: 'faint' }, 'Not shown in demo mode.')));
     if (!list && !error) load(false);
     else if (list && !loading && Date.now() - refreshed > 10000) { refreshed = Date.now(); queueMicrotask(() => load(true)); }
+    // a read that failed is tried again when the page is shown again (9 Nov 2026: "Monitors not read" stayed until the
+    // window was reloaded), at most every 10 s so a monitor that keeps failing is not asked in a loop
+    else if (!list && error && !loading && Date.now() - failedAt > 10000) queueMicrotask(() => load(false));
     return h('div', {},
       // Get help (area monitors: each monitor's DDC/CI answer and the camera's settings), top right
       topbar('Displays and camera', 'Monitors', null, sleepBtn, helpHere('monitors')),
       // the monitors and the camera side by side on one screen (23 Oct 2026, Shawn: "I want the lighting area non
       // scrollable if possible, same with monitors"); no card scrolls (24 Oct: Color balance folds, rows compact)
       h('div', { class: 'grid mon-cols top', style: { '--n': (list?.length || 2) + 1 } },
-        ...(error ? [card([h('h2', {}, 'Monitors')], h('p', { class: 'faint' }, `Monitors not read: ${error}`))]
+        // a fresh read that failed keeps the last reading on screen (9 Nov 2026: it replaced every monitor card)
+        ...(error && !list ? [card([h('h2', {}, 'Monitors')], h('p', { class: 'faint' }, `Monitors not read: ${error}`))]
           // while they are read: two monitor cards with shimmering rows (21 Oct 2026)
           : !list ? [loadingCard('Monitor', 4, 'monitor'), loadingCard('Monitor', 4, 'monitor')]
             : list.length ? [...list.map(monitorCard), ...displayOnlyScreens(list).map((s) => card([icon('monitor'), h('h2', {}, s.name)], displayBlockFor(s)))]

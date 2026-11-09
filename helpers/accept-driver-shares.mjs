@@ -75,8 +75,8 @@ export function frameOf(t, hid) {
 export function sentMessages(def) {
   const out = [];
   const linkIds = Object.values(def?.links || {}).map((l) => l?.reportId).filter((x) => x != null);
-  const add = (where, msgs, t) => {
-    const frame = frameOf(t, def?.hid);
+  const add = (where, msgs, t, hid = def?.hid) => {
+    const frame = frameOf(t, hid);
     for (const [name, m] of Object.entries(msgs || {})) {
       const ids = m?.reportId != null ? [m.reportId] : [...new Set([...(linkIds.length ? linkIds : []), t?.reportId ?? null])];
       for (const rid of ids) out.push({ name: `${where}${name}`, reportId: rid, bytes: String(m?.bytes ?? ''), frame });
@@ -84,6 +84,13 @@ export function sentMessages(def) {
   };
   add('', def?.messages, def?.transport);
   for (const [pid, o] of Object.entries(def?.byPid || {})) add(`${pid} `, o?.messages, { ...(def?.transport || {}), ...(o?.transport || {}) });
+  // (9 Nov 2026, audit run-2 wave 2) a product whose hid channel opens another collection (hid.byPid.<pid>.page) sends
+  // the same messages there: each is reviewed again on that page
+  for (const [pid, h] of Object.entries(def?.hid?.byPid || {})) {
+    if (!h || typeof h !== 'object' || h.page == null || String(h.page).toUpperCase() === String(def?.hid?.page ?? '').toUpperCase()) continue;
+    const o = def?.byPid?.[pid] || def?.byPid?.[String(pid).toUpperCase()];
+    add(`${pid} `, o?.messages || def?.messages, { ...(def?.transport || {}), ...(o?.transport || {}) }, { ...def.hid, ...h });
+  }
   return out;
 }
 const msgKey = (rid, bytes, frame) => `${rid ?? ''}|${String(bytes).trim().toUpperCase().replace(/\s+/g, ' ')}|${String(frame ?? '').toUpperCase()}`;

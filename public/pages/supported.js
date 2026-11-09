@@ -81,7 +81,7 @@ export default {
     }
     // the three statuses, said once here instead of on every row
     const legend = h('p', { class: 'faint', style: { margin: '0 0 14px' } },
-      h('b', {}, 'Works'), ': out of the box. ', h('b', {}, 'Reads now'), ': after Turn on settings. ',
+      h('b', {}, 'Works'), ': out of the box. ', h('b', {}, 'Reads now'), ': changes settings after Turn on settings. ',
       h('b', {}, 'Not tried yet'), ': untested; install from Setup.');
     return h('div', {},
       topbar('App', 'Supported devices', null, button('Back', () => { location.hash = '#/settings'; }, { kind: 'ghost small' })),

@@ -9,7 +9,11 @@ $root = Split-Path $PSScriptRoot -Parent
 $url = 'https://github.com/Dsmjr2/DeviceHub-download.git'
 # git in the publishing copy; its progress lines on stderr are not errors (Windows PowerShell would stop on them)
 # (no param block: every word, -A or -q included, goes to git as it is)
-function G { $ErrorActionPreference = 'Continue'; $out = & git -C $Clone @args 2>&1 | ForEach-Object { "$_" }; if ($LASTEXITCODE) { throw "git $($args -join ' '): $out" }; $out }
+# (9 Nov 2026, security audit run-2 wave 2) the public branch is checked out here, and anyone holding the GitHub account
+# can push to it: no symlinks are ever made from it, and no git-lfs filter fetches or runs anything for it
+$env:GIT_LFS_SKIP_SMUDGE = '1'
+$safe = @('-c', 'core.symlinks=false', '-c', 'filter.lfs.smudge=', '-c', 'filter.lfs.process=', '-c', 'filter.lfs.required=false', '-c', 'core.hooksPath=NUL')
+function G { $ErrorActionPreference = 'Continue'; $out = & git @safe -C $Clone @args 2>&1 | ForEach-Object { "$_" }; if ($LASTEXITCODE) { throw "git $($args -join ' '): $out" }; $out }
 
 Push-Location $root
 try {
@@ -19,7 +23,7 @@ try {
   $files = @(git ls-files | Where-Object { $_ -ne 'JOURNAL.md' -and $_ -notmatch '^public/preview-' -and $_ -notmatch '^screenshots/' -and $_ -notmatch '^public/img/(xlite|hs80|p75)\.png$' })
 } finally { Pop-Location }
 
-if (-not (Test-Path (Join-Path $Clone '.git'))) { & git clone -q --no-checkout $url $Clone 2>&1 | Out-Null; if ($LASTEXITCODE) { throw "could not clone $url" } }
+if (-not (Test-Path (Join-Path $Clone '.git'))) { & git @safe clone -q --no-checkout $url $Clone 2>&1 | Out-Null; if ($LASTEXITCODE) { throw "could not clone $url" } }
 G config core.autocrlf false | Out-Null
 G fetch -q origin | Out-Null
 $hasApp = [bool](& git -C $Clone ls-remote --heads origin app)

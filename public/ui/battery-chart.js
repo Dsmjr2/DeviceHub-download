@@ -107,20 +107,22 @@ export function batteryChart(id, redraw, { title, kind, heading = 'Battery', ban
   const days = ui.days[id] ?? 1;
   const box = h('div', { class: 'bc-box' }, h('div', { class: 'faint', style: { padding: '40px 0', textAlign: 'center' } }, 'Loading…'));
   const table = h('details', { class: 'bc-table' }, h('summary', {}, 'Readings'));
+  // the charging key and the Readings fold only with readings to show (nothing to explain under "Not enough readings yet")
+  const key = h('div', { class: 'bc-key' }, h('i'), band);
   const el = card([h('h2', {}, heading), h('span', { class: 'spacer' }),
     segmented({ value: days, compact: true, options: [{ value: 1, label: '24 h' }, { value: 7, label: '7 days' }], onCommit: async (v) => { ui.days[id] = v; redraw(); } })],
     box,
-    h('div', { class: 'bc-key' }, h('i'), band),
+    key,
     table);
   load(id, days).then((rows) => {
-    if (rows.length < 2) { box.replaceChildren(h('div', { class: 'faint', style: { padding: '40px 0', textAlign: 'center' } }, 'Not enough readings yet.')); return; }
+    if (rows.length < 2) { key.hidden = true; box.replaceChildren(h('div', { class: 'faint', style: { padding: '40px 0', textAlign: 'center' } }, 'Not enough readings yet.')); return; }
     // redrawn when its width changes; the watcher stops once the page has replaced this card (pages redraw often)
     const ro = new ResizeObserver(() => { if (!box.isConnected) { ro.disconnect(); return; } draw(box, id, rows, days, line); });
     ro.observe(box);
     requestAnimationFrame(() => draw(box, id, rows, days, line));
-  }).catch(() => box.replaceChildren(h('div', { class: 'faint' }, 'No battery history.')));
+  }).catch(() => { key.hidden = true; box.replaceChildren(h('div', { class: 'faint' }, 'No battery history.')); });
   // the table always covers the whole 7 days, whatever the graph shows
-  load(id, 7).then((rows) => table.append(readings(rows))).catch(() => {});
+  load(id, 7).then((rows) => { if (rows.length) table.append(readings(rows)); else table.hidden = true; }).catch(() => { table.hidden = true; });
   return el;
 }
 

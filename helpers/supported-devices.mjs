@@ -98,7 +98,7 @@ export function groupOf(kind) {
 export function statusOf(meta, { changes = 1 } = {}) {
   const real = hasRealRecord(meta);
   if (meta.builtIn || (real && meta.status === 'tested')) return { key: 'works', label: 'Works', line: 'Works out of the box.' };
-  if (meta.status === 'untested') return { key: 'untried', label: 'Not tried yet', line: 'Not tried on a real device yet. Install it from the Set up card on Overview.' };
+  if (meta.status === 'untested') return { key: 'untried', label: 'Not tried yet', line: 'Not tried on a real device yet. Install it from Setup.' };
   if (!changes) return { key: 'reads', label: 'Reads now', line: 'Reads the device by itself.' };
   return real
     ? { key: 'reads', label: 'Reads now', line: 'Reads now; each setting can be changed once DeviceHub has checked it.' }

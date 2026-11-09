@@ -697,7 +697,9 @@ export async function handle(url, req, res, send, readBody) {
     if (url.pathname === '/api/help/tried' && req.method === 'GET') { send(res, 200, await (await import('./guided-test.mjs')).getTried(url.searchParams.get('id'), { port })); return true; }
     if (url.pathname === '/api/help/tried' && req.method === 'POST') { send(res, 200, await (await import('./guided-test.mjs')).postTried((await readBody(req)) || {}, { port })); return true; }
     // the device asked about is remembered on this PC, so the Overview can say when a driver for it arrives (helpers/support-wait.mjs)
-    if (url.pathname === '/api/help/request' && req.method === 'GET') { const q = { vid: url.searchParams.get('vid'), pid: url.searchParams.get('pid'), name: url.searchParams.get('name') }; const r = await requestSupport(q); if (r?.ok) await wanted(q); send(res, 200, r); return true; }
+    // (9 Nov 2026, audit run-2 wave 2) a POST: remembering the device changes state, and a GET can be sent by any page on
+    // another localhost port or by a site a server-side fetch was redirected from
+    if (url.pathname === '/api/help/request' && req.method === 'POST') { const b = (await readBody(req)) || {}; const q = { vid: b.vid, pid: b.pid, name: b.name }; const r = await requestSupport(q); if (r?.ok) await wanted(q); send(res, 200, r); return true; }
     // Request support in one click through the relay (helpers/support-request.mjs); fallback: true = use the request above
     if (url.pathname === '/api/help/request/send' && req.method === 'POST') { const b = (await readBody(req)) || {}; const r = await (await import('./support-request.mjs')).send({ vid: b.vid, pid: b.pid, name: b.name }); if (r.sent || r.queued) await wanted(b); send(res, r.bad ? 400 : 200, r); return true; }
     if (url.pathname.startsWith('/api/help/supported-now') && await (await import('./support-wait.mjs')).handle(url, req, res, send, readBody)) return true;

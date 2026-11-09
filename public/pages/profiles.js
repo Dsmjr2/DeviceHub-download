@@ -139,6 +139,9 @@ async function captureNow() {
 }
 const NOTHING = 'Connect a device first.';
 const say = (name, text, kind = '') => { ui.note = { [name]: { text, kind } }; };
+// a save the server refused is said on that profile's card (9 Nov 2026: a refused save, delete or game change said
+// nothing, since the buttons keep a failed action quiet, and the card looked as if it had worked)
+const notSaved = async (name, e) => { say(name, `Not saved: ${e?.message || 'DeviceHub did not answer'}.`, 'bad'); await refreshList(); };
 
 // "Save my current settings here" (Update before): the same capture; the profile keeps its name, color, games and
 // place in the list, and an added device that is not plugged in now keeps what the profile had for it.
@@ -157,7 +160,7 @@ async function saveHere(p) {
     if (Object.keys(keep).length) o.added = keep;
     return o;
   };
-  await saveProfiles(list.map((x) => (x.name === p.name ? next(x) : x)));
+  try { await saveProfiles(list.map((x) => (x.name === p.name ? next(x) : x))); } catch (e) { await notSaved(p.name, e); return; }
   say(p.name, 'Saved.');
   await refreshList();
 }
@@ -165,12 +168,17 @@ async function saveHere(p) {
 async function deleteProfile(p) {
   ui.confirm = null; ui.note = {}; ui.pending.delete(p.name);
   if (ui.picker === p.name) ui.picker = null;
-  await saveProfiles(list.filter((x) => x.name !== p.name));
-  if (auto.settings.defaultProfile === p.name) await saveSettings({ defaultProfile: '' });
+  try {
+    await saveProfiles(list.filter((x) => x.name !== p.name));
+    if (auto.settings.defaultProfile === p.name) await saveSettings({ defaultProfile: '' });
+  } catch (e) { say(p.name, `Not deleted: ${e?.message || 'DeviceHub did not answer'}.`, 'bad'); }
   await refreshList();
 }
 
-const setGames = async (p, games) => { await saveProfiles(list.map((x) => (x.name === p.name ? { ...x, games } : x))); await refreshList(); };
+const setGames = async (p, games) => {
+  try { await saveProfiles(list.map((x) => (x.name === p.name ? { ...x, games } : x))); } catch (e) { await notSaved(p.name, e); return; }
+  await refreshList();
+};
 
 // ---------- When to use it ----------
 async function setUse(p, choice) {
@@ -180,8 +188,10 @@ async function setUse(p, choice) {
   const plan = planUse(p, choice, auto.settings.defaultProfile, ui.remembered[p.name] || []);
   if (choice === 'named' && !plan.games.length) { ui.pending.add(p.name); openPicker(p); } else ui.pending.delete(p.name);
   if (choice !== 'named' && ui.picker === p.name) ui.picker = null;
-  if (JSON.stringify(plan.games) !== JSON.stringify(p.games || [])) await saveProfiles(list.map((x) => (x.name === p.name ? { ...x, games: plan.games } : x)));
-  if (plan.defaultProfile !== undefined && plan.defaultProfile !== auto.settings.defaultProfile) await saveSettings({ defaultProfile: plan.defaultProfile });
+  try {
+    if (JSON.stringify(plan.games) !== JSON.stringify(p.games || [])) await saveProfiles(list.map((x) => (x.name === p.name ? { ...x, games: plan.games } : x)));
+    if (plan.defaultProfile !== undefined && plan.defaultProfile !== auto.settings.defaultProfile) await saveSettings({ defaultProfile: plan.defaultProfile });
+  } catch (e) { await notSaved(p.name, e); return; }
   await refreshList();
 }
 
@@ -439,7 +449,8 @@ async function saveEdit() {
   delete next.monitors; delete next.added;
   if (e.draft.monitors && Object.keys(e.draft.monitors).length) next.monitors = e.draft.monitors;
   if (e.draft.added && Object.keys(e.draft.added).length) next.added = e.draft.added;
-  await saveProfiles(list.map((x) => (x.name === e.name ? next : x)));
+  // a refused save keeps the card open with its edits, and says why
+  try { await saveProfiles(list.map((x) => (x.name === e.name ? next : x))); } catch (x) { e.error = `Not saved: ${x?.message || 'DeviceHub did not answer'}.`; rerender(); return; }
   if (name !== e.name && auto.settings.defaultProfile === e.name) await saveSettings({ defaultProfile: name });
   const back = (await loadProfiles()).find((x) => x.name === name);   // read back what was saved
   ui.editing = null;
@@ -500,7 +511,9 @@ async function flowSave() {
   if (!Object.keys(devs).length && !Object.keys(mons).length && !Object.keys(added).length) { a.error = 'Tick at least one setting.'; rerender(); return; }
   const others = (list || []).filter((p) => p.name !== a.name);
   const color = PROFILE_COLORS[others.length % PROFILE_COLORS.length];
-  await saveProfiles([...others, { name: a.name, color, games: [], devices: devs, ...(Object.keys(mons).length ? { monitors: mons } : {}), ...(Object.keys(added).length ? { added } : {}), savedAt: new Date().toISOString() }]);
+  // a refused save keeps the ticks on screen, and says why
+  try { await saveProfiles([...others, { name: a.name, color, games: [], devices: devs, ...(Object.keys(mons).length ? { monitors: mons } : {}), ...(Object.keys(added).length ? { added } : {}), savedAt: new Date().toISOString() }]); }
+  catch (e) { a.error = `Not saved: ${e?.message || 'DeviceHub did not answer'}.`; rerender(); return; }
   ui.adding = null;
   say(a.name, 'Saved. Pick when to use it.');
   await refreshList();

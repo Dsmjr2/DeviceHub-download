@@ -616,6 +616,19 @@ export function validate(obj) {
     for (const v of [obj.hid.vid, ...Object.values(isObj(obj.hid.byPid) ? obj.hid.byPid : {}).map((x) => x?.vid)].filter((x) => x != null)) {
       if (hex4(v) && hex4(obj.vid) && up4(v) !== up4(obj.vid)) no(`hid vid ${v} is not the file's own vid ${obj.vid}`);
     }
+    // (9 Nov 2026, security audit run-2 wave 2) the channel sends on its own report id: it must be the transport's (per
+    // product, the product's merged transport), so the report a message is reviewed and checked on is the one sent.
+    // Other ids go in reportIds, which the helper sends on as named (REQR).
+    const tRid = (pid) => { const o = isObj(obj.byPid?.[pid]?.transport) ? obj.byPid[pid].transport : {}; return o.reportId ?? t?.reportId ?? 0; };
+    const ridOk = (h, pid, where) => {
+      if (!isObj(h) || h.reportId == null || !Number.isInteger(h.reportId)) return;
+      const want = tRid(pid), extra = Array.isArray(h.reportIds) ? h.reportIds : Array.isArray(obj.hid.reportIds) ? obj.hid.reportIds : [];
+      if (h.reportId !== want && !extra.includes(h.reportId)) no(`${where}.reportId ${h.reportId} is not the transport's report id (${want}); list it in reportIds if the device really uses it`);
+    };
+    ridOk(obj.hid, null, 'hid');
+    for (const [k, v] of Object.entries(isObj(obj.hid.byPid) ? obj.hid.byPid : {})) ridOk(v, up4(k), `hid.byPid.${k}`);
+    // a byPid entry with nothing set (null) is refused rather than spread over the channel as "null"
+    for (const [k, v] of Object.entries(isObj(obj.hid.byPid) ? obj.hid.byPid : {})) if (isObj(v) && Object.values(v).some((x) => x === null)) no(`hid.byPid.${k} has an empty (null) part`);
   }
 
   // a session around every request (2 Nov 2026, Pulsar-style "host control"): two fixed messages the driver sends before

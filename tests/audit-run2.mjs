@@ -147,5 +147,55 @@ const require = createRequire(import.meta.url);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 }
 
+// ---- 8. wave 2 (9 Nov 2026): a driver file's channel report id is its transport's; allow-list review per product page;
+// Learn ids unique; Publish confirmed; no state change on GET; redirects stay on the maker's site; publish clone safe ----
+{
+  const os = await import('node:os');
+  const { validate } = await import('../helpers/declarative-driver.mjs');
+  const base = JSON.parse(fs.readFileSync(path.join(ROOT, 'device-library/asus-rog-mouse/driver.json'), 'utf8'));
+  const d1 = JSON.parse(JSON.stringify(base)); d1.hid.reportId = 7;
+  check(!validate(d1).ok && validate(d1).problems.some((p) => /is not the transport's report id/.test(p)), 'a channel report id other than the transport\'s is refused');
+  const d2 = JSON.parse(JSON.stringify(base)); d2.hid.reportId = 7; d2.hid.reportIds = [1, 7];
+  check(validate(d2).ok, `a channel report id the file lists in reportIds is accepted (${validate(d2).problems})`);
+  const d3 = JSON.parse(JSON.stringify(base)); d3.hid.byPid = { '1A94': { page: null } };
+  check(!validate(d3).ok && validate(d3).problems.some((p) => /empty \(null\) part/.test(p)), 'a null byPid part is refused');
+
+  const { sentMessages } = await import('../helpers/accept-driver-shares.mjs');
+  const sm = sentMessages({ vid: 'ABCD', transport: { reportId: 0 }, hid: { vid: 'ABCD', pid: '0001', page: 'FF00', byPid: { '0002': { page: 'FF60' } } }, messages: { m: { bytes: '01' } } });
+  check(sm.some((m) => /FF60/.test(m.frame)) && sm.some((m) => /FF00/.test(m.frame) && !/FF60/.test(m.frame)), 'a product opening another collection gets its own review entries on that page');
+
+  const { saveDriver } = await import('../helpers/learn-wizard.mjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-learnid-'));
+  try {
+    fs.mkdirSync(path.join(root, 'my-devices', 'old'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'my-devices', 'old', 'library.json'), JSON.stringify({ id: base.id }));
+    const r = saveDriver(JSON.parse(JSON.stringify(base)), { root });
+    check(r.ok && r.id !== base.id && r.id.startsWith(`${base.id}-`), `a learned driver whose id is taken gets its own (${JSON.stringify(r)})`);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  const auto = fs.readFileSync(path.join(ROOT, 'helpers/learn-auto.mjs'), 'utf8');
+  check(/st\.adapter\.plugin !== res\.saved\.name/.test(auto), 'Learn it for me turns on only the driver it saved');
+
+  const settings = fs.readFileSync(path.join(ROOT, 'public/pages/settings.js'), 'utf8');
+  const startAt = settings.indexOf('const start = async () => {');
+  const startBody = settings.slice(startAt, startAt + 1200);
+  check(/modal\('Publish to every copy\?'/.test(startBody) && /Date\.now\(\) - opened < 1000/.test(startBody) && startBody.indexOf('modal(') < startBody.indexOf("/api/publish-release"), 'Publish asks first, and ignores a yes in its first second');
+
+  const gh = fs.readFileSync(path.join(ROOT, 'helpers/get-help.mjs'), 'utf8');
+  check(!/'\/api\/help\/request' && req\.method === 'GET'/.test(gh) && /'\/api\/help\/request' && req\.method === 'POST'/.test(gh), 'remembering a support request is a POST, never a GET');
+
+  const upd = require('../helpers/updates.js');
+  const hops = [];
+  const fake = async (u) => { hops.push(u); return { status: 302, ok: false, headers: { get: (k) => (k === 'location' ? 'http://127.0.0.1:5577/api/help/request?vid=1234' : null) }, text: async () => '' }; };
+  const e = await throws(() => upd.page('https://pulsar.gg/x', { fetchFn: fake }));
+  check(/refused a redirect/.test(e?.message || '') && hops.length === 1, `a vendor page redirecting to this PC is refused before that request (${e?.message}; ${hops.length} requests)`);
+  const via = fs.readFileSync(path.join(ROOT, 'helpers/via-defs.js'), 'utf8');
+  check(/redirect: 'manual'/.test(via) && /next\.hostname !== LIBRARY_HOST/.test(via), 'the VIA library fetch follows redirects only within usevia.app');
+
+  const pc = fs.readFileSync(path.join(ROOT, 'helpers/publish-code.ps1'), 'utf8');
+  check(/core\.symlinks=false/.test(pc) && /GIT_LFS_SKIP_SMUDGE = '1'/.test(pc) && /git @safe -C \$Clone/.test(pc), 'the publish clone never makes symlinks or runs git-lfs for the public branch');
+  const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  check(/if \(\/\^\[0-9a-f\]\{40\}\$\/\.test\(String\(c\)\)\) try \{ ahead/.test(srv), 'only a whole commit id reaches git rev-list');
+}
+
 if (fails.length) { console.log(`audit-run2: ${fails.length} failed`); for (const f of fails) console.log(`  FAIL ${f}`); process.exit(1); }
 console.log('audit-run2 (security audit run-2 fixes): all good');

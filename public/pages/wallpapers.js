@@ -284,12 +284,13 @@ export default {
     const items = shown();
     const total = items.reduce((s, x) => s + x.bytes, 0);
     const line = (x, cls = '') => x ? h('div', { class: `wp-line ${cls} ${x.bad ? 'bad' : ''}`, role: 'status' }, x.text) : null;
-    const where = data ? h('p', { class: 'wp-where faint' },
+    // where the pictures are kept, once at the bottom of the page (9 Nov 2026: it sat under the title; owner rule, a
+    // title stands alone)
+    const where = data ? h('p', { class: 'wp-where faint', style: { margin: '14px 0 0' } },
       `Kept in ${data.dir}`, ' · ', items.length ? `${plural(items.length, 'picture')} · ${mb(total)}` : 'none yet',
       data.demo ? ' · demo' : '') : null;
     const page = h('div', { class: 'wp-page' },
       topbar('Setup', 'Wallpapers', null, null, helpHere('wallpapers')),
-      where,
       error ? card([h('h2', {}, 'Wallpapers')], h('p', { class: 'faint' }, `Folder not read: ${error}`))
         : !data ? loadingCard('Wallpapers', 3)
           : card(null,
@@ -315,7 +316,8 @@ export default {
               : h('div', { class: 'wp-empty' },
                 icon('wallpapers', 'ic wp-empty-ic'),
                 h('p', {}, 'Add or drop pictures here.'),
-                null)));
+                null)),
+      where);
     // drop pictures or folders anywhere on the page
     page.addEventListener('dragover', (e) => { if ([...(e.dataTransfer?.types || [])].includes('Files')) { e.preventDefault(); page.classList.add('wp-drop'); } });
     page.addEventListener('dragleave', (e) => { if (!page.contains(e.relatedTarget)) page.classList.remove('wp-drop'); });

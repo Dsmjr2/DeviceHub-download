@@ -138,7 +138,8 @@ export default {
     if (!info) return h('div', {}, head, h('div', { class: 'panel empty' }, icon('bolt'), h('p', {}, st.error ? `Could not read the laptop: ${st.error}` : 'Reading the laptop…')));
     // the battery over the last day or week (3 Nov 2026): Windows' level every 5 minutes and each plug or unplug
     // (helpers/battery-history.js, id "laptop"); green where it was on the charger
-    return h('div', {}, head, h('div', { class: 'grid two top' }, batteryCard(info.battery), powerCard(info)), acerCard({ redraw: rerender }),
-      info.battery && !isDemo() ? batteryChart('laptop', rerender, { heading: 'Battery over time', band: 'On the charger' }) : null, legionCard(info));
+    // the cards under each other with the grid's own gap (9 Nov 2026: they touched, with no space between them)
+    return h('div', {}, head, h('div', { class: 'stack laptop-cards' }, h('div', { class: 'grid two top' }, batteryCard(info.battery), powerCard(info)), acerCard({ redraw: rerender }),
+      info.battery && !isDemo() ? batteryChart('laptop', rerender, { heading: 'Battery over time', band: 'On the charger' }) : null, legionCard(info)));
   },
 };

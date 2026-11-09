@@ -1,8 +1,7 @@
 {
-  "version": "1.62",
-  "commit": "65eeeef8313dfab87e5b83b7d0314736eeccb29e",
+  "version": "1.63",
+  "commit": "13310f3329a1ed1509e470b6122f7755f51de5ac",
   "notes": [
-    "ASUS ROG library entry: updated date for its driver.json change",
-    "Security audit run 2 fixes: driver channel fields checked, no line…"
+    "Security audit run 2, wave 2: a driver file's channel report id must…"
   ]
 }

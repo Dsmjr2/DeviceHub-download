@@ -169,7 +169,8 @@ export default {
       // under the grid: Instant replay (2 Nov 2026, ui/replay-card.js) and, with no mouse page on this PC (none DeviceHub
       // runs), Windows' pointer settings, as they are on every mouse's page (1 Nov 2026, ui/pointer-card.js)
       // Sleep and screen (3 Nov 2026): on a PC without a battery; a laptop has them on its Laptop page
-      h('div', { class: 'grid two top' }, gamingCard(rerender), replayCard(rerender), powerCard(rerender),
+      // the grid's own gap above it (9 Nov 2026: it touched the PC check card)
+      h('div', { class: 'grid two top', style: { marginTop: '16px' } }, gamingCard(rerender), replayCard(rerender), powerCard(rerender),
         shownDevices().some((x) => x.id === 'mouse' || /mouse/i.test(x.adapter?.kind || '')) ? null : pointerCard(rerender)));
   },
 };

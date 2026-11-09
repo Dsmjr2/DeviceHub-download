@@ -1080,6 +1080,11 @@ export function saveDriver(def, { root = ROOT, folder, now = () => new Date() } 
   fs.mkdirSync(dir, { recursive: true });
   let name = base, n = 2;
   while (fs.existsSync(path.join(dir, name))) name = `${base}-${n++}`;
+  // (9 Nov 2026, audit run-2 wave 2) the driver's id is unique too, not only its folder: two devices with the same product
+  // name ("USB Receiver") gave two drivers one id, the second never loaded, and Turn on settings reached the first
+  const taken = new Set();
+  for (const f of fs.readdirSync(dir)) for (const j of ['library.json', 'driver.json']) { try { const x = JSON.parse(fs.readFileSync(path.join(dir, f, j), 'utf8')); if (x?.id) taken.add(String(x.id)); } catch {} }
+  if (taken.has(def.id)) { let k = 2; while (taken.has(`${def.id}-${k}`)) k++; def = { ...def, id: `${def.id}-${k}` }; }
   const to = path.join(dir, name);
   fs.mkdirSync(to);
   fs.writeFileSync(path.join(to, 'driver.json'), JSON.stringify(def, null, 2) + '\n', { flag: 'wx' });
@@ -1289,7 +1294,10 @@ export function addPid(base, other, { pid, link = 'cable' } = {}) {
   out.models[0].pids[ln] = [pid];
   // the channel: one per id (helpers/my-devices.mjs hidSpecs), with this id's collection where it differs
   const h0 = out.hid, h1 = other.hid, diff = {};
-  for (const k of ['page', 'usage', 'len', 'reportId', 'reply']) if (!same(h0[k] ?? null, h1[k] ?? null)) diff[k] = h1[k] ?? null;
+  // (9 Nov 2026) a part this id lacks gets the channel default it would open with, never null: null was spread over the
+  // channel as the text "NULL" and the helper could not open it (and validate now refuses a null part)
+  const DEF = { page: 'FF00', usage: '0001', len: 64, reportId: 0 };
+  for (const k of ['page', 'usage', 'len', 'reportId', 'reply']) if (!same(h0[k] ?? null, h1[k] ?? null)) { const v = h1[k] ?? DEF[k]; if (v != null) diff[k] = v; }
   const byPidHid = { ...(h0.byPid || {}), ...(Object.keys(diff).length ? { [pid]: diff } : {}) };
   out.hid = { ...h0, pids: [...new Set([...(h0.pids || [h0.pid]).map(up4), pid])], ...(Object.keys(byPidHid).length ? { byPid: byPidHid } : {}) };
   if (!sameBytes) {

@@ -85,7 +85,11 @@ async function shareDriver(d) {
   if (!(await modal('Share this driver?', body, [{ label: 'Cancel', value: false, kind: 'ghost' }, { label: 'Open GitHub', value: true, kind: 'primary' }]))) return;
   const p = await sharePost('/api/share/prepare', { name: a.plugin, by: by.value });
   if (!p.ok) return shareRefused(a, p);
-  const opened = window.open(p.url, '_blank', 'noopener');
+  // window.open with 'noopener' always returns null, so the link below always read "Open GitHub" even when it opened;
+  // the opener is cut by hand instead
+  const win = window.open(p.url, '_blank');
+  if (win) { try { win.opener = null; } catch {} }
+  const opened = !!win;
   if (p.method === 'attach') sharePost('/api/share/open-folder', { entry: p.entry }).catch(() => {});
   // the link is shown too, in case the browser blocked the new window
   await modal(p.method === 'attach' ? 'Attach the driver on GitHub' : 'Finish on GitHub', h('div', {},
@@ -105,15 +109,19 @@ function shareButton(d, shown) {
 // a driver from the device library with settings still read-only (failed, waiting or not checked yet): Check again
 // runs that check now (helpers/diagnose.mjs action "check-again"); the answer shows on the line, nothing pops up.
 // A driver with no real-device record (or one the learning wizard made) writes nothing, its check included, until the
-// person presses Turn on settings (safety round 2; helpers/my-devices.mjs turnOn): that button comes first.
+// person presses Turn on settings (safety round 2; helpers/my-devices.mjs turnOn): that button is the banner's at the
+// top of the page (turnOnBanner), and Check again shows only after it.
 const checkNote = {};
 function checkAgain(d, redraw = () => {}) {
   const lib = d.adapter?.library;
   const ro = (d.adapter?.settings || []).filter((s) => s.type !== 'display' && s.readOnly && !s.writeOnly);   // a write-only one has its own Try it
-  if (!lib || d.status !== 'connected' || (!ro.length && !lib.turnOn)) return null;
-  const kind = lib.turnOn ? 'turn-on' : 'check-again';
+  // waiting for Turn on settings: the banner at the top of the page has that button (two of them showed before)
+  if (!lib || d.status !== 'connected' || lib.turnOn || !ro.length) return null;
+  const kind = 'check-again';
   const run = async () => {
-    checkNote[d.id] = kind === 'turn-on' ? 'Turning on…' : 'Checking…';
+    if (checkNote[d.id] === 'Checking…') return;   // one press at a time
+    checkNote[d.id] = 'Checking…';
+    redraw();   // the line says Checking… while it runs, not only the answer
     try {
       const r = await fetch('/api/diagnose/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, id: d.id }) });
       const j = await r.json().catch(() => ({}));
@@ -121,11 +129,9 @@ function checkAgain(d, redraw = () => {}) {
     } catch (e) { checkNote[d.id] = `Not done: ${e.message}`; }
     redraw();   // the answer (and, once settings are on, the Tell others it works invitation) shows at once
   };
-  const line = kind === 'turn-on'
-    ? 'Read-only until you turn settings on.'
-    : `${ro.map((s) => s.label).join(', ')} ${ro.length === 1 ? 'is' : 'are'} read-only until checked.`;
+  const line = `${ro.map((s) => s.label).join(', ')} ${ro.length === 1 ? 'is' : 'are'} read-only until checked.`;
   return h('div', { class: 'actions', style: { marginTop: '12px', alignItems: 'center' } },
-    button(kind === 'turn-on' ? 'Turn on settings' : 'Check again', run, { kind: kind === 'turn-on' ? 'primary small' : 'ghost small', ic: kind === 'turn-on' ? 'plug' : 'search' }),
+    button('Check again', run, { kind: 'ghost small', ic: 'search' }),
     h('span', { class: 'faint', style: { fontSize: '12.5px' } }, checkNote[d.id] || line));
 }
 
@@ -154,6 +160,7 @@ function turnOnBanner(d, redraw) {
   const lib = d.adapter?.library;
   if (!lib?.turnOn || d.status !== 'connected') return null;
   const run = async () => {
+    if (checkNote[d.id] === 'Turning on…') return;   // one press at a time
     checkNote[d.id] = 'Turning on…'; redraw();
     try {
       const r = await fetch('/api/diagnose/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'turn-on', id: d.id }) });

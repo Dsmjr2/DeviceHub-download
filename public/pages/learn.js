@@ -186,7 +186,8 @@ function preflightBox(d, labels) {
   const pf = st.pf?.key === key ? st.pf : null;
   const again = () => loadPreflight(d, labels);
   return h('div', { class: 'learn-pf', role: 'status' },
-    h('div', { class: 'learn-pf-head' }, pf?.ok ? 'Ready to record.' : 'Fix these first:'),
+    // "Fix these first:" only once a line has failed (it showed over "Checking…" before any answer)
+    pf?.lines ? h('div', { class: 'learn-pf-head' }, pf.ok ? 'Ready to record.' : pf.loading ? 'Checking again…' : 'Fix these first:') : null,
     !pf?.lines ? faint('Checking…') : pfLines(pf.lines, d, again),
     pf && !pf.ok && !pf.loading ? h('div', { class: 'actions', style: { margin: '6px 0 0' } }, button('Check again', again, { kind: 'ghost small', ic: 'refresh' })) : null);
 }

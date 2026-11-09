@@ -195,7 +195,7 @@ let setupWatch = null;
 // Publish to friends (23 Oct 2026): the owner's PC only (server.js /api/publish-release); how far this copy is ahead of
 // the version friends get, and one button that runs helpers/publish-release.ps1 hidden. While it runs this row shows
 // its step, then Published or what stopped it (23 Oct 2026, Shawn: "how do I know if this is done?"), in place.
-let pub = null, pubAt = 0;
+let pub = null, pubAt = 0, pubTimer = null;
 function publishRow() {
   if (isDemo()) return null;
   const running = pub?.run?.state === 'running';
@@ -203,7 +203,9 @@ function publishRow() {
   if (!pub?.owner) return null;
   const when = pub.published?.builtAt ? dayTime(pub.published.builtAt) : null;
   const run = pub.run;
-  if (running) setTimeout(() => { if (location.hash === '#/settings') rerender(); }, 3100);
+  // one waiting redraw at a time (9 Nov 2026: each redraw while publishing added another 3 s timer, so every other
+  // redraw started a chain of its own and a 10-minute publish ended up redrawing the page many times a second)
+  if (running && !pubTimer) pubTimer = setTimeout(() => { pubTimer = null; if (location.hash === '#/settings') rerender(); }, 3100);
   const mins = running ? Math.max(1, Math.round((Date.now() - run.startedAt) / 60000)) : 0;
   // the zip and version file are up: Update gets it while Setup.exe (for new people) finishes (helpers/publish-release.ps1)
   if (running && /^(published|friends)/.test(run.step || '')) return row('Publish', `Published: use Update to get it. Finishing Setup.exe… (${mins} min)`, null);
@@ -215,6 +217,12 @@ function publishRow() {
   const justDone = run?.state === 'done' && Date.now() - (run.endedAt || 0) < 10 * 60000;
   if (pub.ahead === 0 && run?.state !== 'failed' && !justDone) return null;
   const start = async () => {
+    // (9 Nov 2026, security audit run-2 wave 2) a signed release to every copy is never one click: a confirmation names
+    // what goes out, and a yes pressed in its first second (a click meant for something else) counts as no
+    const opened = Date.now();
+    const what = pub.ahead > 0 ? `This PC's ${pub.ahead} newer change${pub.ahead === 1 ? '' : 's'} go${pub.ahead === 1 ? 'es' : ''} to every copy of DeviceHub as the next version.` : 'This PC\'s version goes to every copy of DeviceHub.';
+    const yes = await modal('Publish to every copy?', h('p', {}, what), [{ label: 'Cancel', value: false, kind: 'ghost' }, { label: 'Publish', value: true, kind: 'primary' }]);
+    if (!yes || Date.now() - opened < 1000) return;
     try { const r = await env.api('/api/publish-release', {}); pub = { ...pub, run: r.run }; } catch (e) { pub = { ...pub, run: { state: 'failed', error: e.message } }; }
     pubAt = 0; rerender();
   };
@@ -293,6 +301,23 @@ let rerender = () => {};
 async function loadStartup() {
   if (isDemo()) { startup = false; return; }
   try { startup = (await (await fetch('/api/startup')).json()).enabled; } catch { startup = false; }
+  rerender();
+}
+// Start with Windows: says what Windows now has, read back by the server (9 Nov 2026: a refused or failed change said
+// "Won't start with Windows" in green, and a switch turned on that did not take stayed on); the switch goes back when
+// the change did not take. startupAnswer: the server's answer to the switch, as { ok, enabled, detail }
+export function startupAnswer(on, status, body) {
+  const enabled = typeof body?.enabled === 'boolean' && !body.error && !body.isolated && status >= 200 && status < 300 ? body.enabled : null;
+  if (enabled === on) return { ok: true, enabled };
+  return { ok: false, enabled, detail: body?.error || (body?.isolated ? 'Test copy: Windows is not changed.' : enabled == null ? 'DeviceHub did not answer.' : on ? 'The startup shortcut was not made.' : 'The startup shortcut is still there.') };
+}
+export async function setStartup(on) {
+  let a;
+  try { const res = await fetch('/api/startup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: on }) }); a = startupAnswer(on, res.status, await res.json().catch(() => null)); }
+  catch { a = startupAnswer(on, 0, null); }
+  if (a.enabled != null) startup = a.enabled;
+  if (!a.ok) { toast('Not changed', 'bad', { detail: a.detail }); rerender(); throw new Error('start with Windows not changed'); }
+  toast(startup ? 'Starts with Windows' : 'Won\'t start with Windows', 'good');
   rerender();
 }
 
@@ -389,7 +414,7 @@ function healthCard() {
         // how long since DeviceHub last crashed (its launcher's log; a restart from outside does not count)
         line('Stable for', stableFor(x.lastCrashAt, x.uptimeS), !x.crashes24h),
         line('Crashes today', x.crashes24h ? `${x.crashes24h} (restarted automatically)` : '0', !x.crashes24h),
-        line('Last problem', x.lastProblem ? h('span', { title: x.lastProblem.text }, `${x.lastProblem.text.split(':')[0].slice(0, 40)} · ${ago(x.lastProblem.at)}`) : '0', !x.lastProblem || Date.now() - new Date(x.lastProblem.at) > 24 * 3600 * 1000),
+        line('Last problem', x.lastProblem ? h('span', { title: x.lastProblem.text }, `${x.lastProblem.text.split(':')[0].slice(0, 40)} · ${ago(x.lastProblem.at)}`) : 'None', !x.lastProblem || Date.now() - new Date(x.lastProblem.at) > 24 * 3600 * 1000),
         line('Backups', `${x.backups.count} · ${x.backups.mb} MB`, true),
         dailyLine(line)));
 }
@@ -432,7 +457,11 @@ function autoReportSwitch() {
   if (!autoAsked) { autoAsked = true; fetch('/api/auto-report').then((r) => (r.ok ? r.json() : null)).then((j) => { autoSt = j; rerender(); }).catch(() => {}); }
   if (!autoSt || autoSt.owner || !autoSt.configured) return null;
   return h('label', { class: 'ar-toggle' }, h('span', {}, 'Send problem reports to Shawn'),
-    toggle({ value: autoSt.on !== false, label: 'Send problem reports to Shawn', onCommit: async (on) => { if (!isDemo()) await env.api('/api/settings', { autoReport: on }); autoSt = { ...autoSt, on }; } }));
+    toggle({ value: autoSt.on !== false, label: 'Send problem reports to Shawn', onCommit: async (on) => {
+      // a refused change says so (the switch goes back by itself)
+      if (!isDemo()) { try { await env.api('/api/settings', { autoReport: on }); } catch (e) { toast('Not changed', 'bad', { detail: e.message }); throw e; } }
+      autoSt = { ...autoSt, on };
+    } }));
 }
 
 // Appearance: how the device drawings look, picked from a live preview of each style.
@@ -537,10 +566,7 @@ export default {
         h('div', { class: 'stack' }, card([h('h2', {}, 'Startup')],
           selfRow(),
           row('Start with Windows', null,
-            toggle({ value: !!startup, disabled: startup === null || isDemo(), label: 'start with windows', onCommit: async (on) => {
-              const r = await (await fetch('/api/startup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: on }) })).json();
-              startup = r.enabled; toast(startup ? 'Starts with Windows' : 'Won\'t start with Windows', 'good'); rerender();
-            } })),
+            toggle({ value: !!startup, disabled: startup === null || isDemo(), label: 'start with windows', onCommit: setStartup })),
           // Optional tools sits here with the updates since 22 Oct 2026 (it was in the DeviceHub card; the third column
           // no longer fitted one screen at 1650 x 910)
           ...syncRows(), toolsRows(), ...updatesRows()), helpCard()),

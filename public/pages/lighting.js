@@ -1,6 +1,6 @@
 // Lighting: one color for every device with RGB.
 import { h, icon } from '../ui/dom.js';
-import { card, slider, button, toggle, pill, OFF } from '../ui/controls.js';
+import { card, slider, button, toggle, OFF } from '../ui/controls.js';
 import { devices, write, writeBatch, log, stillLooking, shownDevices } from '../core/devices.js';
 import { artOf } from '../ui/art.js';
 import { topbar } from './common.js';
@@ -33,7 +33,7 @@ async function applyAll() {
   // Off: black everywhere (the keyboard: brightness 0, so its colour and effect stay for when it is turned back on)
   const [r, g, b] = ui.off ? [0, 0, 0] : hexToRgb(ui.hex);
   const k = ui.off ? 0 : ui.brightness / 100;
-  const done = [];
+  const done = [], failed = [];
   const t = toast(ui.off ? 'Turning the lights off' : `Applying ${ui.hex.toUpperCase()}`, 'busy', { ms: 0 });
   for (const id of ['keyboard', 'headset']) {
     const d = devices[id];
@@ -47,7 +47,7 @@ async function applyAll() {
         await write(id, 'led', rgbToHex(r * k, g * k, b * k), { label: 'LED color', display: ui.off ? 'off' : ui.hex, silent: true });
       }
       done.push(d.adapter.title);
-    } catch (e) { log(`lighting failed: ${e.message}`, 'bad', id); }
+    } catch (e) { failed.push(d.adapter.title); log(`lighting failed: ${e.message}`, 'bad', id); }
   }
   // added devices with one color (my-devices and library drivers), each through its own read-back write
   for (const { d, s } of addedColors()) {
@@ -56,12 +56,20 @@ async function applyAll() {
     const hex = rgbToHex(r * k, g * k, b * k);
     const value = s.zones ? Object.fromEntries(s.zones.map((z) => [z.value, hex])) : hex;
     try { await write(d.id, s.key, value, { label: s.label, display: ui.off ? 'off' : ui.hex, silent: true }); done.push(d.adapter.title); }
-    catch (e) { log(`lighting failed: ${e.message}`, 'bad', d.id); }
+    catch (e) { failed.push(d.adapter.title); log(`lighting failed: ${e.message}`, 'bad', d.id); }
   }
   // the PC's own lights (board, fans, RAM, graphics card) through OpenRGB, when it runs
-  try { const pc = await applyPc(rgbToHex(r * k, g * k, b * k)); if (pc) done.push(pc); } catch (e) { log(`PC lights failed: ${e.message}`, 'bad'); }
+  try { const pc = await applyPc(rgbToHex(r * k, g * k, b * k)); if (pc) done.push(pc); } catch (e) { failed.push('PC lights'); log(`PC lights failed: ${e.message}`, 'bad'); }
   if (!ui.off) setGlow(ui.hex);
-  t.update(done.length && ui.off ? `Lights off on ${done.join(' + ')}` : done.length ? `Lighting set on ${done.join(' + ')}` : 'No lit devices', done.length ? 'good' : 'bad', done.length ? undefined : 'Connect a device first.');
+  t.update(...applyResult(done, failed, ui.off));
+}
+
+// what Apply to all says (9 Nov 2026: when every write failed it said "No lit devices. Connect a device first." about
+// devices that were connected; a failure is named, and a partial one says what did and did not change)
+export function applyResult(done, failed, off = false) {
+  const set = done.length ? `${off ? 'Lights off on' : 'Lighting set on'} ${done.join(' + ')}` : null;
+  if (failed.length) return [set ? `${set}; not on ${failed.join(' + ')}` : `Not set on ${failed.join(' + ')}`, 'bad', 'See Activity for why.'];
+  return set ? [set, 'good', undefined] : ['No lit devices', 'bad', 'Connect a device first.'];
 }
 
 // the devices this PC has, beyond the built-in three, that take a color (23 Oct 2026, a friend's PC listed Shawn's
@@ -97,7 +105,7 @@ function targetsCard() {
           h('div', { class: 'grow' }, h('b', {}, d.adapter.title), h('small', {}, ok ? (s.zones ? `${s.label}, ${s.zones.length} zones` : s.label) : d.status !== 'connected' ? 'Not connected' : `${s.label}: turn on settings first`)),
           toggle({ value: ui.include[d.id] !== false && ok, disabled: !ok, label: `include ${d.adapter.title}`, onCommit: async (on) => { ui.include[d.id] = on; } }));
       }),
-      has('mouse') ? h('div', { class: 'target', style: { '--cc': 'var(--c-mouse)' } }, artOf(devices.mouse), h('div', { class: 'grow' }, h('b', {}, devices.mouse.adapter.title), h('small', {}, 'No settable lights')), pill('n/a')) : null,
+      has('mouse') ? h('div', { class: 'target', style: { '--cc': 'var(--c-mouse)' } }, artOf(devices.mouse), h('div', { class: 'grow' }, h('b', {}, devices.mouse.adapter.title), h('small', {}, 'No settable lights'))) : null,
       h('div', { class: 'target lighting-preview', style: { '--cc': 'var(--signal)', '--pick': ui.off ? OFF : ui.hex } }, h('div', { class: 'target-ic' }, icon('lighting')),
         h('div', { class: 'grow' }, h('b', {}, 'PC lights'), h('small', {}, pcAvailable() ? 'Fans, RAM, board and more' : 'When OpenRGB runs')),
         toggle({ value: pcIncluded(), disabled: !pcAvailable(), label: 'include PC lights', onCommit: async (on) => { setPcIncluded(on); } }))));

@@ -125,8 +125,12 @@ async function runLayerPlan(title, intro, items) {
   t.update(r.failed ? `${title}: ${r.failed} key(s) not changed` : `${title}: done`, r.failed ? 'bad' : 'good', `${r.done} changed${r.failed ? `, ${r.failed} failed (see Activity)` : ''}`);
 }
 
+// the layers a layer can be copied onto: any other one but the base. None on a board with only Base and Fn while Fn
+// is shown (the dialog had an empty list and Next threw on keymap[NaN]); then Copy layer is not offered.
+export const copyTargets = (layers, from) => LAYER_NAMES.slice(0, Math.max(0, Number(layers) || 0)).map((n, i) => [i, n]).filter(([i]) => i !== from && i !== 0);
 async function copyLayer(s, from) {
-  const choices = LAYER_NAMES.slice(0, s.info.layers).map((n, i) => [i, n]).filter(([i]) => i !== from && i !== 0);
+  const choices = copyTargets(s.info.layers, from);
+  if (!choices.length) { toast('No other layer to copy to', 'info'); return; }
   const sel = dropdown({ label: 'copy to layer', value: choices[0]?.[0], options: choices.map(([i, n]) => ({ value: i, label: `${i} · ${n}` })) });
   const ok = await modal(`Copy ${LAYER_NAMES[from]} layer`, h('div', {}, h('p', { style: { marginTop: 0 } }, 'Copy this layer onto:'), sel,
     h('p', { class: 'faint', style: { fontSize: '12.5px' } }, 'Skips the base layer and reset keys.')),
@@ -401,7 +405,7 @@ export default {
           h('div', { class: 'layer-tabs', role: 'tablist' }, ...LAYER_NAMES.slice(0, s.info.layers).map((n, i) => h('button', { class: `layer-tab${i === ui.layer ? ' sel' : ''}`, role: 'tab', 'aria-selected': String(i === ui.layer), onclick: () => { ui.layer = i; if (ui.target?.type === 'enc') ui.target = null; rerender(); } }, `${i} · ${n}`))),
           h('div', { class: 'actions', style: { alignItems: 'center' } },
             ui.layer ? h('span', { class: 'faint', style: { fontSize: '12.5px' } }, '▽ = same as the layer below') : null,
-            button('Copy layer', () => copyLayer(s, ui.layer), { kind: 'ghost small' }),
+            copyTargets(s.info.layers, ui.layer).length ? button('Copy layer', () => copyLayer(s, ui.layer), { kind: 'ghost small' }) : null,
             ui.layer ? button('Reset layer', () => resetLayer(s, ui.layer), { kind: 'ghost small' }) : null,
             button('Fn cheat-sheet', () => cheatSheet(s), { kind: 'ghost small' }))),
         h('div', { class: 'kb-layout' }, keyboardView(s), picker(s)),

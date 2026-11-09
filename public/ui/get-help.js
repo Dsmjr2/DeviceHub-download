@@ -59,8 +59,8 @@ export function getHelp(key, deviceId = () => key, { label = 'Get help', request
         const ctx = { page: pageName(), error: shownErrors(), ...extra };
         set({ stage: 'shown', r: await post('/api/help/report', { id: (deviceId && deviceId()) || '', area, context: ctx }) });
       } else {
-        const url = request ? `/api/help/request?${new URLSearchParams({ vid: request.vid, pid: request.pid, name: request.name || '' })}` : `/api/help/report?id=${encodeURIComponent((deviceId && deviceId()) || '')}`;
-        set({ stage: 'shown', r: await getJson(url) });
+        set({ stage: 'shown', r: request ? await post('/api/help/request', { vid: request.vid, pid: request.pid, name: request.name || '' })
+          : await getJson(`/api/help/report?id=${encodeURIComponent((deviceId && deviceId()) || '')}`) });
       }
     } catch (e) { set({ stage: 'error', msg: `Report not built: ${e.message}` }); }
   };

@@ -500,6 +500,11 @@ html[data-art] .mic-muted .art.mark .led.mic { fill: #ff4d4d; filter: drop-shado
 .stage.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--sunk)); }
 .stage.unused { opacity: .55; }
 .stage-top { display: flex; justify-content: space-between; align-items: center; font: 500 12px var(--ui); letter-spacing: 0; color: var(--faint); }
+/* the stage cards in a row stretch to one height; their rows stay packed at the top, so the active stage's stepper
+   (its "in use now" line is shorter than a Use button) lines up with the others' instead of sitting lower */
+.stage { align-content: start; }
+.stage-top { min-height: 18px; }
+.stage-top > .pill { margin-block: -4px; }
 .stage .stepper { width: 100%; justify-content: space-between; }
 .stage .stepper input { width: 70px; }
 .stage .btn { justify-content: center; }
@@ -873,7 +878,7 @@ pre.json { margin: 0; max-height: 50vh; overflow: auto; font: 12px/1.5 var(--mon
 .bc-cross { stroke: rgba(255, 255, 255, .35); stroke-width: 1; }
 .bc-tip { position: absolute; top: 4px; transform: translateX(-50%); display: grid; gap: 1px; padding: 6px 10px; border-radius: 10px; pointer-events: none; white-space: nowrap;
   background: rgba(24, 25, 32, .92); border: 1px solid rgba(255, 255, 255, .14); font-size: 12px; color: var(--muted); }
-.bc-tip[hidden] { display: none; }
+.bc-tip[hidden], .bc-key[hidden], .bc-table[hidden] { display: none; }
 .bc-tip b { color: var(--text); font: 600 13px var(--ui); }
 .bc-key { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; color: var(--muted); }
 .bc-key i { width: 14px; height: 10px; border-radius: 3px; background: color-mix(in srgb, var(--good) 30%, transparent); }
@@ -2784,9 +2789,10 @@ html[data-skin="coral-reef"]:not([data-art="live"]) .art.mark { filter: sepia(.2
 .pcc-ok[open] > summary::after { content: 'Hide'; }
 .pcc-ok > summary .pcc-dot { margin-top: 0; }
 /* Start-up apps in the PC check (27 Oct 2026, public/ui/startup-apps.js): one short row each, three columns, a switch */
-.su-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 18px; }
-@media (max-width: 1180px) { .su-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 760px) { .su-list { grid-template-columns: minmax(0, 1fr); } }
+/* its own class: it was .su-list, which is also the Setup page's one-column list, and laid Setup's rows out in 3 columns */
+.su-app-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 18px; }
+@media (max-width: 1180px) { .su-app-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .su-app-list { grid-template-columns: minmax(0, 1fr); } }
 .su-app { display: flex; align-items: center; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 13px; min-width: 0; }
 .su-app-name { flex: 1; min-width: 0; display: grid; line-height: 1.3; }
 /* names and notes wrap instead of being cut (31 Oct 2026: "Off = DeviceHub won't start with Wi...") */
@@ -3252,6 +3258,17 @@ html[data-skin="koi-pond"] .dd-opt.active { background: rgba(240, 138, 75, .2); 
 /* DPI stages on an added mouse's page (pages/my-device.js stagesCard, 1 Nov 2026) */
 .stage-line { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .stage-line > :first-child { flex: 1 1 auto; min-width: 0; }
+/* every stage's slider starts and ends at the same place: the DPI text and the Use button / In use mark take fixed widths
+   ("1600 DPI" is wider than "800 DPI", "In use" than "Use") */
+/* the row's control takes the room the title leaves (it was sized to the slider, so fixed widths pushed the card wider
+   than its column); the slider shrinks, the title stays on one line */
+.srow:has(> .srow-ctl > .stage-line) .srow-title { white-space: nowrap; }
+.srow:has(> .srow-ctl > .stage-line) .srow-ctl { flex: 1 1 auto; min-width: 0; }
+.stage-line { flex: 1 1 auto; }
+.stage-line .slider { min-width: 0; }
+.stage-line .slider input { min-width: 40px; width: 0; }
+.stage-line .slider output { min-width: 72px; }
+.stage-line > :last-child:not(:first-child) { flex: none; min-width: 64px; justify-content: center; text-align: center; }
 .srow.stage-on .srow-title { color: var(--accent); }
 /* an added device's settings in groups (pages/my-device.js settingsList, 1 Nov 2026) */
 .set-group + .set-group { margin-top: 14px; }

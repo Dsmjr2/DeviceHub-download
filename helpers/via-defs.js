@@ -55,7 +55,18 @@ async function definitionFor(vid, pid, opts = {}) {
   // is refused), JSON only, at most its MAX_BYTES, and the file must be a definition for THIS keyboard (vendor and
   // product id) that DeviceHub can draw (via-fetch.mjs check) before it is saved. Data only: never run.
   const vf = await import('./via-fetch.mjs').catch(() => null);
-  const r = await deps.fetch(LIBRARY(vpid), { signal: AbortSignal.timeout(15000) }).catch(() => null);
+  // (9 Nov 2026, security audit run-2 wave 2) redirects followed by hand and only within usevia.app over HTTPS: a redirect
+  // elsewhere is never requested at all (before, it was refused only after the request had gone out)
+  let r = null, at = LIBRARY(vpid);
+  for (let hop = 0; hop < 5; hop++) {
+    r = await deps.fetch(at, { signal: AbortSignal.timeout(15000), redirect: 'manual' }).catch(() => null);
+    const loc = r && r.status >= 300 && r.status < 400 ? r.headers?.get('location') : null;
+    if (!loc) break;
+    let next = null; try { next = new URL(loc, at); } catch {}
+    if (!next || next.protocol !== 'https:' || next.hostname !== LIBRARY_HOST) { r = null; break; }
+    at = next.href; r = null;
+  }
+  if (r && !r.url) { try { Object.defineProperty(r, 'url', { value: at }); } catch {} }
   const type = r?.headers?.get('content-type') || '';
   let finalHost = null;
   try { const u = new URL(r?.url || LIBRARY(vpid)); finalHost = u.protocol === 'https:' ? u.hostname : null; } catch {}

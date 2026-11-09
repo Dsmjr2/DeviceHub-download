@@ -1123,7 +1123,8 @@ async function api(req, res, url) {
     } catch {}
     if (published?.commit) {
       const c = String(published.commit).replace(/-modified$/, '');
-      try { ahead = Number(require('child_process').execFileSync('git', ['rev-list', '--count', `${c}..HEAD`], { cwd: ROOT, windowsHide: true, timeout: 10000, encoding: 'utf8' }).trim()); } catch {}
+      // (9 Nov 2026, audit run-2 wave 2) only a whole commit id reaches git's arguments
+      if (/^[0-9a-f]{40}$/.test(String(c))) try { ahead = Number(require('child_process').execFileSync('git', ['rev-list', '--count', `${c}..HEAD`], { cwd: ROOT, windowsHide: true, timeout: 10000, encoding: 'utf8' }).trim()); } catch {}
     }
     let keyHere = null;
     // the key is in Bitwarden (4 Nov 2026): this PC can sign when the setup repo's secrets tool is unlocked here

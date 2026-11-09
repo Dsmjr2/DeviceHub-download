@@ -368,11 +368,11 @@ export default {
     return h('div', {},
       // Get help (area backups): a go-back that failed shows its red line here, and the report carries it
       topbar('Safety net', 'Backups', null, null, helpHere('backups')),
-      h('p', { class: 'lede bk-intro' }, 'Saved before every change.'),
       h('div', { class: 'bk-top' }, setupCard()),
       // a new PC with no devices and no backups yet: said, not an empty grid (1 Nov 2026, a new-setup audit)
       files === null ? h('div', { class: 'faint' }, 'Reading…') : cards.length ? h('div', { class: 'grid three top bk-grid' }, ...cards)
         : h('div', { class: 'feed-empty' }, 'No backups yet. One is saved by itself before DeviceHub changes a device setting.'),
-      null);
+      // once at the bottom (9 Nov 2026: it sat under the title; owner rule, a title stands alone)
+      files?.length ? h('p', { class: 'faint', style: { margin: '16px 0 0' } }, 'A copy is saved before every change.') : null);
   },
 };

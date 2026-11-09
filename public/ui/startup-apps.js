@@ -63,7 +63,7 @@ export function startupApps({ redraw: r } = {}) {
   return h('details', { class: 'pcc-ok su-apps', open, ontoggle: (e) => { open = e.target.open; } },
     h('summary', {}, h('span', { class: 'pcc-dot info' }), h('span', {}, sum)),
     err ? h('p', { class: 'faint' }, `Not read: ${err}`) : null,
-    data ? h('div', { class: 'su-list' }, ...data.apps.map(row)) : null,
+    data ? h('div', { class: 'su-app-list' }, ...data.apps.map(row)) : null,
     data?.impact?.note ? h('p', { class: 'faint su-foot' }, data.impact.note)
       : data?.impact?.measuredAt ? h('p', { class: 'faint su-foot' }, `Impact measured at sign-in, ${dateTime(data.impact.measuredAt)}.`) : null);
 }
