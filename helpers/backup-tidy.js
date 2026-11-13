@@ -9,6 +9,7 @@
 // Runs 2 minutes after start and then once a day.
 const fs = require('fs');
 const path = require('path');
+const { psQuote } = require('./ps-quote');   // a PowerShell single-quoted value
 const { execFile } = require('child_process');
 
 const NAME = /^(.+?)-(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})(?:-(\d{1,3}))?Z\.[a-z0-9]+$/i;
@@ -47,8 +48,8 @@ function archive(dir, files) {
   const ps = `
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
-$dir = '${dir.replace(/'/g, "''")}'; $zipPath = '${zip.replace(/'/g, "''")}'
-$names = Get-Content -LiteralPath '${list.replace(/'/g, "''")}'
+$dir = ${psQuote(dir)}; $zipPath = ${psQuote(zip)}
+$names = Get-Content -LiteralPath ${psQuote(list)}
 $z = [System.IO.Compression.ZipFile]::Open($zipPath, 'Update')
 $ok = @()
 try {

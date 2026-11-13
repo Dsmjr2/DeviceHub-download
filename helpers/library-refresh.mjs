@@ -29,7 +29,7 @@ import { list, loadDriver, DRIVER_FILES, driverFileOf, ROOT } from './device-lib
 import { libraryMark, LIBRARY_FILE, VERIFIED_FILE, problem, ownClash, driverShaOf, loadedYet, pressedKeys } from './my-devices.mjs';
 import { entryVersion } from './library-updates.mjs';
 
-const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8').replace(/^﻿/, '')); } catch { return null; } };
+import { readJson } from './safe-write.js';   // a JSON file or a fallback (helpers/safe-write.js)
 const folders = (dir) => { try { return fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory() && !/^[_.]/.test(e.name)).map((e) => e.name).sort(); } catch { return []; } };
 const putFile = (file, text) => { const tmp = `${file}.tmp-${process.pid}`; fs.writeFileSync(tmp, text); fs.renameSync(tmp, file); };
 

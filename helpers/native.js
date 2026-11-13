@@ -9,6 +9,7 @@ const { spawn, execFileSync } = require('child_process');
 const bragiGuard = require('./bragi-guard');
 
 const helperSources = require('./helper-sources');
+const rustSources = require('./rust-helper-sources');
 const EXE = path.join(__dirname, 'bin', helperSources.EXE_NAME);
 let CUE_DLL = null;
 try { CUE_DLL = path.join(path.dirname(require.resolve('cue-sdk')), 'prebuilds', 'win32-x64', 'iCUESDK.x64_2019.dll'); } catch {}
@@ -64,10 +65,18 @@ const onProblem = (fn) => { problemHandlers.add(fn); for (const [c, t] of proble
 // a build that failed (no C# compiler, a compile error, antivirus) is tried again at most every 10 minutes; until
 // then an older helper, if there is one, runs, and without one every request answers GONE (20 Oct 2026: the throw
 // went up through the first request and took the server down, five times, and then the launcher gave up)
-let buildFailedAt = 0, goneLogged = false;
+let buildFailedAt = 0, goneLogged = false, helperChoiceLogged = null, activeKind = null;
+// (13 Nov 2026 bug hunt) the Rust helper on trial: each time it stops by itself or cannot start; selectHelper then
+// runs C# for the rest of this run, so a broken Rust build does not leave every device answering GONE
+const rustCrashes = [];
 function start() {
   if (proc) return;
-  if (Date.now() - buildFailedAt > 600000) {
+  const choice = rustSources.selectHelper({ dir: __dirname, crashes: rustCrashes });
+  if (choice.crashed && !problemsSoFar.some(([c]) => c === 'rust-helper-fallback')) problem('rust-helper-fallback', choice.reason);
+  const useRust = choice.kind === 'rust';
+  activeKind = choice.kind;
+  const targetExe = choice.exe;
+  if (!useRust && Date.now() - buildFailedAt > 600000) {
     try {
       build(); buildFailedAt = 0;
       // still no exe after a build (1 Nov 2026, a new-setup audit: antivirus removes it): without this every request
@@ -78,14 +87,19 @@ function start() {
       }
     } catch (e) { buildFailedAt = Date.now(); console.log(e.fallback ? `[helper] ${e.message}` : `[helper] could not be built: ${String(e.message).split('\n')[0]}`); problem('helper-build', e.fallback ? e.message : `could not be built: ${String(e.message).split('\n')[0]}`); }
   }
-  if (!fs.existsSync(EXE)) return;
-  const p = spawn(EXE, CUE_DLL ? [CUE_DLL] : [], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
+  if (!fs.existsSync(targetExe)) return;
+  const logKey = `${choice.kind}:${choice.reason}`;
+  if (helperChoiceLogged !== logKey) {
+    helperChoiceLogged = logKey;
+    console.log(`[helper] running ${useRust ? 'Rust' : 'C#'} helper (${choice.reason})`);
+  }
+  const p = spawn(targetExe, CUE_DLL ? [CUE_DLL] : [], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
   proc = p; buf = '';
   // a write to a helper that has just stopped fails with EPIPE; unhandled, that took the whole server down (19 Oct
   // 2026, 20:26). The helper's exit is handled below (waiters answered "GONE", the next request starts a new one).
   p.stdin.on('error', () => {});
   // the helper could not start (not built: no C# compiler on this PC): DeviceHub keeps running without it
-  p.on('error', (e) => { console.log(`[helper] could not start: ${e.message}`); problem('helper-start', `could not start: ${e.message}`); if (proc === p) { proc = null; for (const w of waiters.values()) w('GONE'); waiters.clear(); } });
+  p.on('error', (e) => { if (useRust) rustCrashes.push(Date.now()); console.log(`[helper] could not start: ${e.message}`); problem('helper-start', `could not start: ${e.message}`); if (proc === p) { proc = null; for (const w of waiters.values()) w('GONE'); waiters.clear(); } });
   p.stdout.setEncoding('utf8');
   p.stdout.on('data', (d) => {
     if (proc !== p) return;
@@ -111,6 +125,7 @@ function start() {
     proc = null;
     // stopped by itself (or by the watchdog), not by stop(): the third time in an hour is a problem report
     exits = exits.filter((t) => Date.now() - t < 3600000); exits.push(Date.now());
+    if (useRust) rustCrashes.push(Date.now());
     if (exits.length === 3) problem('helper-restarts', `the helper stopped ${exits.length} times in the last hour (last exit code ${code})`);
     for (const w of waiters.values()) w('GONE');
     waiters.clear();
@@ -182,4 +197,7 @@ function stop() { const p = proc; proc = null; if (p) p.stdin.end(); }
 // is the helper running now (helpers/helper-reads.js asks it only then: a read never starts or builds it, so a test or
 // script that reads the PC does not start a helper of its own)
 const running = () => !!(proc && proc.stdin.writable);
-module.exports = { request, onEvent, onDeviceChange, onExit, onProblem, stop, start, heartbeat, callCounts, running, buildHelper: build };
+const helperKind = () => activeKind || rustSources.selectHelper({ dir: __dirname }).kind;
+// the helper's process id (Settings > Health measures it when the helper does not report its own memory: the Rust one)
+const helperPid = () => (proc && proc.stdin.writable ? proc.pid : null);
+module.exports = { request, onEvent, onDeviceChange, onExit, onProblem, stop, start, heartbeat, callCounts, running, buildHelper: build, helperKind, helperPid };

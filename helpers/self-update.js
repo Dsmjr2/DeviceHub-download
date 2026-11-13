@@ -10,6 +10,7 @@ const { execFile } = require('child_process');
 const fs = require('fs');
 const { writeAtomic } = require('./safe-write');  // crash-proof saving (helpers/safe-write.js)
 const path = require('path');
+const { psQuote } = require('./ps-quote');   // a PowerShell single-quoted value
 
 const ROOT = path.join(__dirname, '..');
 // update-rollback.txt and update-failed.txt are this PC's own, in data\ (27 Oct 2026, helpers/data-dir.js);
@@ -172,7 +173,7 @@ async function wholeZip(rel, zip, dir, src, ps) {
   if (crypto.createHash('sha256').update(buf).digest('hex') !== rel.sha256) throw new Error('the download fails its checksum; nothing changed');
   fs.writeFileSync(zip, buf);
   step('Unpacking');
-  const x = await ps(`Expand-Archive -LiteralPath '${zip.replace(/'/g, "''")}' -DestinationPath '${dir.replace(/'/g, "''")}' -Force`, 5 * 60 * 1000);
+  const x = await ps(`Expand-Archive -LiteralPath ${psQuote(zip)} -DestinationPath ${psQuote(dir)} -Force`, 5 * 60 * 1000);
   if (x.status !== 0 || !fs.existsSync(path.join(src, 'helpers', 'install.ps1'))) throw new Error('the download could not be unpacked; nothing changed');
 }
 async function installFrom(src, dir, rel, kept, small) {
@@ -203,7 +204,7 @@ async function installFrom(src, dir, rel, kept, small) {
   // Its output goes to install.log in the download folder.
   const q = (s) => `"${s}"`;
   const inner = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', q(path.join(src, 'helpers', 'install.ps1')), '-Target', q(ROOT), '-NoShortcuts', '-AppsKey', q(key), ...(kept ? ['-Overwrite'] : []), ...(process.env.DEVICEHUB_TEST === '1' ? ['-NoLaunch'] : [])].join(' ');
-  const sq = (s) => `'${String(s).replace(/'/g, "''")}'`;
+  const sq = psQuote;
   const launcher = `Start-Process -FilePath powershell.exe -WindowStyle Hidden -WorkingDirectory ${sq(dir)} -RedirectStandardOutput ${sq(path.join(dir, 'install.log'))} -ArgumentList ${sq(inner)}`;
   const p = spawn('powershell.exe', ['-NoProfile', '-EncodedCommand', Buffer.from(launcher, 'utf16le').toString('base64')], { cwd: dir, stdio: 'ignore', windowsHide: true });
   p.on('error', () => {});

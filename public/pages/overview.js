@@ -2,8 +2,8 @@
 import { h, icon, fmt, dateTime } from '../ui/dom.js';
 import { tileOrder, dpiInUse } from '../core/tile-order.js';
 import { env } from '../core/env.js';
-import { button, card, pill, batteryCell, loadBatteryEstimates, skeleton } from '../ui/controls.js';
-import { devices, activity, connect, isDemo, isRemote, shownDevices, noDevicesYet, stillLooking } from '../core/devices.js';
+import { button, card, pill, batteryCell, loadBatteryEstimates, skeleton, segmented, slider, toggle } from '../ui/controls.js';
+import { devices, activity, connect, isDemo, isRemote, shownDevices, noDevicesYet, stillLooking, write, prepare } from '../core/devices.js';
 import { artOf, genericArtFor } from '../ui/art.js';
 import { prettyExe } from '../core/autoswitch.js';
 import { onEvent, streamUp, streamId } from '../core/events.js';
@@ -16,7 +16,7 @@ import { loadPc, otherDevices, pcLoaded, copyPrompt } from './pc-lights.js';
 import { getHelp } from '../ui/get-help.js';
 import { genericDongle } from '../core/generic-dongle.js';
 import { deviceRows, countNeeds, summaryLine } from '../core/setup-list.js';
-import { LIFT_OFF } from '../devices/pulsar.js';
+import { LIFT_OFF, POLLING } from '../devices/pulsar.js';
 // Learn a device and Backups load only when used from here (27 Oct 2026: the Overview, the first page, loaded both)
 const learnThis = async (...a) => (await import('./learn.js')).learnThis(...a);
 const reviewSetup = async (...a) => (await import('./backups.js')).reviewSetup(...a);
@@ -231,12 +231,13 @@ function bay(d, go, redraw) {
   const sub = d.status === 'connected' ? (d.id === 'headset' && !d.values.headsetOn ? 'Receiver connected · headset off' : 'Ready') : d.status === 'asleep' ? 'Asleep: move to wake' : d.error || (d.id === 'headset' ? 'Plug in receiver or cable' : isRemote() ? 'Not plugged in' : d.id === 'keyboard' ? 'One click after Chrome restarts' : 'Not connected yet');
   const muted = d.id === 'headset' && micOn(d) === false;
   const off = d.status === 'connected' && d.id === 'headset' && !d.values.headsetOn;
-  const el = h('div', { class: `bay ${d.status}${muted ? ' mic-muted' : ''}${off ? ' off' : ''}`, 'data-dev': d.id, 'data-shape': `${d.status}|${ro.length}|${bat != null}`, role: 'button', tabindex: 0, style: { '--cc': colorFor(d) }, onclick: () => go(d.id), onkeydown: (e) => { if (e.key === 'Enter') go(d.id); } },
+  const open = openId === d.id;
+  const el = h('div', { class: `bay ${d.status}${muted ? ' mic-muted' : ''}${off ? ' off' : ''}${open ? ' open' : ''}`, 'data-dev': d.id, 'data-shape': `${d.status}|${ro.length}|${bat != null}`, role: 'button', tabindex: 0, 'aria-expanded': String(open), style: { '--cc': colorFor(d) }, onclick: () => tapBay(d.id), onkeydown: (e) => { if (e.key === 'Enter' && e.target === e.currentTarget) tapBay(d.id); } },
     // the pill carries the state: CONNECTED, ASLEEP, HEADSET OFF ... (no "Ready" line under the name)
     h('div', { class: 'bay-top' }, h('span', { class: 'bay-kind' }, a.kind), linkStatus(d, off)),
     h('div', { class: 'bay-art' }, artOf(d)),
     // the name, with the battery beside it on the right (Shawn, 19 Oct 2026); up to two lines, the same height on all three
-    h('div', { class: 'bay-head' }, h('h3', {}, a.title),
+    h('div', { class: 'bay-head' }, h('h3', { 'aria-level': '2' }, a.title),
       bat != null ? batteryCell({ id: d.id, percent: bat, charging: d.battery?.charging || /cable/i.test(d.info?.Control || ''), reported: d.battery?.reported, compact: true }) : null),
     // the pill says the state; no extra line, so the three names always line up
     // a short spec list: the setting's name on the left, its value on the right, the full tile width for long values
@@ -245,9 +246,98 @@ function bay(d, go, redraw) {
     // no "Turned off" line: the pill at the top says it (Shawn, 21 Oct 2026)
     h('div', { class: 'readouts' }, ...ro.map(([k, v]) => h('div', { class: 'readout' }, h('span', {}, k), v instanceof Node ? v : h('b', { title: String(v) }, v))),
       ['idle', 'missing', 'error'].includes(d.status) && !(isRemote() && d.status !== 'error') ? h('div', { class: 'bay-cta', onclick: (e) => e.stopPropagation() },
-        button('Connect', () => connect(d.id, d.id !== 'headset'), { kind: 'primary small', ic: 'plug' })) : null));
+        button('Connect', () => connect(d.id, d.id !== 'headset'), { kind: 'primary small', ic: 'plug' })) : null),
+    open ? drawer(d, go, true) : null);
   return el;
 }
+
+// Open in place (11 Nov 2026, Manager for Shawn; the idea from "Interactive Folder Cards" by damienghader on Inspora):
+// a tile opens where it is, wider, with its everyday settings beside its drawing, instead of jumping to its page.
+// Open page goes on to the full page; a click on the tile or Esc closes it, a click on another tile opens that one.
+// A device with nothing to set here (not connected, headset off) still goes straight to its page.
+let openId = null;
+const lockedFor = (d, key) => !!(d.adapter.trusted && !d.adapter.trusted(key));
+// a refused write rejects, so a slider, switch or choice moves back to the value the device has (13 Nov 2026 bug hunt:
+// three sliders here swallowed it and stayed on a value that was never set)
+const setOf = (d) => (key, value, label, display) => write(d.id, key, value, { label, display });
+const liveOf = (d) => (key) => (x) => write(d.id, key, x, { live: true }).catch(() => {});
+function quick(d) {
+  if (d.status !== 'connected') return [];
+  const v = d.values || {}, set = setOf(d), live = liveOf(d);
+  if (d.id === 'mouse') {
+    const n = v.stageCount || 4, out = [];
+    if (v.dpiStage != null) out.push(['DPI', segmented({ value: v.dpiStage, compact: true, disabled: lockedFor(d, 'dpiStage'), options: Array.from({ length: n }, (_, i) => ({ value: i + 1, label: v[`dpi${i}`] != null ? fmt(v[`dpi${i}`]) : String(i + 1) })), onCommit: (x) => set('dpiStage', x, 'Active DPI stage', `stage ${x} (${fmt(v[`dpi${x - 1}`])} DPI)`) })]);
+    if (v.pollingRate != null) out.push(['Polling', segmented({ value: v.pollingRate, compact: true, disabled: lockedFor(d, 'pollingRate'), options: Object.keys(POLLING).map(Number).map((hz) => ({ value: hz, label: hz >= 1000 ? `${hz / 1000}K` : String(hz) })), onCommit: (hz) => set('pollingRate', hz, 'Polling rate', `${hz} Hz`) })]);
+    if (v.liftOff != null) out.push(['Lift-off', segmented({ value: v.liftOff, compact: true, disabled: lockedFor(d, 'liftOff'), options: [3, 1, 2].map((c) => ({ value: c, label: LIFT_OFF[c] })), onCommit: (c) => set('liftOff', c, 'Lift-off distance', LIFT_OFF[c]) })]);
+    return out;
+  }
+  if (d.id === 'headset') {
+    if (!v.headsetOn && d.adapter?.mode !== 'generic') return [];
+    const out = [];
+    if (v['vol:playback'] != null) out.push(['Volume', slider({ value: v['vol:playback'], min: 0, max: 100, unit: '%', label: 'Volume', grab: () => prepare('headset'), live: live('vol:playback'), onCommit: (x) => set('vol:playback', x, 'Volume', `${x}%`) })]);
+    if (typeof v['mute:recording'] === 'boolean') out.push(['Mute mic', toggle({ value: v['mute:recording'], label: 'Mute mic', onCommit: (on) => set('mute:recording', on, 'Mic (Windows)', on ? 'muted' : 'on') })]);
+    return out;
+  }
+  if (d.id === 'keyboard') {
+    if (v.brightness == null || v.effect == null) return [];
+    // the same lights switch as the Keyboard page: off is effect None, on brings back the last effect used
+    let last = 1; try { last = Number(localStorage.getItem('kb-last-effect')) || 1; } catch {}
+    const pct = (x) => `${x >= 250 ? 100 : Math.round((x / 255) * 100)}%`;
+    return [
+      ['Lights', toggle({ value: v.effect !== 0, label: 'Lights', onCommit: (on) => set('effect', on ? last : 0, 'Lights', on ? 'on' : 'off') })],
+      ['Backlight', slider({ value: v.effect === 0 ? 0 : v.brightness, min: 0, max: 255, format: pct, label: 'Backlight', disabled: v.effect === 0, grab: () => prepare('keyboard'), live: v.effect === 0 ? null : live('brightness'), onCommit: (x) => set('brightness', x, 'Brightness', pct(x)) })],
+    ];
+  }
+  if (!d.adapter?.plugin) return [];
+  // an added device: its first few settings it may write now (never a read-only, write-only or untrusted one)
+  const out = [];
+  for (const s of d.adapter.settings || []) {
+    const val = v[s.key];
+    if (val == null || s.readOnly || s.writeOnly || lockedFor(d, s.key)) continue;
+    const label = s.label || s.key;
+    if (s.type === 'toggle') out.push([label, toggle({ value: !!val, label, onCommit: (on) => set(s.key, on, label, on ? 'on' : 'off') })]);
+    else if (s.type === 'choice' && (s.options || []).length && s.options.length <= 5) out.push([label, segmented({ value: val, compact: true, options: s.options.map((o) => ({ value: o.value, label: String(o.label ?? o.value) })), onCommit: (x) => set(s.key, x, label, String(s.options.find((o) => o.value === x)?.label ?? x)) })]);
+    else if (s.type === 'slider' && Number.isFinite(Number(val)) && s.max > (s.min ?? 0)) out.push([label, slider({ value: Number(val), min: s.min ?? 0, max: s.max, step: s.step || 1, unit: s.unit || '', label, grab: () => prepare(d.id), live: s.live ? live(s.key) : null, onCommit: (x) => set(s.key, x, label, `${x}${s.unit || ''}`) })]);
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+// still: drawn again (new values, a page redraw), so the rows do not slide in a second time
+function drawer(d, go, still = false) {
+  const rows = quick(d);
+  const stop = (e) => e.stopPropagation();
+  return h('div', { class: `bay-drawer${still ? ' still' : ''}`, onclick: stop, onkeydown: (e) => { if (e.key !== 'Escape') stop(e); } },
+    ...rows.map(([label, ctl], i) => h('div', { class: 'qrow', style: { '--i': i } }, h('span', {}, label), ctl)),
+    h('div', { class: 'qrow q-foot', style: { '--i': rows.length } }, button('Open page', () => go(d.id), { kind: 'ghost small' })));
+}
+const colsFor = (ids) => ids.map((id) => (id === openId ? 'minmax(0, 2.3fr)' : 'minmax(0, 1fr)')).join(' ');
+function tapBay(id) {
+  if (!ctx) return;
+  const d = devices[id];
+  if (openId === id) openId = null;
+  else if (d && quick(d).length) openId = id;
+  else return ctx.go(id);
+  applyOpen();
+}
+// opens or closes in place, so the tiles slide to their new widths and the rows fan in (no page redraw)
+function applyOpen() {
+  const wrap = document.querySelector('.page.ov .bays');
+  if (!wrap || !ctx) return;
+  const bays = [...wrap.querySelectorAll('.bay[data-dev]')];
+  if (openId && !bays.some((b) => b.dataset.dev === openId)) openId = null;
+  wrap.classList.toggle('has-open', !!openId);
+  wrap.style.setProperty('--open-cols', colsFor(bays.map((b) => b.dataset.dev)));
+  for (const b of bays) {
+    const on = b.dataset.dev === openId;
+    b.classList.toggle('open', on);
+    b.setAttribute('aria-expanded', String(on));
+    const dr = b.querySelector(':scope > .bay-drawer');
+    if (on && !dr) b.append(drawer(devices[b.dataset.dev], ctx.go));
+    if (!on && dr) dr.remove();
+  }
+  levelSoon();
+}
+window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && openId && document.querySelector('.page.ov .bays')) { openId = null; applyOpen(); } });
 
 // Live tiles: a device change updates its tile in place (numbers, battery ring, status line, mute) without
 // redrawing the page, so the pixel animations keep running and nothing flickers. A change of shape (connected ->
@@ -268,7 +358,7 @@ function patchBay(d) {
   const old = document.querySelector(`.page.ov .bay[data-dev="${d.id}"]`);
   if (!old || !ctx) return false;
   const fresh = bay(d, ctx.go, ctx.redraw);
-  if (old.dataset.shape !== fresh.dataset.shape) { old.replaceWith(fresh); levelSoon(); return true; }
+  if (old.dataset.shape !== fresh.dataset.shape) { old.replaceWith(fresh); if (openId === d.id && !quick(d).length) { openId = null; applyOpen(); } levelSoon(); return true; }
   old.classList.toggle('mic-muted', fresh.classList.contains('mic-muted'));
   const pairs = [['.bay-top .link', 'outerHTML']];  // the live link (it replaced the pill; 22 Oct 2026: it kept saying Connected while charging)
   for (const [sel, prop] of pairs) { const a = old.querySelector(sel), b = fresh.querySelector(sel); if (a && b && a[prop] !== b[prop]) a[prop] = b[prop]; }
@@ -278,6 +368,9 @@ function patchBay(d) {
   // a shown setting changed: the device acknowledges with a short bounce
   if (changed) levelSoon();
   if (changed) { old.classList.remove('ack'); void old.offsetWidth; old.classList.add('ack'); setTimeout(() => old.classList.remove('ack'), 450); }
+  // the open tile's controls follow the device too, unless the person is using them right now
+  const da = old.querySelector(':scope > .bay-drawer'), db = fresh.querySelector(':scope > .bay-drawer');
+  if (da && db && !da.matches(':hover') && !da.contains(document.activeElement) && !da.querySelector('.pending') && da.innerHTML !== db.innerHTML) da.replaceWith(db);
   const ringA = old.querySelector('.bay-head'), ringB = fresh.querySelector('.bay-head');
   if (ringA && ringB && ringA.outerHTML !== ringB.outerHTML) ringA.replaceWith(ringB);
   return true;
@@ -444,6 +537,8 @@ export default {
     const hour = new Date().getHours();
     const hello = hour < 5 ? 'Late session' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
     return h('div', { class: 'ov' },
+      // the page's name for screen readers; the tiles are the page's heading on screen (11 Nov 2026 audit: no h1)
+      h('h1', { class: 'sr-only' }, 'Overview'),
 
       isDemo() ? h('div', { class: 'banner info' }, icon('shield'), h('div', { class: 'grow' }, h('b', {}, 'Demo mode'),
         h('small', {}, 'Pretend devices. Try anything.'))) : null,
@@ -451,7 +546,7 @@ export default {
       supportedNow(redraw, fresh),
       setupCard(redraw),
       noDevicesYet() ? firstRun(go, redraw)
-        : h('div', { class: 'bays', style: { '--bays': list.length } }, ...list.map((d) => bay(d, go, redraw))),
+        : h('div', { class: `bays${list.some((d) => d.id === openId) ? ' has-open' : ''}`, style: { '--bays': list.length, '--open-cols': colsFor(list.map((d) => d.id)) } }, ...list.map((d) => bay(d, go, redraw))),
       batteries(redraw),
       h('div', { class: 'grid ov-bottom' },
         card([h('h2', {}, 'Profiles'), h('span', { class: 'spacer' }), ...pcChips(go, redraw), gameModeLine() ? h('span', { class: 'pill accent' }, gameModeLine()) : null, button('Manage', () => go('profiles'), { kind: 'ghost small' })],

@@ -433,4 +433,4 @@ export async function op(name, b) {
 const extras = require('./setup-extras.js').create();
 export const saveOneDrive = async (opts) => (await import('./onedrive-setup.mjs')).save(core, extras, opts);
 // the weekly setup files, for the server's /api/setups routes
-export const setups = { list: weekly.list, read: weekly.read, saveNow: () => weekly.saveIfDue(core, core.log, { force: true }) };
+export const setups = { list: weekly.list, read: weekly.read };

@@ -123,7 +123,7 @@ export function guidedTest(d, { after = () => null, redraw = () => {} } = {}) {
     }
     if (st.no.length) {
       return box.replaceChildren(h('div', { class: 'works-invite' },
-        h('p', {}, h('b', {}, 'Something did not work. '), `${st.no.map((x) => x.label).join(', ')} did not change for you. Get help (top right) sends what DeviceHub saw, so the driver can be fixed.`),
+        h('p', {}, h('b', {}, 'Something did not work. '), `${st.no.map((x) => x.label).join(', ')} did not change for you. Settings > Get help sends what DeviceHub saw, so the driver can be fixed.`),
         row(button('Test again', () => { for (const x of st.no) delete s.tried[x.key]; set({ stage: 'ready', msg: '' }); }, { kind: 'ghost small' }))));
     }
     if (!st.left.length) {

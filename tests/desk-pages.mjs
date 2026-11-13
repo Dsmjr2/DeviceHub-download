@@ -70,7 +70,7 @@ const page = async (f) => import(pathToFileURL(path.join(ROOT, 'public/pages', f
 {
   check(/h\('div', \{ class: 'stack laptop-cards' \}, h\('div', \{ class: 'grid two top' \}/.test(code('public/pages/laptop.js')), 'Laptop: its cards in a stack with a gap');
   check(/h\('div', \{ class: 'grid two top', style: \{ marginTop: '16px' \} \}, gamingCard/.test(code('public/pages/fans.js')), 'PC: a gap above Gaming mode and Instant replay');
-  check(!/topbar\('Setup', 'Wallpapers'[^\n]*\n\s*where,/.test(src('public/pages/wallpapers.js')) && /\n\s*where\);/.test(src('public/pages/wallpapers.js')), 'Wallpapers: where they are kept is at the bottom, not under the title');
+  check(!/topbar\('Wallpapers'[^\n]*\n\s*where,/.test(src('public/pages/wallpapers.js')) && /\n\s*where\);/.test(src('public/pages/wallpapers.js')), 'Wallpapers: where they are kept is at the bottom, not under the title');
   check(!/bk-intro/.test(src('public/pages/backups.js')), 'Backups: no line under the title');
 }
 

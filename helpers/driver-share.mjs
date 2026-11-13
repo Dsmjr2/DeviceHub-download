@@ -22,7 +22,7 @@ import { driverSha } from './my-devices.mjs';
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const MARK = '<!-- devicehub-driver-share v1 -->';
 export const MAX_BODY = 11800;   // the relay takes 12000 (relay/worker.js LIMITS.body); the relay adds its own footer
-const readJson = (f, d = null) => { try { return JSON.parse(fs.readFileSync(f, 'utf8').replace(/^﻿/, '')); } catch { return d; } };
+import { readJson } from './safe-write.js';   // a JSON file or a fallback (helpers/safe-write.js)
 const hex4 = (v) => String(v ?? '').trim().toLowerCase().replace(/^0x/, '').padStart(4, '0');
 
 // settings.json shareDrivers: true (yes), false (no), undefined (not asked yet)

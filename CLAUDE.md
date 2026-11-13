@@ -17,7 +17,7 @@ suggested answer for each, so one reply ("yes to all", or "1 yes, 2 no") covers 
   OpenRGB ship inside DeviceHub, so nothing is downloaded for them: Equalizer APO's installer is in the zip and still
   needs the person's click to install, and the built-in OpenRGB 1.1 reaches USB lights only until the person clicks
   Add board, fan and RAM lights (Lighting > PC lights, or Setup), which installs PawnIO if missing and runs it as
-  administrator; Claude never does that step for them. For Equalizer APO, ReaPlugs and USBPcap, point the person to Settings >
+  administrator; Claude never does that step for them. For Equalizer APO, ReaPlugs, USBPcap and OBS Studio, point the person to Settings >
   Optional tools > Show (or the Equalizer card's button): DeviceHub shows the file, source, size and check, and runs
   the maker's installer itself after their click, so Claude downloads nothing;
 - for each device that still needs a learning session: OK to run it, with Claude changing the settings in the maker's
@@ -47,13 +47,13 @@ not covered (a new device, a download nobody named), or when a step fails and th
    device's current mode (an error with `waiting: true`) is recorded as waiting, not failed; failed and waiting
    settings are tried again on a connect once a day and at once after a DeviceHub update (a value that moved only on
    Check again), and the self-check never runs while the maker's app is open. An untested library entry installs on
-   the person's click (Set up card > Install) and loads read-only the same way. The learning wizard never learns
+   the person's click (Setup > its row's Install) and loads read-only the same way. The learning wizard never learns
    258A (Sinowealth), 22D4 (Laview) or Logitech (046D) ids; for a device with a driver.json driver it adds the learned
    settings to the my-devices copy (backed up first), never to the library.
    **Turn on settings** (22 Oct 2026, docs/handoff/safety-round2.md): a library driver with no real-device record in
    `device.json` `tested` (simulations and test files do not count; every entry shipped today) and every driver the
    wizard made installs and reads by itself, but writes nothing, its self-check included, until the person presses Turn
-   on settings on its page or the Set up card; DeviceHub then writes each setting's current value back once. "Could
+   on settings on its page or Setup's Set it all up; DeviceHub then writes each setting's current value back once. "Could
    not check whether the maker's app is open" counts as waiting. The never list is checked in the HID send path for
    every library and my-devices driver (`helpers/never-guard.mjs`); DeviceHub's own Pulsar, P75 and HS80 paths are not.
    **Works on my device** (docs/handoff/works-reports.md): once a library driver's settings passed their check, its page
@@ -61,8 +61,8 @@ not covered (a new device, a download nobody named), or when a step fails and th
    personal) and opens a GitHub issue labeled `works` on the person's click. `node helpers/accept-works-reports.mjs
    [--apply]` (Shawn's copy) checks each report against the library's current driver and, with --apply, adds a
    `{ status: "tested", real: true, ... }` record to its device.json (never commits, pushes or closes anything). Only
-   that exact record, for that exact driver text, counts as real. The Set up card's **Turn on settings for all** does
-   Turn on settings for every waiting, connected device, one after another.
+   that exact record, for that exact driver text, counts as real. Setup's **Set it all up** does Turn on settings for
+   every waiting, connected device, one after another (with the installs and Get the layout).
    **Request support** (docs/handoff/support-request.md): on a friend's PC it sends Shawn a short request through the
    problem-report relay in one click (labeled `support`; once per device per day, never from the owner's PC); elsewhere
    it opens the GitHub request as before. A receiver on a shared chip id (Sinowealth 258A; Laview, Holtek, Sonix when
@@ -89,7 +89,7 @@ not covered (a new device, a download nobody named), or when a step fails and th
    - What the maker's app left on the PC, read-only: `node helpers/vendor-files.mjs --vid <vid> --summary` (model
      names, product ids, setting names; see "Adding your own devices" step 2).
    For each USB device DeviceHub does **not** already run, look its vendor id up in `docs/BRANDS.md` (and, for Logitech,
-   Razer, Corsair, SteelSeries and Turtle Beach/ROCCAT, its sheet in `docs/brands/`: find the model there by product
+   the other brands with a sheet in `docs/brands/` (the list is under "Adding your own devices"): find the model there by product
    id; a model a sheet does not list, or lists as unconfirmed, is identified from its USB name and the `hid-caps`
    output and treated as unconfirmed) and run
    `powershell -NoProfile -ExecutionPolicy Bypass -File helpers\hid-caps.ps1 -Vid <vid>` (read-only). Leave out
@@ -210,12 +210,14 @@ helpers/native/            the Windows helper (C#, built on start with Windows' 
                            installer ships it ready-built with helpers/bin/helper-sources.sha256; an installed copy
                            compiles only when its sources no longer match that hash, a development copy (no hash
                            file) rebuilds when a source is newer (helpers/helper-sources.js)
+helpers/native-rs/         opt-in Rust helper (helpers/rust-helper-sources.js, built by helpers/build-rust-helper.mjs);
+                           C# stays default unless DEVICEHUB_RUST_HELPER=1 or data/settings.json has "rustHelper": true
 public/devices/            the drivers: one adapter per device slot (mouse-adapter.js, headset-adapter.js,
                            keyboard-adapter.js) over a protocol file (pulsar.js, via.js, the HS80 code in helpers/)
 public/pages/              one page per sidebar entry (mouse.js, headset.js, keyboard.js, ...; fans.js is the PC page)
 public/ui/                 shared pieces: dom.js (h(), icons, dateTime), controls.js, dropdown.js (the glass dropdowns),
                            pc-health.js (the PC page's Temperatures and fans and PC check cards), get-help.js
-public/style.css           every look: base sections first, then the whole looks (Old School, Verde, Milk, Coral Reef),
+public/style.css           every look: base sections first, then the whole looks (public/core/theme.js lists them all),
                            then the newer page sections (Monitors, Learn, PC page) and the glass dropdowns
 public/ui/art.js, img/     the device drawings and product photos (the Realistic look)
 public/devices/demo.js     pretend devices for demo mode
@@ -238,7 +240,7 @@ helpers/std-battery.js     batteries Windows already knows (Bluetooth) and the s
 helpers/lamparray.mjs      Windows Dynamic Lighting / HID LampArray: finder (read-only), attributes, one color, hand back
 helpers/app-ui.ps1         Windows UI Automation on a maker's app: list, get, set, click (refuses firmware/reset/update)
 docs/brands/, TOP-BRANDS.md  per-brand mapping sheets (ids, protocol, settings map, safe reads, build plan)
-helpers/pc-map.js          This PC, read-only: CPU, graphics card, board, RAM, USB devices (Lighting page)
+helpers/pc-map.js          this PC, read-only: CPU, graphics card, board, RAM, USB devices (/api/pc: Setup, PC page)
 helpers/openrgb.js         PC lights through OpenRGB's SDK server (127.0.0.1:6742), backed up and read back
 helpers/board-lights.mjs   Add board, fan and RAM lights / Remove board lights: PawnIO + the elevated OpenRGB task, on a click
 helpers/camera.cs, .js     webcam picture settings (DirectShow's standard controls), backed up, one at a time, read back
@@ -289,7 +291,7 @@ the person (a download or install, a learning session, or a check in the maker's
    safe reads, the risky writes to never send, and a build plan to follow in its order. Anything a sheet marks
    unconfirmed is checked on the device with a read before it is used, never assumed. Then `docs/BRANDS.md`: the 10 most popular brands
    per device type with their USB vendor ids, how they talk, which open projects know them and how risky writes are
-   (the Lighting page's "This PC" card names any plugged-in device from it).
+   (Setup names any plugged-in device from it).
    - Keyboards with **VIA** work with no code: DeviceHub finds any VIA keyboard (usage page 0xFF60) and takes its
      layout from VIA's library (usevia.app, about 1,500 keyboards) or from the maker's VIA file placed in
      `via-definitions\<VID><PID>.json` (helpers/via-defs.js, public/devices/via-layout.js). `logs\server.log` says which
@@ -323,8 +325,8 @@ the person (a download or install, a learning session, or a check in the maker's
      `getInputReport(id, length)` on a channel with `hid.inputReports` (the helper's IGET, HidD_GetInputReport; Turtle
      Beach), and `hid.extra: [{ name, page, usage, ... }]` with `extraChannel(name)`, a listen-only second collection
      (Wooting key depth). Nothing can be sent on an extra channel.
-3. **The person can do this without Claude**: Learn a device, in the sidebar under App (also Overview > Set up >
-   Learn a device, and Lighting > This PC > Learn it, which picks that device) listens while they change one setting at a time in the maker's app, and saves a read-only
+3. **The person can do this without Claude**: Learn a device, in the sidebar under App (also a Setup row's Learn it
+   for me, and the plug-in message's Learn it for me, which pick that device) listens while they change one setting at a time in the maker's app, and saves a read-only
    `my-devices\<name>\driver.json` (docs/handoff/learn-wizard.md). It also learns readings (battery, charging,
    ChatMix, a sensor), from a read and its reply or from a report the device sends by itself, and, after a save, the same
    device on its other USB id (cable and receiver), added to the same driver (docs/handoff/learn-readings.md). A
@@ -399,19 +401,19 @@ are, and any webcam's picture settings (Monitors page) through Windows' standard
 
 ## PC lights
 
-Motherboard, RAM, graphics card and case lights are reached through OpenRGB (openrgb.org) when the person runs it with
-its SDK server on; DeviceHub reads its controllers, backs them up, sets one color with a read-back and can put them
+Motherboard, RAM, graphics card and case lights are reached through OpenRGB (openrgb.org): DeviceHub carries and starts
+its own OpenRGB 1.1 (USB lights only until board lights are added, below); DeviceHub reads its controllers, backs them up, sets one color with a read-back and can put them
 back (Lighting > PC lights). Use OpenRGB 1.1 or newer (1.0 mixed up device numbers for clients on protocol
 versions below 6, which DeviceHub uses). On Windows, motherboard and RAM lights also need PawnIO (pawnio.eu, a signed
 kernel driver) with OpenRGB run as administrator (OpenRGB has no Windows service): the person's own decision, never
-done for them without their click. **Add board, fan and RAM lights** (Lighting > PC lights, the PC page's Fan lights,
+done for them without their click. **Add board, fan and RAM lights** (Lighting > PC lights
 and a Setup row when lights-diagnose says "smbus"; `helpers/board-lights.mjs`, 22 Oct 2026) is that click: PawnIO
 2.2.0's official installer when it is missing (signed by namazso AND its published SHA-256), then one Windows admin
 prompt copies the bundled OpenRGB 1.1 with its six PawnIO modules into C:\Program Files\DeviceHub board lights\OpenRGB\
 (every file hash-checked there) and makes the logon task "DeviceHub board lights" (highest rights, SDK server on
 127.0.0.1:6742). DeviceHub then uses it like a person's own OpenRGB and runs that task (no prompt) when lights are used
 and it is not answering; **Remove board lights** deletes the task and the copy. DeviceHub refuses colours and Put back through an OpenRGB built before 1.1 (it reads the build
-stamp in OpenRGB.exe). Windows Dynamic Lighting devices are counted on This PC; control stays in Windows Settings
+stamp in OpenRGB.exe). Windows Dynamic Lighting devices are counted on Setup; control stays in Windows Settings
 (a background controller must be a packaged app), or, with Windows' Dynamic Lighting turned off for it, DeviceHub
 through `helpers/lamparray.mjs`. `node tests/openrgb-mock.mjs` tests the OpenRGB client against a
 stand-in server written from OpenRGB's protocol document.
@@ -423,14 +425,12 @@ stand-in server written from OpenRGB's protocol document.
   Both run `tests/run-all.mjs` over package.json `testFiles` (offline, then live): every file runs to the end and
   every failure is listed (3 Nov 2026; a new test file goes in that list). `node tests/run-all.mjs replay pages` runs
   only those.
-- The new building blocks' tests run in `npm test` (device-library, lamparray, std-battery, vendor-files).
   `powershell -NoProfile -ExecutionPolicy Bypass -File tests\app-ui.ps1` is optional (about 25 s; it opens a small
   test window on the second screen).
 - `node helpers/soak-test.mjs [rounds]`: every writable setting written with the value it already has, read back.
 - Settings > Self-test inside the app, and Settings > Health.
-- Someone without Claude presses **Get help** (top right of each device page, Monitors, Fans, Learn a device,
-  Profiles, Backups, Wallpapers; the Equalizer card; each Setup row that needs them; Lighting's PC lights card;
-  Settings > Get help): helpers/get-help.mjs builds a short report about that screen with anything personal taken out;
+- Someone without Claude presses **Get help** (the Equalizer card, each Setup row that needs them, and Settings >
+  Get help; device pages lost theirs on 25 Oct 2026): helpers/get-help.mjs builds a short report about that screen with anything personal taken out;
   on a friend's PC Send to Shawn files it through the relay (label `support`, once per screen per hour), on this PC it
   opens a filled-in GitHub issue (docs/handoff/get-help-everywhere.md). **Find my lights** (Lighting > PC lights)
   names a board's zones by giving each its own color (docs/handoff/find-lights.md).

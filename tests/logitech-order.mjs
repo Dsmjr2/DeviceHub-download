@@ -31,12 +31,12 @@ function fake(F, pid, slot, features, kind) {
 {
   const mouseRx = fake(KF, 0xc54d, 1, { [KF.ADJUSTABLE_DPI]: 3, [KF.DEVICE_NAME]: 2 }, 3);
   const g815 = fake(KF, 0xc33f, 0xff, { [KF.ONBOARD_PROFILES]: 4 }, 0);
-  const kb = Object.assign(createLogitechKeyboard({ open: async (p) => (p === 0xc54d ? mouseRx : p === 0xc33f ? g815 : null), vendorApp: async () => null }), { pingMs: 100 });
+  const kb = Object.assign(createLogitechKeyboard({ open: async (p) => (p === 0xc54d ? mouseRx : p === 0xc33f ? g815 : null), vendorApp: async () => null }), { pingMs: 30 });
   let r, e;
   try { r = await kb.connect(); } catch (x) { e = x; }
   ok(r === true && kb.pid === 0xc33f && g815.opened, `keyboard driver: the wired G815 behind a mouse-only receiver is found (${e ? e.message : kb.pid?.toString(16)})`);
   // only the mouse receiver: not mine, as before
-  const kb2 = Object.assign(createLogitechKeyboard({ open: async (p) => (p === 0xc54d ? mouseRx : null), vendorApp: async () => null }), { pingMs: 100 });
+  const kb2 = Object.assign(createLogitechKeyboard({ open: async (p) => (p === 0xc54d ? mouseRx : null), vendorApp: async () => null }), { pingMs: 30 });
   let e2 = null;
   try { await kb2.connect(); } catch (x) { e2 = x; }
   ok(e2?.notMine, `keyboard driver: a mouse-only receiver and nothing else is still "not mine" (${e2?.message})`);
@@ -47,7 +47,7 @@ function fake(F, pid, slot, features, kind) {
   const kbRx = fake(MF, 0xc539, 1, { [MF.DEVICE_NAME]: 2 }, 0);
   const wired = fake(MF, 0xc08b, 0xff, { [MF.ADJUSTABLE_DPI]: 3 }, 3);
   setDeviceProvider(async (filters) => { const f = filters[0]; return f.productId === 0xc539 ? kbRx : f.productId === 0xc08b ? wired : null; });
-  mouse.pingMs = 100;
+  mouse.pingMs = 30;
   let r, e;
   try { r = await mouse.connect(false); } catch (x) { e = x; }
   ok(r === true && wired.opened && mouse.pid === 0xc08b, `mouse driver: the wired G502 behind a keyboard-only receiver is found (${e ? e.message : mouse.pid?.toString(16)})`);
@@ -85,10 +85,10 @@ function fake(F, pid, slot, features, kind) {
 {
   const quietRx = fake(KF, 0xc541, 99, {}, 0);
   const g815 = fake(KF, 0xc33f, 0xff, { [KF.ONBOARD_PROFILES]: 4 }, 0);
-  const kb = Object.assign(createLogitechKeyboard({ open: async (p) => (p === 0xc541 ? quietRx : p === 0xc33f ? g815 : null), vendorApp: async () => null }), { pingMs: 100 });
+  const kb = Object.assign(createLogitechKeyboard({ open: async (p) => (p === 0xc541 ? quietRx : p === 0xc33f ? g815 : null), vendorApp: async () => null }), { pingMs: 30 });
   let r, e; try { r = await kb.connect(); } catch (x) { e = x; }
   ok(r === true && !kb.asleep && kb.pid === 0xc33f, `keyboard driver: the cabled G815 behind a quiet G915 receiver is run (${e ? e.message : kb.pid?.toString(16)} asleep ${kb.asleep})`);
-  const kb2 = Object.assign(createLogitechKeyboard({ open: async (p) => (p === 0xc541 ? quietRx : null), vendorApp: async () => null }), { pingMs: 100 });
+  const kb2 = Object.assign(createLogitechKeyboard({ open: async (p) => (p === 0xc541 ? quietRx : null), vendorApp: async () => null }), { pingMs: 30 });
   r = undefined; e = undefined; try { r = await kb2.connect(); } catch (x) { e = x; }
   ok(r === true && kb2.asleep && kb2.pid === 0xc541, `keyboard driver: a quiet receiver alone is still asleep (${e?.message})`);
 }

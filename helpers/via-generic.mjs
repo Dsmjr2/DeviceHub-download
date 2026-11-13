@@ -20,7 +20,7 @@ export const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..'
 export const P75_ID = '342d:e479';
 const hex4 = (v) => String(v ?? '').trim().toLowerCase().replace(/^0x/, '').padStart(4, '0');
 export const idOf = (k) => `${hex4(k.vid)}:${hex4(k.pid)}`;
-const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
+import { readJson, writeAtomic } from './safe-write.js';   // a JSON file or a fallback (helpers/safe-write.js)
 const folders = (dir) => { try { return fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => path.join(dir, e.name)); } catch { return []; } };
 
 // every 'vid:pid' DeviceHub or one of its drivers names: RUNS, every device-library entry (shipped and cached), and
@@ -60,10 +60,7 @@ export function settingsStore(file = path.join(ROOT, 'via-definitions', 'setting
     set(id, rec) {
       const cur = all();
       cur[id] = rec;
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      const tmp = `${file}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify(cur, null, 2) + '\n');
-      fs.renameSync(tmp, file);
+      writeAtomic(file, JSON.stringify(cur, null, 2) + '\n');
     },
   };
 }

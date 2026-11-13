@@ -1,5 +1,10 @@
 // Shared WebHID helpers: one command in flight per device, each send waits for its matching reply.
 
+// after a request with no reply, the next one waits this long for a late reply to land. Tests with simulated devices
+// (tests/run-all.mjs) set DEVICEHUB_HID_QUIET_MS lower: a simulated device never answers late (13 Nov 2026, a third of
+// the Logitech tests' time was this pause)
+const QUIET_MS = (typeof process !== 'undefined' && Number(process.env?.DEVICEHUB_HID_QUIET_MS)) || 400;
+
 export class HidChannel {
   constructor(device, { reportId = 0, length = 32, match } = {}) {
     this.device = device;
@@ -42,7 +47,7 @@ export class HidChannel {
         if (this.log.length > 200) this.log.splice(0, this.log.length - 200);
         resolve(new Uint8Array(reply));
       };
-      const timer = setTimeout(() => { cleanup(); this.quietUntil = Date.now() + 400; reject(Object.assign(new Error(`no reply to ${hex(out.slice(0, 4))}`), { device: true })); }, timeoutMs);
+      const timer = setTimeout(() => { cleanup(); this.quietUntil = Date.now() + QUIET_MS; reject(Object.assign(new Error(`no reply to ${hex(out.slice(0, 4))}`), { device: true })); }, timeoutMs);
       const cleanup = () => { clearTimeout(timer); this.device.removeEventListener('inputreport', onReport); };
       this.device.addEventListener('inputreport', onReport);
       this.device.sendReport(reportId, out).catch((err) => { cleanup(); reject(err); });

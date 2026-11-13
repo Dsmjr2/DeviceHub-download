@@ -7,7 +7,7 @@
 // Run: node tests/sim-logitech.mjs (no hardware)
 import driver, { useDevice, sameValue, F, NEVER, HidppError, BLE, BLE_HID, isReplyTo, isReplyToBle, WIRED, WPIDS, RECEIVERS, PROFILE_READ_1BASED } from '../device-library/logitech-hidpp-mouse/device.mjs';
 driver.vendorApp = async () => null;   // no tasklist in the test; section 5 swaps in G HUB
-driver.pingMs = 150;                   // an empty slot never answers: a short wait keeps the test quick
+driver.pingMs = 30;                   // an empty slot never answers: a short wait keeps the test quick
 
 const fails = [];
 const check = (ok, what) => { if (!ok) fails.push(what); };
@@ -698,7 +698,7 @@ driver.vendorApp = async () => null;
     // a fresh copy of the driver module, guarded here on its own (section 6 put its guard back off the shared one)
     const fresh = await import('../device-library/logitech-hidpp-mouse/device.mjs?superstrike-selfcheck');
     const d2 = fresh.default;
-    d2.vendorApp = async () => null; d2.pingMs = 150;
+    d2.vendorApp = async () => null; d2.pingMs = 30;
     fresh.useDevice(m);
     // the driver's own refusal, before DeviceHub's guard is laid over it
     check(await d2.connect(false) && d2.superstrike, 'fresh driver copy: SUPERSTRIKE connects');
@@ -740,7 +740,7 @@ driver.vendorApp = async () => null;
     const { stepAside: myStepAside, isAbsent } = await import('../helpers/my-devices.mjs');
     const fresh = await import('../device-library/logitech-hidpp-mouse/device.mjs?c54d-mouse-only');
     const mouse = fresh.default;
-    mouse.vendorApp = async () => null; mouse.pingMs = 150; mouse.plugin = 'logitech-hidpp-mouse';
+    mouse.vendorApp = async () => null; mouse.pingMs = 30; mouse.plugin = 'logitech-hidpp-mouse';
     for (const order of ['keyboard first', 'mouse first']) {
       KB_SLOTS.clear();
       const ss = superstrike(0xc54d, 1, 0x7f);
@@ -748,7 +748,7 @@ driver.vendorApp = async () => null;
         addEventListener: (t, f) => ss.addEventListener(t, f), removeEventListener: (t, f) => ss.removeEventListener(t, f),
         async sendReport(id, data) { this.sent.push({ reportId: id, b: Array.from(data) }); if (data[0] === 1) return ss.sendReport(id, data); } };
       fresh.useDevice(rx);
-      const kb = Object.assign(createLogitechKeyboard({ open: async (p) => (p === 0xc54d ? rx : null), vendorApp: async () => null }), { pingMs: 150, plugin: 'logitech-hidpp-keyboard' });
+      const kb = Object.assign(createLogitechKeyboard({ open: async (p) => (p === 0xc54d ? rx : null), vendorApp: async () => null }), { pingMs: 30, plugin: 'logitech-hidpp-keyboard' });
       myStepAside(kb, { log: () => {} });
       if (order === 'mouse first') check(await mouse.connect(false) && mouse.index === 1, `${order}: the mouse driver takes slot 1`);
       const n0 = rx.sent.length;
@@ -771,7 +771,7 @@ driver.vendorApp = async () => null;
   // a fresh copy of the driver: an earlier section wrapped the shared one in the library guard
   const M = await import('../device-library/logitech-hidpp-mouse/device.mjs?lights-remap');
   const driver = M.default, useDevice = M.useDevice;
-  driver.vendorApp = async () => null; driver.pingMs = 150;
+  driver.vendorApp = async () => null; driver.pingMs = 30;
   const fx = { off: 0x00, static: 0x01, cycle: 0x03, wave: 0x04, breathe: 0x0a };
   const ledFrames = (dev) => frames(dev).filter((b) => b[1] === 13);
   const ledsOf = (zones, extra = {}) => ({ ext: 0x0001, sw: 1, layout: 'so', writes: [], zones, ...extra });

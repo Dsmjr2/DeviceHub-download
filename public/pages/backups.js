@@ -3,7 +3,7 @@
 // "Go back to this" and every setup file load asks first, inside its own row (no pop-ups), and says how it went in one
 // line in the same place. Routes, file formats and the restore itself are unchanged: restorePlan below, core/setup.js.
 import { h, icon } from '../ui/dom.js';
-import { button, card } from '../ui/controls.js';
+import { button, card, toggle } from '../ui/controls.js';
 import { devices, writeBatch, isDemo, shownDevices } from '../core/devices.js';
 import { topbar } from './common.js';
 import { PulsarMouse } from '../devices/pulsar.js';
@@ -14,7 +14,6 @@ import { splitMacros, decodeMacro } from '../devices/macros.js';
 import { saveSetup, planSetup, loadSetup } from '../core/setup.js';
 import { SHOWN, friendlyWhen, whenInSentence, weeklyWhen, whyText, groupOf, OTHER_NAMES, contentLines } from '../core/backup-words.js';
 import { demoBackups } from '../devices/demo-backups.js';
-import { helpHere } from '../ui/get-help.js';
 
 
 // Turn a backup into the list of writes that would put the device back. `allow` says which settings may be written
@@ -37,7 +36,10 @@ export function restorePlan(id, b, allow = (k) => !!PROFILE_KEYS[id]?.[k], label
   if (id === 'keyboard' && d.adapter.session) {
     const s = d.adapter.session;
     const L = s.info.layers, R = s.keymap[0].length, C = s.keymap[0][0].length;
-    const raw = b.data?.raw || {};
+    // (11 Nov 2026) keys, knob and macros only onto the same keyboard model: another board with the same grid
+    // would get keys in the wrong places
+    const sameModel = !b.data?.raw?.model || !s.layout?.name || b.data.raw.model === s.layout.name;
+    const raw = sameModel ? b.data?.raw || {} : {};
     const km = raw.keymap;
     // Only a backup of exactly this keyboard's shape is restored; anything else would put keys in the wrong places.
     const shapeOk = Array.isArray(km) && km.length === L && raw.rows === R && raw.cols === C && raw.layers === L
@@ -151,18 +153,61 @@ async function askSetup(key, file, when, pc) {
   ui.note = {};
   let planned;
   try { planned = await planSetup(file); } catch (e) { note(key, `Not loaded: ${e.message}.`, 'bad'); rerender(); return; }
-  if (isDemo()) { planned.sound = null; planned.extras = null; }   // demo mode never writes the real sound settings or files
-  const count = planned.changes.reduce((n, c) => n + c.plan.length, 0) + (planned.profiles ? 1 : 0) + (planned.sound ? 1 : 0)
-    + (planned.extras?.lines.filter((l) => l.what !== 'drivers-kept').length || 0);
+  if (isDemo()) { planned.sound = null; planned.extras = null; planned.games = null; planned.gameFiles = null; }   // demo mode never writes the real sound settings or files
+  const count = groupsOf(planned).reduce((n, g) => n + g.count, 0);
   if (!count) {
-    note(key, `Nothing to change${planned.notConnected.length ? ` (not connected: ${planned.notConnected.join(', ')})` : ''}.`);
+    const notHere = (planned.gameFiles?.list || []).filter((x) => !x.here).map((x) => x.name);
+    note(key, `Nothing to change${planned.notConnected.length ? ` (not connected: ${planned.notConnected.join(', ')})` : ''}.${notHere.length ? ` Start once on this PC, then load again: ${notHere.join(', ')}.` : ''}`);
     rerender(); return;
   }
-  ask({ key, kind: 'setup', file, planned, count, when, pc });
+  // graphics stays as this PC has it unless picked (another screen and graphics card)
+  ask({ key, kind: 'setup', file, planned, count, when, pc, skip: new Set(['gs-graphics', ...groupsOf(planned).filter((g) => g.gfx).map((g) => g.g)]) });
+}
+
+// (11 Nov 2026, Shawn: "1 button or let me choose") everything is ticked; a whole group can be left out. A keyboard's
+// keys, knob and macros are their own group, apart from its lights.
+const KEYS_GROUP = /^(key|enc|macroRaw):/;
+const groupOfRow = (id, k) => (id === 'keyboard' && KEYS_GROUP.test(k) ? 'keys' : `dev:${id}`);
+// skip: the groups switched off (a game switched off takes its graphics out of Game graphics too)
+function groupsOf(p, skip = new Set()) {
+  const out = [];
+  for (const c of p.changes) {
+    const rows = c.plan.map((r) => ({ ...r, dev: c.kind, g: groupOfRow(c.id, r.key) }));
+    const own = rows.filter((r) => r.g !== 'keys'), keys = rows.filter((r) => r.g === 'keys');
+    if (own.length) out.push({ g: `dev:${c.id}`, name: c.id === 'keyboard' && keys.length ? `${c.title} lights` : c.title, count: own.length, rows: own });
+    if (keys.length) out.push({ g: 'keys', name: 'Keyboard keys and macros', count: keys.length, rows: keys });
+  }
+  if (p.games) out.push({ g: 'games', name: 'Game settings', count: p.games.lines.length,
+    rows: p.games.lines.map((l) => ({ dev: 'Game', label: l.name, text: l.added ? 'added' : 'from the file' })) });
+  // each game's own settings: a switch per game; graphics one switch for all, off at first
+  const ready = (p.gameFiles?.list || []).filter((x) => x.here);
+  for (const x of ready) {
+    const only = !x.settings;
+    out.push({ g: `gs:${x.name}`, name: only ? `${x.name} graphics` : x.name, count: only ? x.graphics : x.settings, gfx: only,
+      rows: [{ dev: 'Game', label: x.name, text: x.running ? 'running: close it first' : only ? 'graphics' : 'controls and options' }] });
+  }
+  const gfx = ready.filter((x) => x.settings && x.graphics && !skip.has(`gs:${x.name}`));
+  if (gfx.length) out.push({ g: 'gs-graphics', name: 'Game graphics', count: gfx.reduce((n, x) => n + x.graphics, 0), gfx: true,
+    rows: gfx.map((x) => ({ dev: 'Game', label: x.name, text: 'graphics' })) });
+  if (p.profiles) out.push({ g: 'profiles', name: 'Profiles', count: 1, rows: [{ dev: 'DeviceHub', label: 'Profiles', from: `${p.profiles.from} now`, show: `${p.profiles.to} from the file` }] });
+  if (p.sound) out.push({ g: 'sound', name: 'Sound', count: 1, rows: [{ dev: 'Sound', label: 'EQ, speakers, mics', from: 'now', show: 'from the file' }] });
+  const ex = (p.extras?.lines || []).filter((l) => l.what !== 'drivers-kept');
+  if (ex.length) out.push({ g: 'extras', name: 'Names, pictures, added devices', count: ex.length, rows: (p.extras.lines || []).map((l) => ({ dev: 'DeviceHub', label: l.label, text: l.text })) });
+  return out;
+}
+// the plan without the groups left out
+function withoutSkipped(p, skip) {
+  return { ...p,
+    changes: p.changes.map((c) => ({ ...c, plan: c.plan.filter((r) => !skip.has(groupOfRow(c.id, r.key))) })).filter((c) => c.plan.length),
+    gameFiles: p.gameFiles ? { ...p.gameFiles, picks: p.gameFiles.list.filter((x) => x.here && !skip.has(`gs:${x.name}`))
+      .map((x) => ({ name: x.name, graphics: !x.settings || !skip.has('gs-graphics') })) } : null,
+    games: skip.has('games') ? null : p.games, profiles: skip.has('profiles') ? null : p.profiles,
+    sound: skip.has('sound') ? null : p.sound, extras: skip.has('extras') ? null : p.extras };
 }
 
 async function yesSetup() {
-  const { key, file, planned, pc } = ui.confirm;
+  const { key, file, pc } = ui.confirm;
+  const planned = withoutSkipped(ui.confirm.planned, ui.confirm.skip);
   ui.confirm = null; ui.busy = key;
   note(key, 'Loading the setup…');
   rerender();
@@ -231,19 +276,31 @@ function setupAsk(c) {
   const x = c.file.extras || {};
   const has = [...Object.keys(c.file.devices || {}).map(devName), Array.isArray(c.file.profiles) ? plural(c.file.profiles.length, 'profile') : null, c.file.sound ? 'sound settings' : null,
     Object.keys(x.headsetNames || {}).length ? 'headset names' : null, x.background ? 'a background picture' : null,
-    x.myDevices?.length ? plural(x.myDevices.length, 'added device') : null, x.wallpapers?.length ? plural(x.wallpapers.length, 'wallpaper') : null].filter(Boolean);
-  const rows = p.changes.flatMap((x) => x.plan.map((r) => ({ ...r, dev: x.kind })));
-  if (p.profiles) rows.push({ dev: 'DeviceHub', label: 'Profiles', from: `${p.profiles.from} now`, show: `${p.profiles.to} from the file` });
-  if (p.sound) rows.push({ dev: 'Sound', label: 'EQ, speakers, mics', from: 'now', show: 'from the file' });
-  for (const l of p.extras?.lines || []) rows.push({ dev: 'DeviceHub', label: l.label, text: l.text });
-  return askBox(`Load the setup saved ${c.when}?`,
+    x.myDevices?.length ? plural(x.myDevices.length, 'added device') : null, x.wallpapers?.length ? plural(x.wallpapers.length, 'wallpaper') : null,
+    c.file.games?.length ? plural(c.file.games.length, 'game') : null, c.file.gameSettings?.length ? `settings for ${plural(c.file.gameSettings.length, 'game')}` : null].filter(Boolean);
+  const notHere = (p.gameFiles?.list || []).filter((x) => !x.here).map((x) => x.name);
+  const groups = groupsOf(p, c.skip);
+  const on = groups.filter((g) => !c.skip.has(g.g));
+  const rows = on.flatMap((g) => g.rows);
+  const count = on.reduce((n, g) => n + g.count, 0);
+  // one switch per group, only when there is more than one to choose between
+  const picker = groups.length > 1 ? h('div', { class: 'bk-groups', role: 'group', 'aria-label': 'What to load' },
+    ...groups.map((g) => h('div', { class: `bk-group${c.skip.has(g.g) ? ' off' : ''}` },
+      h('span', { class: 'bk-group-name' }, g.name), h('span', { class: 'bk-group-n' }, plural(g.count, 'change')),
+      toggle({ value: !c.skip.has(g.g), label: g.name, onCommit: (v) => { if (v) c.skip.delete(g.g); else c.skip.add(g.g); rerender(); } })))) : null;
+  const box = askBox(`Load the setup saved ${c.when}?`,
     [h('div', { class: 'bk-sub' }, `It holds: ${has.join(', ') || 'nothing DeviceHub knows'}.`),
-      h('div', { class: 'bk-sub' }, `${plural(c.count, 'setting')} will change:`), changeList(rows.slice(0, LIST_MAX), rows.length - LIST_MAX),
+      picker,
+      count ? h('div', { class: 'bk-sub' }, `${plural(count, 'setting')} will change:`) : h('div', { class: 'bk-sub' }, 'Nothing picked.'),
+      count ? changeList(rows.slice(0, LIST_MAX), rows.length - LIST_MAX) : null,
       p.notConnected.length ? h('div', { class: 'bk-sub' }, `Not connected, skipped: ${p.notConnected.join(', ')}.`) : null,
+      notHere.length ? h('div', { class: 'bk-sub' }, `Start ${notHere.length === 1 ? 'this game' : 'these games'} once on this PC, then load again: ${notHere.join(', ')}.`) : null,
       // (9 Nov 2026, security audit run-2) an added device is a driver: program code that runs on this PC once loaded
       x.myDevices?.length ? h('div', { class: 'bk-sub' }, `Its ${plural(x.myDevices.length, 'added device')} (${x.myDevices.map((d) => d.name).filter(Boolean).slice(0, 4).join(', ')}) ${x.myDevices.length === 1 ? 'is a driver' : 'are drivers'}: program code that runs on this PC after DeviceHub restarts. Load it only if you made this file yourself.`) : null,
       h('div', { class: 'bk-sub' }, 'Added devices and pictures are kept.')],
     'Yes, load it', yesSetup);
+  if (!count) box.querySelector('.actions button')?.setAttribute('disabled', '');
+  return box;
 }
 
 async function toggleView(f, id) {
@@ -367,7 +424,7 @@ export default {
       : card([icon(devices[id] ? id : 'backups'), h('h2', {}, devName(id))], h('div', { class: 'feed-empty' }, 'None yet.'))));
     return h('div', {},
       // Get help (area backups): a go-back that failed shows its red line here, and the report carries it
-      topbar('Safety net', 'Backups', null, null, helpHere('backups')),
+      topbar('Backups'),
       h('div', { class: 'bk-top' }, setupCard()),
       // a new PC with no devices and no backups yet: said, not an empty grid (1 Nov 2026, a new-setup audit)
       files === null ? h('div', { class: 'faint' }, 'Reading…') : cards.length ? h('div', { class: 'grid three top bk-grid' }, ...cards)

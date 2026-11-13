@@ -71,5 +71,5 @@ Wallpapers, Ctrl+K, messages and a dialog, at 1650 x 910 and 390 x 844 (plus 102
 measured every visible text against its background: nothing under 4.5:1 on Milk; on Coral Reef the only hits were
 dark words on coral buttons, which the script measured against the water instead of the button (about 7:1 on the
 coral). No sideways scroll at phone width. Settings fits 1650 x 910 (cards end at 840). Overview screenshots
-(Classic drawings): `docs/handoff/looks/milk.png`, `docs/handoff/looks/coral-reef.png`.
+(Classic drawings): screenshots removed 9 Nov 2026 (the looks changed since; demo mode shows them as they are).
 `node tests/check.mjs`, `node tests/regressions.mjs` and `npm run test:offline` pass.

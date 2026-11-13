@@ -8,7 +8,6 @@ import { topbar } from './common.js';
 import { toast } from '../ui/overlay.js';
 import { closeAfterScreensOff } from '../core/idle-close.js';
 import { cameraCards } from './camera-card.js';
-import { helpHere } from '../ui/get-help.js';
 // resolution, refresh rate, HDR, main screen and Night light per screen (24 Oct 2026, ui/display-settings.js)
 import { displayBlock, displayOnlyScreens, displayBlockFor, displayError } from '../ui/display-settings.js';
 
@@ -140,15 +139,14 @@ export default {
   render() {
     rerender = () => { const el = document.querySelector('#main .page'); if (el && location.hash === '#/monitors') el.replaceWith(Object.assign(this.render(), { className: 'page no-anim' })); };
     const sleepBtn = button('Sleep', sleepMonitors, { kind: 'ghost small', ic: 'sleep', title: 'Put monitors to sleep' });
-    if (isDemo()) return h('div', {}, topbar('Displays and camera', 'Monitors', null, sleepBtn, helpHere('monitors')), card([h('h2', {}, 'Monitors')], h('p', { class: 'faint' }, 'Not shown in demo mode.')));
+    if (isDemo()) return h('div', {}, topbar('Monitors', sleepBtn), card([h('h2', {}, 'Monitors')], h('p', { class: 'faint' }, 'Not shown in demo mode.')));
     if (!list && !error) load(false);
     else if (list && !loading && Date.now() - refreshed > 10000) { refreshed = Date.now(); queueMicrotask(() => load(true)); }
     // a read that failed is tried again when the page is shown again (9 Nov 2026: "Monitors not read" stayed until the
     // window was reloaded), at most every 10 s so a monitor that keeps failing is not asked in a loop
     else if (!list && error && !loading && Date.now() - failedAt > 10000) queueMicrotask(() => load(false));
     return h('div', {},
-      // Get help (area monitors: each monitor's DDC/CI answer and the camera's settings), top right
-      topbar('Displays and camera', 'Monitors', null, sleepBtn, helpHere('monitors')),
+      topbar('Monitors', sleepBtn),
       // the monitors and the camera side by side on one screen (23 Oct 2026, Shawn: "I want the lighting area non
       // scrollable if possible, same with monitors"); no card scrolls (24 Oct: Color balance folds, rows compact)
       h('div', { class: 'grid mon-cols top', style: { '--n': (list?.length || 2) + 1 } },

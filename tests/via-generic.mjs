@@ -66,7 +66,8 @@ function board(mode = 'via') {
         else if (c === 0x0e) { const off = (p[1] << 8) | p[2]; r.set(macros.slice(off, off + p[3]), 4); }
         else if (c === 0x0f) { const off = (p[1] << 8) | p[2]; macros.set(p.slice(4, 4 + p[3]), off); }
         else if (c === 0x08 && p[1] === 3) r.set(light[p[2]] || [0], 3);
-        else if (c === 0x07 && p[1] === 3) light[p[2]] = [...p.slice(3, p[2] === 4 ? 5 : 4)];
+        // with the effect at None (lights off) the P75 keeps its last brightness and ignores a new one (13 Nov 2026)
+        else if (c === 0x07 && p[1] === 3) { if (!(p[2] === 1 && light[2][0] === 0)) light[p[2]] = [...p.slice(3, p[2] === 4 ? 5 : 4)]; }
         else if (c === 0x09) { /* save */ }
         else { r[0] = 0xff; r.set(p.slice(0, 31), 1); }
       }
@@ -158,6 +159,10 @@ viaDefs.deps.dir = tmp; vf.deps.dir = tmp;
   ok(!adapter.via.needsTurnOn && adapter.via.on && adapter.via.checks.lighting.ok, 'its settings are now on');
   const now = await adapter.write('brightness', 200);
   ok(now === 200, 'a lighting write goes through once its check passed, and reads back');
+  await adapter.write('effect', 0);
+  let off = null; try { await adapter.write('brightness', 150); } catch (x) { off = x; }
+  ok(off && /lights are off/.test(off.message), `with the lights off, a brightness change says so (${off?.message})`);
+  await adapter.write('effect', 3);
   const k = await adapter.write('key:1:0:1', 0x2c);
   ok(k === 0x2c, 'a key write goes through and reads back');
   let bad = null; try { await adapter.write('key:0:0:0', 0x7c00); } catch (x) { bad = x; }

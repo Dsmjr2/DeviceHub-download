@@ -17,7 +17,8 @@ Keychron adds its own commands on the same raw HID channel. Those are the only n
 
 USB product ids from the `keyboard.json` / `info.json` of each board in KQ (KQ-bt for Q1 Pro and K2 Pro).
 "In VIA" means the board's definition is in VIA's library, so DH finds its layout by itself. "Maker's JSON" means
-DH needs Keychron's file in `via-definitions\<VID><PID>.json`.
+DH needs Keychron's file in `via-definitions\<VID><PID>.json` (the Keyboard page's Get the layout fetches it for the
+boards in helpers/via-sources.json).
 
 ### Keyboards
 

@@ -401,7 +401,7 @@ export default {
     const live = now?.live || liveDevices();
     const devRows = now ? now.devRows : null;
     const demo = isDemo() ? h('p', { class: 'su-fine' }, 'Demo mode: nothing is changed.') : null;
-    if (devRows === null) return h('div', { class: 'setup-page' }, topbar('', 'Setup', null), demo, h('section', { class: 'panel su-status' }, skeleton([40, 62])));
+    if (devRows === null) return h('div', { class: 'setup-page' }, topbar('Setup'), demo, h('section', { class: 'panel su-status' }, skeleton([40, 62])));
 
     const plan = now.plan;
     const n = plan.needs.length;
@@ -441,7 +441,7 @@ export default {
         lines);
 
     return h('div', { class: 'setup-page' },
-      topbar('', 'Setup', null, button('Back to Settings', () => { location.hash = '#/settings'; }, { kind: 'ghost small' })),
+      topbar('Setup', button('Back to Settings', () => { location.hash = '#/settings'; }, { kind: 'ghost small' })),
       demo,
       status,
       n ? h('section', { class: 'panel su-section su-todo' }, h('ul', { class: 'su-list' }, ...plan.needs.map(rowEl))) : null,

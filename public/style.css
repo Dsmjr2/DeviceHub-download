@@ -54,6 +54,7 @@ body::after { content: ""; position: fixed; inset: 0; z-index: -1; pointer-event
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 ::selection { background: color-mix(in srgb, var(--signal) 35%, transparent); }
 .ic { width: 20px; height: 20px; flex: none; }
 .spin { animation: spin 1s linear infinite; }
@@ -96,6 +97,9 @@ html[data-hidden] *, html[data-hidden] *::before, html[data-hidden] *::after { a
 .nav-shield.fresh { color: var(--good); }
 /* Setup's count in the sidebar while something needs the person (23 Oct 2026) */
 .nav-count { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; display: inline-grid; place-items: center; font: 700 11px var(--ui); color: var(--bg, #0b0c0f); background: var(--warn); }
+/* a hidden count stays hidden (11 Nov 2026 audit: display above beat [hidden], so Setup showed an empty yellow "needs you" dot
+   while the page said You're all set) */
+.nav-count[hidden] { display: none; }
 /* Setup leaving or coming back to the sidebar: a short slide, not a jump (23 Oct 2026) */
 .nav.nav-out { animation: nav-out .22s ease forwards; }
 .nav.nav-in { animation: nav-in .26s ease; }
@@ -186,9 +190,13 @@ h1 { margin: 0; font-size: clamp(26px, 3vw, 36px); line-height: 1.1; letter-spac
 
 /* ---------- controls ---------- */
 .switch { width: 44px; height: 24px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .16); background: rgba(255, 255, 255, .14); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .3); position: relative; padding: 0; transition: background .12s, border-color .12s; flex: none; cursor: pointer; display: inline-flex; align-items: center; vertical-align: middle; }
-.switch .knob { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #f4f4f7; box-shadow: 0 1px 4px rgba(0, 0, 0, .4); transition: transform .12s var(--ease), background .12s; }
+.switch .knob { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 999px; background: #f4f4f7; box-shadow: 0 1px 4px rgba(0, 0, 0, .4); transition: transform .28s cubic-bezier(.3, 1.35, .5, 1), width .16s var(--ease), background .12s; }
+.switch { transition: background .22s, border-color .22s; }
 .switch.on { background: var(--switch-on); border-color: transparent; }
 .switch.on .knob { transform: translateX(20px); background: #ffffff; }
+/* pressed: the knob stretches toward the side it will go to (the on knob stretches left, so it stays inside) */
+.switch:active:not(:disabled) .knob { width: 23px; }
+.switch.on:active:not(:disabled) .knob { transform: translateX(15px); }
 .switch:disabled { opacity: .4; cursor: not-allowed; }
 .pending { position: relative; }
 .switch.pending .knob, .seg.pending .seg-thumb { animation: blink .8s ease-in-out infinite; }
@@ -201,6 +209,8 @@ h1 { margin: 0; font-size: clamp(26px, 3vw, 36px); line-height: 1.1; letter-spac
 .seg button.sel { color: var(--text); }
 .seg button:hover:not(:disabled) { color: var(--text); }
 .seg button:disabled { opacity: .35; cursor: not-allowed; }
+.seg button { transition: color .2s, transform .12s var(--ease); }
+.seg button:active:not(:disabled) { transform: scale(.94); }
 .seg.compact button { padding: 5px 8px; font-size: 12px; }
 
 .slider { --p: 50%; display: flex; align-items: center; gap: 14px; min-width: 240px; }
@@ -219,9 +229,14 @@ h1 { margin: 0; font-size: clamp(26px, 3vw, 36px); line-height: 1.1; letter-spac
 .stepper .step:hover { color: var(--text); background: var(--raise); }
 .stepper .unit { font: 11px var(--ui); color: var(--faint); padding-right: 4px; }
 .stepper.pending { border-color: var(--accent); }
+/* the number box sits inside a clipped capsule, so its own focus ring was cut off (11 Nov 2026 audit): ring the capsule */
+.stepper:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 32%, transparent); }
+.stepper input:focus-visible { outline: none; }
 .stepper.pending input { animation: blink .8s infinite; }
 .text { width: 100%; padding: 9px 12px; border-radius: 999px; border: 1px solid var(--line2); background: var(--sunk); outline: none; }
 .text:focus { border-color: var(--accent); }
+/* the keyboard's place is always visible (11 Nov 2026 audit: a focused field only changed its 1px border) */
+.text:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 32%, transparent); }
 .text:disabled { opacity: .55; }
 
 .ring { position: relative; display: grid; place-items: center; flex: none; }
@@ -287,6 +302,27 @@ h1 { margin: 0; font-size: clamp(26px, 3vw, 36px); line-height: 1.1; letter-spac
 .page.ov .bay-art .art.mark.art-keyboard { width: 92%; max-width: 270px; height: auto; max-height: 100%; }
 /* name and battery on one row; the name up to two lines, the same height on all three tiles so the values line up */
 .bay.off .bay-art .art { opacity: .5; }
+/* Open in place (pages/overview.js tapBay, 11 Nov 2026): the tile widens where it is, its drawing and name on the left,
+   its everyday settings on the right, each row easing in a moment after the one before */
+.page.ov .bays { transition: grid-template-columns .42s var(--ease); }
+@media (min-width: 1101px) { .page.ov .bays { grid-template-columns: var(--open-cols, repeat(var(--bays, 3), minmax(0, 1fr))); } }
+@media (max-width: 1100px) { .page.ov .bay.open { grid-column: 1 / -1; } }
+.page.ov .bay.open { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); grid-template-rows: auto minmax(0, 1fr) auto; column-gap: 24px; border-color: rgba(255, 255, 255, .3); }
+.page.ov .bay.open:hover { transform: none; }
+.page.ov .bay.open > .bay-top { grid-column: 1; grid-row: 1; }
+.page.ov .bay.open > .bay-art { grid-column: 1; grid-row: 2; }
+.page.ov .bay.open > .bay-head { grid-column: 1; grid-row: 3; }
+.page.ov .bay.open > .readouts { display: none; }
+.bay-drawer { grid-column: 2; grid-row: 1 / -1; min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; justify-content: center; padding-left: 24px; border-left: 1px solid var(--line); cursor: default; }
+.bay-drawer .qrow { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-top: 1px solid var(--line); animation: q-in .38s var(--ease) both; animation-delay: calc(var(--i, 0) * 60ms + 140ms); }
+.bay-drawer .qrow:first-child { border-top: 0; }
+.bay-drawer .qrow > span { font: 500 12px var(--ui); color: var(--faint); }
+.bay-drawer .qrow.q-foot { flex-direction: row; justify-content: flex-end; border-top: 0; padding-bottom: 0; }
+.bay-drawer .qrow .seg { min-width: 0; }
+.bay-drawer .qrow .switch { align-self: flex-start; }
+.bay-drawer.still .qrow { animation: none; }
+@keyframes q-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .page.ov .bays { transition: none; } .bay-drawer .qrow { animation: none; } .switch .knob { transition: none; } }
 /* "More": the cards used once in a while, folded under one row that says what is inside (ui/controls.js more) */
 .more { margin-top: 18px; }
 .more > summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 12px; padding: 14px 22px; border-radius: var(--r);
@@ -498,7 +534,10 @@ html[data-art] .mic-muted .art.mark .led.mic { fill: #ff4d4d; filter: drop-shado
 @media (max-width: 900px) { .stages { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .stage { border-radius: 16px; border: 1px solid var(--line); background: var(--sunk); padding: 12px 12px 10px; display: grid; gap: 8px; transition: border-color .2s; }
 .stage.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--sunk)); }
-.stage.unused { opacity: .55; }
+/* a spare stage dims its controls, not its words (11 Nov 2026 audit: the whole card at .55 put its text at 2.4:1) */
+.stage.unused { border-style: dashed; }
+.stage.unused .stepper { opacity: .75; }
+.stage.unused .stage-top, .stage.unused .faint { color: var(--faint); }
 .stage-top { display: flex; justify-content: space-between; align-items: center; font: 500 12px var(--ui); letter-spacing: 0; color: var(--faint); }
 /* the stage cards in a row stretch to one height; their rows stay packed at the top, so the active stage's stepper
    (its "in use now" line is shorter than a Use button) lines up with the others' instead of sitting lower */
@@ -852,6 +891,13 @@ html[data-art] .mic-muted .art.mark .led.mic { fill: #ff4d4d; filter: drop-shado
 .bk-changes { display: grid; gap: 3px; font-size: 12.5px; color: var(--muted); max-height: 180px; overflow: auto; }
 .bk-changes s { color: var(--faint); }
 .bk-changes b { color: var(--text); font-weight: 500; }
+/* the setup file's groups (11 Nov 2026): one switch each, everything on to start */
+.bk-groups { display: grid; border-top: 1px solid var(--line); }
+.bk-group { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.bk-group-name { flex: 1; min-width: 0; color: var(--text); }
+.bk-group-n { color: var(--faint); font-size: 12.5px; }
+.bk-group.off .bk-group-n { opacity: .6; }
+.bk-group.off .bk-group-name { color: var(--muted); }
 .bk-dev { color: var(--faint); }
 .bk-note { font-size: 12.5px; color: var(--muted); padding: 0 4px; }
 .bk-note.good { color: var(--good); }
@@ -981,6 +1027,7 @@ pre.json { margin: 0; max-height: 50vh; overflow: auto; font: 12px/1.5 var(--mon
   .modal-body, .diff b, .diff span { color: #000 !important; }
   .diff div { background: none; border-bottom: 1px solid #ccc; border-radius: 0; }
 }
+@media (prefers-reduced-motion: reduce) { .switch.pending .knob, .seg.pending .seg-thumb, .stepper.pending input { opacity: .55; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } .ring-fg { stroke-dashoffset: var(--to); }
   /* the device pictures still glide when hovered (Shawn asked for it, 19 Oct 2026; Windows animations are off on his PC) */
   .art.mark { transition: transform .18s var(--ease) !important; } }
@@ -1097,16 +1144,100 @@ html[data-art="blueprint"] :not(.art-preview) > .art.mark .led.mic, .art-preview
 .theme-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .theme-label { font: 600 12px var(--ui); color: var(--faint); }
 .theme-name { font: 500 12.5px var(--ui); color: var(--muted); margin-left: 2px; }
-/* Settings: slightly tighter rows, so the whole page fits on one screen (21 Oct 2026) */
-.page[data-no-jump] .srow { padding: 10px 0; }
-/* Settings fits one screen with Backups in it (24 Oct 2026): tighter cards and a short bottom margin */
-.grid.settings-cols .panel { padding: 14px 18px; }
-.grid.settings-cols .panel-head { margin-bottom: 10px; }
-#main .page[data-no-jump] { padding-bottom: 24px; }
-/* Settings: the three columns end level (Shawn, 21 Oct 2026: "make it all even length"); the last card in each column
-   grows to the tallest column */
-.grid.settings-cols > .stack { display: flex; flex-direction: column; }
-.grid.settings-cols > .stack > :last-child { flex: 1; }
+/* Settings on one screen, non-scrollable (Shawn: "make the settings page not scrollable") */
+html[data-page="settings"] body,
+html[data-page="settings"] main,
+html[data-page="settings"] #main {
+  overflow: hidden;
+}
+.page.settings-page,
+#main .page[data-no-jump] {
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 16px 36px 14px;
+}
+.page[data-no-jump] .topbar {
+  margin-bottom: 10px;
+  flex: none;
+}
+.grid.settings-cols {
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 14px;
+}
+.grid.settings-cols > .stack {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 12px;
+}
+.grid.settings-cols > .stack > .panel {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.grid.settings-cols > .stack > :last-child {
+  flex: 1;
+}
+.grid.settings-cols .panel {
+  padding: 12px 16px;
+}
+.grid.settings-cols .panel-head {
+  margin-bottom: 8px;
+}
+.grid.settings-cols .panel-head h2 {
+  font-size: 17px;
+}
+.page[data-no-jump] .srow {
+  padding: 6px 0;
+}
+.grid.settings-cols .srow-title {
+  font-size: 13px;
+}
+.grid.settings-cols .srow-desc {
+  font-size: 11.5px;
+  line-height: 1.25;
+}
+.grid.settings-cols .art-styles {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+}
+.grid.settings-cols .art-style {
+  padding: 5px 3px 4px;
+  gap: 2px;
+  font-size: 10.5px;
+  border-radius: 12px;
+}
+.grid.settings-cols .art-preview {
+  height: 26px;
+  gap: 2px;
+}
+.grid.settings-cols .art-preview .art-headset { height: 21px; }
+.grid.settings-cols .art-preview .art-mouse { height: 19px; }
+.grid.settings-cols .art-preview .art-keyboard { width: 24px; }
+.grid.settings-cols .theme-grid {
+  margin-top: 8px;
+  padding-top: 8px;
+  gap: 4px;
+}
+.grid.settings-cols .theme-tiles {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 5px 4px;
+}
+.grid.settings-cols .theme-tile {
+  font-size: 10px;
+  gap: 2px;
+}
+.grid.settings-cols .theme-mini {
+  border-radius: 7px;
+}
+.grid.settings-cols .health-row {
+  padding: 2.5px 0;
+  font-size: 12.5px;
+}
 /* The Overview's live link (21 Oct 2026): the state as a line from the device to this PC. Connected: three lights travel
    along it to the PC; asleep: one slow amber light; off or not connected: the line breaks in red. Only transform and
    opacity move, so the compositor does it and the page does not repaint. */
@@ -1539,13 +1670,7 @@ html[data-art="blueprint"] .page.ov .bay-art > .art { position: relative; }
 .gh-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .gh-line > .get-help { flex: 1 1 auto; min-width: 0; }
 .gh-line:has(.gh-card) > .get-help { flex-basis: 100%; }
-/* Get help on every screen (22 Oct 2026, docs/handoff/get-help-everywhere.md): one small button at the top right of the
-   page title; it opens below the title across the page, so closed it adds no height */
-.topbar.has-help { column-gap: 10px; }
-.topbar.has-help > :nth-child(2):not(.get-help) { margin-left: auto; }
-.topbar > .get-help { margin-top: 0 !important; }
-.topbar > .get-help:has(.gh-card, .gh-note) { flex: 1 1 100%; order: 3; }
-.topbar > .get-help .gh-card { max-width: 720px; }
+/* Get help on a Setup row */
 .su-ctl .gh-here { margin-left: 8px; }
 .su-ctl:has(.gh-here .gh-card, .gh-here .gh-note) { flex-wrap: wrap; gap: 8px; }
 .su-ctl:has(.gh-card, .gh-note) .gh-here:has(.gh-card, .gh-note) { margin-left: 0; flex-basis: 100%; }
@@ -2731,13 +2856,6 @@ html[data-skin="coral-reef"]:not([data-art="live"]) .art.mark { filter: sepia(.2
 .pc-meters .gauge-text b { font-size: 20px; white-space: nowrap; }
 .pc-meters + .temp-graph-wrap { height: 64px; } .temp-graph-wrap.waiting { align-items: center; justify-content: center; border: 1px dashed var(--line2); border-radius: var(--r-sm); }
 /* PC page: fan lights (23 Oct 2026), and Add board lights (also on Lighting and Setup) */
-.fan-light { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 6px 0; border-bottom: 1px solid var(--line); }
-.fan-light:last-of-type { border-bottom: 0; }
-.fan-light-name { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; }
-.fan-light .swatch:disabled, .fan-light .swatch-custom:disabled { opacity: .45; cursor: default; }
-.fan-why { margin: 4px 0 0; font-size: 12px; line-height: 1.4; }
-.fan-why a { color: var(--text); }
-.fan-fix { display: grid; gap: 6px; justify-items: start; margin: 2px 0 12px; }
 .board-lights { display: grid; gap: 6px; justify-items: start; margin: 10px 0 0; }
 .board-lights > small { line-height: 1.45; }
 .wifi-pause { display: grid; gap: 6px; justify-items: start; margin: 10px 0 0; }
@@ -2745,7 +2863,7 @@ html[data-skin="coral-reef"]:not([data-art="live"]) .art.mark { filter: sepia(.2
 .wifi-pause-gaming { display: flex; align-items: center; gap: 8px; }
 .su-ctl:has(.board-lights) { flex: 1 1 100%; justify-content: flex-start; }
 /* Temperatures and fans: one short row per reading */
-.tf-list { display: grid; }
+.tf-list { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; }
 .tf-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
 .tf-row:last-child { border-bottom: 0; }
 .tf-row .pcc-dot { margin-top: 0; }
@@ -2755,9 +2873,10 @@ html[data-skin="coral-reef"]:not([data-art="live"]) .art.mark { filter: sepia(.2
 .tf-val { white-space: nowrap; }
 .tf-note { margin: 4px 0 0; font-size: 12px; }
 .tf-setup { margin-top: 8px; }
-.cpu-sensors { display: grid; gap: 2px; }
+.cpu-sensors { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 2px; }
 .cpu-sensors .cpu-line { display: block; font-size: 12px; }
 .cpu-sensors .actions { margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap; }
+.cpu-sensors .btn { max-width: 100%; white-space: normal; text-align: left; }
 /* PC check: short cells in two columns; what is fine in one line that opens */
 .pcc-net-strip { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 7px 12px; margin: 0 0 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); font-size: 12.5px; }
 .pcc-net-tag { font: 600 12.5px var(--ui); color: var(--accent, var(--signal)); }

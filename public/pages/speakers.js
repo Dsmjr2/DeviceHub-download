@@ -13,7 +13,7 @@ const DEMO = () => ({ engine: 'eqapo', speakerStarts: { 'Small monitor speakers'
 let eq = null, loading = false, error = null, guard = null, at = 0;  // guard: settings.json ankerGuard (off unless true)
 let rerender = () => {};
 const drafts = {};  // guid -> stages being dragged
-addEventListener('pointerup', () => { for (const g of Object.keys(drafts)) delete drafts[g]; }, true);
+for (const ev of ['pointerup', 'pointercancel']) addEventListener(ev, () => { for (const g of Object.keys(drafts)) delete drafts[g]; }, true);
 
 async function load() {
   if (loading) return; loading = true; at = Date.now();

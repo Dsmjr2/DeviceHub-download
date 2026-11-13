@@ -50,6 +50,8 @@ export async function saveIfDue(core, log, { force = false } = {}) {
   out.sound = {};
   try { out.sound.eq = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'eq-presets.json'), 'utf8')); } catch {}
   try { out.sound.settings = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'settings.json'), 'utf8')); } catch {}
+  try { const g = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'game-mode.json'), 'utf8')).games; if (Array.isArray(g) && g.length) out.games = g; } catch {}
+  try { const G = await import('./game-settings.mjs'); if (await G.allowed(ROOT)) { const g = await G.capture(); if (g.length) out.gameSettings = g; } } catch {}   // Shawn's PCs only
   if (!Object.keys(out.devices).length) return null;
   fs.mkdirSync(DIR, { recursive: true });
   let name = `DeviceHub setup ${out.savedAt.slice(0, 10)}.json`;

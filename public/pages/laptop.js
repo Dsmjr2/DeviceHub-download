@@ -134,7 +134,7 @@ export default {
     if (!st.info && !st.error && !st.loading) { st.loading = true; queueMicrotask(load); }
     keepFresh();
     const info = st.info;
-    const head = topbar('', laptopTitle(info), null);
+    const head = topbar(laptopTitle(info));
     if (!info) return h('div', {}, head, h('div', { class: 'panel empty' }, icon('bolt'), h('p', {}, st.error ? `Could not read the laptop: ${st.error}` : 'Reading the laptop…')));
     // the battery over the last day or week (3 Nov 2026): Windows' level every 5 minutes and each plug or unplug
     // (helpers/battery-history.js, id "laptop"); green where it was on the charger

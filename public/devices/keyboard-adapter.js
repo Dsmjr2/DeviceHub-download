@@ -276,8 +276,12 @@ const adapter = {
         const after = await kb.setLighting(key, value, { save: !opts?.live });
         return after[key];
       } catch (e) {
-        // 20 Oct 2026: with the effect set to None (lights off), the P75 keeps brightness at 0 whatever it is sent
-        if (key === 'brightness' && value > 0 && /reports brightness=0/.test(e.message)) throw new Error('the lights are off (effect: None). Pick an effect first');
+        // with the effect set to None (lights off) the P75 ignores brightness, speed and color: it read 0 then (20 Oct
+        // 2026) and keeps its last brightness now (13 Nov 2026: "reports brightness=253 after writing 233")
+        if (key !== 'effect' && /^keyboard reports /.test(e.message)) {
+          const now = await kb.getLighting().catch(() => null);
+          if (now?.effect === 0 || (key === 'brightness' && value > 0 && /reports brightness=0/.test(e.message))) throw new Error('the lights are off (effect: None). Pick an effect first');
+        }
         throw e;
       }
     }

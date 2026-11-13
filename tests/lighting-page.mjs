@@ -110,7 +110,7 @@ check(C.hsvToHex(0, 1, 1) === '#ff0000' && C.hsvToHex(120, 1, 1) === '#00ff00' &
 const src = (f) => fs.readFileSync(path.join(ROOT, 'public', f), 'utf8').replace(/\r\n/g, '\n');
 const body = (text, start, end) => { const a = text.indexOf(start); return a < 0 ? '' : text.slice(a, end ? text.indexOf(end, a + start.length) : undefined); };
 const pc = src('pages/pc-lights.js'), lighting = src('pages/lighting.js'), picker = src('ui/color-picker.js');
-for (const [name, fn] of [['sendWrites', body(pc, 'async function sendWrites', '\n}\n')], ['pcPick', body(pc, 'export function pcPick', '\n}\n')], ['useRow', body(pc, 'const useRow', '\n')], ['presetRow', body(pc, 'const presetRow', '\n')], ['offRow', body(pc, 'const offRow', '\n')], ['setLive', body(pc, 'function setLive', '\n}\n')], ['applyPc', body(pc, 'export async function applyPc', '\n}\n')]]) {
+for (const [name, fn] of [['sendWrites', body(pc, 'async function sendWrites', '\n}\n')], ['pcPick', body(pc, 'export function pcPick', '\n}\n')], ['presetRow', body(pc, 'const presetRow', '\n')], ['offRow', body(pc, 'const offRow', '\n')], ['setLive', body(pc, 'function setLive', '\n}\n')], ['applyPc', body(pc, 'export async function applyPc', '\n}\n')]]) {
   check(fn.length > 20 && !/\bredraw\(|refreshPc\(|loadPc\(true\)|render\(/.test(fn.replace(/else loadPc\(true\)/, '')), `${name} changes colors in place (no redraw): ${fn.slice(0, 80)}`);
 }
 check(/function paintRows\(\)[\s\S]{0,400}keys !== shownKeys\) \{ refreshPc\(\); return; \}/.test(pc), 'paintRows rebuilds the card only when the listed rows changed');

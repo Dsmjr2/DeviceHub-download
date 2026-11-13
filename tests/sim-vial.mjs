@@ -144,7 +144,9 @@ for (const mode of ['via', 'silent', 'echo', 'random', 'size0', 'huge', 'notxz',
   const n = { via: 1, silent: 1, echo: 1, random: 1, size0: 2, huge: 2, notxz: 3 }[mode];
   if (n) ok(d.sent.length === n, `${mode}: stopped after ${n} question(s) (${heads(d).join(' ')})`);
   onlyReads(d, mode);
-  ok(ms < 1500, `${mode}: decided in ${ms} ms`);
+  // well under the 10 s read deadline (vial.js READ_DEADLINE_MS): about 60 ms alone, but up to ~1.6 s on a busy PC with the
+  // test files running side by side (13 Nov 2026); 1.5 s failed there once
+  ok(ms < 4000, `${mode}: decided in ${ms} ms`);
   fs.rmSync(path.join(tmp, 'FEED2002.json'));
   // a "not Vial" answer is remembered: the next start asks the keyboard nothing (a review, 1 Nov 2026); a read that
   // failed half way is not remembered, so it is tried again

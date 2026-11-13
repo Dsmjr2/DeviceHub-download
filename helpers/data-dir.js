@@ -23,4 +23,4 @@ const DATA_FILES = [
 const isPicture = (name) => /^background-picture\.[a-z0-9]{1,5}$/i.test(name);
 const LOG_FILES = ['server.log', 'server.old.log'];
 
-module.exports = { ROOT, DATA, LOGS, dataFile, logFile, DATA_FILES, LOG_FILES, isPicture };
+module.exports = { ROOT, DATA, dataFile, logFile, DATA_FILES, LOG_FILES, isPicture };

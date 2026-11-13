@@ -40,9 +40,12 @@ const deps = {
   root: ROOT,
   now: () => new Date(),
   // the read script's JSON
-  read: () => new Promise((resolve, reject) => execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', READ], { windowsHide: true, timeout: 30000, maxBuffer: 4 << 20 }, (err, out) => {
-    try { resolve(JSON.parse(String(out || '').trim())); } catch { reject(new Error(err ? err.message : 'the start-up list could not be read')); }
-  })),
+  read: () => require('./helper-reads').read('startup-apps-read', {
+    ms: 30000,
+    ps: () => new Promise((resolve, reject) => execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', READ], { windowsHide: true, timeout: 30000, maxBuffer: 4 << 20 }, (err, out) => {
+      try { resolve(JSON.parse(String(out || '').trim())); } catch { reject(new Error(err ? err.message : 'the start-up list could not be read')); }
+    })),
+  }),
   // reg.exe export / add, with the person's own rights: { code, out }
   run: (cmd, args) => new Promise((resolve) => execFile(cmd, args, { windowsHide: true, timeout: 20000 }, (err, out, errOut) => resolve({ code: err ? (typeof err.code === 'number' ? err.code : 1) : 0, out: `${out || ''}${errOut || ''}` }))),
   // one admin prompt: { code } once the script ended, or { error, declined }
@@ -147,7 +150,7 @@ async function backup(scope, key, existed) {
 }
 // the elevated script: only New-ItemProperty on that one value (the name travels as base64, never as code)
 function adminScript(key, name, hex, { started, cancel }) {
-  const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
+  const q = require('./ps-quote').psQuote;
   const bytes = hex.match(/../g).map((x) => `0x${x}`).join(',');
   return [
     `if (Test-Path -LiteralPath ${q(cancel)}) { exit 4 }`,
@@ -206,7 +209,7 @@ async function backupForRemove(it, raw) {
 // the elevated script for an HKLM leftover: that one Run value (or the all-users shortcut, moved into backups\) and its
 // StartupApproved value; the name and paths travel as base64, never as code
 function removeScript(it, moveTo, { started, cancel }) {
-  const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
+  const q = require('./ps-quote').psQuote;
   const b64 = (s) => `[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(String(s), 'utf8').toString('base64')}'))`;
   const lines = [
     `if (Test-Path -LiteralPath ${q(cancel)}) { exit 4 }`,

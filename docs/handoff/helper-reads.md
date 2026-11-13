@@ -47,7 +47,14 @@ for Windows' own processes (`System Idle Process`, `System`, `Registry`, `Memory
 
 ## What stays on PowerShell, and why
 
-- Every change: display mode, HDR, main screen (`display.ps1`), board lights, CPU sensors and Wi-Fi pause setup
+- Display mode, HDR, main screen (`display.ps1`), board lights, CPU sensors, and Wi-Fi pause setup.
+- The 8 Rust-only ops (`sleep-timer`, `laptop`, `close-app-window`, `sleep-monitors`, `corsair-apo-read`, `startup-apps-read`, `startup-impact-read`, `learn-hid-list`) are not implemented in the C# helper. When C# is the active helper (`native.helperKind() !== 'rust'`), `helpers/helper-reads.js` goes straight to PowerShell with no helper request and no fallback log line. Only when the Rust helper is running do they try the helper first, falling back to PowerShell on failure.
+- **Which ops write or act (not read-only)**:
+  - `sleep-timer` (with `-Ac`/`-Dc`/`-ScreenAc`/`-ScreenDc`): runs `powercfg /change`.
+  - `laptop` (with a `mode`): enables or disables Lid/Modern Standby wake settings.
+  - `close-app-window`: closes an application window cleanly.
+  - `sleep-monitors` (when `probe` is `false`): sends `SC_MONITORPOWER` to turn monitors off.
+  - All other ops (`bluetooth`, `pc-map`, `display-read`, `installed`, `pc-check`, `sensors`, `eqapo`, `pawnio`, `corsair-apo-read`, `startup-apps-read`, `startup-impact-read`, `learn-hid-list`, and read/probe calls to `sleep-timer`, `laptop`, `sleep-monitors`) are read-only.
   (elevated), installs and their signature checks, monitor sleep, shortcuts, uninstall, self-update.
 - Reads that open a device: `diagnose.mjs` `openProbe` (opens the HID channel), `std-battery.ps1 -Mode hid` (opens
   HID collections for their descriptors), the LampArray finder.

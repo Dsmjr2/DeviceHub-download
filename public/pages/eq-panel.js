@@ -2,7 +2,7 @@
 // itself: a preset plays as soon as it is picked, slider moves play as they are made, and nothing needs iCUE.
 // Without it, the EQ runs through iCUE's preset file; saving backs up the file, restarts iCUE and reads it back.
 import { h, icon } from '../ui/dom.js';
-import { card, button, pill, toggle, slider, row, segmented } from '../ui/controls.js';
+import { card, button, toggle, slider, row, segmented } from '../ui/controls.js';
 import { speakerSection } from './speakers.js';
 import { isDemo } from '../core/devices.js';
 import { env } from '../core/env.js';
@@ -135,7 +135,7 @@ let watching = false;
 // a slider is being dragged (anywhere in the Equalizer): no redraw until it is let go
 let held = false;
 addEventListener('pointerdown', (e) => { if (e.target?.matches?.('.eq-band input[type=range]')) held = true; }, true);
-addEventListener('pointerup', () => { held = false; }, true);
+for (const ev of ['pointerup', 'pointercancel']) addEventListener(ev, () => { held = false; }, true);
 function refreshSoon() {
   // an error (DeviceHub restarting, "Failed to fetch") is retried too, so the card never stays stuck on it
   // nothing while the window is hidden (26 Oct 2026, idle CPU): it reads again the moment it is shown

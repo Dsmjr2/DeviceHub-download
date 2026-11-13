@@ -22,6 +22,10 @@ async function tick() {
     if (r === 'GONE') { opened = false; return; }
     if (!/^00 /.test(r)) return;
     if (parseInt(r.split(' ')[1], 16) === 1) {
+      if (process.env.DEVICEHUB_SOAK_READONLY === '1') {
+        console.log('[soak] skipped receiver-light MODE 2 write');
+        return;
+      }
       const st = await line('MODE 2');
       log(st === '00' ? { kind: 'info', device: 'headset', text: 'Receiver light turned off' } : { kind: 'bad', device: 'headset', text: `Could not turn the receiver light off (${st})` });
     }

@@ -15,13 +15,19 @@ const CHOICES = [60, 120, 180, 300, 600, 900, 1200, 1800, 2700, 3600, 7200, 1080
 const PS = path.join(__dirname, 'sleep-timer.ps1');
 
 function runPs(args = []) {
-  return new Promise((resolve) => {
+  const extra = {};
+  for (let i = 0; i + 1 < args.length; i += 2) {
+    const k = { '-Ac': 'ac', '-Dc': 'dc', '-ScreenAc': 'screenAc', '-ScreenDc': 'screenDc' }[args[i]];
+    if (k) extra[k] = Number(args[i + 1]);
+  }
+  const ps = () => new Promise((resolve) => {
     execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', PS, ...args], { windowsHide: true, timeout: 30000 }, (e, out) => {
       let r = null;
       try { r = JSON.parse(String(out || '').trim().split(/\r?\n/).pop()); } catch {}
       resolve(r && typeof r === 'object' ? r : { ok: false, why: e ? e.message : 'no answer' });
     });
   });
+  return require('./helper-reads').read('sleep-timer', { extra, ps, ms: 20000 });
 }
 
 // run, writeFile and now are passed in by the tests

@@ -83,11 +83,15 @@ public static class WinAudio {
     return r;
   }
 
+  // DeviceHub's own volume and mute changes carry this tag, so a volume watcher can tell them from the volume keys,
+  // a headset's wheel or another program (13 Nov 2026, the volume pop-up hunt; docs/handoff/volume-popup.md)
+  public static readonly Guid DeviceHubContext = new Guid("d3a1c0de-5577-4d48-8b00-000000000001");
+
   // Sets ONE thing on ONE endpoint (by id), then re-reads it.
   public static Endpoint Set(string id, int volume, int muted) {
     foreach (var e in Each(null)) {
       if (e.Key.id != id) continue;
-      var ctx = Guid.Empty;
+      var ctx = DeviceHubContext;
       if (volume >= 0) e.Value.SetMasterVolumeLevelScalar(Math.Min(100, volume) / 100f, ref ctx);
       if (muted >= 0) e.Value.SetMute(muted == 1, ref ctx);
       foreach (var a in Each(null)) if (a.Key.id == id) return a.Key;

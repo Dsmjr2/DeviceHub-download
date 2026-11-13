@@ -27,7 +27,6 @@ export async function loadPower(redraw) {
   const all = st.waiting; st.waiting = null;
   for (const r of all) r();
 }
-export const powerState = () => st.sleep;
 
 // one change at a time; the rows show what Windows reads afterwards
 async function setPower(which, value, redraw, undo = false) {

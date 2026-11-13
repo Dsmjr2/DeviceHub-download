@@ -151,11 +151,13 @@ function send(res, code, body, type = 'application/json') {
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
-    let data = '';
+    let data = '', settled = false;
     // a body cut off (the window closed mid-save) settles too (31 Oct 2026: the EQ save's busy flag stayed set for good)
-    const bad = (msg, status) => reject(Object.assign(new Error(msg), { status }));
-    req.on('data', (c) => { data += c; if (data.length > 5e6) bad('too large', 413); });
-    req.on('end', () => { try { resolve(data ? JSON.parse(data) : {}); } catch (e) { bad(`not JSON: ${e.message}`, 400); } });
+    const bad = (msg, status) => { if (settled) return; settled = true; reject(Object.assign(new Error(msg), { status })); };
+    // too large: the rest is read and dropped (not kept), so the 413 reaches the window as "too large" (13 Nov 2026 bug
+    // hunt: destroying the request cut the connection, and the window only saw "Failed to fetch")
+    req.on('data', (c) => { if (settled) return; data += c; if (data.length > 5e6) { data = ''; bad('too large', 413); } });
+    req.on('end', () => { if (settled) return; settled = true; try { resolve(data ? JSON.parse(data) : {}); } catch (e) { reject(Object.assign(new Error(`not JSON: ${e.message}`), { status: 400 })); } });
     req.on('error', (e) => bad(e.message, 400));
     req.on('close', () => { if (!req.complete) bad('the request was cut off', 400); });
   });
@@ -208,7 +210,7 @@ function appVersion() {
 const readText = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return ''; } };
 function makeShortcut(lnk) {
   // every path in single quotes with its apostrophes doubled (20 Oct 2026: a user folder like O'Brien broke it)
-  const q = (s) => s.replace(/'/g, "''");
+  const q = require('./helpers/ps-quote').psEscape;
   const ps = `$s=(New-Object -ComObject WScript.Shell).CreateShortcut('${q(lnk)}');$s.TargetPath="$env:WINDIR\\System32\\wscript.exe";$s.Arguments='"${q(path.join(ROOT, 'DeviceHub.vbs'))}" /background';$s.WorkingDirectory='${q(ROOT)}';$s.IconLocation='${q(path.join(ROOT, 'DeviceHub.ico'))},0';$s.Save()`;
   return new Promise((resolve, reject) => execFile('powershell', ['-NoProfile', '-Command', ps], { windowsHide: true, timeout: 10000 }, (e) => (e ? reject(e) : resolve())));
 }
@@ -241,7 +243,7 @@ function isolatedApi(req, res, url) {
     '/api/startup': { enabled: false, isolated: true }, '/api/processes': [], '/api/games': [], '/api/game-mode': { games: [], status: null }, '/api/game-mode/installed': [],
     '/api/battery-estimate': {}, '/api/helper-calls': { uptimeS: Math.round(process.uptime()), calls: {} },
     '/api/settings-sync': { isolated: true, on: false }, '/api/auto-report': { isolated: true, on: true, configured: false, owner: false, active: false }, '/api/self-update': { isolated: true, count: 0 }, '/api/publish-release': { owner: false }, '/api/driver-share': { choice: null, owner: true }, '/api/self-update/progress': {},
-    '/api/updates': { isolated: true, apps: [] }, '/api/openrgb': { running: false, isolated: true, controllers: [] }, '/api/openrgb/find': { running: false, isolated: true },
+    '/api/updates': { isolated: true, apps: [] }, '/api/openrgb': { running: false, isolated: true, controllers: [] },
     '/api/board-lights': { isolated: true, pawnio: { installed: false, version: null }, setUp: false, task: false, copy: false, canSetUp: false, why: 'DeviceHub is in isolated test mode', partial: null, before: '', remove: '', busy: false },
     '/api/cpu-sensors': { isolated: true, pawnio: { installed: false, version: null }, setUp: false, task: false, copy: false, canSetUp: false, why: 'DeviceHub is in isolated test mode', partial: null, before: [], remove: [], busy: false },
     '/api/acer': { isolated: true, acer: false, setUp: false, task: false, copy: false, canSetUp: false, why: 'DeviceHub is in isolated test mode', partial: null, busy: false, readings: null, before: '', remove: '' },
@@ -349,20 +351,21 @@ async function api(req, res, url) {
     if (readJsonFile(SETTINGS, {}).closeWhenMinimized === false) return send(res, 200, { closed: false, why: 'switched off' });
     if (!tray || quitting) return send(res, 200, { closed: false, why: 'no tray icon to open it again' });
     const ps = path.join(__dirname, 'helpers', 'close-app-window.ps1');
-    require('child_process').execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps, '-Title', `DeviceHub closing ${nonce}`], { windowsHide: true, timeout: 20000 }, (e, out) => {
-      const text = String(out || '').trim();
-      const closed = !e && /^closed 1$/.test(text);
-      if (closed) serverLog({ kind: 'info', text: `Window closed (${b?.sleep === 'screens' ? 'after the screens were put to sleep' : b?.sleep === 'sleep' ? 'as the PC went to sleep' : b?.sleep === 'woke' ? 'after the PC woke, not in use' : 'after 5 minutes minimized'}; DeviceHub is still in the tray)` });
-      send(res, 200, { closed, why: closed ? null : (e ? e.message : text) });
+    const title = `DeviceHub closing ${nonce}`;
+    const text = await require('./helpers/helper-reads').read('close-app-window', {
+      extra: { title }, ms: 10000,
+      ps: () => new Promise((resolve) => require('child_process').execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps, '-Title', title], { windowsHide: true, timeout: 20000 }, (e, out) => resolve(e ? { err: e.message } : String(out || '').trim()))),
     });
+    const closed = typeof text === 'string' && /^closed 1$/.test(text);
+    const why = closed ? null : (text && typeof text === 'object' ? text.err : String(text || ''));
+    if (closed) serverLog({ kind: 'info', text: `Window closed (${b?.sleep === 'screens' ? 'after the screens were put to sleep' : b?.sleep === 'sleep' ? 'as the PC went to sleep' : b?.sleep === 'woke' ? 'after the PC woke, not in use' : 'after 5 minutes minimized'}; DeviceHub is still in the tray)` });
+    send(res, 200, { closed, why });
     return;
   }
   if (url.pathname === '/api/version') return send(res, 200, { version: appVersion() });
   // a new version is ready (helpers/update-notice.mjs): the window asks once, Update or Later
-  if (url.pathname === '/api/update-notice') return send(res, 200, { notice: updateNotice });
   // the weekly setup files (helpers/weekly-setup.mjs): list, read one, or save one now
   if (url.pathname === '/api/setups' && req.method === 'GET') return send(res, 200, agent ? agent.setups.list() : []);
-  if (url.pathname === '/api/setups/save-now' && req.method === 'POST') return send(res, 200, { name: agent ? await agent.setups.saveNow() : null });
   if (url.pathname.startsWith('/api/setups/') && req.method === 'GET') {
     try { return send(res, 200, agent.setups.read(decodeURIComponent(url.pathname.slice('/api/setups/'.length)))); } catch (e) { return send(res, 404, { error: e.message }); }
   }
@@ -371,8 +374,9 @@ async function api(req, res, url) {
   if (url.pathname === '/api/health') {
     const m = process.memoryUsage();
     const windowMB = await windowMemory();
-    const helperLine = await require('./helpers/native').request('diag', 'MEM', 15000);
-    const helperMB = Number((/private=([\d.]+)MB/.exec(helperLine) || [])[1]) || null;
+    const native = require('./helpers/native');
+    let helperMB = null;   // never a reason for Health to fail
+    try { helperMB = await require('./helpers/helper-memory').helperMemoryMB(await native.request('diag', 'MEM', 15000), native.helperPid?.()); } catch {}
     let crashes = 0, lastCrashAt = null;
     try {
       const since = Date.now() - 24 * 3600 * 1000;
@@ -509,6 +513,30 @@ async function api(req, res, url) {
     } catch (e) { return send(res, 400, { error: e.message }); }
     return send(res, 404, { error: 'not found' });
   }
+  // Games' own settings (12 Nov 2026, helpers/game-settings.mjs): what this PC has (for the setup file), what a file
+  // would change here, loading picked games (backed up first, never while a game runs), and Put back
+  if (url.pathname.startsWith('/api/game-settings')) {
+    const G = await import('./helpers/game-settings.mjs');
+    if (!(await G.allowed(ROOT))) return send(res, 200, url.pathname === '/api/game-settings/backup' ? null : url.pathname === '/api/game-settings/apply' ? { done: 0, failed: 0, lines: [], backup: null } : []);
+    const running = async () => new Set((await runningPrograms(false)).map((x) => String(x).toLowerCase()));
+    try {
+      if (url.pathname === '/api/game-settings' && req.method === 'GET') return send(res, 200, await G.capture());
+      if (url.pathname === '/api/game-settings/plan' && req.method === 'POST') return send(res, 200, await G.plan((await readBody(req)).games, { running: await running() }));
+      if (url.pathname === '/api/game-settings/apply' && req.method === 'POST') {
+        const { games, picks } = await readBody(req);
+        const r = await G.apply(games, picks, { running: await running(), backups: BACKUPS });
+        if (r.done || r.failed) serverLog({ text: `Game settings loaded: ${r.lines.map((l) => `${l.name} ${l.text}`).join(', ')}`, kind: r.failed ? 'bad' : 'good' });
+        return send(res, 200, r);
+      }
+      if (url.pathname === '/api/game-settings/backup' && req.method === 'GET') return send(res, 200, G.latestBackup(BACKUPS));
+      if (url.pathname === '/api/game-settings/put-back' && req.method === 'POST') {
+        const r = await G.putBack(BACKUPS, { running: await running() });
+        serverLog({ text: `Game settings put back: ${r.games.join(', ')}`, kind: r.failed ? 'bad' : 'good' });
+        return send(res, 200, r);
+      }
+    } catch (e) { return send(res, 400, { error: e.message }); }
+    return send(res, 404, { error: 'not found' });
+  }
   // Start with Windows: a shortcut to DeviceHub.vbs in the user's Startup folder (only when the user turns it on).
   if (url.pathname === '/api/startup') {
     const lnk = path.join(process.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'DeviceHub.lnk');
@@ -593,14 +621,11 @@ async function api(req, res, url) {
     if (url.pathname === '/api/laptop/mode' && !['efficiency', 'balanced', 'performance'].includes(mode)) return send(res, 400, { ok: false, why: 'mode: efficiency, balanced or performance' });
     if (laptopBusy) return send(res, 409, { ok: false, why: 'busy' });
     laptopBusy = true;
-    const ps = path.join(__dirname, 'helpers', 'laptop.ps1');
-    require('child_process').execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps, ...(mode ? ['-Mode', mode] : [])], { windowsHide: true, timeout: 30000 }, (e, out) => {
-      laptopBusy = false;
-      let r = null;
-      try { r = JSON.parse(String(out || '').trim().split(/\r?\n/).pop()); } catch {}
+    try {
+      const r = await runLaptopPs(mode);
       if (mode && r?.ok) serverLog({ kind: r.powerMode === mode ? 'good' : 'bad', text: r.powerMode === mode ? `Windows power mode → ${mode}` : `Windows power mode not changed to ${mode} (it reads ${r.powerMode || 'unknown'})` });
-      send(res, 200, r && typeof r === 'object' ? r : { ok: false, why: e ? e.message : 'no answer' });
-    });
+      send(res, 200, r);
+    } finally { laptopBusy = false; }
     return;
   }
   // Gaming mode (helpers/gaming-mode.mjs, 3 Nov 2026): one switch for Best performance, sleep never, Wi-Fi scans paused
@@ -692,12 +717,14 @@ async function api(req, res, url) {
     res.write(': connected\n\n');
     const sid = ++streamSeq;
     streams.set(sid, res);
-    res.write(windowEvents.frame('hello', { ...helloNow(), stream: sid }));
+    const safeWrite = (chunk) => { if (res.writableEnded || res.destroyed) return false; try { res.write(chunk); return true; } catch { return false; } };
+    safeWrite(windowEvents.frame('hello', { ...helloNow(), stream: sid }));
     openWindows++;
     const offHub = hub.add(res);
-    const offAgent = agent ? agent.subscribe((type, data) => res.write(windowEvents.frame(type, data))) : () => {};
-    const ping = setInterval(() => res.write(': ping\n\n'), 25000);
-    req.on('close', () => { offHub(); offAgent(); clearInterval(ping); openWindows--; streams.delete(sid); gpuWatch.drop(sid); });
+    const offAgent = agent ? agent.subscribe((type, data) => safeWrite(windowEvents.frame(type, data))) : () => {};
+    const ping = setInterval(() => safeWrite(': ping\n\n'), 25000);
+    let closed = false;
+    req.on('close', () => { if (closed) return; closed = true; offHub(); offAgent(); clearInterval(ping); openWindows = Math.max(0, openWindows - 1); streams.delete(sid); gpuWatch.drop(sid); });
     return;
   }
   // what one window's stream wants beside the usual events: { stream, gpu } (the Overview's GPU chip, helpers/gpu-watch.js)
@@ -710,20 +737,11 @@ async function api(req, res, url) {
   }
   // Whether this server runs an agent (the window must then never open the devices itself), and whether it is up.
   if (url.pathname === '/api/agent-config') return send(res, 200, { agent: AGENT_ON, ready: !!agent });
-  // The background agent (helpers/agent.mjs): state, live events, and operations for the window and the tray.
+  // The background agent (helpers/agent.mjs): state and operations for the window and the tray (live events come on /api/events).
   if (url.pathname.startsWith('/api/agent/')) {
     if (!agent) return send(res, 503, { error: 'agent not running' });
     const name = url.pathname.slice('/api/agent/'.length);
     if (name === 'state' && req.method === 'GET') return send(res, 200, agent.state());
-    if (name === 'events' && req.method === 'GET') {   // the agent's events alone (the window uses /api/events)
-      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
-      res.write(': connected\n\n');
-      openWindows++;
-      const off = agent.subscribe((type, data) => res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`));
-      const ping = setInterval(() => res.write(': ping\n\n'), 25000);
-      req.on('close', () => { off(); clearInterval(ping); openWindows--; });
-      return;
-    }
     if (req.method !== 'POST') return send(res, 405, { error: 'use POST' });
     return send(res, 200, await agent.op(name, await readBody(req)));
   }
@@ -877,9 +895,15 @@ async function api(req, res, url) {
   // the PC keeps running
   if (url.pathname === '/api/monitors/sleep' && req.method === 'POST') {
     try {
-      // Windows' own monitor-off message through its signed PowerShell (26 Oct 2026: no third-party nircmd.exe)
-      const ps = path.join(__dirname, 'helpers', 'sleep-monitors.ps1');
-      require('child_process').spawn('powershell.exe', ['-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', ps], { stdio: 'ignore', windowsHide: true }).unref();   // not detached: started detached it quit at once, before its first line (27 Oct 2026, Shawn: Sleep did nothing)
+      const mode = await require('./helpers/helper-reads').read('sleep-monitors', {
+        extra: { probe: false }, ms: 5000,
+        ps: () => 'ps',
+      });
+      if (mode !== 's3') {
+        // Modern Standby or helper unavailable: use helpers/sleep-monitors.ps1
+        const ps = path.join(__dirname, 'helpers', 'sleep-monitors.ps1');
+        require('child_process').spawn('powershell.exe', ['-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', ps], { stdio: 'ignore', windowsHide: true }).unref();
+      }
       monitors.quiet();   // no DDC/CI reads that could wake them (helpers/monitors.js)
       serverLog({ kind: 'info', text: 'Monitors: sleep command sent' });
       return send(res, 200, { ok: true });
@@ -1064,7 +1088,6 @@ async function api(req, res, url) {
     catch (e) { return send(res, 400, { error: e.message }); }
   }
   // Find my lights (helpers/find-lights.js): one color per zone, the person's names saved, the lights put back
-  if (url.pathname === '/api/openrgb/find' && req.method === 'GET') return send(res, 200, openrgb.findState());
   if (url.pathname === '/api/openrgb/find-start' && req.method === 'POST') {
     const { target } = await readBody(req);
     try { const r = await openrgb.findStart(target); serverLog({ kind: 'good', text: `PC lights: Find my lights on ${r.name} (${r.zones.filter((z) => z.color).length} colors)` }); return send(res, 200, r); }
@@ -1254,7 +1277,7 @@ http.createServer(async (req, res) => {
     if (url.pathname.startsWith('/api/')) return await api(req, res, url);
     const rel = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname).replace(/^\/+/, '');
     const file = path.normalize(path.join(PUBLIC, rel));
-    if (!file.startsWith(PUBLIC) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return send(res, 404, 'not found', 'text/plain');
+    if (!file.startsWith(PUBLIC + path.sep) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return send(res, 404, 'not found', 'text/plain');
     // isolated test mode: the window runs on the demo devices (public/devices/demo.js), so it never opens WebHID itself
     if (ISOLATED && file === path.join(PUBLIC, 'index.html')) return send(res, 200, fs.readFileSync(file, 'utf8').replace('<script type="module" src="app.js"></script>', '<script>window.DEVICEHUB_DEMO = true; window.DEVICEHUB_ISOLATED = true;</script>\n  <script type="module" src="app.js"></script>'), 'text/html');
     // (31 Oct 2026) kept by the browser but checked every time (no-cache + ETag): an unchanged file is a 304 with no
@@ -1453,8 +1476,9 @@ let laptopBusy = false;   // /api/laptop: one read or power-mode change at a tim
 let sleepTimer = null;    // /api/sleep (helpers/sleep-timer.js), made on first use
 // helpers/laptop.ps1 (Windows' power mode, read and set), for the Laptop page's route and Gaming mode
 function runLaptopPs(mode = '') {
-  return new Promise((resolve) => require('child_process').execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'helpers', 'laptop.ps1'), ...(mode ? ['-Mode', mode] : [])],
+  const ps = () => new Promise((resolve) => require('child_process').execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'helpers', 'laptop.ps1'), ...(mode ? ['-Mode', mode] : [])],
     { windowsHide: true, timeout: 30000 }, (e, out) => { let r = null; try { r = JSON.parse(String(out || '').trim().split(/\r?\n/).pop()); } catch {} resolve(r && typeof r === 'object' ? r : { ok: false, why: e ? e.message : 'no answer' }); }));
+  return require('./helpers/helper-reads').read('laptop', { extra: mode ? { mode } : {}, ps, ms: 20000 });
 }
 // the power plans (powercfg /list, /getactivescheme, /setactive): only for Gaming mode on a PC without Windows' power mode
 const PLAN_GUID = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\s+\(([^)]*)\)/i;

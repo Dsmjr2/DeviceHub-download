@@ -42,7 +42,7 @@ export const DIR = path.join(os.tmpdir(), 'DeviceHub-downloads');
 export const RESULT = path.join(DIR, 'acer-setup-result.txt');
 const FRESH_MS = 5000;
 const user = () => `${process.env.USERDOMAIN || os.hostname()}\\${os.userInfo().username}`;
-const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
+import { psQuote as q } from './ps-quote.js';   // a PowerShell single-quoted value
 
 export const taskArgs = (mode, { sha = SCRIPT_SHA256, want = ACER.want } = {}) => {
   if (!MODES.includes(mode)) throw new Error(`not an Acer mode: ${mode}`);

@@ -74,7 +74,9 @@ const rcall = async (path, body) => { remoteBusy++; try { return await env.api(p
 function proxyAdapter(meta) {
   return {
     ...meta,
-    trusted: (k) => !!meta.trusted?.[k],
+    // only the mouse has a trusted list (helpers/agent.mjs); every other device has none, so nothing is locked by it
+    // (13 Nov 2026 bug hunt: an added device's quick settings never showed on the Overview, all locked)
+    trusted: meta.trusted ? (k) => !!meta.trusted[k] : undefined,
     hasLighting: () => !!meta.hasLighting,
     lightingKeys(r, g, b, brightness) { const { hue, sat } = rgbToHsv255(r, g, b); return [['hue', hue], ['saturation', sat], ['brightness', Math.round((brightness / 100) * 255)]]; },
     owns: () => false,

@@ -5,11 +5,11 @@ DeviceHub connects to your mouse, headset and keyboard automatically using its b
 ## How it works
 
 1. **Install DeviceHub and plug your devices in.** That is often all it takes. When DeviceHub starts (or when you plug a device in), auto setup
-   compares your USB devices with its shared library (21 drivers: Logitech, Razer, ASUS ROG, Glorious,
+   compares your USB devices with its shared library (Logitech, Razer, ASUS ROG, Glorious,
    SteelSeries, Corsair, HyperX and ROCCAT mice; Logitech, SteelSeries Arctis, Corsair, HyperX, Audeze Maxwell, Astro A50 and Turtle Beach headsets; Logitech,
    Razer, Corsair, Keychron, Wooting, ROCCAT, HyperX and SteelSeries Apex keyboards) and installs a matching driver by itself.
    What a driver does once installed: every library or learned driver without a prior real-device test record only reads at first. Its settings stay
-   read-only until you press **Turn on settings** on its page or on the Set up card. DeviceHub then writes each
+   read-only until you press **Turn on settings** on its page or **Set it all up** on Setup. DeviceHub then writes each
    setting's current value back once and reads it the same to make sure it works; each one that passes can then be
    changed. (A driver whose device.json records a run on a real device does that check by itself when it connects.)
    Nothing is installed for a device DeviceHub already runs itself.
@@ -65,7 +65,8 @@ from me. Do one device at a time. Ask me before installing or downloading anythi
   (docs/DRIVER-FORMAT.md, Battery care).
 - A keyboard that works with **VIA** needs nothing: plug it in and DeviceHub finds it and its layout (from VIA's
   library of about 1,500 keyboards). The exception: boards that are not in that library, which include **Keychron's
-  Pro, Max, HE and 8K boards** (a Q1 Pro, for one). For those, download the maker's VIA file (the one VIA's "load
+  Pro, Max, HE and 8K boards** (a Q1 Pro, for one). For most of those the Keyboard page has a **Get the layout** button
+  that fetches Keychron's official file (helpers/via-fetch.mjs). For any other, download the maker's VIA file (the one VIA's "load
   draft definition" takes; Keychron has them on its site, one page per series), save it in the `via-definitions`
   folder as `<VID><PID>.json` (a Q1 Pro, USB 3434:0610, is `34340610.json`), and restart DeviceHub. The Keyboard
   page shows the exact file name, with an Open folder button.

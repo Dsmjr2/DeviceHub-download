@@ -1,6 +1,5 @@
 // Tiny DOM helpers used by every page.
 export const $ = (s, el = document) => el.querySelector(s);
-export const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 
 // h('div', {class, onclick, style:{...}, dataset:{...}}, ...children)
 export function h(tag, attrs = {}, ...kids) {
@@ -40,7 +39,6 @@ export const svgEl = (markup) => {
 };
 
 export const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // a phrase moved into the middle of a sentence: its first letter lower case, unless its first word is an acronym or a
 // name (RAM, GPU, Wi-Fi, DeviceHub, Windows: 24 Oct 2026, Shawn: "it says rAM instead of RAM")
 const KEEP_CASE = /^(?:[A-Z0-9]{2,}|Windows|DeviceHub|Xbox|NVIDIA|AMD|Intel|Ethernet|Game Mode|Bluetooth|G HUB|iCUE|OpenRGB|Equalizer APO)\b/;

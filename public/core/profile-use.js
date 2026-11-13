@@ -56,3 +56,11 @@ export function whenLine(p, use, { defaultProfile, autoSwitch, title = (x) => St
   return line;
 }
 const joinNames = (n) => (n.length <= 2 ? n.join(' or ') : `${n.slice(0, -1).join(', ')} or ${n[n.length - 1]}`);
+
+// Which profile a running game picks (12 Nov 2026, Shawn: "keep my mouse at 1000hz just for this game"): a profile that
+// names a running game wins over one that takes any game, whatever their order; among the same kind, the first wins.
+// running(g): whether games-list entry g is running now (core/autoswitch.js)
+export function pickMatch(profiles, running) {
+  const hit = (p, named) => (Array.isArray(p.games) ? p.games : []).some((g) => (g === ANY) !== named && running(g));
+  return profiles.find((p) => hit(p, true)) || profiles.find((p) => hit(p, false)) || null;
+}

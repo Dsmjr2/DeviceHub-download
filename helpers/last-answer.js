@@ -10,6 +10,7 @@
 // or the file given; a test that only requires a helper writes none. A copy older than maxDiskMs is not used.
 const fs = require('fs');
 const path = require('path');
+const { writeAtomic } = require('./safe-write');
 
 let diskDir = null;
 function useDisk(dir) { diskDir = dir; }
@@ -43,10 +44,7 @@ function lastAnswer({ name = null, file = null, staleMs, maxDiskMs = 24 * 3600e3
     const f = fileOf();
     if (!f) return;
     try {
-      fs.mkdirSync(path.dirname(f), { recursive: true });
-      const tmp = `${f}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify({ at: k.at, value: scrubPersonal(toDisk(k.value)) }));
-      fs.renameSync(tmp, f);
+      writeAtomic(f, JSON.stringify({ at: k.at, value: scrubPersonal(toDisk(k.value)) }));
     } catch (e) { onError(e); }
   };
   function readNow(fresh) {

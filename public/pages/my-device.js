@@ -5,7 +5,7 @@
 import { h, icon } from '../ui/dom.js';
 import { card, row, slider, toggle, segmented, pill, readout, colorRow, lineList, remapSelect } from '../ui/controls.js';
 import { devices, write, prepare, connect } from '../core/devices.js';
-import { topbar, deviceActions, kv, statusPill, isAway, awayBanner, undoButton, checkAnswer, deviceHelp } from './common.js';
+import { topbar, deviceActions, kv, statusPill, isAway, awayBanner, undoButton, checkAnswer } from './common.js';
 import { artOf } from '../ui/art.js';
 import { button } from '../ui/controls.js';
 import { modal, toast } from '../ui/overlay.js';
@@ -379,7 +379,7 @@ export function devicePage(id) {
       redraws[id] = () => ctx.redraw?.();
       if (a.battery) loadBatteryEstimates(() => ctx.redraw?.());
       askLibrary(d, () => ctx.redraw?.());
-      const head = topbar(`${a.kind} · added on this PC`, a.title, null, h('div', { class: 'chips' }, undoButton(d), statusPill(d)), deviceHelp(d));
+      const head = topbar(a.title, h('div', { class: 'chips' }, undoButton(d), statusPill(d)));
       if (d.status !== 'connected' && !isAway(d)) {
         return h('div', {}, head, h('div', { class: 'panel empty' }, artOf(d),
           h('h2', {}, d.status === 'error' ? `Couldn't reach the ${a.kind.toLowerCase()}` : `Waiting for the ${a.kind.toLowerCase()}`),

@@ -79,14 +79,14 @@ export default {
         h('p', { class: 'faint', style: { margin: 0 } }, failed ? 'List not loaded. Restart DeviceHub.' : 'Loading…'),
         failed ? h('div', { class: 'actions', style: { marginTop: '10px' } }, button('Try again', () => { failed = false; load(); redrawPage(); }, { kind: 'ghost small', ic: 'refresh' })) : null));
     }
-    // the three statuses, said once here instead of on every row
-    const legend = h('p', { class: 'faint', style: { margin: '0 0 14px' } },
+    // the three statuses, said once at the bottom instead of on every row (11 Nov 2026 polish: it sat under the title)
+    const legend = h('p', { class: 'faint', style: { margin: '16px 0 0' } },
       h('b', {}, 'Works'), ': out of the box. ', h('b', {}, 'Reads now'), ': changes settings after Turn on settings. ',
       h('b', {}, 'Not tried yet'), ': untested; install from Setup.');
     return h('div', {},
-      topbar('App', 'Supported devices', null, button('Back', () => { location.hash = '#/settings'; }, { kind: 'ghost small' })),
-      legend,
+      topbar('Supported devices', button('Back', () => { location.hash = '#/settings'; }, { kind: 'ghost small' })),
       h('div', { style: { marginBottom: '16px' } }, anyCard()),
-      h('div', { class: 'grid three top' }, ...cols.filter((c) => c.length).map((c) => h('div', { class: 'stack' }, ...c))));
+      h('div', { class: 'grid three top' }, ...cols.filter((c) => c.length).map((c) => h('div', { class: 'stack' }, ...c))),
+      legend);
   },
 };

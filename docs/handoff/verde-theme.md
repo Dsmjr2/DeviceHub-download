@@ -42,5 +42,5 @@ The purple backdrop added the same day is gone (theme.js entry, accent rule, CSS
 Demo mode, Verde applied in the page (not saved), at 1650 x 910 and 390 x 844: Overview (three devices and the batteries
 strip), Mouse, Lighting, Profiles, Backups, Settings, Learn a device, Wallpapers, Ctrl+K. No sideways scroll anywhere;
 Overview fits one screen at 1650 x 910. At phone width the three Overview tiles are as cramped as in every theme (names
-cut, "Connected" runs past the tile edge); that is the base layout, not Verde. Screenshot: `docs/handoff/looks/verde.png`.
+cut, "Connected" runs past the tile edge); that is the base layout, not Verde. Screenshot removed 9 Nov 2026 (demo mode shows Verde as it is now).
 `node tests/check.mjs` and `npm run test:offline` pass.

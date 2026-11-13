@@ -30,7 +30,7 @@
 //   startup({ root, log, waitMs })        at start: check now (waits up to waitMs for it), then refresh the copies
 //   schedule({ root, log })               checkIfDue every hour (timers unref'd); startup() does the first check
 //   status(root)                          the last check, the cached entries and any errors
-//   handle(url, req, res, send)           GET /api/library/updates, POST /api/library/update; true when it answered
+//   handle(url, req, res, send)           POST /api/library/update; true when it answered
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -115,7 +115,7 @@ export function verifyBundle(b, publicKeyPem) {
 }
 
 // ---- state ----
-const readJson = (f, d = null) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
+import { readJson } from './safe-write.js';   // a JSON file or a fallback (helpers/safe-write.js)
 export function readState(root = ROOT) { return readJson(STATE(root), {}) || {}; }
 async function writeState(root, s) {
   await fsp.mkdir(cacheRoot(root), { recursive: true });
@@ -337,10 +337,9 @@ export function status(root = ROOT) {
   };
 }
 
-// GET /api/library/updates: the state; POST /api/library/update: check now (?soon=1: unless checked in the last 10
+// POST /api/library/update: check now (?soon=1: unless checked in the last 10
 // minutes). Returns true when it answered.
 export async function handle(url, req, res, send, { root = ROOT, ...opts } = {}) {
-  if (url.pathname === '/api/library/updates' && req.method === 'GET') { send(res, 200, status(root)); return true; }
   if (url.pathname === '/api/library/update' && req.method === 'POST') {
     if (!enabled(root)) { send(res, 409, { ...status(root), error: 'library updates are off (settings.json "libraryUpdates": false or DEVICEHUB_LIBRARY_UPDATES=0)' }); return true; }
     // ?soon=1: a device page showing a driver problem (not again within 10 minutes); else the person's button, now

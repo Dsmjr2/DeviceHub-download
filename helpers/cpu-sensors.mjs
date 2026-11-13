@@ -68,7 +68,7 @@ export const FILES = {
 const user = () => `${process.env.USERDOMAIN || os.hostname()}\\${os.userInfo().username}`;
 
 // ---- the two scripts the admin prompt runs (built here, exactly; tests/cpu-sensors.mjs checks them) ----
-const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
+import { psQuote as q } from './ps-quote.js';   // a PowerShell single-quoted value
 const head = (result) => [
   "$ErrorActionPreference = 'Stop'",
   `$dest = ${q(LHM_PATHS.dir)}; $task = ${q(LHM_PATHS.task)}; $result = ${q(result)}`,

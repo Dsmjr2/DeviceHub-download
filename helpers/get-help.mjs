@@ -241,7 +241,7 @@ export function relevantLog(lines, d) {
     .map(({ l, n }) => (n > 1 ? `${l} (${n} times)` : l))
     .slice(-LOG_LINES);
 }
-const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
+import { readJson } from './safe-write.js';   // a JSON file or a fallback (helpers/safe-write.js)
 export function driverOf(snap, root = ROOT) {
   const a = snap.adapter || {};
   if (!a.plugin) {

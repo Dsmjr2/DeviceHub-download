@@ -149,7 +149,7 @@ export function buildPlan({ dir, key = 'DeviceHub', facts, exists = fs.existsSyn
 }
 
 // ---- the one elevated script: each part's own remove script, run in turn as a block ----
-const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
+import { psQuote as q } from './ps-quote.js';   // a PowerShell single-quoted value
 // a remove script ends with exit; as one block of several, it returns instead so the next part still runs
 export const asBlock = (script) => `& {\r\n${String(script).replace(/^([ \t]*)exit \d+[ \t]*$/gm, '$1return')}\r\n}`;
 export const resultFile = (resultDir, part) => path.join(resultDir, `uninstall-${part}.txt`);

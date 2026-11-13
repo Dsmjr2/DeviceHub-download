@@ -9,7 +9,7 @@
 // and a change made on it stays there until the main PC next sends. Monitor and camera EQ are keyed by the device
 // itself, so another PC's monitors never land on this one.
 const fs = require('fs');
-const { writeAtomic, readJsonForWrite } = require('./safe-write');  // crash-proof saving (helpers/safe-write.js)
+const { writeAtomic, readJsonForWrite, readJson } = require('./safe-write');  // crash-proof saving (helpers/safe-write.js)
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
@@ -22,13 +22,13 @@ const DIR = path.join(ROOT, 'settings-sync');            // the local copy of th
 const { dataFile } = require('./data-dir');
 const STATE = dataFile('settings-sync-state.json', ROOT);
 const SETTINGS = dataFile('settings.json', ROOT), PROFILES = dataFile('profiles.json', ROOT);
-const OPTIONS = ['autoSwitch', 'defaultProfile', 'hotkeys', 'artStyle', 'themeBg', 'themeAccent', 'ankerGuard', 'batterySaver'];
+// (9 Nov 2026) 'hotkeys' left the list: the profile hotkeys it carried were removed on 19 Oct, before syncing existed
+const OPTIONS = ['autoSwitch', 'defaultProfile', 'artStyle', 'themeBg', 'themeAccent', 'ankerGuard', 'batterySaver'];
 
 const git = (args, cwd = DIR, timeout = 45000) => new Promise((resolve, reject) => {
   // never a sign-in window or prompt: cached credentials still work, anything else fails quietly (no pop-ups)
   execFile('git', args, { cwd, windowsHide: true, timeout, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', GIT_ASKPASS: '', SSH_ASKPASS: '', GIT_SSH_COMMAND: 'ssh -o BatchMode=yes' } }, (e, out, err) => (e ? reject(new Error((err || e.message).trim().split('\n').pop())) : resolve(out.trim())));
 });
-const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
 const hash = (o) => crypto.createHash('sha1').update(JSON.stringify(o)).digest('hex');
 
 let eqapo = null, log = () => {}, timer = null, busy = false;

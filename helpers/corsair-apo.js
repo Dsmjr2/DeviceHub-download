@@ -28,9 +28,13 @@ const ELEVATE = "try { $p = Start-Process -FilePath powershell.exe -Verb RunAs -
 const deps = {
   root: ROOT,
   // the read script's JSON, or null
-  read: (list) => new Promise((resolve) => execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', READ, '-Endpoints', list.map(([f, g]) => `${f}|${g}`).join(',')], { windowsHide: true, timeout: 20000 }, (err, out) => {
-    try { resolve(JSON.parse(String(out || '').trim())); } catch { resolve(null); }
-  })),
+  read: (list) => {
+    const endpoints = list.map(([f, g]) => `${f}|${g}`).join(',');
+    const ps = () => new Promise((resolve) => execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', READ, '-Endpoints', endpoints], { windowsHide: true, timeout: 20000 }, (err, out) => {
+      try { resolve(JSON.parse(String(out || '').trim())); } catch { resolve(null); }
+    }));
+    return require('./helper-reads').read('corsair-apo-read', { extra: { endpoints }, ps, ms: 15000 }).catch(() => null);
+  },
   // one admin prompt: { code } once the script ended, or { error, declined }
   elevate: (env, signal) => new Promise((resolve) => execFile('powershell.exe', ['-NoProfile', '-Command', ELEVATE], { windowsHide: true, timeout: 5 * 60 * 1000, signal, env: { ...process.env, ...env } }, (err, out) => {
     const [kind, ...rest] = String(out || '').trim().split('|'), msg = rest.join('|');

@@ -3,6 +3,7 @@
 import { loadProfiles, apply, wifiProfile } from './profiles.js';
 import { isDemo, log } from './devices.js';
 import { env } from './env.js';
+import { pickMatch as pick } from './profile-use.js';
 
 export const auto = { settings: { autoSwitch: false, defaultProfile: '' }, active: null, running: [], busy: false };
 const listeners = new Set();
@@ -53,7 +54,7 @@ async function tick() {
   for (const x of env.gameModeExes?.() || []) running.delete(x);
   const profiles = await loadProfiles();
   const all = await games();
-  const match = profiles.find((p) => (p.games || []).some((g) => gameRunning(g, running, all)));
+  const match = pick(profiles, (g) => gameRunning(g, running, all));
   const target = match || profiles.find((p) => p.name === auto.settings.defaultProfile) || null;
   // Game closed and there is no default to go back to: forget it, so starting the game again re-applies its profile.
   if (!match && !target && auto.active) { auto.active = null; wifiProfile(null); emit(); return; }

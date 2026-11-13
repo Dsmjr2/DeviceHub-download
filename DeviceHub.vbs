@@ -38,6 +38,11 @@ Sub Launch(cmd, style)
     sh.Run cmd, style, False
   End If
 End Sub
+' One taskbar button (13 Nov 2026): once the window is up, helpers\taskbar-id.ps1 (hidden) copies the window's taskbar app ID
+' onto DeviceHub's own shortcuts, so the window groups under the pinned icon instead of opening a button of its own
+Sub TaskbarId()
+  Launch "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & dir & "\helpers\taskbar-id.ps1""", 0
+End Sub
 ' brings the DeviceHub window to the front (a test only notes it, so it never moves the real window)
 Function Activate()
   If launchLog <> "" Then
@@ -251,6 +256,7 @@ If InStr(LCase(chrome), "msedge") > 0 Then userData = sh.ExpandEnvironmentString
 If light And Not fs.FileExists(userData & "\Local State") Then light = False
 If light Then
   Launch """" & chrome & """" & " --app=http://localhost:" & port & "/ --start-maximized", 1
+  TaskbarId
   WScript.Quit
 End If
 ' its page cache kept to 8 MB, and none of Chrome's downloaded models: a page served from this PC needs neither
@@ -266,3 +272,4 @@ If fs.FolderExists(profile & "\Default\Web Applications\Manifest Resources\" & a
 Else
   Launch """" & chrome & """" & " --user-data-dir=""" & profile & """ --no-first-run --no-default-browser-check --hide-crash-restore-bubble --disable-extensions --disable-component-update --disk-cache-size=8388608 --disable-features=OptimizationGuideModelDownloading,OptimizationHints,OptimizationTargetPrediction,SpareRendererForSitePerProcess --app=http://localhost:" & port & "/ --start-maximized", 1
 End If
+TaskbarId

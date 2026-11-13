@@ -35,9 +35,9 @@ const setLocal = (k, v) => { try { if (v) localStorage.setItem(k, v); else local
 // them shows Realistic as Blueprint, and Settings does not offer it; the saved choice stays as it is. null = not known yet.
 let photos = null, shown = null;
 export const photosHere = () => photos !== false;
-const photosCheck = typeof fetch === 'function' && typeof document !== 'undefined'
-  ? fetch('/img/hs80.png', { method: 'HEAD' }).then((r) => r.ok, () => true).then((ok) => { photos = ok; if (!ok && shown === 'photo') applyArtStyle('photo'); })
-  : null;
+if (typeof fetch === 'function' && typeof document !== 'undefined') {
+  fetch('/img/hs80.png', { method: 'HEAD' }).then((r) => r.ok, () => true).then((ok) => { photos = ok; if (!ok && shown === 'photo') applyArtStyle('photo'); });
+}
 export function applyArtStyle(style) {
   style = RENAMED[style] || style;
   const resolved = ART_STYLES.some(([k]) => k === style) ? style : 'blueprint';

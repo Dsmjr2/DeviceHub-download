@@ -32,14 +32,11 @@ import { libraryMark, readVerified, loadNew, ownClash, addFamilyPids, hasRealRec
 export const SETUP_FILE = 'setup.json';
 export const cache = { at: 0, value: null };  // server.js keeps /api/setup's last answer here for a minute
 const require = createRequire(import.meta.url);
-const readJson = (f, d = null) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
+import { readJson, writeAtomic } from './safe-write.js';   // a JSON file or a fallback (helpers/safe-write.js)
 const setupPath = (root) => require('./data-dir.js').dataFile(SETUP_FILE, root);   // data\setup.json (27 Oct 2026)
 export const readSetup = (root = ROOT) => readJson(setupPath(root), {}) || {};
 function saveSetup(root, data) {
-  const file = setupPath(root), tmp = `${file}.tmp`;
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n');
-  fs.renameSync(tmp, file);
+  writeAtomic(setupPath(root), JSON.stringify(data, null, 2) + '\n');
 }
 const idOf = (u) => `${hex4(u.vid)}:${hex4(u.pid)}`;
 const product = (meta) => `${meta.vendor} ${meta.product}`;

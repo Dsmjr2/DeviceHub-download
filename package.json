@@ -16,11 +16,16 @@
     "offline": [
       "tests/check.mjs",
       "tests/dropdown.mjs",
+      "tests/setup-games.mjs",
+      "tests/game-settings.mjs",
+      "tests/game-settings-embark.mjs",
       "tests/driver-dates.mjs",
       "tests/shared-drivers.mjs",
       "tests/audit-run2.mjs",
       "tests/failed-read.mjs",
       "tests/regressions.mjs",
+      "tests/test-install.mjs",
+      "tests/damaged-files.mjs",
       "tests/desk-pages.mjs",
       "tests/known-folders.mjs",
       "tests/device-page-layout.mjs",
@@ -146,7 +151,11 @@
       "tests/pc-commands.mjs",
       "tests/sleep-monitors.mjs",
       "tests/gpu-idle.mjs",
-      "tests/acer-control.mjs"
+      "tests/acer-control.mjs",
+      "tests/rust-helper-optin.mjs",
+      "tests/rust-helper-safety.mjs",
+      "tests/helper-memory.mjs",
+      "tests/rust-helper-fallback.mjs"
     ],
     "live": [
       "tests/release-signing.mjs",

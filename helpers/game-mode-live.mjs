@@ -15,7 +15,7 @@ import { createGameMode } from './game-mode.mjs';
 const require = createRequire(import.meta.url);
 const { writeAtomic } = require('./safe-write.js');
 const hexToRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
+import { readJson } from './safe-write.js';   // a JSON file or a fallback (helpers/safe-write.js)
 
 export function realSwitches({ core, api, openrgb = require('./openrgb.js'), notifications = require('./notifications.js') }) {
   const dev = (id) => (core.devices[id]?.status === 'connected' ? core.devices[id] : null);

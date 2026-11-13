@@ -136,7 +136,7 @@ export default {
     targetsEl = targetsCard();
     targetsEl.classList.add('light-targets');
     return h('div', { class: 'lighting-page' },
-      topbar('All devices', 'Lighting', 'One color for every device.'),
+      topbar('Lighting'),
       // one screen, three columns: the color, where it goes, and the PC's own lights (23 Oct 2026, Shawn: "I want the
       // lighting area non scrollable")
       h('div', { class: 'grid light-cols top' },

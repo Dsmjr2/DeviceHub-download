@@ -9,7 +9,7 @@ import { env } from '../core/env.js';
 import { showPicker, isJack } from '../core/headset-pick.js';
 import { headsetArt, genericArtFor } from '../ui/art.js';
 import { meter, micState } from '../ui/gauges.js';
-import { topbar, connectState, deviceActions, vendorNote, kv, statusPill, isAway, awayBanner, undoButton, deviceHelp } from './common.js';
+import { topbar, connectState, deviceActions, vendorNote, kv, statusPill, isAway, awayBanner, undoButton } from './common.js';
 import { setGlow } from '../core/theme.js';
 import { eqPanel, soundTools } from './eq-panel.js';
 import { micMeter } from './mic-meter.js';
@@ -121,7 +121,7 @@ export default {
     const direct = a.mode === 'direct';
     // any other USB headset (headset-adapter.js): its sound features only, under its own name
     const generic = a.mode === 'generic';
-    const head = topbar(generic ? `${a.generic?.bt === 'only' ? 'Bluetooth headset' : isJack(a.generic?.usb) ? 'Wired headset' : 'USB headset'} · sound features` : direct ? 'Corsair · Wireless headset' : 'Corsair · Wireless headset · iCUE open', a.title, null, h('div', { class: 'chips' }, headsetPicker(a, redraw), undoButton(dev), dev.status === 'connected' && !dev.values?.headsetOn ? pill('headset off', 'warn') : statusPill(dev)), deviceHelp(dev));
+    const head = topbar(a.title, h('div', { class: 'chips' }, headsetPicker(a, redraw), undoButton(dev), dev.status === 'connected' && !dev.values?.headsetOn ? pill('headset off', 'warn') : statusPill(dev)));
     if (dev.status !== 'connected' && !(isAway(dev) && a.endpoints)) {
       return h('div', {}, head, connectState(dev, 'Plug in your headset or its USB receiver and switch it on.'));
     }

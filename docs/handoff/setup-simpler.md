@@ -3,7 +3,7 @@
 Shawn: the Setup page "is currently overwhelming for a new user". On his PC it showed 11 rows in 5 sections with
 nothing needing him. Now it shows "All set" with his three devices as tiles and the rest folded.
 
-Look: `docs/handoff/looks/setup-simpler.png` (demo, 1650x910, 2 things need you).
+Look: demo mode, Setup (the screenshot was removed 9 Nov 2026).
 
 ## What the page shows now (`public/pages/setup.js`)
 

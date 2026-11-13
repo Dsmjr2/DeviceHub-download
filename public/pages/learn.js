@@ -2,7 +2,7 @@
 // does not run gets a driver for it without Claude. DeviceHub listens (USBPcap) while the person changes one setting in
 // the maker's app, finds the bytes that carry it, and makes a driver.json that is saved read-only until the person
 // presses Turn on settings and DeviceHub's check then passes. Nothing here sends anything to the device. One step on screen at a time; plain words; no pop-ups.
-// Reached from the sidebar (under App), the Overview's Set up card and Lighting > This PC ("Learn it", which puts that
+// Reached from the sidebar (under App), a Setup row and the plug-in message ("Learn it for me", which puts that
 // device first here: learnThis(vid, pid)).
 // Readings (22 Oct 2026, docs/handoff/learn-readings.md): a value the device reports that the person cannot set
 // (battery, charging, ChatMix, a sensor) is a fourth kind; DeviceHub only listens for it. After a save, the same device
@@ -27,7 +27,7 @@ import { isDemo, devices } from '../core/devices.js';
 import { env } from '../core/env.js';
 import { topbar, checkAnswer } from './common.js';
 import { genericDongle } from '../core/generic-dongle.js';
-import { getHelp, helpHere } from '../ui/get-help.js';
+import { getHelp } from '../ui/get-help.js';
 import { restartButton } from '../core/restart.js';
 import { shareAsk } from '../ui/driver-share.js';
 
@@ -222,7 +222,7 @@ async function sendToShawn(why) {
   const r = await api('send', { why });
   st.sent = r.sent || r.queued ? { sent: !!r.sent, queued: !!r.queued, line: r.line || SENT_DONE } 
     // nothing recorded (every setting skipped or never heard): said, never "Sending…" for good (1 Nov 2026, a new-setup audit)
-    : r.why === 'nothing was heard to send' ? { sent: false, nothing: true, line: 'Nothing was recorded, so nothing was sent.' } : { sent: false, line: r.line || r.error || 'Not sent. Use Get help, top right.' };
+    : r.why === 'nothing was heard to send' ? { sent: false, nothing: true, line: 'Nothing was recorded, so nothing was sent.' } : { sent: false, line: r.line || r.error || 'Not sent. Use Settings > Get help.' };
   return st.sent;
 }
 const sentNote = () => (st.sent ? h('div', { class: st.sent.sent || st.sent.queued ? 'learn-check' : 'learn-problem', role: 'status' }, p(st.sent.line)) : null);
@@ -993,26 +993,6 @@ function otherStep() {
       button('Done', () => { Object.assign(st, { step: 'pick', devices: null, server: null, error: null, why: null, other: null }); redrawPage(); }, { kind: 'ghost small' })));
 }
 
-const STEP_NAMES = { sent: 'sent to Shawn', pick: 'pick the device', plan: 'the settings to learn', ready: 'ready to listen', starting: 'starting to listen', take: 'recording', found: 'what it found', driver: 'the driver', saved: 'saved', other: 'its other USB id', driving: "changing it in the maker's app", change: 'change it in the app' };
-function learnContext() {
-  const it = st.queue?.[st.qi];
-  const f = st.found;
-  return {
-    step: STEP_NAMES[st.step] || st.step,
-    progress: st.queue ? `setting ${st.qi + 1} of ${st.queue.length}${it ? `: ${it.label}` : ''}` : st.form?.label ? `setting: ${st.form.label} (${st.form.kind})` : '',
-    heard: [st.heard != null ? `the last recording heard ${st.heard} messages` : '', f ? (f.ok === false || f.error ? `not found: ${(f.why || [f.error]).filter(Boolean).join('; ')}` : f.needMore ? 'needs one more recording' : 'found it') : ''].filter(Boolean).join('; '),
-    results: (st.log || []).map((l) => `${l.label}: ${l.ok ? 'learned' : `skipped (${l.why})`}`).join('; '),
-    detail: [st.error, ...(Array.isArray(st.why) ? st.why : st.why ? [st.why] : []), st.nothing?.says, st.pf?.lines ? `pre-flight: ${st.pf.lines.map((x) => `${x.ok ? 'pass' : 'fail'} ${x.says}`).join(' / ')}` : ''].filter(Boolean).join(' '),
-    // what the device list showed (24 Oct 2026: a report from this page said only "pick the device"): each row, its group,
-    // the driver its page opens and its next step with what the button answered
-    listed: st.step !== 'pick' ? '' : !st.devices ? 'the list was not read yet' : !st.devices.length ? 'no devices listed' : st.devices.map((d) => {
-      const c = runningCopy(d);
-      const group = d.asIs || d.ready || (d.refused && (d.driver || d.library)) ? 'works' : d.refused ? 'cannot' : 'learnable';
-      return `${d.title || d.name} (${d.vid}:${d.pid}): ${group}${c ? `, page ${c.id}${devices[c.id] ? ` (${devices[c.id].status}${devices[c.id].absent ? ', hidden' : ''})` : ' (not loaded)'}` : ''}`;
-    }).join('; '),
-  };
-}
-
 const STYLE_ID = 'learn-css';
 // a few lines of style for this page only (the look files belong to another job)
 function style() {
@@ -1068,17 +1048,16 @@ export default {
   render({ redraw }) {
     redrawPage = redraw;
     style();
-    // Get help on every step (area learn): the step, the setting being learned, what each one came to, the problem shown;
-    // the server adds the session (device id, recordings and how many messages each heard). Nothing typed by hand.
-    const head = topbar('', 'Learn a device', null, null, helpHere('learn', { context: learnContext }));
+    const head = topbar('Learn a device');
     if (st.step === 'pick') resumeAuto();
     const body = { sent: sentStep, auto: autoStep, pick: pickStep, plan: planStep, ready: readyStep, starting: startingStep, take: takeStep, found: foundStep, driver: driverStep, saved: savedStep, other: otherStep, driving: drivingStep, change: changeStep }[st.step] || pickStep;
     return h('div', {}, head,
-      p('For a mouse, keyboard or headset DeviceHub cannot control yet: it learns the settings from the maker\'s app and makes a driver.', 'faint'),
       isDemo() ? faint('Demo: nothing is saved.') : null,
       putBackNote(),
       body(),
       st.step !== 'pick' && st.step !== 'saved' && st.step !== 'other' && st.step !== 'auto' && st.server?.active ? h('div', { class: 'actions', style: { marginTop: '12px' } },
-        button('Stop learning', () => run('quit', {}, () => { Object.assign(st, { step: 'pick', server: null, devices: null, plan: null, queue: null, change: null }); }), { kind: 'ghost small' })) : null);
+        button('Stop learning', () => run('quit', {}, () => { Object.assign(st, { step: 'pick', server: null, devices: null, plan: null, queue: null, change: null }); }), { kind: 'ghost small' })) : null,
+      // what this page is for, once, at the bottom (11 Nov 2026 polish: it sat under the title)
+      st.step === 'pick' ? p('For a mouse, keyboard or headset DeviceHub cannot control yet: it learns the settings from the maker\'s app and makes a driver.', 'faint') : null);
   },
 };

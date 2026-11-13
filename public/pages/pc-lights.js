@@ -13,7 +13,6 @@ import { env } from '../core/env.js';
 import { isDemo } from '../core/devices.js';
 import { toast } from '../ui/overlay.js';
 import { brandForUsb, ROUTE } from '../core/brands.js';
-import { getHelp } from '../ui/get-help.js';
 import { boardLights } from '../ui/board-lights.js';
 import { findLights, showingAll } from '../ui/find-lights.js';
 
@@ -98,7 +97,6 @@ function setLive(key, writes) {
   live.writer = key ? liveWriter((hex) => sendWrites(live.writes, hex, { quiet: true }).catch(() => {}), { every: 100 }) : null;
   paintRows();
 }
-const useRow = async (key, writes) => { setLive(key, writes); try { await sendWrites(writes, pickNow()); } catch {} };
 const presetRow = async (key, writes, hex) => { if (live.key === key) setLive(null); try { await sendWrites(writes, hex); } catch {} };
 const offRow = async (key, writes) => { if (live.key === key) setLive(null); try { await sendWrites(writes, OFF); } catch {} };
 
@@ -234,7 +232,6 @@ function boardSection() {
 }
 
 // What was found and why fan lights may be missing (helpers/lights-diagnose.js), in place: no pop-ups or tooltips.
-// Get help for lights sends Shawn the same facts in one click (helpers/get-help.mjs, area "lights").
 // the Result row's title per verdict (23 Oct 2026, Shawn: "no lighting controller found doesnt really make sense" when
 // the board's lights were listed)
 const VERDICT_TITLE = { reached: 'Board lights found', smbus: "On the board's SMBus", none: 'No lighting controller found' };

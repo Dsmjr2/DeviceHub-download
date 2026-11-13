@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8').replace(/^﻿/, '')); } catch { return null; } };
+import { readJson } from './safe-write.js';   // a JSON file or a fallback (helpers/safe-write.js)
 const within = (p, ms) => { let t; return Promise.race([Promise.resolve(p).catch(() => null), new Promise((r) => { t = setTimeout(() => r(null), ms); })]).finally(() => clearTimeout(t)); };
 const h4 = (x) => String(x ?? '').trim().toLowerCase().replace(/^0x/, '').padStart(4, '0');
 export const LOG_LINES = 20;

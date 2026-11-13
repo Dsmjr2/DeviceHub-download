@@ -1,6 +1,6 @@
 // Every data file damaged at once (as after a power cut mid-save), in a throwaway copy of DeviceHub on a spare port
 // with devices and background parts off: DeviceHub must start, answer, save settings again, and keep each damaged
-// file as <name>.damaged-<time> (20 Oct 2026). Not part of npm test (it copies the app): node tests/damaged-files.mjs
+// file as <name>.damaged-<time> (20 Oct 2026). In npm test since 9 Nov 2026 (about 10 s; it copies the app to TEMP): node tests/damaged-files.mjs
 // The EQ is left out on purpose: a test copy must never write Equalizer APO's shared config file.
 import fs from 'node:fs';
 import os from 'node:os';

@@ -45,6 +45,15 @@ const on = () => { try { return JSON.parse(fs.readFileSync(settingsFile, 'utf8')
 // (5 Nov 2026) a record that could not be read at start is never written over: the values it holds still go back by hand
 const save = () => { if (unreadable) return; try { writeAtomic(file, JSON.stringify(saved, null, 1)); } catch {} };
 
+// DEVICEHUB_SOAK_READONLY=1 (a soak test on the real devices): no battery-care write at all, down or back (13 Nov 2026
+// bug hunt: the put-back writes still went through), and one log line per device and rule, not one every 20 s
+const soakLogged = new Set();
+function soakSkip(what, due) {
+  if (process.env.DEVICEHUB_SOAK_READONLY !== '1' || !due) return false;
+  if (!soakLogged.has(what)) { soakLogged.add(what); console.log(`[soak] skipped battery-care writes (${what})`); }
+  return true;
+}
+
 async function tick() {
   if (busy) return; busy = true;
   try {
@@ -55,6 +64,7 @@ async function tick() {
       if (saved[`${id}:charging`]) continue;
       const pct = d.battery.percent, charging = !!d.battery.charging, kind = d.adapter.kind.toLowerCase();
       const mine = saved[id];
+      if (soakSkip(`${id}: battery-care`, (!mine && on() && pct <= LOW && !charging) || (mine && (charging || pct >= BACK || !on())))) continue;
       if (!mine && on() && pct <= LOW && !charging) {
         const changes = plan.map((p) => ({ ...p, was: d.values[p.key], to: p.down(d.values[p.key]) })).filter((c) => c.to !== undefined && c.was !== undefined);
         if (!changes.length) continue;
@@ -77,6 +87,7 @@ async function tick() {
       const d = core.devices[id], slot = `${id}:charging`;
       if (!d || d.status !== 'connected' || !d.battery) continue;
       const charging = !!d.battery.charging, mine = saved[slot];
+      if (soakSkip(`${id}: lights while charging`, (!mine && charging) || (mine && !charging))) continue;
       if (!mine && charging) {
         const changes = plan.map((p) => ({ ...p, was: d.values[p.key], to: p.down(d.values[p.key]) })).filter((c) => c.to !== undefined && c.was !== undefined);
         if (!changes.length) continue;
@@ -125,6 +136,7 @@ function mayChange(a, key, value) {
 }
 // one change: { ok, s } written and read back as asked; { left: why } nothing written; { failed: why } the write failed
 async function change(d, key, value, why) {
+  if (soakSkip(`${d.id}: ${key}`, true)) return { left: 'soak read-only mode' };
   const a = d.adapter, id = d.id;
   const w = mayChange(a, key, value);
   if (!w.ok) return { left: w.why };

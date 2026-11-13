@@ -4,7 +4,7 @@ import { h, icon } from '../ui/dom.js';
 import { card, row, slider, stepper, button, toggle } from '../ui/controls.js';
 import { dropdown } from '../ui/dropdown.js';
 import { devices, write, writeBatch, isDemo, prepare } from '../core/devices.js';
-import { topbar, connectState, deviceActions, vendorNote, kv, statusPill, isAway, awayBanner, undoButton, deviceHelp, checkAnswer } from './common.js';
+import { topbar, connectState, deviceActions, vendorNote, kv, statusPill, isAway, awayBanner, undoButton, checkAnswer } from './common.js';
 import { modal } from '../ui/overlay.js';
 import { keyName, shortName, isSpecialKey, isDangerous, pickerGroups, hex, CODE_TO_HID, EFFECTS } from '../devices/keycodes.js';
 import { hsv255ToHex, rgbToHsv255 } from '../devices/keyboard-adapter.js';
@@ -383,7 +383,7 @@ export default {
     // keyboard has answered its layout is not known yet. builtIn, not === P75: the window gets the layout as a copy
     // from the server (a review the same day: the P75 itself read "VIA keyboard")
     const lay = a.session?.layout;
-    const head = topbar(!lay ? 'Keyboard' : lay.builtIn ? 'Epomaker · 75% wireless keyboard' : 'VIA keyboard', a.title, null, h('div', { class: 'chips' }, undoButton(dev), statusPill(dev)), deviceHelp(dev));
+    const head = topbar(a.title, h('div', { class: 'chips' }, undoButton(dev), statusPill(dev)));
     if ((dev.status !== 'connected' && !isAway(dev)) || !a.session) {
       return h('div', {}, head, connectState(dev, 'Plug in its USB cable, press Connect. Close VIA and the maker\'s app first.'), viaHelp());
     }

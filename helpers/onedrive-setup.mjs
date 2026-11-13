@@ -20,7 +20,7 @@ let BACKUPS = path.join(ROOT, 'backups'), SETTINGS = data('settings.json');
 // tests/setup-extras.mjs: a copy's folder instead of this one
 export function useRoot(root) { ROOT = root; BACKUPS = path.join(root, 'backups'); SETTINGS = data('settings.json'); }
 const SUFFIX = '.devicehub-setup.json';
-const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
+import { readJson } from './safe-write.js';   // a JSON file or a fallback (helpers/safe-write.js)
 
 // OneDrive's folder on this PC (Windows sets these for the signed-in account), or null when there is none
 export function folder(env = process.env) {
@@ -52,6 +52,9 @@ export async function compose(core, extras) {
   const { oneDriveSeen, setupSeen, ...settings } = readJson(SETTINGS, {});   // which offers were put away, and Setup's first start, stay on each PC
   out.sound.settings = settings;
   out.extras = extras.gather({ withWallpapers: false });
+  const games = readJson(data('game-mode.json'), {}).games;   // Game mode's per-game switches (11 Nov 2026)
+  if (Array.isArray(games) && games.length) out.games = games;
+  try { const G = await import('./game-settings.mjs'); if (await G.allowed(ROOT)) { const g = await G.capture(); if (g.length) out.gameSettings = g; } } catch {}   // each game's own settings (12 Nov 2026)
   return out;
 }
 

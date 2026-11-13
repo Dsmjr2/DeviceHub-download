@@ -3,7 +3,7 @@
 // the card (no pop-ups); only "Use now" keeps its preview, the same as Apply before. The data format is unchanged:
 // profiles.json holds { name, color, games, devices, monitors?, added?, savedAt }, and settings.json's defaultProfile is
 // the "When no game is running" profile (core/profile-use.js maps the choice onto both).
-import { h, icon } from '../ui/dom.js';
+import { h, icon, dateTime } from '../ui/dom.js';
 import { button, pill, card, row, toggle } from '../ui/controls.js';
 import { dropdown } from '../ui/dropdown.js';
 import { auto, saveSettings, runningWindows, onAuto, gameTitle } from '../core/autoswitch.js';
@@ -14,9 +14,10 @@ import { USES, useOf, planUse, namedGames } from '../core/profile-use.js';
 import { LIFT_OFF } from '../devices/pulsar.js';
 import { EFFECTS } from '../devices/keycodes.js';
 import { modal, toast } from '../ui/overlay.js';
-import { helpHere } from '../ui/get-help.js';
 import { makerImportCard } from '../ui/maker-import.js';   // (29 Oct 2026) G HUB mouse setups as profiles
-import { gameModeCard } from './game-mode-card.js';   // (27 Oct 2026) per-game switches put back when the game quits
+import { gameModeCard } from './game-mode-card.js';
+import { saveSetup } from '../core/setup.js';   // (11 Nov 2026) Move to another PC: the setup file, from here too
+import { loadSetupFile, reviewSetup } from './backups.js';   // (27 Oct 2026) per-game switches put back when the game quits
 import { fieldOf, toEdit, fromEdit, startValue, addable, parseRef, getAt, setAt, removeAt, countSettings } from '../core/profile-edit.js';
 
 let list = null;
@@ -561,6 +562,50 @@ function newTile() {
     h('div', { class: 'actions' }, button('Save', () => flowSave(), { kind: 'primary small' }), button('Cancel', cancel, { kind: 'ghost small' })));
 }
 
+// Move to another PC (11 Nov 2026, Shawn: "take all of my local keybindings and controls and get them on my laptop",
+// "specifically for game settings"): the setup file (core/setup.js) holds the profiles, Game mode's games, every
+// device's settings with the keyboard's keys and macros, and sound. Loading lists every change, grouped, each group
+// on a switch (pages/backups.js), and writes nothing before Yes. Another PC's OneDrive copy is offered here too.
+let moveOd = null, moveAsked = false, moveNote = '', moveGames = null;
+function moveCard() {
+  if (isDemo()) return null;
+  if (!moveAsked) {
+    moveAsked = true;
+    fetch('/api/onedrive').then((r) => (r.ok ? r.json() : null)).then((j) => { moveOd = j; rerender(); }).catch(() => {});
+    fetch('/api/game-settings/backup').then((r) => (r.ok ? r.json() : null)).then((j) => { moveGames = j; rerender(); }).catch(() => {});
+  }
+  const putBackGames = async () => {
+    moveNote = 'Putting game settings back…'; rerender();
+    try {
+      const r = await fetch('/api/game-settings/put-back', { method: 'POST' });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || `error ${r.status}`);
+      moveNote = j.failed ? `${j.done} put back, ${j.failed} not (see Activity).` : `Put back: ${j.games.join(', ')}.`;
+    } catch (e) { moveNote = `Not put back: ${e.message}.`; }
+    moveAsked = false; rerender();
+  };
+  const save = async () => {
+    moveNote = 'Saving…'; rerender();
+    try { const r = await saveSetup(); moveNote = `Saved in Downloads.${r.skipped.length ? ` Not connected, so not in it: ${r.skipped.join(', ')}.` : ''}`; }
+    catch (e) { moveNote = `Not saved: ${e.message}.`; }
+    rerender();
+  };
+  const bring = async (pc) => {
+    try {
+      const r = await fetch(`/api/onedrive/read?pc=${encodeURIComponent(pc)}`);
+      if (!r.ok) throw new Error(`error ${r.status}`);
+      reviewSetup(await r.json(), `on ${pc}`, pc);
+    } catch (e) { moveNote = `Not read: ${e.message}.`; rerender(); }
+  };
+  const others = (moveOd?.on && moveOd.others) || [];
+  return card([h('h2', {}, 'Move to another PC')],
+    row('Setup file', 'Profiles, game settings, keys, macros and sound.', h('div', { class: 'srow-ctl' },
+      button('Save', save, { kind: 'ghost small' }), button('Load…', loadSetupFile, { kind: 'ghost small' }))),
+    ...others.slice(0, 3).map((o) => row(`From ${o.pc}`, 'Its OneDrive copy. You pick what to bring.', button('Review', () => bring(o.pc), { kind: 'ghost small' }))),
+    moveGames ? row('Game settings', `Loaded ${dateTime(moveGames.at)}: ${moveGames.games.join(', ')}.`, button('Put back', putBackGames, { kind: 'ghost small' })) : null,
+    moveNote ? h('div', { class: 'faint', role: 'status', style: { marginTop: '8px' } }, moveNote) : null);
+}
+
 export default {
   id: 'profiles', title: 'Profiles', icon: 'profiles', accent: 'var(--signal)',
   watches: ['mouse', 'headset', 'keyboard', 'auto'],  // what differs follows the devices; activity lines do not redraw it (21 Oct 2026)
@@ -581,10 +626,11 @@ export default {
     if (ui.focusNew) { ui.focusNew = false; setTimeout(() => document.querySelector('#main [data-newname]')?.focus(), 0); }
 
     return h('div', {},
-      topbar('Setups', 'Profiles', 'Switch every device at once.', ui.adding ? null : button('New profile', startNew, { kind: 'primary', ic: 'plus' }), helpHere('profiles')),
+      topbar('Profiles', ui.adding ? null : button('New profile', startNew, { kind: 'primary', ic: 'plus' })),
       h('div', { style: { marginBottom: '18px' } }, autoPanel()),
       h('div', { style: { marginBottom: '18px' } }, gameModeCard(() => rerender())),
       (() => { const c = makerImportCard(() => refreshList()); return c ? h('div', { style: { marginBottom: '18px' } }, c) : null; })(),
-      h('div', { class: 'profiles' }, newTile(), ...(list || []).map((p) => profileCard(p))));
+      h('div', { class: 'profiles' }, newTile(), ...(list || []).map((p) => profileCard(p))),
+      (() => { const c = moveCard(); return c ? h('div', { style: { marginTop: '18px' } }, c) : null; })());
   },
 };

@@ -9,6 +9,7 @@
 import { devices, backupNow, writeBatch, log } from './devices.js';
 import { loadProfiles, saveProfiles, PROFILE_KEYS, keyLabel } from './profiles.js';
 import { restorePlan } from '../pages/backups.js';
+import { mergeGames } from './setup-games.js';
 
 export const SETUP_KIND = 'devicehub-setup';
 
@@ -36,6 +37,8 @@ export async function saveSetup({ wallpapers = false } = {}) {
   const out = { kind: SETUP_KIND, version: 1, savedAt: new Date().toISOString(), devices: {}, profiles: await loadProfiles() };
   try { out.sound = await (await fetch('/api/sound-setup')).json(); } catch {}
   try { out.extras = await (await fetch(`/api/setup-extras${wallpapers ? '?wallpapers=1' : ''}`)).json(); } catch {}
+  try { const g = await (await fetch('/api/game-mode')).json(); if (Array.isArray(g.games)) out.games = g.games; } catch {}
+  try { const g = await (await fetch('/api/game-settings')).json(); if (Array.isArray(g) && g.length) out.gameSettings = g; } catch {}
   const skipped = [];
   for (const [id, d] of Object.entries(devices)) {
     if (d.status !== 'connected') { skipped.push(d.adapter.title); continue; }
@@ -90,8 +93,29 @@ export async function planSetup(file) {
       if (lines?.length) extras = { lines, data: file.extras };
     } catch {}
   }
-  return { changes, profiles, notConnected, sound, extras };
+  // game settings (11 Nov 2026, Shawn: "specifically for game settings"): Game mode's per-game switches
+  let games = null;
+  if (Array.isArray(file.games) && file.games.length) {
+    try {
+      const now = (await (await fetch('/api/game-mode')).json()).games || [];
+      let screens = [];
+      try { screens = (await (await fetch('/api/game-mode/now')).json()).screens || []; } catch {}
+      const r = mergeGames(now, file.games, screens);
+      if (r.lines.length) games = r;
+    } catch {}
+  }
+  // each game's own settings (12 Nov 2026, helpers/game-settings.mjs): one switch per game, graphics apart
+  let gameFiles = null;
+  if (Array.isArray(file.gameSettings) && file.gameSettings.length) {
+    try {
+      const r = await fetch('/api/game-settings/plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ games: file.gameSettings }) });
+      const list = r.ok ? await r.json() : [];
+      if (list.length) gameFiles = { list, data: file.gameSettings };
+    } catch {}
+  }
+  return { changes, profiles, notConnected, sound, extras, games, gameFiles };
 }
+
 
 // the same summary helpers/setup-extras.js summarize() makes: pictures and drivers by SHA-256
 const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -114,6 +138,15 @@ export async function loadSetup(file, planned) {
   if (planned.sound) {
     const r = await fetch('/api/sound-setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(planned.sound) });
     if (r.ok) done++; else failed++;
+  }
+  if (planned.games) {
+    const r = await fetch('/api/game-mode', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ games: planned.games.list }) });
+    if (r.ok) done += planned.games.lines.length; else failed++;
+  }
+  if (planned.gameFiles?.picks?.length) {
+    const r = await fetch('/api/game-settings/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ games: planned.gameFiles.data, picks: planned.gameFiles.picks }) });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok) { done += j.done || 0; failed += j.failed || 0; } else failed++;
   }
   let restart = false;
   if (planned.extras) {

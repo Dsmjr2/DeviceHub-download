@@ -4,7 +4,6 @@ import { button, pill } from '../ui/controls.js';
 import { connect, refresh, backupNow, isDemo, isRemote, undo } from '../core/devices.js';
 import { toast } from '../ui/overlay.js';
 import { artOf } from '../ui/art.js';
-import { helpHere } from '../ui/get-help.js';
 
 export const STATUS = {
   connected: ['Connected', 'good'], asleep: ['Asleep', 'warn'], connecting: ['Connecting', 'accent'],
@@ -35,16 +34,11 @@ export function undoButton(d) {
   }, { kind: 'ghost small', ic: 'undo', title: `${d.undo.count} change${d.undo.count === 1 ? '' : 's'} can be undone` });
 }
 
-// the page title alone (21 Oct 2026, Shawn: remove the small line above it and other unneeded wording); the eyebrow
-// and lede the pages pass are no longer shown
-// help: the screen's Get help (deviceHelp below, or ui/get-help.js helpHere), one small button at the top right; it
-// opens below the title across the page (style.css .topbar > .get-help), so a closed one adds no height
-export function topbar(eyebrow, title, lede, right, _help) {
+// the page title alone (21 Oct 2026, Shawn: remove the small line above it and other unneeded wording), and what goes
+// at its right. (9 Nov 2026: the eyebrow, lede and Get help the pages still passed, unshown since 21 and 25 Oct, are gone.)
+export function topbar(title, right) {
   return h('div', { class: 'topbar' }, h('div', {}, h('h1', {}, title)), right || null);
 }
-// a device page's Get help (22 Oct 2026, docs/handoff/get-help-everywhere.md): the device's own report plus what the
-// page shows; the same one whether the device is connected or not
-export const deviceHelp = (d) => helpHere('device', { device: d.id, context: () => ({ status: d.status === 'connected' ? 'connected' : d.status }) });
 
 const VENDOR_NAMES = { pulsar: 'the Pulsar app', icue: 'iCUE', epomaker: "Epomaker's web driver", via: 'VIA' };
 export async function openVendor(app) {
@@ -151,7 +145,6 @@ function diagnosis(d) {
       note,
       // every other finding shown too, no "More" fold (23 Oct 2026)
       ...rest.map((f) => h('div', { style: { marginTop: '8px' } }, line(f, false), f.action ? h('div', { class: 'actions', style: { margin: '6px 0 0', justifyContent: 'flex-start' } }, diagAction(d, f.action, done)) : null))));
-      // Get help is at the top right of the device page (deviceHelp), one per screen
   };
   const key = `${d.status}|${d.error || ''}`;
   let c = diagCache[d.id];

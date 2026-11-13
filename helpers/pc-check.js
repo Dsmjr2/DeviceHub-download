@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs');
 const https = require('https');
 const { execFile, spawn } = require('child_process');
+const { writeAtomic } = require('./safe-write');
 
 const PS1 = path.join(__dirname, 'pc-check.ps1');
 const DAY = 86400000;
@@ -453,7 +454,7 @@ async function readNow({ screens = null } = {}) {
     }
     const wifiInfo = facts.tune?.wifi ? { name: facts.tune.wifi.name, band, channel: facts.tune.wifi.channel, signal: facts.tune.wifi.signal, rxMbps: facts.tune.wifi.rxMbps, autoConfig: facts.tune.wifi.autoConfig } : null;
     cache = { at: Date.now(), facts, value: { at: new Date().toISOString(), results, summary: summary(results), latency, wifi: wifiInfo } };
-    try { fs.writeFileSync(DISK, JSON.stringify({ at: cache.at, value: cache.value, nvidia: latestNvidiaCache })); } catch {}
+    try { writeAtomic(DISK, JSON.stringify({ at: cache.at, value: cache.value, nvidia: latestNvidiaCache })); } catch {}
     return cache.value;
   })();
   try { return await pending; } finally { pending = null; }

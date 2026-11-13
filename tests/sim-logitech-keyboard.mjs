@@ -75,7 +75,7 @@ function simKeyboard({ pid, slot, features, state, rateExt, rateMask, profiles, 
 }
 const lookedUp = (dev) => dev.sent.filter((b) => b[1] === 0 && (b[2] & 0xf0) === 0x00).map((b) => (b[3] << 8) | b[4]);
 // pingMs: an empty slot never answers, so a short wait keeps the test quick
-const make = (dev, app = { name: null }) => Object.assign(createLogitechKeyboard({ open: async (p) => (p === dev.productId ? dev : null), vendorApp: async () => app.name }), { pingMs: 150 });
+const make = (dev, app = { name: null }) => Object.assign(createLogitechKeyboard({ open: async (p) => (p === dev.productId ? dev : null), vendorApp: async () => app.name }), { pingMs: 30 });
 
 // ---- the library self-check (helpers/my-devices.mjs selfCheck): every writable setting written with its own value and
 // read back, a backup first, nothing moved ----

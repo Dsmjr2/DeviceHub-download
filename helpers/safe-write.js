@@ -46,4 +46,11 @@ function readJsonForWrite(file, missing) {
   }
 }
 
-module.exports = { writeAtomic, cleanLeftovers, readJsonForWrite };
+// a JSON file, or the fallback when it is missing or not JSON (9 Nov 2026: it was copied into 15 files, and 8 of the
+// copies refused a file that starts with a byte-order mark, which Notepad and Windows PowerShell's -Encoding utf8
+// write; a hand-set "autoSetup": false or "libraryUpdates": false was then ignored)
+function readJson(file, fallback = null) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '')); } catch { return fallback; }
+}
+
+module.exports = { writeAtomic, cleanLeftovers, readJsonForWrite, readJson };

@@ -22,6 +22,19 @@ export async function run() {
   const J = JSON.stringify;
   check(U.ANY === ANY_GAME, 'the any-game marker is the one auto-switch reads');
 
+  // 7. A named game beats "any game", whatever the order (12 Nov 2026: Rob Run at 1000 Hz, Gaming at 4000 Hz first)
+  {
+    const gaming = { name: 'Gaming', games: [U.ANY] }, rob = { name: 'Rob Run', games: ['ROB RUN.exe'] }, desk = { name: 'Desktop', games: [] };
+    const on = (names, anyGame) => (g) => (g === U.ANY ? anyGame : names.includes(g.trim().toLowerCase()));
+    check(U.pickMatch([desk, gaming, rob], on(['rob run.exe'], true))?.name === 'Rob Run', 'named game wins though listed after Gaming');
+    check(U.pickMatch([desk, rob, gaming], on(['rob run.exe'], true))?.name === 'Rob Run', 'named game wins listed first');
+    check(U.pickMatch([desk, gaming, rob], on(['cs2.exe'], true))?.name === 'Gaming', 'another game still gets Gaming');
+    check(U.pickMatch([desk, gaming, rob], on([], false)) === null, 'no game: no match');
+    const two = { name: 'Two', games: ['rob run.exe'] };
+    check(U.pickMatch([gaming, rob, two], on(['rob run.exe'], true))?.name === 'Rob Run', 'two named matches: the first in the list');
+    check(U.pickMatch([{ name: 'Junk', games: 'x' }, gaming], on([], true))?.name === 'Gaming', 'a games value that is not a list is skipped');
+  }
+
   // ---- 1. Shawn's shape
   const SHAWN = [
     { name: 'Desktop', color: '#8299a8', games: [], devices: { mouse: { pollingRate: 1000 } }, savedAt: '2026-10-19T05:31:30.5509083Z' },

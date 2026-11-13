@@ -4,6 +4,7 @@
 const path = require('path');
 const { execFile } = require('child_process');
 const native = require('./native');
+const { writeAtomic } = require('./safe-write');
 
 // The two ways to reach the headset. The cable one wins when it is live (a dead headset plugged in starts there).
 const CONNS = { wired: { pid: '0A69', ep: 8 }, receiver: { pid: '0A6B', ep: 9 } };
@@ -121,7 +122,7 @@ async function read() {
   // remembered for when iCUE runs (its SDK does not report the firmware)
   if (out.firmware) {
     const fw = out.firmware.bytes.slice(0, 3).join('.');
-    if (fw !== lastFirmware()) try { require('fs').writeFileSync(FW_FILE, JSON.stringify({ firmware: fw, at: new Date() })); } catch {}
+    if (fw !== lastFirmware()) try { writeAtomic(FW_FILE, JSON.stringify({ firmware: fw, at: new Date() })); } catch {}
   }
   return out;
 }
@@ -159,7 +160,7 @@ function setLightSettings(patch) {
   if ('logoColor' in patch) { if (!/^#[0-9a-f]{6}$/i.test(patch.logoColor)) throw new Error('logo color must look like #ff6a1a'); next.logoColor = patch.logoColor.toLowerCase(); }
   if ('logoBrightness' in patch) { if (!Number.isInteger(patch.logoBrightness) || patch.logoBrightness < 0 || patch.logoBrightness > 100) throw new Error('logo brightness must be 0-100'); next.logoBrightness = patch.logoBrightness; }
   if ('micLight' in patch) { if (typeof patch.micLight !== 'boolean') throw new Error('mic light must be on or off'); next.micLight = patch.micLight; }
-  require('fs').writeFileSync(LIGHTS_FILE, JSON.stringify(next, null, 2));
+  writeAtomic(LIGHTS_FILE, JSON.stringify(next, null, 2));
   lights.settings = next;
   lightTick().catch(() => {});
   return next;

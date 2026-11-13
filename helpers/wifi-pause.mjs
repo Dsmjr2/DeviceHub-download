@@ -45,7 +45,7 @@ export const GAMING = 'Gaming';
 export const DIR = path.join(os.tmpdir(), 'DeviceHub-downloads');   // installers.mjs's DIR (the same folder)
 export const RESULT = path.join(DIR, 'wifi-pause-result.txt');
 const user = () => `${process.env.USERDOMAIN || os.hostname()}\\${os.userInfo().username}`;
-const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
+import { psQuote as q } from './ps-quote.js';   // a PowerShell single-quoted value
 
 // ---- netsh's answers (read only; English labels, anything else reads as no Wi-Fi) ----
 // netsh wlan show interfaces -> [{ name, state }]

@@ -77,7 +77,6 @@ function watchVisible(el, page) {
   observer.observe(el);
 }
 const value = (r) => [r.tempC != null ? `${r.tempC} °C` : null, r.fanPct != null ? (r.fanPct === 0 ? 'fans stopped' : `fans ${r.fanPct}%`) : null, r.fanRpm != null ? `${r.fanRpm} RPM` : null].filter(Boolean).join(', ') || 'no reading';
-const srcName = (s) => s.replace(/^Windows \(the card's own driver\)$/, 'Windows').replace(/^Windows \(ACPI\)$/, 'Windows').replace(/^NVIDIA's /, '');
 
 function friendlySensor(r, cpuFanName) {
   const n = String(r.name || '').trim();

@@ -19,7 +19,11 @@ const ui = { days: { mouse: 1, headset: 1 } };
 const cache = {};
 
 const svg = (tag, attrs = {}) => { const el = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); return el; };
-const timeText = (t, days) => new Date(t).toLocaleString([], days > 1 ? { weekday: 'short', hour: 'numeric' } : { hour: 'numeric', minute: '2-digit' });
+// one formatter per format, made once (12 Nov 2026): toLocale*String builds a new formatter on every call, and the
+// readings table makes thousands of calls, which cost about 100 ms on every press of a device page
+const FMT = {};
+const fmt = (key, opts) => (FMT[key] ||= new Intl.DateTimeFormat([], opts));
+const timeText = (t, days) => (days > 1 ? fmt('wdHour', { weekday: 'short', hour: 'numeric' }) : fmt('hm', { hour: 'numeric', minute: '2-digit' })).format(t);
 
 async function load(id, days) {
   const key = `${id}:${days}`;
@@ -48,7 +52,7 @@ function draw(box, id, rows, days, line = lineOf(id)) {
   for (let t = first.getTime(); t < now; t += step) {
     if (x(t) < PAD.l + 16 || x(t) > W - PAD.r - 16) continue;  // no label clipped at either edge
     const tx = svg('text', { x: x(t), y: H - 7, class: 'bc-axis', 'text-anchor': 'middle' });
-    tx.textContent = new Date(t).toLocaleString([], days > 1 ? { weekday: 'short' } : { hour: 'numeric' }); root.append(tx);
+    tx.textContent = (days > 1 ? fmt('wd', { weekday: 'short' }) : fmt('h', { hour: 'numeric' })).format(t); root.append(tx);
   }
 
   // charging bands (status green, a wash, named in the key below)
@@ -122,7 +126,7 @@ export function batteryChart(id, redraw, { title, kind, heading = 'Battery', ban
     requestAnimationFrame(() => draw(box, id, rows, days, line));
   }).catch(() => { key.hidden = true; box.replaceChildren(h('div', { class: 'faint' }, 'No battery history.')); });
   // the table always covers the whole 7 days, whatever the graph shows
-  load(id, 7).then((rows) => { if (rows.length) table.append(readings(rows)); else table.hidden = true; }).catch(() => { table.hidden = true; });
+  load(id, 7).then((rows) => { if (rows.length) table.append(readingsFor(rows)); else table.hidden = true; }).catch(() => { table.hidden = true; });
   return el;
 }
 
@@ -130,19 +134,26 @@ export function batteryChart(id, redraw, { title, kind, heading = 'Battery', ban
 // row for each stretch at one level, with its exact start and end time and how long it held, grouped by day, newest
 // first; a stretch with no readings for over 30 minutes is its own row. Nothing is averaged: every reading falls in
 // exactly one row.
-const clock = (t) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const clock = (t) => fmt('hm', { hour: 'numeric', minute: '2-digit' }).format(t);
 const dayKey = (t) => new Date(t).toDateString();
 const dayName = (t) => {
   const d = new Date(t), today = new Date(); const y = new Date(today); y.setDate(today.getDate() - 1);
   if (d.toDateString() === today.toDateString()) return 'Today';
   if (d.toDateString() === y.toDateString()) return 'Yesterday';
-  return d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+  return fmt('day', { weekday: 'long', month: 'short', day: 'numeric' }).format(d);
 };
 const lasted = (ms) => {
   const m = Math.round(ms / 60000);
   if (m < 1) return ms ? 'under 1 min' : 'one reading';
   return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`;
 };
+// built once per set of readings (load() keeps the same rows for a minute) and copied on each redraw: device pages
+// redraw on every press, and building hundreds of rows each time was most of a press's time (12 Nov 2026)
+const builtReadings = new WeakMap();
+function readingsFor(rows) {
+  if (!builtReadings.has(rows)) builtReadings.set(rows, readings(rows));
+  return builtReadings.get(rows).cloneNode(true);
+}
 function readings(rows) {
   const runs = [];
   for (const r of rows) {
@@ -156,7 +167,7 @@ function readings(rows) {
   let day = null;
   for (const run of runs.reverse()) {
     if (dayKey(run.to) !== day) { day = dayKey(run.to); body.push(h('tr', { class: 'bc-day' }, h('th', { colspan: 4 }, dayName(run.to)))); }
-    const span = clock(run.from) === clock(run.to) ? clock(run.from) : `${dayKey(run.from) !== day ? `${new Date(run.from).toLocaleDateString([], { weekday: 'short' })} ` : ''}${clock(run.from)} – ${clock(run.to)}`;
+    const span = clock(run.from) === clock(run.to) ? clock(run.from) : `${dayKey(run.from) !== day ? `${fmt('wd', { weekday: 'short' }).format(run.from)} ` : ''}${clock(run.from)} – ${clock(run.to)}`;
     body.push(run.gap
       ? h('tr', { class: 'bc-gap' }, h('td', {}, span), h('td', {}, '—'), h('td', {}, lasted(run.to - run.from)), h('td', {}, 'no readings (off or asleep)'))
       : h('tr', {}, h('td', {}, span), h('td', {}, h('b', {}, `${run.pct}%`)), h('td', {}, lasted(run.to - run.from)), h('td', {}, `${run.charging ? 'charging · ' : ''}${run.n} reading${run.n === 1 ? '' : 's'}`)));

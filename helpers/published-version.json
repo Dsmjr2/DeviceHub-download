@@ -1,7 +1,11 @@
 {
-  "version": "1.64",
-  "commit": "a75d02be711f4e9b54b083ccf6673276a5cf0ac0",
+  "version": "1.65",
+  "commit": "cbd6958f219d36e6defbc734cdb64f9851f2bcec",
   "notes": [
-    "USBPcap installer pinned: needs both its signature and the SHA-256…"
+    "Sim-vial: time limit that holds on a busy PC, still far under the 10…",
+    "Notes: game settings registry and Rust helper fixes from the bug hunt",
+    "Bug hunt: game settings keep Unity floats whole and graphics off by…",
+    "Keep native.js export order the helper-reads check expects",
+    "Plus 52 more fixes and improvements"
   ]
 }

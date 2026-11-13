@@ -1323,7 +1323,7 @@ export function collectionForNotice(device, n) {
 
 // ---------------------------------------------------------------- the parts that touch Windows (replaced in tests)
 const PS = (args, ms = 60000) => new Promise((resolve) => execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', ...args], { windowsHide: true, timeout: ms, maxBuffer: 16 * 1024 * 1024 }, (e, out) => resolve({ error: e, out: String(out || '') })));
-const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, '')); } catch { return null; } };
+import { readJson } from './safe-write.js';   // a JSON file or a fallback (helpers/safe-write.js)
 export const USBPCAP_EXE = path.join(process.env.ProgramFiles || 'C:\\Program Files', 'USBPcap', 'USBPcapCMD.exe');
 
 export const deps = {
@@ -1334,10 +1334,15 @@ export const deps = {
   // the maker's app for a vendor id: { known, name, page, web, installed, running } (helpers/learn-apps.mjs, read-only)
   maker: (vid) => findMaker(vid),
   async listHid() {
-    const r = await PS(['-File', path.join(HERE, 'learn-hid-list.ps1')]);
-    const at = r.out.indexOf('{');
-    if (at < 0) throw new Error('USB list not read. Press Look again or restart DeviceHub.');
-    return JSON.parse(r.out.slice(at));
+    const { default: helperReads } = await import('./helper-reads.js');
+    return helperReads.read('learn-hid-list', {
+      ps: async () => {
+        const r = await PS(['-File', path.join(HERE, 'learn-hid-list.ps1')]);
+        const at = r.out.indexOf('{');
+        if (at < 0) throw new Error('USB list not read. Press Look again or restart DeviceHub.');
+        return JSON.parse(r.out.slice(at));
+      },
+    });
   },
   // the ids DeviceHub already runs: its own drivers (pc-map RUNS), the person's own my-devices drivers (mine, hidden),
   // and the copies from the library or the wizard (copies: [{ name, ids }], listed: Learn can add to them)

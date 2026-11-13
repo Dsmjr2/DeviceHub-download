@@ -73,7 +73,7 @@ await new Promise((resolve) => {
 // 9. From the review for other PCs (20 Oct 2026, evening): each of these crashed, leaked or failed on a PC unlike Shawn's
 const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
 check(/fs\.existsSync\(VENDOR_APPS\[app\]\)/.test(srv) && /p\.on\('error', \(e\) => console\.log\(`\[open\]/.test(srv), 'Open iCUE / Open the Pulsar app checks the app is there and handles a failed start (it crashed the server)');
-check(/const q = \(s\) => s\.replace\(\/'\/g, "''"\)/.test(srv) && /WorkingDirectory='\$\{q\(ROOT\)\}'/.test(srv), 'start-with-Windows shortcut quotes paths with an apostrophe (O\'Brien)');
+check(/const q = require\('\.\/helpers\/ps-quote'\)\.psEscape;/.test(srv) && /WorkingDirectory='\$\{q\(ROOT\)\}'/.test(srv), 'start-with-Windows shortcut quotes paths with an apostrophe (O\'Brien)');
 check(/try \{\s*build\(\); buildFailedAt = 0;[\s\S]*?\} catch \(e\) \{ buildFailedAt = Date\.now\(\);/.test(nat), 'native.js: a helper that cannot be built does not throw up into the request');
 check(/req\[1\] == "CLOSE"\) lock \(channels\)/.test(fs.readFileSync(path.join(ROOT, 'helpers/native/helper.cs'), 'utf8')), 'helper.cs ends a channel\'s thread after CLOSE (one leaked per headset retry)');
 check(!/h\.stop\(\);\s*\}\s*startStandby\(\);/.test(fs.readFileSync(path.join(ROOT, 'helpers/hs80-direct.js'), 'utf8')), 'hs80-direct.js starts no cable standby when no headset was found (it searched every second forever)');
@@ -283,6 +283,50 @@ check(/row\('Lift-off distance', '[^']+'/.test(mouseSrc) && /h\('h2', \{\}, 'Tra
   const css = fs.readFileSync(path.join(ROOT, 'public/style.css'), 'utf8');
   check(!/data-art(-preview)?="duo"|data-look="duo"/.test(css), 'no Crimson rules left in style.css');
   check(/data-art-preview="aero"/.test(css) && /data-look="aero"/.test(css), 'Aero has its drawing and tile rules');
+}
+
+// (9 Nov 2026) one PowerShell quoter (helpers/ps-quote.js) for every script DeviceHub builds: PowerShell also ends a
+// single-quoted string at ‘ ’ ‚ ‛, so those are doubled too. Checked with Windows' own PowerShell: the value read back
+// character by character is the value sent, and every old copy of the quoter is gone.
+{
+  const { psQuote, psEscape } = require(path.join(ROOT, 'helpers/ps-quote.js'));
+  const v = "C:\\Users\\O’Brien's ‘Pics’ ‚x‛";
+  const codes = (script) => new Promise((resolve) => {
+    const p = spawn('powershell.exe', ['-NoProfile', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true });
+    let out = ''; p.stdout.on('data', (d) => { out += d; }); p.on('close', () => resolve(out.trim())); p.on('error', () => resolve(''));
+  });
+  const want = [...v].map((c) => c.charCodeAt(0)).join(',');
+  const got = await codes(`$v = ${psQuote(v)}; ($v.ToCharArray() | ForEach-Object { [int]$_ }) -join ','`);
+  check(got === want, `psQuote survives ' and the typographic quotes in PowerShell (${got || 'no answer'})`);
+  check(psEscape("a'b’c") === "a''b’’c", 'psEscape doubles each quote without adding the outer ones');
+  const left = [];
+  for (const d of ['helpers', '.']) for (const n of fs.readdirSync(path.join(ROOT, d)).filter((x) => /\.(m?js)$/.test(x))) {
+    const src = fs.readFileSync(path.join(ROOT, d, n), 'utf8');
+    if (n !== 'ps-quote.js' && /replace\(\/'\/g, "''"\)/.test(src)) left.push(n);
+  }
+  check(!left.length, `no copy of the old quoter is left (${left.join(', ') || 'none'})`);
+}
+
+// (9 Nov 2026) one readJson (helpers/safe-write.js) for the 15 copies: a settings.json saved with a byte-order mark
+// (Notepad, Windows PowerShell's -Encoding utf8) is read, so its hand-set off switches hold
+{
+  const { readJson } = require(path.join(ROOT, 'helpers/safe-write.js'));
+  const t = fs.mkdtempSync(path.join(require('os').tmpdir(), 'dh-bom-'));
+  fs.mkdirSync(path.join(t, 'data'));
+  fs.writeFileSync(path.join(t, 'data', 'settings.json'), '﻿' + JSON.stringify({ autoSetup: false, libraryUpdates: false }));
+  const { pathToFileURL } = await import('node:url');
+  const as = await import(pathToFileURL(path.join(ROOT, 'helpers/auto-setup.mjs')).href);
+  const lu = await import(pathToFileURL(path.join(ROOT, 'helpers/library-updates.mjs')).href);
+  const env = { a: process.env.DEVICEHUB_AUTO_SETUP, l: process.env.DEVICEHUB_LIBRARY_UPDATES };
+  delete process.env.DEVICEHUB_AUTO_SETUP; delete process.env.DEVICEHUB_LIBRARY_UPDATES;
+  check(as.enabled(t) === false && lu.enabled(t) === false, 'a settings.json with a byte-order mark turns auto setup and library updates off');
+  if (env.a !== undefined) process.env.DEVICEHUB_AUTO_SETUP = env.a; if (env.l !== undefined) process.env.DEVICEHUB_LIBRARY_UPDATES = env.l;
+  check(readJson(path.join(t, 'nothing.json'), 7) === 7 && readJson(path.join(t, 'nothing.json')) === null, 'readJson gives the fallback (or null) for a missing file');
+  fs.writeFileSync(path.join(t, 'half.json'), '{"cut off');
+  check(readJson(path.join(t, 'half.json'), 'x') === 'x', 'readJson gives the fallback for a damaged file');
+  fs.rmSync(t, { recursive: true, force: true });
+  const left = fs.readdirSync(path.join(ROOT, 'helpers')).filter((n) => /\.m?js$/.test(n) && /const readJson = \([^)]*\) => \{ try \{ return JSON\.parse\(fs\.readFileSync/.test(fs.readFileSync(path.join(ROOT, 'helpers', n), 'utf8')));
+  check(!left.length, `no local copy of readJson is left (${left.join(', ') || 'none'})`);
 }
 
 console.log(fails.length ? `regressions: FAILED: ${fails.join('; ')}` : 'regressions (20 Oct fixes): all good');

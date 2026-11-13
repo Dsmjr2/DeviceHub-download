@@ -132,4 +132,3 @@ function addedDemo() {
     demoEstimate: charging ? null : { ratePerHour: 1.5, hoursLeft: +(pct / 1.5).toFixed(1) },
   };
 }
-export { DPI_SLOTS };

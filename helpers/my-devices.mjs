@@ -165,14 +165,12 @@ export function batteryCareProblem(a) {
   return null;
 }
 
-const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
+import { readJson, writeAtomic } from './safe-write.js';   // a JSON file or a fallback (helpers/safe-write.js)
 // the library marker (library.json), or null for the person's own driver
 export const libraryMark = (folder) => { const m = readJson(path.join(folder, LIBRARY_FILE)); return m && typeof m === 'object' && !Array.isArray(m) ? m : null; };
 export const readVerified = (folder) => readJson(path.join(folder, VERIFIED_FILE)) || { keys: {} };
 function saveVerified(folder, data) {
-  const file = path.join(folder, VERIFIED_FILE), tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n');
-  fs.renameSync(tmp, file);
+  writeAtomic(path.join(folder, VERIFIED_FILE), JSON.stringify(data, null, 2) + '\n');
 }
 
 // the firmware a driver reports, as one string ("Mouse firmware 3.03, Dongle firmware 2.25"), or null
@@ -565,12 +563,11 @@ export async function makerAppNow(a) {
   return makerAppOf(a, makerAppByVid);
 }
 
-// library.json changed in place (temp file, then rename), keeping whatever else is in it (the wizard's learnedKeys)
+// library.json changed in place (writeAtomic), keeping whatever else is in it (the wizard's learnedKeys)
 function saveMark(folder, change) {
-  const file = path.join(folder, LIBRARY_FILE), tmp = `${file}.tmp`;
+  const file = path.join(folder, LIBRARY_FILE);
   const cur = readJson(file) || {};
-  fs.writeFileSync(tmp, JSON.stringify({ ...cur, ...change }, null, 2) + '\n');
-  fs.renameSync(tmp, file);
+  writeAtomic(file, JSON.stringify({ ...cur, ...change }, null, 2) + '\n');
 }
 
 // A copy's device as it connected in this run (2 Nov 2026): its driver's own setting keys (a driver listing them per

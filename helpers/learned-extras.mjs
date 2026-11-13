@@ -33,7 +33,7 @@ import { fromJson, validate } from './declarative-driver.mjs';
 export const LEARNED_FILE = 'learned.json';
 const MARK_FILE = 'library.json';   // helpers/my-devices.mjs LIBRARY_FILE (not imported: my-devices imports this file)
 const up4 = (s) => String(s ?? '').trim().toUpperCase().replace(/^0X/, '').padStart(4, '0');
-const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8').replace(/^﻿/, '')); } catch { return null; } };
+import { readJson } from './safe-write.js';   // a JSON file or a fallback (helpers/safe-write.js)
 const plain = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 const firstLine = (e) => String(e?.message || e).split(/\r?\n/)[0];
 

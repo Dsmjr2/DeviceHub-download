@@ -59,13 +59,16 @@ if (process.platform === 'win32' && fs.existsSync(path.join(process.env.WINDIR |
   const parse = spawnSync('powershell.exe', ['-NoProfile', '-Command', `$e = $null; [void][System.Management.Automation.Language.Parser]::ParseFile('${path.join(ROOT, 'helpers', 'install.ps1').replace(/'/g, "''")}', [ref]$null, [ref]$e); if ($e.Count) { $e | ForEach-Object { $_.Message }; exit 1 }`], { encoding: 'utf8', windowsHide: true, timeout: 60000 });
   check(parse.status === 0, `install.ps1 parses (${(parse.stdout || '').trim()})`);
 
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-update-window-'));
-  fs.copyFileSync(path.join(ROOT, 'DeviceHub.vbs'), path.join(dir, 'DeviceHub.vbs'));
-  fs.writeFileSync(path.join(dir, 'settings.json'), '{ "lightWindow": false }');
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-update-window-'));
 
   // a fake DeviceHub: down for upMs, then answering; its window count turns 1 at windowMs (null = never)
   // log: { before, during }: logs\server.log as it was before this start, and a line added every second while it runs
+  // each scenario in its own folder, so the two slow ones (10 and 11, ~25 s and ~20 s on the launcher's own clock) run
+  // beside the others (13 Nov 2026: 64 s one after another)
   async function scenario(name, { args = [], upMs = 0, windowMs = null, wait = 4, settings = '{ "lightWindow": false }', oldRoot = false, extraEnv = {}, log: serverLog = null }) {
+    const dir = path.join(base, name);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.copyFileSync(path.join(ROOT, 'DeviceHub.vbs'), path.join(dir, 'DeviceHub.vbs'));
     const logFile = path.join(dir, 'logs', 'server.log');
     fs.rmSync(logFile, { force: true });
     let logTimer = null;
@@ -103,8 +106,14 @@ if (process.platform === 'win32' && fs.existsSync(path.join(process.env.WINDIR |
     check(code === 0, `${name}: the launcher ended with code ${code} (${err.trim().slice(0, 300)})`);
     const opened = lines.filter((l) => /--app/.test(l));
     return { keep: lines.filter((l) => /keep-running\.bat/.test(l)).length, windows: opened.length,
-      own: opened.filter((l) => /--user-data-dir=/.test(l)).length, edge: opened.filter((l) => /msedge\.exe/i.test(l)).length, activated: lines.includes('activate DeviceHub'), lines };
+      own: opened.filter((l) => /--user-data-dir=/.test(l)).length, taskbar: lines.filter((l) => /taskbar-id.ps1/.test(l)).length, edge: opened.filter((l) => /msedge\.exe/i.test(l)).length, activated: lines.includes('activate DeviceHub'), lines };
   }
+
+  // 10 and 11 (below) wait on the launcher's own clock: started first, checked at the end
+  const t10 = Date.now();
+  let d10 = 0, d11 = 0;
+  const slP = scenario('slow-first-start', { upMs: 25000, windowMs: null, log: { before: '[start] Port 5577 is used by another program, so DeviceHub cannot start.\r\n', during: (n) => `[helper] still starting ${n}\r\n` } }).then((x) => { d10 = Date.now() - t10; return x; });
+  const stP = scenario('start-reason', { upMs: 120000, windowMs: null, log: { during: (n) => (n === 3 ? '[start] Port 5577 is used by another program, so DeviceHub cannot start.\r\n' : `[helper] line ${n}\r\n`) } }).then((x) => { d11 = Date.now() - t10; return x; });
 
   // 1. the update path: DeviceHub is starting again, the old window comes back a few seconds after it answers
   const a = await scenario('after-update', { args: ['/afterupdate'], upMs: 1500, windowMs: 4500, wait: 8 });
@@ -116,9 +125,10 @@ if (process.platform === 'win32' && fs.existsSync(path.join(process.env.WINDIR |
   // 3. a plain start (Desktop or Start): DeviceHub not running, no window: one opens, with no extra wait
   const c = await scenario('plain-start', { upMs: 1500, windowMs: null });
   check(c.windows === 1 && c.keep === 1, `a plain start opens one window (${c.lines})`);
+  check(c.taskbar === 1, `it then gives the shortcuts the window's taskbar ID once (one taskbar button) (${c.lines})`);
   // 4. a plain start while DeviceHub runs with its window open: brought to the front, none opened
   const d = await scenario('already-open', { upMs: 0, windowMs: 0 });
-  check(d.windows === 0 && d.activated, `a start while the window is open brings it to the front (${d.lines})`);
+  check(d.windows === 0 && d.activated && d.taskbar === 0, `a start while the window is open brings it to the front (${d.lines})`);
   // 4b. (27 Oct 2026) settings.json still beside the app (a copy that has not started since it moved to data\): read there
   const d2 = await scenario('old-place', { upMs: 1500, windowMs: null, oldRoot: true });
   check(d2.windows === 1 && d2.own === 1, `settings.json beside the app (not moved to data\\ yet) is still read (${d2.lines})`);
@@ -150,15 +160,13 @@ if (process.platform === 'win32' && fs.existsSync(path.join(process.env.WINDIR |
   check(nb.windows === 0 && nb.lines.includes('no browser'), `no browser: says so instead of a script error (${nb.lines})`);
   // 10. a first start slowed by antivirus: the log is still being written with no "[start]" line from this start (an
   // old one from before does not count), so the launcher keeps waiting past 20 s, and opens the window at ~25 s
-  const t10 = Date.now();
-  const sl = await scenario('slow-first-start', { upMs: 25000, windowMs: null, log: { before: '[start] Port 5577 is used by another program, so DeviceHub cannot start.\r\n', during: (n) => `[helper] still starting ${n}\r\n` } });
-  check(sl.windows === 1 && !sl.lines.includes('could not start'), `a slow first start still opens the window (${sl.lines}, ${Date.now() - t10} ms)`);
+  const sl = await slP;
+  check(sl.windows === 1 && !sl.lines.includes('could not start'), `a slow first start still opens the window (${sl.lines}, ${d10} ms)`);
   // 11. this start wrote its "[start]" reason: no longer waiting past the first 20 s
-  const t11 = Date.now();
-  const st = await scenario('start-reason', { upMs: 120000, windowMs: null, log: { during: (n) => (n === 3 ? '[start] Port 5577 is used by another program, so DeviceHub cannot start.\r\n' : `[helper] line ${n}\r\n`) } });
-  check(st.windows === 0 && st.lines.includes('could not start') && Date.now() - t11 < 30000, `a "[start]" reason from this start ends the wait at ~20 s (${st.lines}, ${Date.now() - t11} ms)`);
+  const st = await stP;
+  check(st.windows === 0 && st.lines.includes('could not start') && d11 < 30000, `a "[start]" reason from this start ends the wait at ~20 s (${st.lines}, ${d11} ms)`);
 
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(base, { recursive: true, force: true });
 } else console.log('update-window: not on Windows; the launcher run was skipped');
 
 if (fails.length) { console.log(`update-window: FAILED:\n- ${fails.join('\n- ')}`); process.exit(1); }

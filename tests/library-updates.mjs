@@ -215,8 +215,10 @@ delete process.env.DEVICEHUB_LIBRARY_UPDATES;
 
 // the routes
 const call = async (method, p) => { let out = null; const handled = await lu.handle(new URL(`http://x${p}`), { method }, {}, (res, code, body) => { out = { code, body }; }, { root, url: url2, timeoutMs: 1000 }); return { handled, ...out }; };
+const stNow = lu.status(root);
+check(Array.isArray(stNow.entries) && 'lastCheckAt' in stNow && Array.isArray(stNow.errors), 'status() gives the state');
 let a = await call('GET', '/api/library/updates');
-check(a.handled && a.code === 200 && Array.isArray(a.body.entries) && 'lastCheckAt' in a.body && Array.isArray(a.body.errors), 'GET /api/library/updates answers with the state');
+check(!a.handled, 'GET /api/library/updates is gone (9 Nov 2026: nothing asked for it)');
 a = await call('POST', '/api/library/update');
 check(a.handled && a.code === 502 && /404/.test(a.body.error) && a.body.entries.length === 1, 'POST /api/library/update checks now and reports the error');
 a = await call('POST', '/api/library/update?soon=1');

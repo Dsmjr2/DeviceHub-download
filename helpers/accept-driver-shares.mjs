@@ -31,7 +31,7 @@ export const REPO = 'Dsmjr2/DeviceHub-support';
 const FIELDS = 'number,title,body,labels';
 const hex4 = (v) => String(v ?? '').trim().toLowerCase().replace(/^0x/, '').padStart(4, '0');
 const slug = (s, n = 40) => String(s || '').toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, n).replace(/-+$/, '');
-const readJson = (f, d = null) => { try { return JSON.parse(fs.readFileSync(f, 'utf8').replace(/^﻿/, '')); } catch { return d; } };
+import { readJson } from './safe-write.js';   // a JSON file or a fallback (helpers/safe-write.js)
 
 const gh = (args) => new Promise((resolve, reject) => execFile('gh', args, { windowsHide: true, timeout: 60000, maxBuffer: 16 * 1024 * 1024 }, (e, out, err) => (e ? reject(new Error(String(err || e.message).trim().split('\n')[0])) : resolve(String(out || '')))));
 export async function listIssues(run = gh) {

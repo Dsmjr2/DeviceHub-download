@@ -74,7 +74,7 @@ export const wanted = () => [
 ];
 
 // ---- the two scripts the admin prompt runs (built here, exactly; tests/board-lights.mjs checks them) ----
-const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
+import { psQuote as q } from './ps-quote.js';   // a PowerShell single-quoted value
 const head = (result) => [
   "$ErrorActionPreference = 'Stop'",
   `$dest = ${q(BOARD.dir)}; $app = ${q(BOARD.app)}; $cfg = ${q(BOARD.config)}; $task = ${q(BOARD.task)}; $result = ${q(result)}`,

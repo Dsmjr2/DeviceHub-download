@@ -13,6 +13,7 @@ const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { ROOT, dataFile } = require('./data-dir');
+const { writeAtomic } = require('./safe-write');
 
 const READ = path.join(__dirname, 'startup-impact-read.ps1');
 const KEEP = 5;
@@ -21,9 +22,12 @@ const HOSTS = /^(wscript|cscript|cmd|powershell|pwsh|rundll32|conhost|explorer)\
 const deps = {
   root: ROOT,
   file: () => dataFile('startup-impact.json', deps.root),
-  read: () => new Promise((resolve, reject) => execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', READ], { windowsHide: true, timeout: 6 * 60 * 1000, maxBuffer: 8 << 20 }, (err, out) => {
-    try { resolve(JSON.parse(String(out || '').trim())); } catch { reject(new Error(err ? err.message : 'the sign-in measurement could not be read')); }
-  })),
+  read: () => require('./helper-reads').read('startup-impact-read', {
+    ms: 6 * 60 * 1000,
+    ps: () => new Promise((resolve, reject) => execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', READ], { windowsHide: true, timeout: 6 * 60 * 1000, maxBuffer: 8 << 20 }, (err, out) => {
+      try { resolve(JSON.parse(String(out || '').trim())); } catch { reject(new Error(err ? err.message : 'the sign-in measurement could not be read')); }
+    })),
+  }),
   log: () => {},
 };
 
@@ -41,10 +45,7 @@ async function measureAtSignIn() {
     if (!r || r.late || r.error || !r.signIn || !Array.isArray(r.procs)) return null;
     const run = { signIn: r.signIn, at: r.at, procs: r.procs.map((p) => ({ name: p.name || '', path: p.path || '', cmd: p.cmd || '', pid: Number(p.pid) || 0, ppid: Number(p.ppid) || 0, startS: p.startS, cpuMs: Number(p.cpuMs) || 0, ioKB: Number(p.ioKB) || 0 })) };
     const runs = [run, ...load().filter((x) => x.signIn !== run.signIn)].sort((a, b) => String(b.signIn).localeCompare(String(a.signIn))).slice(0, KEEP);
-    fs.mkdirSync(path.dirname(deps.file()), { recursive: true });
-    const tmp = `${deps.file()}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify({ runs }, null, 1));
-    fs.renameSync(tmp, deps.file());
+    writeAtomic(deps.file(), JSON.stringify({ runs }, null, 1));
     deps.log(`Start-up impact measured at sign-in (${run.procs.length} programs)`);
     return run;
   } catch { return null; } finally { busy = false; }
