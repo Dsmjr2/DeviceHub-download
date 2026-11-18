@@ -916,12 +916,18 @@ pub fn handle(
             if watch.is_some() {
                 return Ok("OK".into());
             }
+            if w.len() < 2 {
+                return Ok("ERR need the command byte".into());
+            }
             let page = i32::from_str_radix(p[3], 16).map_err(|e| e.to_string())?;
             let usage = i32::from_str_radix(p[4], 16).map_err(|e| e.to_string())?;
             let Some(path) = find(p[1], p[2], page, usage, 0) else {
                 return Ok("NODEVICE".into());
             };
             let len: usize = p[5].parse().map_err(|e: std::num::ParseIntError| e.to_string())?;
+            if len == 0 || len > 4096 {
+                return Ok("ERR bad report length".into());
+            }
             let cmd = u8::from_str_radix(w[1], 16).map_err(|e| e.to_string())?;
             *watch = Some(HidWatch::start(&path, len + 1, cmd, chan.to_string())?);
             Ok("OK".into())
@@ -930,8 +936,11 @@ pub fn handle(
             let Some(h) = hid.as_mut() else {
                 return Ok("GONE".into());
             };
+            if w.len() < 4 {
+                return Ok("ERR need the echo, wait and report".into());
+            }
             let echo: usize = w[1].parse().map_err(|e: std::num::ParseIntError| e.to_string())?;
-            let ms: u64 = w[2].parse().map_err(|e: std::num::ParseIntError| e.to_string())?;
+            let ms: u64 = w[2].parse::<u64>().map_err(|e: std::num::ParseIntError| e.to_string())?.min(60_000);
             let bytes = parse_hex_bytes(&w[3..])?;
             let rid: u8 = p[6].parse().map_err(|e: std::num::ParseIntError| e.to_string())?;
             match h.req_as(&bytes, echo, ms, rid, false) {
@@ -990,6 +999,9 @@ fn handle_ex(
     let raw = opt(o, "rw") == 1;
     let rf = opt(o, "rf") == 1;
     let len: i32 = p[5].parse().map_err(|e: std::num::ParseIntError| e.to_string())?;
+    if !(0..=4096).contains(&len) {
+        return Ok("ERR bad report length".into());
+    }
 
     match w[0] {
         "OPEN" => {
@@ -1090,8 +1102,15 @@ fn handle_ex(
             if watch.is_some() {
                 return Ok("OK".into());
             }
+            if w.len() < 2 {
+                return Ok("ERR need the command byte".into());
+            }
             let il = opt(o, "il");
-            let rlen = ((if il < 0 { len } else { il }) + 1) as usize;
+            let rlen_i32 = if il < 0 { len } else { il };
+            if !(0..=4096).contains(&rlen_i32) {
+                return Ok("ERR bad report length".into());
+            }
+            let rlen = (rlen_i32 + 1) as usize;
             let cmd = u8::from_str_radix(w[1], 16).map_err(|e| e.to_string())?;
             *watch = Some(HidWatch::start(&h.path, rlen, cmd, chan.to_string())?);
             Ok("OK".into())
@@ -1110,7 +1129,7 @@ fn handle_ex(
                 p[6].parse().map_err(|e: std::num::ParseIntError| e.to_string())?
             };
             let echo: usize = w[at].parse().map_err(|e: std::num::ParseIntError| e.to_string())?;
-            let ms: u64 = w[at + 1].parse().map_err(|e: std::num::ParseIntError| e.to_string())?;
+            let ms: u64 = w[at + 1].parse::<u64>().map_err(|e: std::num::ParseIntError| e.to_string())?.min(60_000);
             let bytes = parse_hex_bytes(&w[at + 2..])?;
             match h.req_as(&bytes, echo, ms, rid, rf) {
                 Ok(Some(r)) => Ok(hex_str(&r)),
@@ -1205,6 +1224,17 @@ mod tests {
         assert_eq!(
             handle("hid:dead:beef:ff00:0001:64:0", &big, &mut h, &mut w).unwrap(),
             "ERR payload too large"
+        );
+        // Short/missing-arg commands on closed channels return GONE cleanly without panicking
+        for cmd in ["WATCH", "REQ", "REQ 0", "REQ 0 100", "FSET", "FGET", "FGET 01"] {
+            assert_eq!(
+                handle("hid:dead:beef:ff00:0001:64:0", cmd, &mut h, &mut w).unwrap(),
+                "GONE"
+            );
+        }
+        assert_eq!(
+            handle("hid:dead:beef:ff00:0001:-5:0:fo=1", "OPEN", &mut h, &mut w).unwrap(),
+            "ERR bad report length"
         );
     }
 }

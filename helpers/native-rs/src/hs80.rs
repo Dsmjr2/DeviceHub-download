@@ -1,7 +1,7 @@
 use crate::hid::{find, open_device_handle};
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::Duration;
 
@@ -259,7 +259,7 @@ impl Hs80Io {
     }
 
     fn send(&self, out: &[u8], wait_ms: u64) -> Result<Option<Vec<u8>>, String> {
-        let rx = self.replies_rx.lock().unwrap();
+        let rx = self.replies_rx.lock().unwrap_or_else(PoisonError::into_inner);
         while rx.try_recv().is_ok() {}
         // SAFETY: Win32 HID/file I/O call with valid handle, overlapped struct, and bounded byte buffer.
         let ev = unsafe { CreateEventW(std::ptr::null_mut(), 1, 0, std::ptr::null()) };

@@ -36,9 +36,8 @@ function charged(from, mins) {
 }
 
 // b = the mouse's own reading { percent, charging, mv }; returns it with percent = DeviceHub's level
-function filter(b) {
+function filter(b, now = Date.now()) {
   if (!b || b.percent == null) return b;
-  const now = Date.now();
   const raw = b.percent;
   if (s.level == null) { s.level = raw; s.mode = b.charging ? 'charging' : 'battery'; s.since = now; s.anchor = raw; save(); }
 
@@ -56,6 +55,7 @@ function filter(b) {
       // underestimated). 19 Oct 2026: after a 1-minute charge the mouse read 80% for over 3 minutes while the true
       // level was ~72%, and the old rule took the 80.
       if (raw < s.level) s.level = raw;
+      if (s.endedAt == null) s.endedAt = now;
       if (raw !== s.settleRaw) { s.settleRaw = raw; s.settleRawAt = now; }
       if ((now - s.settleRawAt >= 3 * 60000 && raw <= s.level + 5) || now - s.endedAt > SETTLE_MAX_MS) {
         // settled: the mouse's reading is the truth again; learn how fast that charge really was

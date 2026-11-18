@@ -57,7 +57,10 @@ function refreshFlag(s) {
 
 // one screen as the page shows it: its resolutions (largest first) and the rates at each
 function shape(s) {
-  const modes = (s.modes || []).filter((m) => Array.isArray(m) && m.length === 3).map((m) => m.map(Number));
+  const modes = (s.modes || [])
+    .filter((m) => Array.isArray(m) && m.length === 3)
+    .map((m) => m.map(Number))
+    .filter((m) => m.every((v) => Number.isFinite(v) && v > 0));
   const res = [...new Set(modes.map(([w, h]) => `${w}x${h}`))].map((k) => k.split('x').map(Number)).sort((a, b) => b[0] * b[1] - a[0] * a[1] || b[0] - a[0]);
   const rates = (w, h) => [...new Set(modes.filter(([mw, mh]) => mw === w && mh === h).map(([, , hz]) => hz))].sort((a, b) => b - a);
   return {

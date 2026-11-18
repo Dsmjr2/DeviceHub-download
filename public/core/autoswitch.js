@@ -49,25 +49,42 @@ const gameRunning = (g, running, all) => (g === ANY_GAME ? [...running].find((r)
 async function tick() {
   if (!auto.settings.autoSwitch || auto.busy || isDemo()) return;
   let running;
-  try { running = new Set((await env.api('/api/processes')).map(norm)); } catch { return; }
+  try { running = new Set((await env.api('/api/processes')).map(norm)); } catch { return; }   // no list: change nothing
   // a game set up in Game mode is game mode's alone (27 Oct 2026, helpers/game-mode.mjs): never a profile switch too
   for (const x of env.gameModeExes?.() || []) running.delete(x);
   const profiles = await loadProfiles();
   const all = await games();
-  const match = pick(profiles, (g) => gameRunning(g, running, all));
+  let match = pick(profiles, (g) => gameRunning(g, running, all));
+  // a game closes only when two looks in a row miss it (15 Nov 2026 bug hunt: one empty or cut-short list, the helper
+  // restarting, switched profiles mid-game and back 10 s later)
+  if (!match && auto.active) {
+    if (!auto.missed) { auto.missed = 1; return; }
+  }
+  auto.missed = 0;
   const target = match || profiles.find((p) => p.name === auto.settings.defaultProfile) || null;
   // Game closed and there is no default to go back to: forget it, so starting the game again re-applies its profile.
   if (!match && !target && auto.active) { auto.active = null; wifiProfile(null); emit(); return; }
   // a profile applied while a device was asleep: its leftover changes are tried again quietly every check (10 s) until
   // they land (the mouse wakes when it is touched) or another profile takes over
+  // (15 Nov 2026 bug hunt) only the changes still to do are tried (auto.retryKeys), never the whole profile again; a
+  // refused change is tried 3 more times, an asleep or missing device's change waits until it is back
   if (target && auto.retry === target.name) {
     auto.busy = true;
     try {
-      const r = await apply(target, { retry: true });
-      // only a try the device answered counts (one asleep the whole time is still waited for)
-      if (!r.asleep) auto.retryTries = (auto.retryTries || 0) + 1;
-      if (!r.asleep && r.failed && auto.retryTries >= 3) { auto.retry = null; log(`${target.name} profile: ${r.failed} change${r.failed === 1 ? '' : 's'} still refused after 3 tries; not tried again`, 'bad', undefined, { auto: true }); }
-      if (!r.failed && !r.asleep) { auto.retry = null; log(`${target.name} profile finished: the ${r.done === 1 ? 'change' : `${r.done} changes`} waiting for a device to wake went through`, 'good', undefined, { auto: true }); }
+      const r = await apply(target, { retry: true, only: auto.retryKeys || [] });
+      let left = r.left;
+      if (r.refused) {
+        auto.retryTries = (auto.retryTries || 0) + 1;
+        if (auto.retryTries >= 3) {
+          left = left.filter((k) => !r.refusedKeys.includes(k));
+          log(`${target.name} profile: ${r.refused} change${r.refused === 1 ? '' : 's'} still refused after 3 tries; not tried again`, 'bad', undefined, { auto: true });
+        }
+      }
+      auto.retryKeys = left;
+      if (!left.length) {
+        auto.retry = null;
+        if (r.done && !r.refused) log(`${target.name} profile finished: the ${r.done === 1 ? 'change' : `${r.done} changes`} waiting for a device to wake went through`, 'good', undefined, { auto: true });
+      }
     } finally { auto.busy = false; }
     return;
   }
@@ -79,10 +96,12 @@ async function tick() {
     const why = match ? `${gameTitle((match.games || []).map((g) => gameRunning(g, running, all)).find(Boolean))} started` : 'Game closed';
     const r = await apply(target);
     auto.active = match ? target.name : null;
-    auto.retry = r.failed || r.asleep ? target.name : null;
+    auto.retry = r.left.length ? target.name : null;
+    auto.retryKeys = r.left;
     auto.retryTries = 0;
-    // auto: true makes an open window show it as a toast (the agent has no screen of its own).
-    const waiting = r.asleep && r.failed <= r.asleep;
+    // auto: true makes an open window show it as a toast (the agent has no screen of its own). Waiting only when
+    // nothing was refused (15 Nov 2026 bug hunt: a refused keyboard change was reported as "finishes when it wakes")
+    const waiting = r.asleep && !r.refused;
     log(`${why} · ${target.name} profile${waiting ? ' (the mouse was asleep: finishes when it wakes)' : r.failed ? ` (${r.failed} failed, trying again)` : ''}`, r.failed && !waiting ? 'bad' : 'good', undefined, { auto: true });
     env.toast(`${target.name} profile on`, r.failed && !waiting ? 'bad' : 'good', { detail: `${why}${waiting ? ' · finishes when the mouse wakes' : r.failed ? ` · ${r.failed} failed` : ''}` });
   } finally { auto.busy = false; emit(); }

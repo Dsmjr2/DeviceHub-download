@@ -89,8 +89,11 @@ async function fix(guids) {
     const ac = new AbortController();
     let unanswered = false;
     const timer = setTimeout(() => { if (!fs.existsSync(f.started)) { unanswered = true; try { fs.writeFileSync(f.cancel, 'cancel'); } catch {} ac.abort(); } }, deps.uacWaitMs);
-    const r = await deps.elevate({ DH_SCRIPT: FIX, DH_GUIDS: now.flagged.map((x) => x.guid).join(','), DH_BACKUPS: backups, DH_RESULT: f.result, DH_STARTED: f.started, DH_CANCEL: f.cancel }, ac.signal);
-    clearTimeout(timer);
+    let r;
+    try {
+      r = await deps.elevate({ DH_SCRIPT: FIX, DH_GUIDS: now.flagged.map((x) => x.guid).join(','), DH_BACKUPS: backups, DH_RESULT: f.result, DH_STARTED: f.started, DH_CANCEL: f.cancel }, ac.signal);
+    } finally { clearTimeout(timer); }
+    r = r || {};
     const out = readText(f.result);
     cache.at = 0;
     const after = await check(guids, { fresh: true }).catch(() => now);

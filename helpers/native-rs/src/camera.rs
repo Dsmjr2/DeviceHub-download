@@ -1,7 +1,7 @@
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 use std::ffi::c_void;
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -229,7 +229,7 @@ fn touch_idle(cache: &mut CamCache) {
         cache.idle_started = true;
         thread::spawn(|| loop {
             thread::sleep(Duration::from_secs(15));
-            let mut guard = CACHE.lock().unwrap();
+            let mut guard = CACHE.lock().unwrap_or_else(PoisonError::into_inner);
             if let Some(c) = guard.as_mut() {
                 if !c.bound.is_empty() && c.last_use.elapsed() > Duration::from_secs(30) {
                     drop_all(&mut c.bound);
@@ -372,7 +372,7 @@ unsafe fn read_controls(filter: *mut c_void) -> Map<String, Value> {
 }
 
 pub fn list() -> Result<Value, String> {
-    let mut guard = CACHE.lock().unwrap();
+    let mut guard = CACHE.lock().unwrap_or_else(PoisonError::into_inner);
     let cache = guard.get_or_insert_with(|| CamCache {
         bound: HashMap::new(),
         last_use: Instant::now(),
@@ -408,7 +408,7 @@ pub fn set(path: &str, key: &str, value: i32, auto: bool) -> Result<Value, Strin
         .find(|c| c.0 == key)
         .ok_or_else(|| format!("unknown control {key}"))?;
 
-    let mut guard = CACHE.lock().unwrap();
+    let mut guard = CACHE.lock().unwrap_or_else(PoisonError::into_inner);
     let cache = guard.get_or_insert_with(|| CamCache {
         bound: HashMap::new(),
         last_use: Instant::now(),

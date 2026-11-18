@@ -8,7 +8,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
-const { readJsonForWrite } = require('../helpers/safe-write.js');
+const { readJsonForWrite, writeAtomic } = require('../helpers/safe-write.js');
 const fails = [];
 const check = (ok, what) => { if (!ok) fails.push(what); };
 const throws = (fn) => { try { fn(); return false; } catch { return true; } };
@@ -42,6 +42,11 @@ try {
   check(throws(() => st.trust('c|1:1|k', { at: 'x', value: 3 })) && fs.readFileSync(trustF, 'utf8') === before, 'trust() wrote over a record it could not read');
   fs.writeFileSync(lastF, '');
   check(throws(() => st.remember('a|1:1|k', 5)) && fs.readFileSync(lastF, 'utf8') === '', 'remember() wrote over a record it could not read');
+  check(st.last('toString') === null && st.trusted('toString') === false, 'write-only store ignores prototype keys');
+  st.trust(null, { at: 'x', value: 1 });
+  st.trust('c|1:1|k', null);
+  const { showValue } = await import('../helpers/write-only.mjs');
+  check(showValue({ type: 'choice', options: [null, { value: 1, label: 'One' }] }, 1) === 'One', 'showValue tolerates null option entries');
 
   // the version number: a last publish that is there but damaged stops the bump (never restarts at 1.0)
   const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -61,6 +66,15 @@ try {
   check(/const done = \[\];\n\s+const s = readJsonForWrite\(SETTINGS, \{\}\)/.test(src2('helpers/setup-extras.js').replace(/\r\n/g, '\n')), 'loading a setup reads settings.json leniently before writing it');
   check(/const s = readJsonForWrite\(SETTINGS, \{\}\);\s+s\.oneDriveSeen/.test(src2('helpers/onedrive-setup.mjs')), 'OneDrive Not now reads settings.json leniently before writing it');
   check(/if \(unreadable\) return;/.test(src2('helpers/battery-care.mjs')), 'battery care can write over a record it could not read');
+
+  // writeAtomic cleans up its temp file if writeSync fails
+  const origWriteSync = fs.writeSync;
+  const atomicDir = at('atomic'); fs.mkdirSync(atomicDir, { recursive: true });
+  try {
+    fs.writeSync = () => { const err = new Error('disk full'); err.code = 'ENOSPC'; throw err; };
+    check(throws(() => writeAtomic(path.join(atomicDir, 'out.json'), '{}')), 'writeAtomic did not throw on writeSync failure');
+  } finally { fs.writeSync = origWriteSync; }
+  check(fs.readdirSync(atomicDir).length === 0, 'writeAtomic left a temp file behind after writeSync failure');
 } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 
 if (fails.length) { console.log(`failed-read: ${fails.length} problem(s)\n${fails.map((f) => `- ${f}`).join('\n')}`); process.exit(1); }

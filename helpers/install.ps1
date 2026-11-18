@@ -136,6 +136,15 @@ if ($same) { Write-Host '   already in place' } else {
           if ($LASTEXITCODE -ge 8) { throw "keeping $($_.Name) failed (robocopy $LASTEXITCODE)" }
         } else { Copy-Item -LiteralPath $_.FullName (Join-Path $pre $_.Name) -Force }
       }
+      # the git version a copy tied to the download repository is at (15 Nov 2026 bug hunt): the launcher's rollback
+      # puts git back there too (it stayed at the new version: "Up to date" while the old one ran)
+      $headNote = Join-Path $Target 'backups\pre-update-git-head.txt'
+      Remove-Item -LiteralPath $headNote -Force -ErrorAction SilentlyContinue
+      if ((Test-Path -LiteralPath (Join-Path $Target '.git')) -and (Get-Command git -ErrorAction SilentlyContinue)) {
+        $head = & git -C $Target rev-parse HEAD 2>$null
+        if ("$head" -match '^[0-9a-f]{40}$') { Set-Content -LiteralPath $headNote -Value "$head" -Encoding ASCII }
+        $global:LASTEXITCODE = 0
+      }
       New-Item -ItemType Directory -Force (Join-Path $Target 'data') | Out-Null
       Set-Content -LiteralPath (Join-Path $Target 'data\update-rollback.txt') -Value 'files:backups\pre-update' -Encoding ASCII
       Write-Host '   kept the version before (backups\pre-update), in case the new one does not start'

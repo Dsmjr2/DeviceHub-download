@@ -17,13 +17,21 @@ const PRESETS = { 1: 'sRGB', 2: 'Native', 3: 'Warmest', 4: 'Warm', 5: 'Standard'
 // the capabilities' vcp(...) list as { code: [listed values] }, e.g. "vcp(10 12 14(05 06 08 0B) 16)" -> { 16: [], 18: [], 20: [5, 6, 8, 11], 22: [] }
 function vcpList(caps) {
   const out = {};
-  const at = (caps || '').toLowerCase().indexOf('vcp(');
+  const text = typeof caps === 'string' ? caps : '';
+  const at = text.toLowerCase().indexOf('vcp(');
   if (at < 0) return out;
   let i = at + 4, depth = 0, code = null, word = '';
-  const flush = () => { if (!word) return; const n = parseInt(word, 16); if (depth === 0) { code = n; out[n] = out[n] || []; } else if (code != null && depth === 1) out[code].push(n); word = ''; };
-  for (; i < caps.length; i++) {
-    const ch = caps[i];
-    if (ch === '(') { flush(); depth++; } else if (ch === ')') { flush(); if (depth === 0) break; depth--; } else if (ch === ' ') flush(); else word += ch;
+  const flush = () => {
+    if (!word) return;
+    if (!/^[0-9a-f]+$/i.test(word)) { if (depth === 0) code = null; word = ''; return; }
+    const n = parseInt(word, 16);
+    if (depth === 0) { code = n; out[n] = out[n] || []; }
+    else if (code != null && depth === 1) out[code].push(n);
+    word = '';
+  };
+  for (; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '(') { flush(); depth++; } else if (ch === ')') { flush(); if (depth === 0) break; depth--; } else if (/\s/.test(ch)) flush(); else word += ch;
   }
   // codes longer than two digits are the maker's own (E2A006 ...): never offered
   for (const k of Object.keys(out)) if (Number(k) > 0xff) delete out[k];

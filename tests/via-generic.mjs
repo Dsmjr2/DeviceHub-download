@@ -218,6 +218,13 @@ for (const mode of ['silent', 'ff', 'echo']) {
   ok(d.sent.length === 0, 'none of them reached the board');
 }
 
+// ---- invalid VID/PID rejected before path join or network fetch ----
+for (const [badVid, badPid] of [['../x', '5A4C'], ['5043', '123'], ['ZZZZ', '5A4C']]) {
+  let err = null;
+  try { await viaDefs.definitionFor(badVid, badPid); } catch (e) { err = e; }
+  ok(err && /invalid vendor or product id/.test(err.message), `definitionFor refuses invalid ${badVid}:${badPid}`);
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(fails ? `via-generic: ${fails} failed` : 'via-generic: all passed');
 process.exit(fails ? 1 : 0);

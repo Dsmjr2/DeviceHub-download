@@ -193,7 +193,8 @@ check(/row\('Lift-off distance', '[^']+'/.test(mouseSrc) && /h\('h2', \{\}, 'Tra
   check(threw?.gone && (await h.connect()) && h.picked === 'VID_1038&PID_12E0', 'no HS80, pick cleared: the first one, as before');
 
   // Equalizer APO: the picked headset takes the headset's place; no pick or the HS80: unchanged
-  const { withPick } = require(path.join(ROOT, 'helpers/headset-pick-eq.js'));
+  const { withPick, guidOf } = require(path.join(ROOT, 'helpers/headset-pick-eq.js'));
+  check(guidOf('{0.0.0.00000000}.{abc}') === '{abc}' && guidOf('{abc}') === '{abc}' && guidOf('') === '', 'EQ: guidOf keeps plain GUIDs intact when }. is absent');
   const base = { headset: ['{p1}'], mic: ['{m1}'], speakers: [{ guid: '{p2}', name: 'Arctis' }, { guid: '{s9}', name: 'Monitor' }], mics: [{ guid: '{m2}', name: 'Arctis mic' }], headsetModel: 'HS80' };
   let saved = null;
   const dv = withPick(async () => base, { readPick: () => saved, listHeadsets: async () => [HS, NOVA] });

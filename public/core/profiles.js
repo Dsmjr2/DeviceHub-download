@@ -222,13 +222,28 @@ export function wifiProfile(name) {
   if (isDemo()) return;
   env.api('/api/wifi-pause/profile', { name }).catch(() => {});
 }
-export async function apply(profile, { retry } = {}) {
-  if (profile.monitors && Object.keys(profile.monitors).length) await loadMonitors(true);
-  const rows = diff(profile);
-  let done = 0, failed = 0, skipped = 0, asleep = 0;
+// one change of a profile, by device, monitor and key (auto-switch keeps the ones still to do between its checks)
+export const rowKey = (r) => `${r.id}|${r.monitorId || ''}|${r.key}`;
+// only (15 Nov 2026 bug hunt): the rowKeys to try, nothing else (auto-switch's quiet retry: it re-applied the whole
+// profile every 10 s, undoing what the person changed by hand meanwhile). left: what is still to do, a device asleep
+// or a change refused (refusedKeys); a device that was never connected is left out, as before, unless asked for in only.
+// One apply at a time (15 Nov 2026 bug hunt: the tray's Apply as a game started and auto-switch's own apply wrote
+// interleaved, leaving the devices a mix of both): each waits for the one before, so the last asked for ends whole.
+let applying = Promise.resolve();
+export function apply(profile, opts) {
+  const run = applying.then(() => applyNow(profile, opts));
+  applying = run.catch(() => {});
+  return run;
+}
+async function applyNow(profile, { retry, only } = {}) {
+  const want = only ? new Set(only) : null;
+  if (want ? [...want].some((k) => k.startsWith('monitor|')) : profile.monitors && Object.keys(profile.monitors).length) await loadMonitors(true);
+  const rows = want ? diff(profile).filter((r) => !r.added && want.has(rowKey(r))) : diff(profile);
+  let done = 0, failed = 0, skipped = 0, asleep = 0, asleepFailed = 0;
+  const left = [], refusedKeys = [];
   for (const r of rows) {
     if (r.added) continue;   // added devices: below, one device at a time through the agent
-    if (!r.ready) { skipped++; if (devices[r.id]?.status === 'asleep') asleep++; continue; }
+    if (!r.ready) { skipped++; if (devices[r.id]?.status === 'asleep') { asleep++; left.push(rowKey(r)); } else if (want) left.push(rowKey(r)); continue; }
     try {
       if (r.id === 'monitor') {
         // the server backs the monitor up, writes and reads back (helpers/monitors.js)
@@ -236,7 +251,10 @@ export async function apply(profile, { retry } = {}) {
         const m = (monitors || []).find((x) => x.id === r.monitorId); if (m?.[r.key]) m[r.key].value = r.to;
       } else await write(r.id, r.key, r.to, { label: keyLabel(r.id, r.key), display: showValue(r.id, r.key, r.to), silent: true, quietFail: retry });
       done++;
-    } catch (e) { failed++; if (/asleep|out of range/i.test(e?.message || '')) asleep++; }
+    } catch (e) {
+      failed++; left.push(rowKey(r));
+      if (/asleep|out of range/i.test(e?.message || '')) { asleep++; asleepFailed++; } else refusedKeys.push(rowKey(r));
+    }
   }
   // added devices, after the three built-in ones; not on a quiet retry (that waits for an asleep built-in device only)
   if (!retry) {
@@ -251,5 +269,6 @@ export async function apply(profile, { retry } = {}) {
   // Wi-Fi scans: Gaming pauses them only when the person set it up and turned it on; any other profile resumes them
   if (!retry) wifiProfile(profile.name);
   if (!retry || done) log(`Profile "${profile.name}": ${done} changed${failed ? `, ${failed} failed` : ''}${skipped ? `, ${skipped} skipped (device not connected)` : ''}`, failed > asleep ? 'bad' : 'good');
-  return { done, failed, skipped, asleep };
+  // refused: changes a device answered with a refusal (not asleep); left: everything still to do (see above)
+  return { done, failed, skipped, asleep, refused: failed - asleepFailed, left, refusedKeys };
 }

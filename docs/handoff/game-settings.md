@@ -60,3 +60,8 @@ To add a game: find its settings files read-only, add an entry (`whole` for a bi
 - Never while the game runs. Everything about to change is backed up to `backups/game-settings/<when>/manifest.json`
   first; each write is read back. Profiles > Move to another PC > Game settings > Put back restores the newest backup
   (a file that was not there before is moved into that backup folder).
+- (15 Nov 2026 bug hunt) With Game graphics on, the graphics files no longer bring this PC's devices: THE FINALS' and
+  ARC Raiders' GameUserSettings.ini and Halo's SpecControl files go key by key (LastDeviceHash and the mic's id hash
+  never carry), HELLDIVERS 2's file stays whole but keeps the loading PC's audio_device, prev_audio_device,
+  adapter_index and hostability lines. A UTF-16 ini is merged as UTF-16. An ini is never made from nothing, and a
+  game not on this PC is never written. Aimlabs' lookConversion, a microphone volume and a field of view now carry.

@@ -282,6 +282,8 @@ function quick(d) {
     if (v.brightness == null || v.effect == null) return [];
     // the same lights switch as the Keyboard page: off is effect None, on brings back the last effect used
     let last = 1; try { last = Number(localStorage.getItem('kb-last-effect')) || 1; } catch {}
+    // remembered here too (15 Nov 2026 bug hunt: only the Keyboard page did, so the tile's switch brought back an old one)
+    if (v.effect > 0 && v.effect !== last) { last = v.effect; try { localStorage.setItem('kb-last-effect', String(last)); } catch {} }
     const pct = (x) => `${x >= 250 ? 100 : Math.round((x / 255) * 100)}%`;
     return [
       ['Lights', toggle({ value: v.effect !== 0, label: 'Lights', onCommit: (on) => set('effect', on ? last : 0, 'Lights', on ? 'on' : 'off') })],

@@ -99,6 +99,9 @@ async function first(icueEq) {
 
 // ---- how a chain of filters sounds: the RBJ biquad shapes Equalizer APO uses, at 48 kHz ----
 function biquad([type, f, g, q], fs = 48000) {
+  if (!Number.isFinite(f) || !Number.isFinite(g) || !Number.isFinite(q) || !Number.isFinite(fs) || f <= 0 || q <= 0 || fs <= 0 || f >= fs / 2) {
+    return [1, 0, 0, 1, 0, 0];
+  }
   const A = 10 ** (g / 40), w = 2 * Math.PI * f / fs, c = Math.cos(w), al = Math.sin(w) / (2 * q), sa = 2 * Math.sqrt(A) * al;
   if (type === 'PK') return [1 + al * A, -2 * c, 1 - al * A, 1 + al / A, -2 * c, 1 - al / A];
   if (type === 'LSC') return [A * ((A + 1) - (A - 1) * c + sa), 2 * A * ((A - 1) - (A + 1) * c), A * ((A + 1) - (A - 1) * c - sa), (A + 1) + (A - 1) * c + sa, -2 * ((A - 1) + (A + 1) * c), (A + 1) + (A - 1) * c - sa];
@@ -112,7 +115,8 @@ function gainAt(filters, f, fs = 48000) {
   for (const fl of filters) {
     const [b0, b1, b2, a0, a1, a2] = biquad(fl, fs);
     const nr = b0 + b1 * cr + b2 * c2r, ni = b1 * ci + b2 * c2i, dr = a0 + a1 * cr + a2 * c2r, di = a1 * ci + a2 * c2i;
-    db += 10 * Math.log10((nr * nr + ni * ni) / (dr * dr + di * di));
+    const numSq = nr * nr + ni * ni, denSq = dr * dr + di * di;
+    if (numSq > 0 && denSq > 0) db += 10 * Math.log10(numSq / denSq);
   }
   return db;
 }
@@ -157,7 +161,7 @@ function text(s, stages, rawName, ctx) {
   // service applied), so iCUE is not needed for it
   const boost = x.micBoost || 0;
   if ((mic.length || level || boost) && ctx.mic.length) {
-    out.push('', '# Headset mic', `Device: ${ctx.mic.join('; ')}`, `Preamp: ${fmt(-peak(mic) + boost)} dB`, ...mic.map((f, i) => line(f, i + 1)));
+    out.push('', '# Headset mic', `Device: ${ctx.mic.map(oneLine).join('; ')}`, `Preamp: ${fmt(-peak(mic) + boost)} dB`, ...mic.map((f, i) => line(f, i + 1)));
     if (level) out.push(...LEVELER(REACOMP));
   }
   // every device with saved settings gets its section, also while it is off or unplugged (19 Oct 2026: a monitor that
@@ -191,31 +195,35 @@ function write(t, backupDir) {
   if (fs.readFileSync(CONFIG, 'utf8') !== t) throw new Error('Equalizer APO\'s config file did not read back the same');
 }
 
+const numOf = (v) => (v == null || v === '' || typeof v === 'boolean' ? NaN : Number(v));
 const check = (stages) => {
-  const s = Array.isArray(stages) ? stages.map(Number) : [];
+  const s = Array.isArray(stages) ? stages.map(numOf) : [];
   if (s.length !== 10 || s.some((v) => !Number.isFinite(v) || v < -12 || v > 12)) throw new Error('each of the 10 bands must be between -12 and +12 dB');
   return s.map((v) => Math.round(v * 100) / 100);
 };
 // the settings the page may change, each checked
 function extrasFrom(body, old) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('invalid settings');
   const x = { ...old };
   for (const k of ['correction', 'loudness', 'micRumble', 'micClarity', 'micDeEss', 'micLevel']) if (k in body) x[k] = !!body[k];
-  if ('micBoost' in body) { const b = Number(body.micBoost); if (!Number.isInteger(b) || b < 0 || b > 10) throw new Error('mic boost must be 0-10 dB'); x.micBoost = b; }
-  if ('balance' in body) { const b = Number(body.balance); if (!Number.isFinite(b) || Math.abs(b) > 12) throw new Error('balance must be within 12 dB'); x.balance = Math.round(b * 2) / 2; }
+  if ('micBoost' in body) { const b = numOf(body.micBoost); if (!Number.isInteger(b) || b < 0 || b > 10) throw new Error('mic boost must be 0-10 dB'); x.micBoost = b; }
+  if ('balance' in body) { const b = numOf(body.balance); if (!Number.isFinite(b) || Math.abs(b) > 12) throw new Error('balance must be within 12 dB'); x.balance = Math.round(b * 2) / 2; }
   if ('filters' in body) {
     if (!Array.isArray(body.filters) || body.filters.length > 20) throw new Error('at most 20 extra filters');
     x.filters = body.filters.map((f) => {
-      const v = { f: Number(f.f), g: Number(f.g), q: Number(f.q) };
+      if (!f || typeof f !== 'object') throw new Error('each filter: 20-20000 Hz, -12 to +12 dB, width (Q) 0.1-10');
+      const v = { f: numOf(f.f), g: numOf(f.g), q: numOf(f.q) };
       if (!(v.f >= 20 && v.f <= 20000) || !(Math.abs(v.g) <= 12) || !(v.q >= 0.1 && v.q <= 10)) throw new Error('each filter: 20-20000 Hz, -12 to +12 dB, width (Q) 0.1-10');
       return { f: Math.round(v.f), g: Math.round(v.g * 10) / 10, q: Math.round(v.q * 100) / 100 };
     });
   }
   // one speaker at a time: { speaker: { guid, on?, stages? } }
   if ('speaker' in body) {
-    const { guid } = body.speaker || {};
-    if (!/^\{[0-9a-f-]{36}\}$/i.test(guid || '')) throw new Error('unknown speaker');
-    const cur = x.speakers[guid] || { on: false, stages: Array(10).fill(0) };
     const b = body.speaker;
+    if (!b || typeof b !== 'object' || Array.isArray(b)) throw new Error('unknown speaker');
+    const { guid } = b;
+    if (!/^\{[0-9a-f-]{36}\}$/i.test(guid || '')) throw new Error('unknown speaker');
+    const cur = (x.speakers && x.speakers[guid]) || { on: false, stages: Array(10).fill(0) };
     x.speakers = { ...x.speakers, [guid]: { on: 'on' in b ? !!b.on : cur.on, stages: 'stages' in b ? check(b.stages) : cur.stages,
       gate: 'gate' in b ? !!b.gate : !!cur.gate, level: 'level' in b ? !!b.level : !!cur.level } };
   }
@@ -272,16 +280,25 @@ module.exports = (icueEq, allDevices, backupDir) => {
   const state = async () => load() || first(icueEq);
   // draft: stages shown on the page but not saved (while the sliders move)
   let draft = null;
+  // a device's saved curve from an older entry with the same name: only when that entry's device is gone (a monitor's
+  // new GUID after a driver update) and no other device now has that name (15 Nov 2026 bug hunt: "Speakers (Realtek)"
+  // and "Speakers (USB DAC)" are both "Speakers", and the first one's EQ was turned on for the second)
+  const movedFrom = (saved, d, present) => {
+    if (present.filter((x) => x.name === d.name).length !== 1) return null;
+    const here = new Set(present.map((x) => x.guid));
+    return Object.entries(saved).find(([g, old]) => g !== d.guid && !here.has(g) && old?.name === d.name && Array.isArray(old.stages) && old.stages.some((x) => x !== 0)) || null;
+  };
   const apply = async (s) => {
     const p = s.presets.find((x) => x.id === s.activeId);
     const ctx = await devices();
     // remember each set-up device's name and kind, so its section is written while it is away; if a display driver update
     // gave a monitor a new GUID, carry over the saved curve from its previous entry with the same name
     let named = false;
-    for (const d of [...ctx.speakers, ...(ctx.mics || [])]) {
+    const all = [...ctx.speakers, ...(ctx.mics || [])];
+    for (const d of all) {
       let v = s.extras.speakers[d.guid];
       if (!v || (!v.on && Array.isArray(v.stages) && v.stages.every((x) => x === 0))) {
-        const prev = Object.entries(s.extras.speakers).find(([g, old]) => g !== d.guid && old?.name === d.name && Array.isArray(old.stages) && old.stages.some((x) => x !== 0));
+        const prev = movedFrom(s.extras.speakers, d, all);
         if (prev) {
           v = s.extras.speakers[d.guid] = { ...prev[1], name: d.name, ...(d.kind ? { kind: d.kind } : {}) };
           named = true;
@@ -289,8 +306,8 @@ module.exports = (icueEq, allDevices, backupDir) => {
       }
       if (v && (v.name !== d.name || (v.kind || null) !== (d.kind || null))) { v.name = d.name; if (d.kind) v.kind = d.kind; else delete v.kind; named = true; }
     }
-    if (named) store(s);
     write(text(s, draft ? draft.stages : p.stages, draft ? `${p.name} (not saved)` : p.name, ctx), backupDir);
+    if (named) store(s);
   };
   const api = {
     installed: () => { const on = installed(); if (on && !cleared) cleared = clearApoDefault(backupDir) || cleared; return on; },  // catches an install made while DeviceHub runs
@@ -303,7 +320,7 @@ module.exports = (icueEq, allDevices, backupDir) => {
         speakers: [...ctx.speakers, ...(ctx.mics || [])].map((sp) => {
           let v = s.extras.speakers[sp.guid];
           if (!v || (Array.isArray(v.stages) && v.stages.every((x) => x === 0))) {
-            const prev = Object.entries(s.extras.speakers).find(([g, old]) => g !== sp.guid && old?.name === sp.name && Array.isArray(old.stages) && old.stages.some((x) => x !== 0));
+            const prev = movedFrom(s.extras.speakers, sp, [...ctx.speakers, ...(ctx.mics || [])]);
             if (prev && !v) v = prev[1];
           }
           if (!v) {
@@ -316,7 +333,7 @@ module.exports = (icueEq, allDevices, backupDir) => {
     },
     async activate({ id }) {
       const s = await state(); if (!s.presets.some((x) => x.id === id)) throw new Error('unknown preset');
-      s.activeId = id; draft = null; store(s); await apply(s);
+      s.activeId = id; draft = null; await apply(s); store(s);
       return api.read();
     },
     // plays a draft while the sliders move, without saving it (null: back to the active preset)
@@ -341,7 +358,7 @@ module.exports = (icueEq, allDevices, backupDir) => {
       for (const p of s.presets) if (p.builtIn && !next.some((x) => x.id === p.id)) throw new Error(`"${p.name}" is built in and can't be deleted`);
       const want = activeId && next.some((p) => p.id === activeId) ? activeId : s.activeId;
       if (!next.some((p) => p.id === want)) throw new Error('the preset in use can\'t be deleted');
-      s.presets = next; s.activeId = want; draft = null; store(s); await apply(s);
+      s.presets = next; s.activeId = want; draft = null; await apply(s); store(s);
       return api.read();
     },
     // the whole sound setup, for the setup file (core/setup.js, weekly-setup.mjs), and putting one back: checked,
@@ -359,11 +376,12 @@ module.exports = (icueEq, allDevices, backupDir) => {
         next.extras.speakers[guid] = { on: !!v.on, stages: Array.isArray(v.stages) ? check(v.stages) : Array(10).fill(0), gate: !!v.gate, level: !!v.level, ...(v.name ? { name: String(v.name).replace(/[\r\n\t]+/g, ' ').trim().slice(0, 40) } : {}), ...(v.kind === 'mic' ? { kind: 'mic' } : {}) };   // (31 Oct 2026: a line break in a name from a file could add a config.txt line)
       }
       if (backupDir && fs.existsSync(STORE)) fs.copyFileSync(STORE, path.join(backupDir, `eq-presets-${new Date().toISOString().replace(/[:.]/g, '-')}.json`));
-      store(next); draft = null; await apply(next);
+      draft = null; await apply(next); store(next);
       return api.read();
     },
-    async setHeadroom({ on }) { const s = await state(); s.headroom = !!on; store(s); await apply(s); return api.read(); },
-    async setExtras(body) { const s = await state(); s.extras = extrasFrom(body || {}, s.extras); store(s); await apply(s); return api.read(); },
+    async setHeadroom({ on }) { const s = await state(); s.headroom = !!on; await apply(s); store(s); return api.read(); },
+    // (15 Nov 2026 bug hunt) saved after it is written: a change that could not be played was kept as if it had been
+    async setExtras(body) { const s = await state(); s.extras = extrasFrom(body || {}, s.extras); await apply(s); store(s); return api.read(); },
     // Reset sound to normal (22 Oct 2026, Shawn: "make a revert to default in the app so he can easily do it"): every
     // effect off, so sound plays as it does without Equalizer APO. The presets are kept (Flat made active, added if
     // missing); each speaker's bands are kept but switched off; the old config.txt is backed up first.
@@ -379,7 +397,7 @@ module.exports = (icueEq, allDevices, backupDir) => {
         return [g, { ...v, on: false, gate: false, level: false, stages: zero ? def.slice() : v.stages }];
       }));
       s.extras = { ...EXTRAS(), speakers };   // headset extra filters and mic effects off; each speaker off, its bands kept
-      draft = null; store(s); await apply(s);
+      draft = null; await apply(s); store(s);
       return api.read();
     },
   };

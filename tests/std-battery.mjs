@@ -58,6 +58,12 @@ check(sb.toPercent(head.percentField, sb.decodeField(head.percentField, [9, 0x70
 check(sb.toPercent({ name: 'remainingCapacity', logicalMin: 0, logicalMax: 65535 }, 1500, 3000) === 50, 'RemainingCapacity over FullChargeCapacity');
 check(sb.decodeField({ bitOffset: 8, bitLength: 8, logicalMin: -127, logicalMax: 127 }, [0, 0xFF]) === -1, 'signed field');
 check(sb.parseHid({ hid: { scanned: 24, collections: [] } }).length === 0, 'this PC: no declaring collection -> empty');
+check(sb.decodeField({ bitOffset: -1, bitLength: 8 }, [5, 73]) === null, 'negative bitOffset -> null');
+check(sb.decodeField({ bitOffset: 0, bitLength: -4 }, [5, 73]) === null && sb.decodeField({ bitOffset: 0, bitLength: 64 }, [5, 73]) === null, 'out-of-range bitLength -> null');
+check(sb.toPercent({ logicalMin: 0, logicalMax: 100 }, NaN) === null, 'NaN value -> null');
+check(sb.toPercent({ logicalMin: 0, logicalMax: NaN }, 50) === null, 'non-finite range -> null');
+const malHid = sb.parseHid({ hid: { collections: [{ instanceId: 'HID\\VID_1234&PID_5678', topUsagePage: 'bad', fields: [{}] }] } });
+check(malHid.length === 1 && malHid[0].topUsagePage === null && malHid[0].fields[0].name === 'unknown', 'malformed HID field/page handled safely');
 
 console.log(fails.length ? `std battery: FAILED: ${fails.join('; ')}` : 'std battery (sample output): all good');
 process.exit(fails.length ? 1 : 0);

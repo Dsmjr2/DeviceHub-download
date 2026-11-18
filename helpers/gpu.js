@@ -14,11 +14,11 @@ let cache = { at: 0, value: null }, pending = null;
 async function asleep(viaHelper = require('./helper-reads').viaHelper) {
   try {
     const h = await viaHelper('gpu-power', {}, 3000);
-    const nv = (h?.result || []).filter((g) => /VEN_10DE/i.test(g.id || ''));
+    const nv = (Array.isArray(h?.result) ? h.result : []).filter((g) => g && /VEN_10DE/i.test(g.id || ''));
     return nv.length && nv.every((g) => g.d >= 3) ? nv : null;
   } catch { return null; }
 }
-const num = (s) => { const n = Number(String(s).trim()); return Number.isFinite(n) ? n : null; };
+const num = (s) => { const t = s == null ? '' : String(s).trim(); if (!t) return null; const n = Number(t); return Number.isFinite(n) ? n : null; };
 
 function read() {
   // 31 Oct 2026: said plainly, so a PC with an AMD or Intel card is not told it has no graphics card
@@ -51,4 +51,4 @@ function read() {
   return pending;
 }
 
-module.exports = { read, _test: { asleep } };
+module.exports = { read, _test: { asleep, num } };

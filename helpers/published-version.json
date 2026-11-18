@@ -1,11 +1,11 @@
 {
-  "version": "1.65",
-  "commit": "cbd6958f219d36e6defbc734cdb64f9851f2bcec",
+  "version": "1.66",
+  "commit": "06a463a2eae56e8e96b6cae9c777997b238fa35f",
   "notes": [
-    "Sim-vial: time limit that holds on a busy PC, still far under the 10…",
-    "Notes: game settings registry and Rust helper fixes from the bug hunt",
-    "Bug hunt: game settings keep Unity floats whole and graphics off by…",
-    "Keep native.js export order the helper-reads check expects",
-    "Plus 52 more fixes and improvements"
+    "Rust helper: a crash no longer leaves a feature broken until restart",
+    "Drag the sidebar's entries into your own order",
+    "Sound and mic follow the headset's cable",
+    "One taskbar button: the shortcuts get winbrand's window ID, not…",
+    "Plus 54 more fixes and improvements"
   ]
 }

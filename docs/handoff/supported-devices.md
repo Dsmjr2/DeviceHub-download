@@ -59,7 +59,8 @@ helpers/supported-devices.mjs   Supported devices: GET /api/supported-devices, t
 and in "Set this up" step 3, after the first bullet: "Settings > DeviceHub > Supported devices shows the person the same list."
 
 In Checks, the Get help line now reads: "Someone without Claude presses **Get help** (device page's troubleshooting
-panel, or Settings > Get help): ..." (it was "Settings > Health"; docs/handoff/get-help.md is updated).
+panel, or Settings > Get help): ..." (it was "Settings > Health"; docs/handoff/get-help.md is updated). Since 25 Oct
+2026 the device pages have no Get help; CLAUDE.md, Checks, says where it is now.
 
 Until server.js has the line and DeviceHub restarts, the page shows the top card and "The list did not load. Restart
 DeviceHub, then open this page again."

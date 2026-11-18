@@ -27,7 +27,7 @@ const git = (args, timeout = 30000) => new Promise((resolve, reject) => {
 // runs its installer over this copy (helpers/install.ps1: quits DeviceHub, copies, keeps this PC's data, builds the
 // device helper, starts it again). Any failure before the installer leaves this copy exactly as it was.
 const RELEASE = process.env.DEVICEHUB_RELEASE_URL || 'https://github.com/Dsmjr2/DeviceHub-download/releases/latest/download/';  // a test points it at a local copy
-const mine = () => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'release.json'), 'utf8')); } catch { return null; } };
+const mine = () => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'release.json'), 'utf8').replace(/^\uFEFF/, '')); } catch { return null; } };
 // A release is believed only when its publisher signed it (21 Oct 2026, security review): version.json carries an
 // Ed25519 signature over its version, size and SHA-256 (helpers/sign-release.mjs, with a key that lives only on the
 // publishing PC), checked here with the public key this copy carries. So someone who got into the GitHub account could
@@ -79,8 +79,9 @@ const named = (rel) => (versionName(rel?.version) ? { versionName: rel.version, 
 // committed version, LF and CRLF) was not changed on this PC: an update that stopped halfway, or an older install, left
 // it (23 Oct 2026, a friend's PC was held back by public/style.css that nobody had changed).
 function changedFiles(root = ROOT) {
-  let prints; try { prints = JSON.parse(fs.readFileSync(path.join(root, 'release-files.json'), 'utf8')); } catch { return []; }
-  let shipped = {}; try { shipped = JSON.parse(fs.readFileSync(path.join(root, 'release-history.json'), 'utf8')) || {}; } catch {}
+  let prints; try { prints = JSON.parse(fs.readFileSync(path.join(root, 'release-files.json'), 'utf8').replace(/^\uFEFF/, '')); } catch { return []; }
+  if (!prints || typeof prints !== 'object' || Array.isArray(prints)) return [];
+  let shipped = {}; try { const raw = JSON.parse(fs.readFileSync(path.join(root, 'release-history.json'), 'utf8').replace(/^\uFEFF/, '')); if (raw && typeof raw === 'object' && !Array.isArray(raw)) shipped = raw; } catch {}
   const crypto = require('crypto');
   // helpers/bin is built output (the pre-built helper, rebuilt here if its sources change; helpers/native.js): an
   // update always replaces it, so it is never "changed on this PC" (22 Oct 2026, docs/handoff/prebuilt-helper.md)
@@ -103,6 +104,16 @@ function keepChanged(files, root = ROOT) {
     fs.copyFileSync(from, path.join(dir, f));
   }
   return dir;
+}
+
+// the version keep-running.bat wrote as crashed on start (update-failed.txt: the HEAD it rolled back from) is the one
+// on offer now. On a PC with its own changes that HEAD is the merge commit Update made on top of the signed version
+// (15 Nov 2026 bug hunt: the crashing version was offered again at every start), so a HEAD that holds it counts too.
+async function crashedHere(failed, target, g = git) {
+  if (!failed || !target) return false;
+  if (failed === target) return true;
+  if (!/^[0-9a-f]{40}$/i.test(failed)) return false;
+  return g(['merge-base', '--is-ancestor', target, failed]).then(() => true, () => false);
 }
 
 async function zipStatus() {
@@ -216,7 +227,12 @@ async function installFrom(src, dir, rel, kept, small) {
 // updates work faster"): an update used to fetch up to three times (Settings' check, Update's own check, then pull).
 let last = { at: 0, value: null };
 const FRESH_MS = 60000;
+// (15 Nov 2026 bug hunt) while an update runs, the status is "updating": read from git mid-merge it said "Up to date"
+// for an update that could still fail (the window had reloaded and lost the update's own answer)
+let running = null;
+const updating = () => !!running || !!progress;
 async function status() {
+  if (running) return { updating: true, progress };
   const value = await statusNow();
   last = { at: Date.now(), value };
   return value;
@@ -250,7 +266,7 @@ async function statusNow() {
     let failed = null; try { failed = fs.readFileSync(dataFile('update-failed.txt', ROOT), 'utf8').trim(); } catch {}
     const versionAt = shared && behind ? await git(['log', '-1', '--format=%cI', target]) : undefined;
     const shownLatest = shared && behind ? `a new version from ${new Date(versionAt).toLocaleDateString()}${changed ? '; your changes are kept' : ''}` : latest;
-    if (failed && behind && failed === (await git(['rev-parse', target]))) return { git: true, shared, behind: 0, changed, latest: null, at, skipped: shownLatest };
+    if (failed && behind && (await crashedHere(failed, await git(['rev-parse', target])))) return { git: true, shared, behind: 0, changed, latest: null, at, skipped: shownLatest };
     // the files this PC changed since the published version it last took (committed or not): Update brings them
     // together with the new version
     let localFiles;
@@ -266,9 +282,12 @@ async function statusNow() {
 }
 
 // pulls the new changes; the caller restarts DeviceHub afterwards
-async function update(opts = {}) {
+// one at a time: a second Update while one runs is refused
+function update(opts = {}) {
+  if (running) return Promise.reject(new Error('an update is already running'));
   step('Looking for the new version');
-  try { return await updateSteps(opts); } catch (e) { progress = null; throw e; }
+  running = updateSteps(opts).catch((e) => { progress = null; throw e; }).finally(() => { running = null; });
+  return running;
 }
 async function updateSteps(opts = {}) {
   // the status Settings just showed (under a minute old, nothing failed) is used as it is; else asked again
@@ -337,11 +356,12 @@ async function mergeUpdate(s, { overwrite = false } = {}) {
     await git(['reset', '-q', '--hard', before]).catch(() => {});
     if (overwrite) {
       step('Keeping a copy of the changed files');
-      keepChanged(both.length ? both : (s.localFiles || []));
+      // every file this PC changed, not only the conflicting ones: the reset below drops them all (15 Nov 2026 bug hunt)
+      keepChanged([...new Set([...both, ...(s.localFiles || [])])]);
       await git(['reset', '-q', '--hard', s.target]);
     } else {
       throw new Error(both.length
-        ? `the new version and this PC's changes both change ${both.slice(0, 4).join(', ')}${both.length > 4 ? ', …' : ''}; nothing changed. Use Update anyway to keep a copy of your changes in backups and install the new version.`
+        ? `the new version and this PC's changes both change ${both.slice(0, 4).join(', ')}${both.length > 4 ? ', …' : ''}; nothing changed. Ask Claude Code to "Update DeviceHub": it brings both together.`
         : `could not merge with this PC's files (${e.message}); nothing changed`);
     }
   }
@@ -383,4 +403,4 @@ function confirm(log) {
   return true;
 }
 
-module.exports = { status, update, confirm, getProgress, releaseInfo, cleanDownloads, _test: { changedFiles, keepChanged, blockedText, verifyRelease, ownVersion, named, fullCommit } };
+module.exports = { status, update, updating, confirm, getProgress, releaseInfo, cleanDownloads, _test: { mergeUpdate, crashedHere, changedFiles, keepChanged, blockedText, verifyRelease, ownVersion, named, fullCommit } };

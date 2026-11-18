@@ -31,7 +31,11 @@ import { entryVersion } from './library-updates.mjs';
 
 import { readJson } from './safe-write.js';   // a JSON file or a fallback (helpers/safe-write.js)
 const folders = (dir) => { try { return fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory() && !/^[_.]/.test(e.name)).map((e) => e.name).sort(); } catch { return []; } };
-const putFile = (file, text) => { const tmp = `${file}.tmp-${process.pid}`; fs.writeFileSync(tmp, text); fs.renameSync(tmp, file); };
+export function putFile(file, text) {
+  const tmp = `${file}.tmp-${process.pid}`;
+  try { fs.writeFileSync(tmp, text); fs.renameSync(tmp, file); }
+  finally { try { fs.rmSync(tmp, { force: true }); } catch {} }
+}
 
 let running = null;
 export function refreshInstalled(opts = {}) {
@@ -69,7 +73,8 @@ async function doRefresh({ root = ROOT, log = () => {}, now = () => new Date() }
     const why = problem(a);
     if (why) { skip(`the newer driver is not valid (${why})`); continue; }
     if (a.id !== entry.meta.id || (mark.id && a.id !== mark.id)) { skip(`the newer driver's id "${a.id}" is not the installed one's "${mark.id || entry.meta.id}"`); continue; }
-    const at = now().toISOString();
+    const d = typeof now === 'function' ? new Date(now()) : new Date();
+    const at = Number.isFinite(d.getTime()) ? d.toISOString() : new Date().toISOString();
     const back = path.join(root, 'backups', 'library-drivers', `${name}-${at.replace(/[:.]/g, '-')}`);
     const pressed = mark.settingsOn?.at && !Array.isArray(mark.settingsOn.keys) ? pressedKeys(folder, mark) : null;
     try {

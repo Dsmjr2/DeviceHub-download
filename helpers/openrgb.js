@@ -50,26 +50,35 @@ function session(job, ms = 4000, at = port) {
   return new Promise((resolve, reject) => {
     const sock = net.connect({ host: HOST, port: at });
     let buf = Buffer.alloc(0), waiters = [], done = false;
-    const finish = (err, v) => { if (done) return; done = true; clearTimeout(timer); sock.destroy(); err ? reject(err) : resolve(v); };
+    const finish = (err, v) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      for (const w of waiters.splice(0)) { clearTimeout(w.t); w.reject(err || new Error('OpenRGB connection closed')); }
+      sock.destroy();
+      err ? reject(err) : resolve(v);
+    };
     const timer = setTimeout(() => finish(new Error('OpenRGB did not answer in time')), ms);
     sock.on('error', (e) => finish(e.code === 'ECONNREFUSED' ? Object.assign(new Error(`OpenRGB is not running (no SDK server on port ${at})`), { notRunning: true }) : e));
+    sock.on('close', () => finish(new Error('OpenRGB closed the connection')));
     sock.on('data', (d) => {
       buf = Buffer.concat([buf, d]);
       while (buf.length >= 16) {
         if (buf.toString('latin1', 0, 4) !== 'ORGB') return finish(new Error('not an OpenRGB answer'));
         const size = buf.readUInt32LE(12);
+        if (size > 64 * 1024 * 1024) return finish(new Error('OpenRGB packet too large'));
         if (buf.length < 16 + size) break;
         const pkt = { dev: buf.readUInt32LE(4), id: buf.readUInt32LE(8), data: buf.subarray(16, 16 + size) };
         buf = buf.subarray(16 + size);
         const i = waiters.findIndex((w) => w.id === pkt.id);
-        if (i >= 0) waiters.splice(i, 1)[0].resolve(pkt);   // anything else (e.g. "device list updated") is ignored
+        if (i >= 0) { const w = waiters.splice(i, 1)[0]; clearTimeout(w.t); w.resolve(pkt); }   // anything else (e.g. "device list updated") is ignored
       }
     });
     const send = (dev, id, data = Buffer.alloc(0)) => sock.write(Buffer.concat([header(dev, id, data.length), data]));
     const ask = (dev, id, data, wait = ms) => new Promise((res, rej) => {
-      const w = { id, resolve: res };
+      const w = { id, resolve: res, reject: rej, t: null };
+      w.t = setTimeout(() => { const i = waiters.indexOf(w); if (i >= 0) { waiters.splice(i, 1); rej(Object.assign(new Error('no answer'), { noAnswer: true })); } }, wait);
       waiters.push(w);
-      setTimeout(() => { const i = waiters.indexOf(w); if (i >= 0) { waiters.splice(i, 1); rej(Object.assign(new Error('no answer'), { noAnswer: true })); } }, wait);
       send(dev, id, data);
     });
     sock.on('connect', async () => {

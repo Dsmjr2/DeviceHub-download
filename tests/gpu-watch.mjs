@@ -41,5 +41,22 @@ ok(reads === before, 'and nothing more is read');
   ok(sent.join() === '60', `a new window gets the reading even when it equals the one read during the stop (${sent})`);
 }
 
+// Non-function send is ignored, NaN tempC normalizes to null, and invalid interval falls back to 15000
+{
+  let usedEvery = 0, gotNull = [];
+  const w3 = createGpuWatch({
+    every: -5,
+    read: async () => ({ gpus: [{ tempC: NaN }] }),
+    setI: (fn, ms) => { usedEvery = ms; return { unref() {} }; },
+    clearI: () => {},
+  });
+  w3.want(1, true, 'not-a-fn');
+  ok(w3.watching() === 0, 'non-function send is not registered');
+  w3.want(2, true, (d) => gotNull.push(d.tempC));
+  await flush();
+  ok(usedEvery === 15000 && gotNull.length === 1 && gotNull[0] === null, 'invalid interval defaults and NaN tempC normalizes to null');
+  w3.drop(2);
+}
+
 console.log(failed ? `${failed} failed` : 'gpu-watch: all passed');
 process.exit(failed ? 1 : 0);

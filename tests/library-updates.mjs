@@ -227,6 +227,13 @@ a = await call('GET', '/api/library');
 check(a.handled === false, 'other paths are left to server.js');
 srv2.close();
 
+const { putFile } = await import('../helpers/library-refresh.mjs');
+const putDir = path.join(tmp, 'put-guard');
+fs.mkdirSync(path.join(putDir, 'existing-dir'), { recursive: true });
+let putFailed = false;
+try { putFile(path.join(putDir, 'existing-dir'), 'hello'); } catch { putFailed = true; }
+check(putFailed && !fs.existsSync(path.join(putDir, `existing-dir.tmp-${process.pid}`)), 'putFile cleans up orphan temp file on rename failure');
+
 fs.rmSync(tmp, { recursive: true, force: true });
 if (fails.length) { console.log(`library updates: ${fails.length} problem(s)\n${fails.map((f) => `- ${f}`).join('\n')}`); process.exit(1); }
 console.log('library updates: all good');

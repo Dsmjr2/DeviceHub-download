@@ -12,14 +12,17 @@
 // which driver an error came from: the my-devices or device-library folder name in its stack, or "driver.json" for the
 // declarative runner (its stack names no folder). null = not a driver's error.
 function driverOf(err) {
+  // a device's reply timer (public/devices/hid.js marks its "no reply" errors): a device that did not answer, never a
+  // reason to stop DeviceHub (31 Oct 2026). Only the mark counts, so a real bug in DeviceHub's own code still does. A
+  // driver's folder in the stack comes first (its faults are counted against it); a marked error with no stack at all
+  // is still a device's (15 Nov 2026, PR #29).
+  const device = !!(err && err.device === true);
   const stack = String((err && err.stack) || '');
-  if (!stack) return null;
+  if (!stack) return device ? 'a device' : null;
   const m = /[\\/](?:my-devices|device-library)[\\/]([^\\/:]+)[\\/]/i.exec(stack);
   if (m) return m[1];
   if (/declarative-driver\.mjs/i.test(stack)) return 'driver.json';
-  // a device's reply timer (public/devices/hid.js marks its "no reply" errors): a device that did not answer, never a
-  // reason to stop DeviceHub (31 Oct 2026). Only the mark counts, so a real bug in DeviceHub's own code still does.
-  if (err && err.device === true) return 'a device';
+  if (device) return 'a device';
   return null;
 }
 
@@ -32,7 +35,8 @@ const counts = new Map();    // folder -> faults caught, for the log (one line p
 function setDriverFaultHandler(fn) { handler = typeof fn === 'function' ? fn : null; }
 
 // what happens to one error: 'driver' (kept running) or 'own' (DeviceHub's own: the caller exits)
-function handle(err, kind, { log = (t) => console.log(t) } = {}) {
+function handle(err, kind, opts = {}) {
+  const log = (opts && typeof opts.log === 'function') ? opts.log : (t) => console.log(t);
   const folder = driverOf(err);
   if (!folder) return 'own';
   const n = (counts.get(folder) || 0) + 1;

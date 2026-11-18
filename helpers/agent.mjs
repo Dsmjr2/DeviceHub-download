@@ -221,9 +221,13 @@ export async function start({ port, corsairHelper }) {
   onAuto(() => send('auto', autoState()));
   // (27 Oct 2026, Shawn) Windows' sound and mic move to the headset when it turns on (helpers/headset-sound.mjs); not in
   // a test install (DEVICEHUB_TEST), which never touches Windows sound
+  let headsetCable = null;
   if (corsair && process.env.DEVICEHUB_TEST !== '1') {
     const hs = headsetSound({ call: (action, body) => corsair.handle(action, body || {}), log: (text, kind) => core.log(text, kind, 'headset'), readSettings: () => readJson(SETTINGS_FILE) });
     core.onChange((id) => { if (id === 'headset' && core.devices.headset) hs.seen(core.devices.headset)?.catch?.(() => {}); });
+    // the cable plugged in or pulled out: sound and mic follow it (16 Nov 2026); a first look learns where it is now
+    headsetCable = () => hs.cable().catch(() => {});
+    setTimeout(headsetCable, 5000);
   }
 
   await core.loadHistory();
@@ -270,6 +274,7 @@ export async function start({ port, corsairHelper }) {
       devicesChanged().then((moved) => console.log(`[devices] Windows reported a device change at ${at}; ${moved.length ? `moved ${moved.join(', ')} at ${new Date().toLocaleTimeString()}` : 'no cable change'}`)).catch(() => {});
       for (const d of Object.values(core.devices)) if (['missing', 'idle', 'error'].includes(d.status)) { d.adapter.notMineRetry?.(); core.connect(d.id, false); }
       require('./hs80-direct').lookForCable();  // the headset's cable may be what was plugged in
+      headsetCable?.();  // and Windows' speaker and mic follow it (helpers/headset-sound.mjs)
     }, 400);
   });
   // Waking from sleep (20 Oct 2026; helpers/native/tray.cs passes on Windows' power messages): USB devices come back a

@@ -78,6 +78,12 @@ html[data-hidden] *, html[data-hidden] *::before, html[data-hidden] *::after { a
 /* ---------- shell ---------- */
 .app { position: relative; display: grid; grid-template-columns: 228px 1fr; height: 100vh; }
 .rail { display: flex; flex-direction: column; gap: 2px; padding: 20px 12px 14px; margin: 12px 0 12px 12px; border-radius: 28px; height: calc(100vh - 24px); }
+/* the sidebar's own order (17 Nov 2026): an entry is dragged; a thin accent line shows where it lands, the entry itself
+   dims while it moves. Positioned here so the narrow layout's sticky rail (below) still wins. */
+.rail { position: relative; }
+.nav.dragging { opacity: .35; }
+.rail-drop { position: absolute; left: 16px; right: 16px; height: 2px; border-radius: 2px; background: var(--accent); pointer-events: none; z-index: 2; }
+.rail-drop.across { right: auto; width: 2px; }
 .brand { display: flex; align-items: center; gap: 11px; padding: 0 10px 22px; font-weight: 600; letter-spacing: -.01em; font-size: 17px; }
 .brand-mark { width: 28px; height: 28px; flex: none; image-rendering: auto; }
 .brand small { display: block; font: 500 10.5px var(--ui); color: var(--faint); letter-spacing: .03em; }
@@ -2839,10 +2845,9 @@ html[data-skin="coral-reef"]:not([data-art="live"]) .art.mark { filter: sepia(.2
 .disp-keep p { margin: 0 0 4px; }
 .disp-keep-btns { display: flex; gap: 8px; margin-top: 6px; }
 .disp-night { display: inline-flex; align-items: center; gap: 10px; }
-/* The PC page (24 Oct 2026, Shawn: it fits the window at 1650x950): the graphics card down the left, Fan lights and
-   Temperatures beside it, the PC check across the two right columns. Two columns below 1180 px, one on a phone. */
-/* PC page (24 Oct 2026, Shawn: "make this look more cohesive"): the graphics card, the processor and the other fans and
-   sensors side by side, the same height; fan lights and the PC check under them, the same height */
+/* The PC page (24 Oct 2026, Shawn: "make this look more cohesive"): the graphics card, the processor and the other fans
+   and sensors side by side, the same height; the PC check across under them. Two columns below 1180 px, one on a phone.
+   (Its Fan lights card went to Lighting > PC lights on 25 Oct 2026.) */
 .grid.pc-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; }
 .pc-grid > .pc-gpu { grid-column: 1; grid-row: 1; } .pc-grid > .pc-cpu { grid-column: 2; grid-row: 1; } .pc-grid > .pc-temps { grid-column: 3; grid-row: 1; }
 .pc-grid > .pc-check { grid-column: 1 / -1; grid-row: 2; }
@@ -2855,7 +2860,7 @@ html[data-skin="coral-reef"]:not([data-art="live"]) .art.mark { filter: sepia(.2
 .pc-meters .gauge .gauge-bar { flex: 1; width: auto; }
 .pc-meters .gauge-text b { font-size: 20px; white-space: nowrap; }
 .pc-meters + .temp-graph-wrap { height: 64px; } .temp-graph-wrap.waiting { align-items: center; justify-content: center; border: 1px dashed var(--line2); border-radius: var(--r-sm); }
-/* PC page: fan lights (23 Oct 2026), and Add board lights (also on Lighting and Setup) */
+/* Add board lights (Lighting > PC lights and Setup) and the Wi-Fi pause control */
 .board-lights { display: grid; gap: 6px; justify-items: start; margin: 10px 0 0; }
 .board-lights > small { line-height: 1.45; }
 .wifi-pause { display: grid; gap: 6px; justify-items: start; margin: 10px 0 0; }

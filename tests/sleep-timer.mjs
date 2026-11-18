@@ -98,6 +98,15 @@ const rows = fs.readFileSync(path.join(REAL, 'public/ui/power-rows.js'), 'utf8')
 ok(/line\('Turn off the display', 'screenDc', 'screenAc'\)/.test(rows) && /line\('Put the computer to sleep', 'dc', 'ac'\)/.test(rows) && /'On battery'\), h\('div', \{ class: 'pg-head' \}, 'Plugged in'\)/.test(rows), 'the grid: both settings, On battery and Plugged in');
 ok(/addEventListener\('focus', again\)/.test(rows) && /Date\.now\(\) - st\.at > 10000/.test(rows), 'read again when the window comes back and every 10 s, so a change in Windows shows');
 ok(/s\.modernStandby\s*\?/.test(rows) && /\$out\.modernStandby = \[DhSleep2\]::ModernStandby\(\)/.test(ps), 'the Modern Standby hint from GetPwrCapabilities');
+{
+  const { label } = require('../helpers/sleep-timer');
+  ok(label(NaN) === 'unknown' && label(-5) === 'unknown' && label(Infinity) === 'unknown', 'label rejects non-finite/negative values');
+  const nullRun = create({ run: async () => null });
+  const rNull = await nullRun.read();
+  ok(rNull && rNull.ok === false && rNull.why === 'no answer', 'read handles null run() response without throwing');
+  let protoErr = null; try { await create(null).change('toString', 600); } catch (x) { protoErr = x; }
+  ok(protoErr?.code === 400, 'change rejects prototype keys like toString and create(null) does not throw');
+}
 
 if (fails.length) { console.log(`sleep-timer: ${fails.length} failed`); for (const f of fails) console.log(`  FAIL ${f}`); process.exit(1); }
 console.log('sleep-timer (Sleep after on the Laptop page: read, back up, one write from the list, read back, Undo): all good');

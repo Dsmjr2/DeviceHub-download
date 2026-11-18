@@ -8,5 +8,11 @@ check(await helperMemoryMB('heap=3.1MB gen0=2 private=21.4MB handles=600', 99, a
 check(await helperMemoryMB('rust-helper', 1234, async (pid) => (pid === 1234 ? 17 * 1048576 : 0)) === 17, 'Rust helper: its process measured');
 check(await helperMemoryMB('rust-helper', null) === null, 'no helper process: nothing shown');
 check(await helperMemoryMB('GONE', 5, async () => { throw new Error('gone'); }) === null, 'a process that ended: nothing shown');
+let called = 0;
+for (const badPid of [-5, NaN, 'abc', 1.5, 0]) {
+  check(await helperMemoryMB('rust-helper', badPid, async () => { called++; return 1048576; }) === null, `invalid pid ${badPid} returns null`);
+}
+check(called === 0, 'invalid pids do not invoke measure()');
+check(await helperMemoryMB('rust-helper', 1234, async () => Infinity) === null, 'non-finite measure result returns null');
 console.log(bad ? `helper-memory: ${bad} failed` : 'helper-memory: all checks passed');
 process.exit(bad ? 1 : 0);

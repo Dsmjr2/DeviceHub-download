@@ -10,7 +10,7 @@ const SKIP = /crash|unins|redist|setup|install|update|patch|launcher|helper|repo
 let cache = { at: 0, names: [], titles: {} };
 
 function steamLibraries() {
-  return new Promise((resolve) => execFile('reg', ['query', 'HKCU\\Software\\Valve\\Steam', '/v', 'SteamPath'], { windowsHide: true }, (e, out) => {
+  return new Promise((resolve) => execFile('reg', ['query', 'HKCU\\Software\\Valve\\Steam', '/v', 'SteamPath'], { windowsHide: true, timeout: 5000 }, (e, out) => {
     const m = /SteamPath\s+REG_SZ\s+(.+)/.exec(String(out || ''));
     if (!m) return resolve([]);
     const steam = m[1].trim().replace(/\//g, '\\');
@@ -54,8 +54,15 @@ async function titles() { await names(); return cache.titles; }
 const STEAM_TOOLS = /^(steamworks common redistributables|steam linux runtime|proton|steamvr|wallpaper engine)/i;
 let installedCache = { at: 0, list: null };
 const acfField = (text, k) => (new RegExp(`"${k}"\\s+"([^"]*)"`, 'i').exec(text) || [])[1] || '';
+function safeInstallDir(common, dir) {
+  if (typeof dir !== 'string' || !dir.trim()) return null;
+  const full = path.resolve(common, dir);
+  const rel = path.relative(path.resolve(common), full);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return null;
+  return full;
+}
 function folderExes(dir, extra = []) {
-  const out = new Set(extra.map((x) => x.toLowerCase())), t = {};
+  const out = new Set((extra || []).filter((x) => typeof x === 'string').map((x) => x.toLowerCase())), t = {};
   exes(dir, 4, out, t, null);
   return [...out].filter((x) => !/^7za?\.exe$/.test(x)).sort();   // a packer some games ship
 }
@@ -69,9 +76,9 @@ async function installed() {
     for (const file of files) {
       let text = '';
       try { text = fs.readFileSync(path.join(apps, file), 'utf8'); } catch { continue; }
-      const name = acfField(text, 'name'), dir = acfField(text, 'installdir');
+      const name = acfField(text, 'name'), dir = safeInstallDir(common, acfField(text, 'installdir'));
       if (!name || !dir || STEAM_TOOLS.test(name)) continue;
-      const found = folderExes(path.join(common, dir));
+      const found = folderExes(dir);
       if (found.length) list.push({ name, source: 'Steam', exes: found });
     }
   }
@@ -95,4 +102,4 @@ async function installed() {
   return installedCache.list;
 }
 
-module.exports = { names, titles, installed };
+module.exports = { names, titles, installed, safeInstallDir, folderExes };

@@ -76,8 +76,28 @@ public static class Helper {
     foreach (var c in all) { try { if (c.Hid != null) c.Hid.Dispose(); if (c.Hs != null) c.Hs.Dispose(); } catch { } }
   }
 
+  static bool TryStripDeadline(string raw, out long deadlineMs, out string cmd) {
+    deadlineMs = 0;
+    cmd = raw;
+    if (raw == null || !raw.StartsWith("@deadline=", StringComparison.Ordinal)) return false;
+    int sp = raw.IndexOf(' ', 10);
+    if (sp < 0) return false;
+    if (!long.TryParse(raw.Substring(10, sp - 10), NumberStyles.Integer, CultureInfo.InvariantCulture, out deadlineMs)) return false;
+    cmd = raw.Substring(sp + 1);
+    return true;
+  }
+
   static void Work(Channel c) {
     foreach (var req in c.Queue.GetConsumingEnumerable()) {
+      string cmd = req[1];
+      long deadlineMs;
+      if (TryStripDeadline(cmd, out deadlineMs, out cmd)) {
+        if (cmd != "CLOSE" && DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() > deadlineMs) {
+          Say(c.Name + " " + req[0] + " TIMEOUT");
+          continue;
+        }
+        req[1] = cmd;
+      }
       string reply;
       try { reply = Handle(c, req[1]); }
       catch (Exception e) {
@@ -416,7 +436,8 @@ public static class Helper {
         var usb = has("usb") ? (string)q["usb"] : HS80;
         var s = Sidetone(usb);
         if (s == null) throw new Exception("no sidetone control in Windows for this headset (is it connected?)");
-        if (has("db")) { double db = Convert.ToDouble(q["db"]); if (db < -42 || db > 4) throw new Exception("sidetone must be between -42 and +4 dB"); AudioTopology.SetLevel(usb, (uint)s["unit"], (float)db); }
+        // the control's own range (the HS80's is -42..+4 dB; another headset's may be wider or narrower: 15 Nov 2026)
+        if (has("db")) { double db = Convert.ToDouble(q["db"]), lo = Convert.ToDouble(s["min"]) - 0.01, hi = Convert.ToDouble(s["max"]) + 0.01; if (double.IsNaN(db) || db < lo || db > hi) throw new Exception("sidetone must be between " + s["min"] + " and " + s["max"] + " dB"); AudioTopology.SetLevel(usb, (uint)s["unit"], (float)db); }
         if (has("on")) { if (s["muteUnit"] == null) throw new Exception("this headset has no sidetone on/off control"); AudioTopology.SetMute(usb, (uint)s["muteUnit"], !(bool)q["on"]); }
         o["sidetone"] = Sidetone(usb);
         break;

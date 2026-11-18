@@ -1,5 +1,7 @@
 # Handoff: Get help on every screen (22 Oct 2026)
 
+> **Since 25 Oct 2026** device pages, the PC (Fans) page and the other pages named below no longer carry a Get help button. It is now on the Equalizer card, each Setup row that needs one, Lighting's PC lights card and Settings > Get help (CLAUDE.md, Checks). The text below is the record of what was built.
+
 Goal (Shawn): "put the get help area on every screen that needs it so I can fix it and they can send the request right
 from where they are working on fixing something". On a friend's PC the report goes straight to Shawn through the
 relay (no GitHub). On Shawn's own PC it opens the GitHub page as before.

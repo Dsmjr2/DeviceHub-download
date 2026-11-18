@@ -1,5 +1,7 @@
 # Handoff: "Get help" in one click (22 Oct 2026)
 
+> **Since 25 Oct 2026** device pages, the PC (Fans) page and the other pages named below no longer carry a Get help button. It is now on the Equalizer card, each Setup row that needs one, Lighting's PC lights card and Settings > Get help (CLAUDE.md, Checks). The text below is the record of what was built.
+
 Goal (owner): someone stuck without Claude can ask for help in one click. DeviceHub builds a short plain report, shows
 it in full, takes out anything personal, and only on the person's click opens a filled-in new issue on
 github.com/Dsmjr2/DeviceHub-download/issues/new in their default browser. DeviceHub sends nothing; the person presses

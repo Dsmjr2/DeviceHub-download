@@ -11,17 +11,17 @@ export const MIN_EVENTS = 200;
 const WINDOW_MS = 100;
 
 export function rateOf(times) {
-  const t = (times || []).filter(Number.isFinite).sort((a, b) => a - b);
+  const t = (Array.isArray(times) ? times : []).filter(Number.isFinite).sort((a, b) => a - b);
   let moving = 0, gaps = 0;
   const windows = [];
   let wStart = null, wGaps = 0, wTime = 0;
   for (let i = 1; i < t.length; i++) {
     const dt = t[i] - t[i - 1];
-    if (dt > PAUSE_MS) continue;   // two reports with the same rounded time are still two reports
+    if (dt > PAUSE_MS) { wStart = null; wGaps = 0; wTime = 0; continue; }   // two reports with the same rounded time are still two reports
     moving += dt; gaps++;
     if (wStart === null) wStart = t[i - 1];
     wGaps++; wTime += dt;
-    if (t[i] - wStart >= WINDOW_MS) { windows.push(wGaps / wTime * 1000); wStart = null; wGaps = 0; wTime = 0; }
+    if (t[i] - wStart >= WINDOW_MS) { if (wTime > 0) windows.push(wGaps / wTime * 1000); wStart = null; wGaps = 0; wTime = 0; }
   }
   if (!gaps || moving <= 0) return { hz: 0, events: t.length, movingMs: 0, steady: 0 };
   const hz = gaps / moving * 1000;
@@ -30,7 +30,7 @@ export function rateOf(times) {
 }
 
 // a rate shown the way the mouse page names them: 125, 250, 500, 1000 ... 8000
-export const roundHz = (hz) => (hz >= 1000 ? Math.round(hz / 100) * 100 : Math.round(hz / 10) * 10);
+export const roundHz = (hz) => (!Number.isFinite(hz) || hz <= 0 ? 0 : hz >= 1000 ? Math.round(hz / 100) * 100 : Math.round(hz / 10) * 10);
 
 // the verdict: { kind: 'match'|'low'|'high'|'short', line } for a measured rate against the one the mouse is set to
 // The browser's ceiling (29 Oct 2026, measured on Shawn's Pulsar: 990 Hz at 1000, 2000 at 2000, only about 2400 at
@@ -39,7 +39,7 @@ export const roundHz = (hz) => (hz >= 1000 ? Math.round(hz / 100) * 100 : Math.r
 // (KB5028185) Windows 11 gives a background program only about 125 mouse messages a second (measured here: 130).
 export const BROWSER_MAX_HZ = 2000;
 export function verdict(r, setHz) {
-  if (!r || r.events < MIN_EVENTS || r.movingMs < 1000) return { kind: 'short', line: 'Not enough movement to measure. Press Start and keep the mouse moving in circles for the whole 5 seconds.' };
+  if (!r || !Number.isFinite(r.events) || !Number.isFinite(r.movingMs) || !Number.isFinite(r.hz) || r.events < MIN_EVENTS || r.movingMs < 1000 || r.hz <= 0) return { kind: 'short', line: 'Not enough movement to measure. Press Start and keep the mouse moving in circles for the whole 5 seconds.' };
   const got = roundHz(r.hz);
   const shaky = r.steady < 0.7 ? ' It was uneven, which usually means a weak wireless signal or a busy USB port.' : '';
   if (!Number.isFinite(setHz) || setHz <= 0) return { kind: 'match', line: `About ${got} Hz arrived.${shaky}` };

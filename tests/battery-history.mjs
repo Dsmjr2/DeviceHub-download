@@ -79,6 +79,8 @@ export async function run() {
     const count = (f, re) => (fs.readFileSync(path.join(ROOT, f), 'utf8').match(re) || []).length;
     check(count('helpers/battery-history.js', /setInterval\(/g) === 1 && count('helpers/battery-history.js', /setTimeout\(/g) === 3, 'battery-history.js: the same timers (one 5-minute interval, the first sample and the 30 s watch)');
     check(count('helpers/battery-care.mjs', /setInterval\(/g) === 1 && count('helpers/battery-care.mjs', /setTimeout\(/g) === 1, 'battery-care.mjs: the same timers (every 20 s, and once at start)');
+    bh._test.setFile(null, null);
+    check(bh._test.read().length === 0 && bh.history('mouse', 7).length === 0, 'battery-history.js: read/history return empty when no file is set');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

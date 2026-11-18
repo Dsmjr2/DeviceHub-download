@@ -91,6 +91,15 @@ reset();
 r = await ca.fix(guids);
 check(!r.ok && r.uac === 'unanswered' && fs.existsSync(files().cancel) && records.at(-1)?.outcome === 'unanswered', 'not answered: the wait stops, a late Yes is cancelled');
 
+// elevate rejects: UAC timeout timer is still cleared and busy is reset
+deps.uacWaitMs = 25;
+deps.elevate = async () => { throw new Error('boom'); };
+reset();
+let rejected = false;
+try { await ca.fix(guids); } catch (e) { rejected = e.message === 'boom'; }
+await new Promise((r2) => setTimeout(r2, 45));
+check(rejected && !fs.existsSync(files().cancel), 'elevate rejection clears timeout timer without writing cancel');
+
 // ---- the elevated script itself: what it may touch (read as text and parsed, never run) ----
 const fix = fs.readFileSync(path.join(here, '..', 'helpers', 'corsair-apo-fix.ps1'), 'utf8');
 const sets = [...fix.matchAll(/Set-ItemProperty[^\r\n]*/g)].map((m) => m[0]);

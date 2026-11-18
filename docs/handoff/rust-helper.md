@@ -19,9 +19,9 @@ Default helper remains **C#** (`helpers/native/`); Rust is strictly opt-in (`DEV
 
 | Channel / Command | Old Source | Rust Function | R/W | Used By (Page / Module) | Status |
 |---|---|---|---|---|---|
-| `hid:<vid>:<pid>:<page>:<usage>:<len>:<rid>` (`OPEN`, `WATCH`, `REQ`, `FSET`, `FGET`, `CLOSE`) | `helper.cs` `HandleHid`, `hid.cs` | `hid::handle` (`hid.rs`) | R/W | Mouse / Keyboard / Light pages (`helpers/hid-host.mjs`, `pulsar-v2.js`, `p75.js`) | Ported; safety-tested offline; live HW parity pending test window |
-| `hid:...` extended opts (`if=`, `col=`, `il=`, `ol=`, `fl=`, `fo=1`, `rw=1`, `rf=1`, `gi=1`, `FSET`, `FGET`, `IGET`, `WATCH`, `REQ`/`REQR`, `SEND`, `READ`, `CLOSE`) | `helper.cs` `HandleHidEx`, `hid.cs` | `hid::handle_ex` (`hid.rs`) | R/W | Library drivers (`helpers/hid-host.mjs`) | Ported; safety-tested offline; live HW parity pending test window |
-| `hs80:<pid>:<ep>[:bragi][:frame=peripheral]` (`OPEN`, `CLOSE`, `GET`, `SET`, `MODE`, `LIGHT`, `OPENLIGHT`, `FRAME`) | `helper.cs` `HandleHs80`, `hs80io.cs` | `hs80::handle` (`hs80.rs`) | R/W | Headset / Lights pages (`hs80-direct.js`, `receiver-light.js`, Corsair library drivers) | Ported; safety-tested offline; live HW parity pending test window |
+| `hid:<vid>:<pid>:<page>:<usage>:<len>:<rid>` (`OPEN`, `WATCH`, `REQ`, `FSET`, `FGET`, `CLOSE`) | `helper.cs` `HandleHid`, `hid.cs` | `hid::handle` (`hid.rs`) | R/W | Mouse / Keyboard / Light pages (`helpers/hid-host.mjs`, `pulsar-v2.js`, `p75.js`) | Ported; safety-tested offline; live parity checked 13 Nov 2026 (reads 24/24, same-value writes on headset, keyboard and mouse) |
+| `hid:...` extended opts (`if=`, `col=`, `il=`, `ol=`, `fl=`, `fo=1`, `rw=1`, `rf=1`, `gi=1`, `FSET`, `FGET`, `IGET`, `WATCH`, `REQ`/`REQR`, `SEND`, `READ`, `CLOSE`) | `helper.cs` `HandleHidEx`, `hid.cs` | `hid::handle_ex` (`hid.rs`) | R/W | Library drivers (`helpers/hid-host.mjs`) | Ported; safety-tested offline; live parity checked 13 Nov 2026 (reads 24/24, same-value writes on headset, keyboard and mouse) |
+| `hs80:<pid>:<ep>[:bragi][:frame=peripheral]` (`OPEN`, `CLOSE`, `GET`, `SET`, `MODE`, `LIGHT`, `OPENLIGHT`, `FRAME`) | `helper.cs` `HandleHs80`, `hs80io.cs` | `hs80::handle` (`hs80.rs`) | R/W | Headset / Lights pages (`hs80-direct.js`, `receiver-light.js`, Corsair library drivers) | Ported; safety-tested offline; live parity checked 13 Nov 2026 (reads 24/24, same-value writes on headset, keyboard and mouse) |
 | `hidlist <page> <usage>` | `helper.cs`, `hid.cs` `HidFind.List` | `hid::list_by_usage` (`hid.rs`) | Read | Device discovery (`helpers/hid-host.mjs`, `server.js`) | Ported; parity test ready |
 | `pointer` (`READ` / `SET <key> <val>`) | `helper.cs`, `pointer.cs` | `pointer::read`, `pointer::set` (`pointer.rs`) | R/W | Mouse / Pointer settings (`server.js`) | Ported; read parity verified offline |
 | `tray` (`START <port> <folder>`, `WAKE ON|OFF`) | `helper.cs`, `tray.cs` | `tray::start`, `tray::wake` (`tray.rs`) | Write/UI | Tray icon & wake toggle (`server.js`) | Ported; requires live app window |
@@ -33,27 +33,27 @@ Default helper remains **C#** (`helpers/native/`); Rust is strictly opt-in (`DEV
 
 | Command | Old Source | Rust Function | R/W | Used By | Status |
 |---|---|---|---|---|---|
-| `audio-list` | `WinAudio.List` (`audio.cs`) | `audio::handle` | Read | Sound page (`server.js`) | Ported; live parity pending test window |
-| `audio-set` | `WinAudio.Set` (`audio.cs`) | `audio::handle` | Write | Sound page (`server.js`) | Ported; live parity pending test window |
-| `usb-headsets` | `AudioDefault.Headsets` (`audio-default.cs`) | `audio::handle` | Read | Sound page (`server.js`) | Ported; live parity pending test window |
-| `hs80-endpoints` | `helper.cs` `hs80-endpoints` | `audio::handle` | Read | Sound / Headset pages (`server.js`) | Ported; live parity pending test window |
-| `set-enabled` | `AudioDefault.SetEnabled` | `audio::handle` | Write | Sound page (`server.js`) | Ported; live parity pending test window |
-| `set-default` | `AudioDefault.SetDefault` | `audio::handle` | Write | Sound page (`server.js`) | Ported; live parity pending test window |
-| `outputs` | `AudioApps.Outputs` (`audio-apps.cs`) | `audio::handle` | Read | Sound / App mixer (`server.js`) | Ported; live parity pending test window |
-| `follow` / `switch-output` | `AudioApps.Follow` / `SetDefault` | `audio::handle` | Write | Sound page (`server.js`) | Ported; live parity pending test window |
+| `audio-list` | `WinAudio.List` (`audio.cs`) | `audio::handle` | Read | Sound page (`server.js`) | Ported; live since 13 Nov 2026 (Shawn's PC runs the Rust helper) |
+| `audio-set` | `WinAudio.Set` (`audio.cs`) | `audio::handle` | Write | Sound page (`server.js`) | Ported; live since 13 Nov 2026 (Shawn's PC runs the Rust helper) |
+| `usb-headsets` | `AudioDefault.Headsets` (`audio-default.cs`) | `audio::handle` | Read | Sound page (`server.js`) | Ported; live since 13 Nov 2026 (Shawn's PC runs the Rust helper) |
+| `hs80-endpoints` | `helper.cs` `hs80-endpoints` | `audio::handle` | Read | Sound / Headset pages (`server.js`) | Ported; live since 13 Nov 2026 (Shawn's PC runs the Rust helper) |
+| `set-enabled` | `AudioDefault.SetEnabled` | `audio::handle` | Write | Sound page (`server.js`) | Ported; live since 13 Nov 2026 (Shawn's PC runs the Rust helper) |
+| `set-default` | `AudioDefault.SetDefault` | `audio::handle` | Write | Sound page (`server.js`) | Ported; live since 13 Nov 2026 (Shawn's PC runs the Rust helper) |
+| `outputs` | `AudioApps.Outputs` (`audio-apps.cs`) | `audio::handle` | Read | Sound / App mixer (`server.js`) | Ported; live since 13 Nov 2026 (Shawn's PC runs the Rust helper) |
+| `follow` / `switch-output` | `AudioApps.Follow` / `SetDefault` | `audio::handle` | Write | Sound page (`server.js`) | Ported; live since 13 Nov 2026 (Shawn's PC runs the Rust helper) |
 | `procs` | `helper.cs` `procs` | `audio::handle` | Read | Sound / App mixer (`server.js`) | Ported; parity test ready |
 | `power` | `helper.cs` `power` | `audio::handle` | Read | Health / Battery (`server.js`) | Ported; parity test ready |
-| `sidetone` / `sidetone-set` | `helper.cs` `Sidetone` | `audio::handle` | R/W | Headset page (`server.js`) | Ported; live parity pending test window |
-| `mic-rec-start`, `-status`, `-stop`, `-read`, `-clear` | `MicRec` (`mic-rec.cs`) | `audio::handle` | R/W | Mic test (`server.js`) | Ported; live parity pending test window |
-| `mic-guard`, `mics` | `MicGuard` (`mic-guard.cs`) | `audio::handle` | Read | Mic guard (`server.js`) | Ported; live parity pending test window |
+| `sidetone` / `sidetone-set` | `helper.cs` `Sidetone` | `audio::handle` | R/W | Headset page (`server.js`) | Ported; live since 13 Nov 2026 (Shawn's PC runs the Rust helper) |
+| `mic-rec-start`, `-status`, `-stop`, `-read`, `-clear` | `MicRec` (`mic-rec.cs`) | `audio::handle` | R/W | Mic test (`server.js`) | Ported; live since 13 Nov 2026 (Shawn's PC runs the Rust helper) |
+| `mic-guard`, `mics` | `MicGuard` (`mic-guard.cs`) | `audio::handle` | Read | Mic guard (`server.js`) | Ported; live since 13 Nov 2026 (Shawn's PC runs the Rust helper) |
 
 ### C. `monitor`, `camera`, `cue` Channels
 
 | Channel / Command | Old Source | Rust Function | R/W | Used By | Status |
 |---|---|---|---|---|---|
-| `monitor` (`monitors`, `monitor-set`) | `monitors.cs` | `monitors::handle` (`monitors.rs`) | R/W | Monitors page (`server.js`) | Ported; live DDC parity pending test window |
-| `camera` (`cameras`, `camera-set`) | `camera.cs` | `camera::handle` (`camera.rs`) | R/W | Camera page (`server.js`) | Ported; live parity pending test window |
-| `cue` (`props`, `write`) | `cue.cs` | `cue::handle` (`cue.rs`) | R/W | iCUE / Lights (`server.js`) | Ported; live parity pending test window |
+| `monitor` (`monitors`, `monitor-set`) | `monitors.cs` | `monitors::handle` (`monitors.rs`) | R/W | Monitors page (`server.js`) | Ported; live since 13 Nov 2026 (Shawn's PC runs the Rust helper) |
+| `camera` (`cameras`, `camera-set`) | `camera.cs` | `camera::handle` (`camera.rs`) | R/W | Camera page (`server.js`) | Ported; live since 13 Nov 2026 (Shawn's PC runs the Rust helper) |
+| `cue` (`props`, `write`) | `cue.cs` | `cue::handle` (`cue.rs`) | R/W | iCUE / Lights (`server.js`) | Ported; live since 13 Nov 2026 (Shawn's PC runs the Rust helper) |
 
 ### D. `pc` / `pc:*` Channel (`pc.cs` + PowerShell ops moved into `pc_reads.rs`, `pc_native.rs`, `ps_ops.rs`, `wmi.rs`)
 
@@ -143,7 +143,7 @@ Default helper remains **C#** (`helpers/native/`); Rust is strictly opt-in (`DEV
      (or set `DEVICEHUB_RUST_HELPER=1` in the environment), then restart DeviceHub.
    - To switch back to C# at any time: set `"rustHelper": false` (or remove `"rustHelper"`) in `data/settings.json`, or set `DEVICEHUB_CSHARP_HELPER=1`, and restart DeviceHub.
 2. **Retiring C#**:
-   - Once ~1 week of normal use completes with no regressions, make the Rust helper the default in `helpers/rust-helper-sources.js` / `helpers/native.js` and delete the C# helper (`helpers/native.cs`, `helpers/pc-reads.cs`, `helpers/build-helper.mjs`, and `helpers/bin/DeviceHubHelper.exe`).
+   - Once ~1 week of normal use completes with no regressions, make the Rust helper the default in `helpers/rust-helper-sources.js` / `helpers/native.js` and delete the C# helper: the sources `helpers/helper-sources.js` lists (`helpers/native/*.cs` and the `helpers/*.cs` files beside them), `helpers/native/build.ps1`, and `helpers/bin/DeviceHubHelper.exe` with its `helper-sources.sha256`.
 
 
 ## Bug hunt, 13 Nov 2026

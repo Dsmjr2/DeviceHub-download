@@ -1787,7 +1787,16 @@ export async function act(name, b = {}) {
     if (!session.learned.length) return { ok: false, error: 'Learn at least one setting first.' };
     return session.second ? secondCheck() : draftCheck(session.learned, b);
   }
+  // Save, once per session (15 Nov 2026 bug hunt): a second Save, or two at once (a double click), saved the same
+  // device again as a second driver with its id renamed; it now waits for the first and answers with that one
   if (name === 'save') {
+    if (session?.saving) await session.saving;
+    if (session?.saved) return { ok: true, ...summary() };
+    let release = () => {};
+    if (session) session.saving = new Promise((r) => { release = r; });
+    try { return await act('save-now', b); } finally { if (session) session.saving = null; release(); }
+  }
+  if (name === 'save-now') {
     if (!session.learned.length) return { ok: false, error: 'Learn at least one setting first.' };
     if (session.second) {
       const sec = session.second;
@@ -2125,6 +2134,7 @@ export async function handle(url, req, res, send, readBody) {
     if (req.method !== 'POST') { send(res, 405, { error: 'POST only' }); return true; }
     const b = (await readBody(req)) || {};
     if (step === 'check') { send(res, 200, await checkSetup(b)); return true; }
+    if (step === 'save-now') { send(res, 404, { error: 'no such step' }); return true; }   // inside Save only (once per session)
     const r = await act(step, b);
     send(res, 200, r);
   } catch (e) { send(res, 500, { ok: false, error: e.message }); }

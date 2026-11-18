@@ -31,6 +31,7 @@ left (the uninstaller tells the person to delete it).
   lights**, confirmed in place with "Stops it and deletes its task and copy: back to USB lights only. Windows asks once.
   PawnIO stays installed; to remove it, open Windows Settings > Apps > Installed apps, find PawnIO and choose Uninstall."
 - **Fans page** (Fan lights card, when the lights sit on the SMBus or the reason is not known): the same control.
+  (That card was removed on 25 Oct 2026; fan lights are on Lighting > PC lights, with the same control.)
 - **Setup**: a row "Board, fan and RAM lights", needs you when `/api/lights/diagnose` says `smbus` and it is not set up
   (the PC lights row for that case is then hidden, so it counts once); done when set up; its control is the same one.
 - No pop-ups, notifications or tooltips. Demo mode shows a PC with board lights set up; its buttons change nothing.

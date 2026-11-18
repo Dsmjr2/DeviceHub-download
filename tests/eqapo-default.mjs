@@ -38,6 +38,17 @@ delete require.cache[require.resolve('../helpers/eqapo.js')];
 require('../helpers/eqapo.js')(null, noDevices, backups);
 check(fs.readFileSync(cfg, 'utf8') === dh, "DeviceHub's own settings are left alone");
 
+const eqMod = require('../helpers/eqapo.js');
+check(eqMod.gainAt([['PK', 1000, 6, 0], ['PK', 0, 6, 1], ['PK', 30000, 6, 1]], 1000) === 0, 'invalid biquad q/f returns 0 dB instead of NaN');
+const safeCfg = eqMod.configText({ extras: { filters: [], speakers: {}, micBoost: 3 }, headroom: true }, Array(10).fill(0), 'HS80', { headset: [], mic: ['{1}\nInclude: evil.txt'], speakers: [] });
+check(!/\nInclude: evil\.txt/.test(safeCfg), 'mic GUID is sanitized to a single line in config.txt');
+
+for (const bad of [{ micBoost: null }, { balance: '' }, { filters: [null] }, { speaker: 'bad' }]) {
+  let threw = false;
+  try { await eq.setExtras(bad); } catch { threw = true; }
+  check(threw, `setExtras rejects ${JSON.stringify(bad)}`);
+}
+
 fs.rmSync(root, { recursive: true, force: true });
 console.log(fails.length ? `eqapo-default: FAILED: ${fails.join('; ')}` : "eqapo-default (Equalizer APO's quieter starting settings): all good");
 process.exit(fails.length ? 1 : 0);

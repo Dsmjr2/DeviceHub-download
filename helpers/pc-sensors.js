@@ -36,8 +36,10 @@ function session() {
   });
   return p;
 }
-function askSession(ms = 20000) {
-  const p = session();
+function askSession(ms = 20000, opts = {}) {
+  const { getSession = session } = opts || {};
+  const p = getSession();
+  if (!p || !p.stdin || typeof p.stdin.write !== 'function') return Promise.resolve(null);
   clearTimeout(idle);
   idle = setTimeout(() => { if (proc) { try { proc.stdin.write('quit\n'); proc.stdin.end(); } catch {} proc = null; } }, IDLE_MS);
   idle.unref?.();
@@ -45,7 +47,7 @@ function askSession(ms = 20000) {
     const t = setTimeout(() => { const i = waiters.indexOf(done); if (i >= 0) waiters.splice(i, 1); resolve(null); }, ms);
     function done(v) { clearTimeout(t); resolve(v); }
     waiters.push(done);
-    try { p.stdin.write('read\n'); } catch { done(null); }
+    try { p.stdin.write('read\n'); } catch { const i = waiters.indexOf(done); if (i >= 0) waiters.splice(i, 1); done(null); }
   });
 }
 
@@ -54,11 +56,12 @@ let pawnio = null;
 const pawnioInstalled = () => (pawnio !== null ? Promise.resolve(pawnio) : new Promise((resolve) => execFile('reg', ['query', 'HKLM\\SYSTEM\\CurrentControlSet\\Services\\PawnIO'], { windowsHide: true, timeout: 5000 }, (e) => resolve((pawnio = !e)))));
 
 // ---- the decision (pure; tests/display-health.mjs) ----
-const round = (n) => (n == null ? null : Math.round(n));
+const round = (n) => (Number.isFinite(n) ? Math.round(n) : null);
 const sameCard = (a, b) => String(a || '').toLowerCase().replace(/\s+/g, ' ').trim() === String(b || '').toLowerCase().replace(/\s+/g, ' ').trim();
 function zoneTemp(z) {
-  const c = z.tenthsK ? z.tenthsK / 10 - 273.15 : z.kelvin ? z.kelvin - 273.15 : null;
-  return c == null ? null : Math.round(c * 10) / 10;
+  if (!z) return null;
+  const c = Number.isFinite(z.tenthsK) && z.tenthsK > 0 ? z.tenthsK / 10 - 273.15 : Number.isFinite(z.kelvin) && z.kelvin > 0 ? z.kelvin - 273.15 : null;
+  return Number.isFinite(c) ? Math.round(c * 10) / 10 : null;
 }
 const LHM_SRC = 'LibreHardwareMonitor';
 // the CPU card (24 Oct 2026, Shawn: "make the cpu temperature and fans show a card like the graphics card"): Windows' own
@@ -75,7 +78,7 @@ function cpuCard(win, lhm, zones = [], acer = null) {
   // without the add-on, a laptop's ACPI zone is shown as an approximate CPU temperature, said so (3 Nov 2026: the card
   // read "—", or Shawn could not tell which sensor the number was); the add-on's reading is the CPU's own
   const zone = c?.packageC == null && a == null ? (zones || []).map(zoneTemp).filter((t) => t != null && t >= 25 && t <= 110).sort((a, b) => b - a)[0] ?? null : null;
-  const fans = lhm?.setUp && lhm.state === 'ok' ? lhm.fans || [] : [];
+  const fans = (lhm?.setUp && lhm.state === 'ok' && Array.isArray(lhm.fans) ? lhm.fans : []).filter((f) => f && typeof f.name === 'string');
   const named = fans.find((f) => /cpu/i.test(f.name) && !/opt/i.test(f.name)) || fans.find((f) => /cpu|pump|aio/i.test(f.name)) || null;
   const fan = named || (fans.some((f) => /cpu|system|chassis|pump/i.test(f.name)) ? null : fans.find((f) => /^fan #?1$/i.test(f.name.trim())) || null);
   const acerFan = !fan && acer?.cpuFanRpm != null ? acer.cpuFanRpm : null;
@@ -193,6 +196,6 @@ async function read({ gpu = require('./gpu'), cpuReader = require('./cpu-sensors
   })();
   try { return await pending; } finally { pending = null; }
 }
-function stop() { if (proc) { try { proc.kill(); } catch {} proc = null; } }
+function stop() { clearTimeout(idle); idle = null; if (proc) { try { proc.kill(); } catch {} proc = null; } }
 
 module.exports = { read, stop, _test: { decide, zoneTemp, cpuCard, nodeCpu, askSession } };

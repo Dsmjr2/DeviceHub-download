@@ -20,6 +20,7 @@ import { everyVisible, isHidden } from './core/visible-timer.js';
 import { startEvents, onEvent, streamUp } from './core/events.js';
 import { startIdleClose, unsavedWatcher } from './core/idle-close.js';
 import { displayWaiting } from './ui/display-settings.js';
+import { defaultTokens, orderTokens, moveToken, isGroup, loadOrder, savedOrder, saveOrder, onOrderChange } from './core/rail-order.js';
 
 // Demo mode: ?demo on the local server, or always in the shareable build (index sets window.DEVICEHUB_DEMO).
 const DEMO = new URLSearchParams(location.search).has('demo') || window.DEVICEHUB_DEMO === true;
@@ -126,29 +127,32 @@ const shown = (p) => !p.laptopOnly || isLaptop;
 // a device page only for a device this PC has, as in the sidebar (1 Nov 2026, a new-setup audit: Search and Alt+3 opened
 // the Pulsar mouse page, "Close the Pulsar app first", on a PC with no such mouse)
 const reachable = (p) => shown(p) && (!p.device || shownDevices().some((d) => d.id === p.device));
+// The sidebar's entries in the person's own order (17 Nov 2026, Shawn: "make the tabs on the left side easily draggable
+// so I can change the layout"; public/core/rail-order.js): Overview and Setup, then Devices, Desk and App as usual
+// (20 Oct 2026, seven entries were one long list; "Desk" took Wallpapers on 22 Oct), each entry where it was dragged.
+const GROUP_NAMES = { '#devices': 'Devices', '#desk': 'Desk', '#app': 'App' };
+function railTokens() {
+  return orderTokens(savedOrder(), defaultTokens({
+    top: ['overview', 'setup'],
+    devices: PAGES.filter((p) => p.device).map((p) => p.id),
+    desk: PAGES.filter((p) => SETUP.includes(p.id) && shown(p)).map((p) => p.id),
+    // rail: false = reached from another page only (Supported devices: Settings and Search; Learn a device is listed here too, 22 Oct 2026)
+    app: PAGES.filter((p) => !p.device && p.id !== 'overview' && p.id !== 'setup' && p.rail !== false && !SETUP.includes(p.id)).map((p) => p.id),
+  }));
+}
 function buildRail() {
   const rail = $('#rail');
-  // its name for a screen reader too (31 Oct 2026: on a narrow window only the icon shows)
-  const navBtn = (p) => h('button', { class: 'nav', dataset: { page: p.id }, 'aria-label': p.title, onclick: () => go(p.id) },
+  // its name for a screen reader too (31 Oct 2026: on a narrow window only the icon shows); draggable: the order is the
+  // person's (railDrag below)
+  const navBtn = (p) => h('button', { class: 'nav', dataset: { page: p.id }, 'aria-label': p.title, draggable: 'true', onclick: () => go(p.id) },
     icon(p.icon), h('span', {}, p.title), p.device ? h('span', { class: 'dot', dataset: { dev: p.device } }) : null,
     p.id === 'setup' ? h('span', { class: 'nav-count', hidden: true }) : null,
     p.id === 'backups' ? h('span', { class: 'nav-shield', title: 'Checking backups…' }, icon('shield')) : null);
   if (!document.querySelector('.art-defs')) document.body.prepend(artDefs());
   rail.replaceChildren(
     h('div', { class: 'brand' }, h('img', { class: 'brand-mark', src: '/icon-64.png', alt: '' }), h('div', {}, 'DeviceHub', DEMO ? h('small', {}, 'Demo mode') : null)),
-    navBtn(PAGES[0]),
-    // Setup, right under the Overview (22 Oct 2026, Shawn: "I want the setup to all be on one page"; pages/setup.js)
-    navBtn(PAGES.find((p) => p.id === 'setup')),
-    h('div', { class: 'nav-label' }, 'Devices'),
-    ...PAGES.filter((p) => p.device).map(navBtn),
-    // the rest in two groups (20 Oct 2026, seven entries were one long list): the person's setup, and the app itself.
-    // "Desk" became "Setup" when Wallpapers joined it (22 Oct 2026, Shawn: "put it under the desk area and rename that to
-    // make more sense"): the lights, screens, fans and wallpapers of their setup
-    h('div', { class: 'nav-label' }, 'Desk'),
-    ...PAGES.filter((p) => SETUP.includes(p.id) && shown(p)).map(navBtn),
-    h('div', { class: 'nav-label' }, 'App'),
-    // rail: false = reached from another page only (Supported devices: Settings and Search; Learn a device is listed here too, 22 Oct 2026)
-    ...PAGES.filter((p) => !p.device && p.id !== 'overview' && p.id !== 'setup' && p.rail !== false && !SETUP.includes(p.id)).map(navBtn),
+    // Setup right under the Overview by default (22 Oct 2026, Shawn: "I want the setup to all be on one page")
+    ...railTokens().map((t) => (isGroup(t) ? h('div', { class: 'nav-label', dataset: { group: t } }, GROUP_NAMES[t]) : navBtn(PAGES.find((p) => p.id === t)))),
     h('div', { class: 'rail-foot' },
       h('button', { class: 'cmd-hint', onclick: openPalette }, icon('search'), h('span', {}, 'Search'))),
   );
@@ -233,6 +237,84 @@ env.onNewDevice = (x) => {
 };
 // the Setup check's background look (setupNeeds: ~7 reads) every 5 minutes, only while the window is shown
 everyVisible(paintSetupNav, 5 * 60000);
+// a heading with nothing shown under it is hidden (no devices at all: no "Devices"; a group emptied by dragging)
+function emptyLabels() {
+  let label = null, any = false;
+  const close = () => { if (label) label.hidden = !any; };
+  for (const el of document.querySelectorAll('#rail > .nav, #rail > .nav-label')) {
+    if (el.classList.contains('nav-label')) { close(); label = el; any = false; } else if (!el.hidden) any = true;
+  }
+  close();
+}
+// Dragging an entry (17 Nov 2026): a thin line shows where it lands; dropped under another heading, it joins that group.
+// Alt+Up and Alt+Down move the focused entry one place. Saved at once (settings.json navOrder); Settings > Appearance
+// puts the usual order back.
+const railTokensNow = () => [...document.querySelectorAll('#rail > .nav[data-page], #rail > .nav-label[data-group]')].map((el) => el.dataset.page || el.dataset.group);
+async function moveTo(id, index) {
+  const next = moveToken(railTokensNow(), id, index);
+  // saveOrder tells onOrderChange, which draws the rail again (below)
+  try { await saveOrder(next, DEMO); } catch (e) { toast('Order not saved', 'bad', { detail: e.message }); }
+}
+function railDrag() {
+  const rail = $('#rail');
+  let dragId = null, target = null;
+  const line = h('div', { class: 'rail-drop', 'aria-hidden': 'true' });
+  // where a drop at this point goes: before the first shown entry or heading past the pointer (none: at the end)
+  const spot = (e) => {
+    const across = getComputedStyle(rail).flexDirection === 'row';
+    const items = [...rail.querySelectorAll(':scope > .nav[data-page], :scope > .nav-label[data-group]')].filter((el) => !el.hidden && el.offsetParent !== null && el.dataset.page !== dragId);
+    const before = items.find((el) => { const r = el.getBoundingClientRect(); return across ? e.clientX < r.left + r.width / 2 : e.clientY < r.top + r.height / 2; }) || null;
+    return { before, last: items[items.length - 1], across };
+  };
+  const show = ({ before, last, across }) => {
+    const ref = before || last;
+    if (!ref) return;
+    const rr = rail.getBoundingClientRect(), r = ref.getBoundingClientRect();
+    line.classList.toggle('across', across);
+    if (across) { line.style.left = `${(before ? r.left : r.right) - rr.left + rail.scrollLeft - 1}px`; line.style.top = `${r.top - rr.top}px`; line.style.height = `${r.height}px`; }
+    else { line.style.top = `${(before ? r.top : r.bottom) - rr.top + rail.scrollTop - 1}px`; line.style.left = ''; line.style.height = ''; }
+    if (!line.isConnected) rail.append(line);
+  };
+  const end = () => { dragId = null; target = null; line.remove(); rail.querySelector('.nav.dragging')?.classList.remove('dragging'); };
+  rail.addEventListener('dragstart', (e) => {
+    const b = e.target.closest?.('.nav[data-page]');
+    if (!b) return;
+    dragId = b.dataset.page;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', dragId);
+    requestAnimationFrame(() => b.classList.add('dragging'));
+  });
+  rail.addEventListener('dragover', (e) => {
+    if (!dragId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    target = spot(e);
+    show(target);
+  });
+  rail.addEventListener('drop', (e) => {
+    if (!dragId) return;
+    e.preventDefault();
+    const id = dragId, at = target || spot(e);
+    const rest = railTokensNow().filter((t) => t !== id);
+    const index = at.before ? rest.indexOf(at.before.dataset.page || at.before.dataset.group) : rest.length;
+    end();
+    if (index >= 0) moveTo(id, index);
+  });
+  rail.addEventListener('dragend', end);
+  rail.addEventListener('keydown', (e) => {
+    if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    const b = e.target.closest?.('.nav[data-page]');
+    if (!b) return;
+    e.preventDefault();
+    const id = b.dataset.page, tokens = railTokensNow(), i = tokens.indexOf(id);
+    const visible = (t) => isGroup(t) || !document.querySelector(`#rail > .nav[data-page="${t}"]`)?.hidden;
+    let index = null;
+    if (e.key === 'ArrowUp') { for (let j = i - 1; j >= 0; j--) if (visible(tokens[j])) { index = j; break; } }
+    else { for (let j = i + 1; j < tokens.length; j++) if (visible(tokens[j])) { index = j; break; } }
+    if (index == null) return;
+    moveTo(id, index).then(() => document.querySelector(`#rail > .nav[data-page="${id}"]`)?.focus());
+  });
+}
 function paintRail() {
   paintSetupNav();
   paintShield();
@@ -241,9 +323,7 @@ function paintRail() {
   // a device this PC does not have gets no sidebar entry (core/devices.js shownDevices)
   const shown = new Set(shownDevices().map((d) => d.id));
   document.querySelectorAll('.nav .dot[data-dev]').forEach((dot) => { dot.closest('.nav').hidden = !shown.has(dot.dataset.dev); });
-  // no devices at all: no "Devices" heading either
-  const label = [...document.querySelectorAll('.nav-label')].find((l) => l.textContent === 'Devices');
-  if (label) label.hidden = shown.size === 0;
+  emptyLabels();
   // green connected, yellow asleep, red when it cannot be used: not connected, or the headset switched off with only its
   // receiver plugged in (Shawn, 21 Oct 2026)
   document.querySelectorAll('.nav .dot').forEach((dot) => {
@@ -358,6 +438,9 @@ window.addEventListener('keydown', (e) => {
 
 await loadArtStyle();  // the chosen drawing style and theme (Settings > Appearance)
 setCommands((q) => commands(q, { go, pages: PAGES.filter(reachable) }));   // the Laptop page only on a laptop, device pages only for devices here
+await loadOrder(DEMO);   // the sidebar's saved order (core/rail-order.js), before its first drawing
+onOrderChange(() => buildRail());
+railDrag();
 buildRail();
 setGlow();
 // the first time the window opens on this PC: Setup instead of the Overview (core/first-run.js; never on a PC with
@@ -455,7 +538,8 @@ if (!DEMO) {
     // "DeviceHub 1.5 is ready" and what's new, up to 5 short lines (27 Oct 2026; an older release has only the text)
     const body = n.notes?.length ? h('div', {}, h('p', {}, n.text), h('p', { class: 'muted' }, "What's new:"), h('ul', { class: 'whats-new' }, ...n.notes.map((x) => h('li', {}, x)))) : n.text;
     const go = await modal('Update ready', body, [{ label: 'Later', value: false, kind: 'ghost' }, { label: 'Update', value: true, kind: 'primary' }]);
-    if (go) { location.hash = '#/settings'; (await import('./pages/settings.js')).runSelfUpdate(); }
+    // a zip copy with changed files: the text promises a copy of them, so Update asks for that (15 Nov 2026 bug hunt)
+    if (go) { location.hash = '#/settings'; (await import('./pages/settings.js')).runSelfUpdate({ overwrite: !!n.blocked }); }
   };
   onEvent('hello', (x) => ask(x.notice));
   onEvent('notice', (x) => ask(x.notice));

@@ -171,6 +171,10 @@ export async function connect(id, prompt = false) {
       if (prompt && e.name !== 'NotFoundError' && !e.gone) log(`${d.adapter.title}: ${e.message}`, 'bad', id);
       return false;
     }
+  }).catch((e) => {
+    set(id, { status: 'error', error: e.message });
+    if (prompt) log(`${d.adapter.title}: ${e.message}`, 'bad', id);
+    return false;
   });
 }
 const lastTry = {};
@@ -228,10 +232,24 @@ function slowToast(msg) {
 // One lock per device: backups and writes from anywhere (pages, profiles, restore, auto-switch) never interleave.
 const locks = {};
 let inFlight = 0;
+function withTimeout(p, ms, label) {
+  if (!(ms > 0)) return p;
+  let timer;
+  return Promise.race([
+    p,
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${label} timed out`)), ms); }),
+  ]).finally(() => clearTimeout(timer));
+}
+// The caller hears "timed out" after 45 s, but the lock stays held until the job itself ends (or 5 min for one that
+// never does), so a slow write is never overlapped by the next one (14 Nov 2026).
 function withDevice(id, fn) {
   inFlight++;
-  const p = (locks[id] || Promise.resolve()).then(fn, fn).finally(() => { inFlight--; });
-  locks[id] = p.catch(() => {});
+  const ms = env.deviceOpTimeoutMs === undefined ? 45000 : env.deviceOpTimeoutMs;
+  const cap = env.deviceLockCapMs === undefined ? 300000 : env.deviceLockCapMs;
+  let job;
+  const run = () => { job = Promise.resolve().then(fn); return withTimeout(job, ms, id); };
+  const p = (locks[id] || Promise.resolve()).then(run, run).finally(() => { inFlight--; });
+  locks[id] = p.then(() => {}, () => withTimeout(job || Promise.resolve(), cap, id)).catch(() => {});
   return p;
 }
 export const isBusy = () => inFlight > 0 || remoteBusy > 0;
@@ -387,7 +405,7 @@ async function flushWaiting(id) {
         } catch (e) {
           if (canWait(e)) break;                                    // still not reachable: everything stays waiting
           if (waiting[id]?.[key] === c) delete waiting[id][key];
-          log(`${c.label} not changed: ${e.message}`, 'bad', id);
+          log(e.maybeSent ? `${c.label}: ${e.message}` : `${c.label} not changed: ${e.message}`, 'bad', id);
         }
       }
     });
@@ -501,7 +519,8 @@ async function writeUnlocked(id, key, value, { label = key, display = value, sil
     const willWait = env.agent && !demo && !live && !fromQueue && !quietFail && canWait(e);
     if (!willWait) t?.fail(`${label} not changed`, e.message); else t?.done(`${label}: applied when it is back`);
     // quietFail: a retry that will be tried again (auto-switch waiting for an asleep device) is not logged each time
-    if (!quietFail && !willWait) log(`${label} not changed: ${e.message}`, 'bad', id);
+    // a write that may have reached the device (hid-host: the cable pulled mid-write) does not say "not changed"
+    if (!quietFail && !willWait) log(e.maybeSent ? `${label}: ${e.message}` : `${label} not changed: ${e.message}`, 'bad', id);
     if (e.gone) set(id, { status: 'missing', error: null });
     // fell asleep during the change: marked asleep, so waking is noticed (and what waits is written) at once
     else if (isAsleep(e)) set(id, { status: 'asleep', error: e.message });
@@ -515,6 +534,12 @@ async function writeUnlocked(id, key, value, { label = key, display = value, sil
 // a background check's wait: env.every (the agent sets it: 3x on battery with the battery saver), else as given
 const every = (ms) => (env.every ? env.every(ms) : ms);
 const repeat = (fn, ms) => { const go = () => { try { fn(); } catch {} setTimeout(go, every(ms)); }; setTimeout(go, every(ms)); };
+const pollBusy = {};
+const pollOnce = (id, fn) => {
+  if (pollBusy[id]) return;
+  pollBusy[id] = true;
+  Promise.resolve().then(fn).catch(() => {}).finally(() => { pollBusy[id] = false; });
+};
 export function startPolling() {
   if (remote) return; // the agent polls
   // an adapter whose read came back incomplete (Windows audio not ready) asks for a quick re-read
@@ -529,7 +554,7 @@ export function startPolling() {
   // Devices whose state lives elsewhere (the headset) are re-read every 60 s; its mic and lights stay live through
   // the light keeper, and a change made here shows at once.
   repeat(() => {
-    for (const d of Object.values(devices)) if (d.status === 'connected' && d.adapter.pollRead) refresh(d.id, { quiet: true });
+    for (const d of Object.values(devices)) if (d.status === 'connected' && d.adapter.pollRead) pollOnce(d.id, () => refresh(d.id, { quiet: true }));
   }, 60000);
   // The keymap copy that lighting backups use is read again every 40 min in the background, while nothing else is
   // going on with the device, so it never runs out (1 h) and a lighting change never waits ~2 s for a fresh read
@@ -547,12 +572,12 @@ export function startPolling() {
   // (Not while the headset reports itself off: each try would back it up again; it is tried once it is on.)
   if (env.agent) repeat(() => { for (const d of Object.values(devices)) if (waiting[d.id] && d.status === 'connected' && d.values?.headsetOn !== false) flushWaiting(d.id); }, 5000);
   // The agent also re-reads every connected device each minute; that is how it notices an unplugged keyboard.
-  if (env.agent) repeat(() => { for (const d of Object.values(devices)) if (d.status === 'connected' && !d.adapter.pollRead) refresh(d.id, { quiet: true }); }, 60000);
+  if (env.agent) repeat(() => { for (const d of Object.values(devices)) if (d.status === 'connected' && !d.adapter.pollRead) pollOnce(d.id, () => refresh(d.id, { quiet: true })); }, 60000);
   repeat(() => {
     for (const d of Object.values(devices)) {
       // asleep: asked again every 5 s; when the agent hears the mouse wake by itself (env.wakeEvents: the helper
       // passes on its first movement, helpers/agent.mjs), only every 5 minutes, as a fallback (21 Oct 2026)
-      if (d.status === 'asleep' && !(env.wakeEvents && d.id === 'mouse' && Date.now() - (asleepLook[d.id] || 0) < 300000)) { asleepLook[d.id] = Date.now(); refresh(d.id, { quiet: true }); }
+      if (d.status === 'asleep' && !(env.wakeEvents && d.id === 'mouse' && Date.now() - (asleepLook[d.id] || 0) < 300000)) { asleepLook[d.id] = Date.now(); pollOnce(d.id, () => refresh(d.id, { quiet: true })); }
       if ((d.status === 'missing' || d.status === 'idle') && (d.adapter.autoReconnect || env.agent)) {
         // Looking for a missing mouse or keyboard costs a device scan, so the agent does it every 20 s, not every 5.
         // With Windows' device messages coming in (env.wakeEvents: the helper's window passes on every plug and unplug,
@@ -561,7 +586,7 @@ export function startPolling() {
         if (env.agent && !d.adapter.pollRead && Date.now() - (lastTry[d.id] || 0) < (env.wakeEvents ? 120000 : 20000)) continue;
         // the headset (pollRead) was looked for every 5 s; a USB or Bluetooth headset arriving sends the same messages
         if (env.agent && d.adapter.pollRead && env.wakeEvents && Date.now() - (lastTry[d.id] || 0) < 60000) continue;
-        connect(d.id, false);
+        pollOnce(d.id, () => connect(d.id, false));
       }
     }
   }, 5000);

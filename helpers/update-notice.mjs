@@ -2,7 +2,7 @@
 // manually update ... but I do want you to provide a pop up that says there is an update"). server.js asks once, 2
 // minutes after DeviceHub starts; the window shows the answer once, Update or Later. Nothing installs by itself.
 // Only a signed version is offered (a zip copy's release, or a download copy's signed appCommit), never on the owner's PC.
-export const when = (at) => { const d = new Date(at); return Number.isNaN(+d) ? null : d.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); };
+export const when = (at) => { if (at == null || at === '') return null; const d = new Date(at); return Number.isNaN(+d) ? null : d.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); };
 
 // status: helpers/self-update.js status(). { version, at, text, name, notes } or null. name: the readable number ("1.5"),
 // notes: what's new, up to 5 short lines (27 Oct 2026; a release from before then has neither, and the text says as before)

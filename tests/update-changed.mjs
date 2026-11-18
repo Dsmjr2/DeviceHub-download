@@ -42,6 +42,8 @@ fs.rmSync(path.join(root, 'public/style.css'));
 check(su.changedFiles(root).length === 0, `a missing file is not a change (${su.changedFiles(root)})`);
 fs.rmSync(path.join(root, 'server.js'));
 check(su.changedFiles(root).length === 0, `nothing left at all is not a change (${su.changedFiles(root)})`);
+fs.writeFileSync(path.join(root, 'release-files.json'), '\uFEFFnull');
+check(su.changedFiles(root).length === 0, 'null/BOM release-files.json returns [] without throwing');
 const ins = fs.readFileSync(new URL('../helpers/install.ps1', import.meta.url), 'utf8');
 check(/if \(-not \(Test-Path -LiteralPath \$p\)\) \{ return \$false \}/.test(ins), 'install.ps1 does not count a missing file as changed');
 check(/-not \$Overwrite -and \(Test-Path -LiteralPath \$prints\) -and \(Test-Path -LiteralPath \(Join-Path \$Target 'server\.js'\)\)/.test(ins), 'install.ps1 skips the check when the target has no server.js');

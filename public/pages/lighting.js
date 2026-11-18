@@ -9,6 +9,7 @@ import { toast } from '../ui/overlay.js';
 import { SWATCHES } from '../core/color.js';
 import { pcLightsCard, applyPc, pcIncluded, pcAvailable, setPcIncluded, pcPick } from './pc-lights.js';
 import { colorPicker } from '../ui/color-picker.js';
+import { kbColorKeys } from '../core/kb-lights.js';
 import { hexToRgb, rgbToHex } from '../core/color.js';
 
 // off: the Off button was picked (every included light goes dark on Apply to all); any colour picked clears it
@@ -40,7 +41,8 @@ async function applyAll() {
     if (!ui.include[id] || d.status !== 'connected' || !d.adapter.hasLighting?.()) continue;
     try {
       if (id === 'keyboard') {
-        const keys = ui.off ? [['brightness', 0]] : d.adapter.lightingKeys(r, g, b, ui.brightness);
+        let last = 1; try { last = Number(localStorage.getItem('kb-last-effect')) || 1; } catch {}
+        const keys = kbColorKeys({ adapter: d.adapter, values: d.values, rgb: [r, g, b], brightness: ui.brightness, off: ui.off, last });
         const res = await writeBatch(id, keys.map(([key, val]) => ({ key, value: val, label: `Lighting ${key}`, display: val })), 'before lighting');
         if (res.failed) throw new Error(`${res.failed} value(s) not set`);
       } else {

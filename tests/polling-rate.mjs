@@ -44,6 +44,8 @@ ok(verdict(rateOf(reports(1000, 300)), 1000).kind === 'short' && verdict(rateOf(
 ok(verdict(rateOf(reports(1000, 5000)), null).kind === 'match' && /About 1000 Hz arrived\./.test(verdict(rateOf(reports(1000, 5000)), null).line), 'a mouse with no polling setting: just the measured rate');
 ok(verdict(rateOf(reports(2000, 5000)), 1000).kind === 'high', 'more than set: says another mouse may have moved');
 ok(roundHz(7963) === 8000 && roundHz(996) === 1000 && roundHz(124.6) === 120, 'rounded the way the page shows rates');
+ok(rateOf('bad').hz === 0 && roundHz(NaN) === 0 && roundHz(-10) === 0, 'non-array times and invalid hz are guarded');
+ok(verdict({ events: 300, movingMs: 1500, hz: NaN, steady: 1 }, 1000).kind === 'short', 'non-finite hz returns short verdict');
 
 // the page: listens only, cleans up, on both mouse pages
 const ui = fs.readFileSync(path.join(REAL, 'public/ui/polling-test.js'), 'utf8').replace(/\/\/.*$/gm, '');

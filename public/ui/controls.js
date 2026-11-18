@@ -100,7 +100,9 @@ export function slider({ value, min, max, step = 1, onCommit, live, grab, disabl
     if (v === cur && !moved) return;
     const was = cur;
     moved = false; cur = v;
-    run(el, () => onCommit(v)).catch(() => { cur = was; });
+    // refused: the thumb and its number go back at once (15 Nov 2026 bug hunt: they showed the refused value until the
+    // page redrew, which an open Overview tile, hovered or focused, does not do)
+    run(el, () => onCommit(v)).catch(() => { cur = was; if (was != null) { input.value = was; out.textContent = show(was); paint(); } });
   });
   return el;
 }
@@ -116,7 +118,7 @@ export function stepper({ value, min, max, step = 1, onCommit, disabled, unit, b
     if (v === cur) return;
     const was = cur;
     cur = v;
-    run(el, () => onCommit(v)).catch(() => { cur = was; });
+    run(el, () => onCommit(v)).catch(() => { cur = was; input.value = was ?? ''; });   // refused: back at once
   };
   const minus = h('button', { class: 'step', disabled, 'aria-label': 'decrease', onclick: () => commit(Number(input.value) - step) }, '−');
   const plus = h('button', { class: 'step', disabled, 'aria-label': 'increase', onclick: () => commit(Number(input.value) + step) }, '+');

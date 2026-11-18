@@ -118,12 +118,72 @@ function rig({ defaults = { playback: 'speakers', recording: 'webcam' }, setting
   check(r.logs.length === 1 && /^Could not move sound to HS80 Wireless$/.test(r.logs[0][0]) && r.logs[0][1] === 'bad', `failure line: ${JSON.stringify(r.logs)}`);
 }
 
+// The cable (16 Nov 2026, Shawn: "All I want is to not have to physically switch my mic when I plug it in"): the
+// headset stays on through a plug, so seen() never fires; Windows' device-change messages call cable() instead.
+const WMIC = '{0.0.1.00000000}.{hs80-cable-mic}';
+function cableRig({ defaults = { playback: OUT, recording: MIC }, settings = {} } = {}) {
+  const calls = [], logs = [], win = { defaults: { ...defaults }, cable: false };
+  const call = async (action, body) => {
+    calls.push([action, body]);
+    if (action === 'hs80-endpoints') return { ok: true, defaults: { ...win.defaults }, endpoints: [
+      { flow: 'playback', id: OUT, state: 1, name: 'HS80 Wireless', wireless: true },
+      { flow: 'recording', id: MIC, state: 1, name: 'HS80 Wireless', wireless: true },
+      { flow: 'playback', id: CABLE, state: win.cable ? 1 : 4, name: 'Headset Earphone', wired: true },
+      { flow: 'recording', id: WMIC, state: win.cable ? 1 : 4, name: 'Headset Microphone', wired: true }] };
+    if (action === 'set-default') { win.defaults[body.flow ? 'recording' : 'playback'] = body.id; return { ok: true, now: body.id }; }
+    throw new Error(`unexpected ${action}`);
+  };
+  const hs = headsetSound({ call, log: (text, kind) => logs.push([text, kind]), readSettings: () => settings, now: () => 0, wait: async () => {} });
+  return { hs, calls, logs, win, sets: () => calls.filter(([a]) => a === 'set-default') };
+}
+{
+  const r = cableRig();
+  await r.hs.cable();   // the first look only learns where the cable is
+  check(!r.sets().length, `first look moves nothing: ${JSON.stringify(r.sets())}`);
+  await r.hs.cable();   // another device's plug: no cable change
+  check(!r.sets().length, 'an unrelated device change moves nothing');
+  r.win.cable = true; await r.hs.cable();
+  const s = r.sets();
+  check(s.length === 2 && s.some(([, b]) => b.id === CABLE && b.flow === 0) && s.some(([, b]) => b.id === WMIC && b.flow === 1), `plugged in: speaker and mic to the cable: ${JSON.stringify(s)}`);
+  check(r.logs.length === 1 && r.logs[0][0] === 'Sound moved to Headset Earphone', `one line: ${JSON.stringify(r.logs)}`);
+  await r.hs.cable();
+  check(r.sets().length === 2, 'still plugged in: nothing again (a pick by hand in between is left alone)');
+  r.win.cable = false; await r.hs.cable();
+  check(r.sets().length === 4 && r.win.defaults.playback === OUT && r.win.defaults.recording === MIC, `unplugged: back to the receiver: ${JSON.stringify(r.win.defaults)}`);
+}
+// the cable's sound devices show up a moment after Windows' message: a few looks
+{
+  const r = cableRig();
+  await r.hs.cable();
+  let looks = 0;
+  const hs = headsetSound({ call: async (a, b) => {
+    if (a === 'hs80-endpoints') {
+      if (++looks === 3) r.win.cable = true;
+      return { defaults: { ...r.win.defaults }, endpoints: [
+        { flow: 'playback', id: OUT, state: 1, name: 'HS80 Wireless', wireless: true },
+        { flow: 'playback', id: CABLE, state: r.win.cable ? 1 : 4, name: 'Headset Earphone', wired: true }] };
+    }
+    r.win.defaults.playback = b.id; return { now: b.id };
+  }, log: () => {}, readSettings: () => ({}), now: () => 0, wait: async () => {} });
+  r.win.cable = false; looks = 0;
+  await hs.cable();                  // look 1: learns "no cable"
+  await hs.cable();                  // a device message: look 2 still no cable, look 3 (after a wait) finds it
+  check(r.win.defaults.playback === CABLE, `moved once the cable shows a moment later: ${JSON.stringify(r.win.defaults)}`);
+}
+// the setting off: nothing moved
+{
+  const r = cableRig({ settings: { headsetSoundSwitch: false } });
+  await r.hs.cable(); r.win.cable = true; await r.hs.cable();
+  check(!r.sets().length, 'the setting off: the cable moves nothing');
+}
+
 // the source: no polling, no timers of its own beyond the short wait for Windows' list
 import fs from 'node:fs';
 const src = fs.readFileSync(new URL('../helpers/headset-sound.mjs', import.meta.url), 'utf8');
 check(!/setInterval/.test(src), 'no polling in headset-sound.mjs');
 const agent = fs.readFileSync(new URL('../helpers/agent.mjs', import.meta.url), 'utf8');
 check(/headsetSound\(/.test(agent) && /id === 'headset'/.test(agent), 'the agent feeds the headset changes in');
+check(/hs\.cable\(\)|headsetCable\?\.\(\)/.test(agent), 'the agent passes Windows\' device changes to the cable check');
 
 if (fails.length) { console.error(`headset-sound: ${fails.length} failed\n - ${fails.join('\n - ')}`); process.exit(1); }
 console.log('headset-sound: all checks passed');

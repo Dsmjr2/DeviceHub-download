@@ -51,11 +51,24 @@ export function writeOnlyStore(root) {
   };
   const s = {
     root: at,
-    trusted: (k) => (k ? readJson(file(TRUST_FILE))[k]?.answer === 'yes' : false),
+    trusted(k) { if (!k) return false; const all = readJson(file(TRUST_FILE)); return Object.prototype.hasOwnProperty.call(all, k) && all[k]?.answer === 'yes'; },
     // a record that is changed is read strictly (5 Nov 2026): a failed read never drops the other entries
-    trust(k, rec) { const all = readJsonForWrite(file(TRUST_FILE), {}); all[k] = { at: rec.at, value: rec.value, answer: 'yes' }; save(TRUST_FILE, all); },
-    last: (k) => (k ? readJson(file(LAST_FILE))[k] || null : null),
-    remember(k, value, when = new Date()) { if (!k) return; const all = readJsonForWrite(file(LAST_FILE), {}); all[k] = { at: when.toISOString(), value }; save(LAST_FILE, all); },
+    trust(k, rec) {
+      if (!k || !rec || typeof rec !== 'object') return;
+      const all = readJsonForWrite(file(TRUST_FILE), {});
+      if (!all || typeof all !== 'object' || Array.isArray(all)) throw new Error(`${TRUST_FILE} is not a JSON object; nothing was changed`);
+      all[k] = { at: rec.at, value: rec.value, answer: 'yes' };
+      save(TRUST_FILE, all);
+    },
+    last(k) { if (!k) return null; const all = readJson(file(LAST_FILE)); return Object.prototype.hasOwnProperty.call(all, k) ? all[k] || null : null; },
+    remember(k, value, when = new Date()) {
+      if (!k) return;
+      const ts = when instanceof Date && !Number.isNaN(when.getTime()) ? when : new Date();
+      const all = readJsonForWrite(file(LAST_FILE), {});
+      if (!all || typeof all !== 'object' || Array.isArray(all)) throw new Error(`${LAST_FILE} is not a JSON object; nothing was changed`);
+      all[k] = { at: ts.toISOString(), value };
+      save(LAST_FILE, all);
+    },
   };
   stores.set(at, s);
   return s;
@@ -66,7 +79,7 @@ const COLOURS = { '#ff0000': 'red', '#00ff00': 'green', '#0000ff': 'blue', '#fff
 export function showValue(s, v) {
   if (v === null || v === undefined) return 'not set';
   if (s?.type === 'toggle') return v ? 'on' : 'off';
-  if (s?.type === 'choice') return String((s.options || []).find((o) => JSON.stringify(o.value) === JSON.stringify(v))?.label ?? v);
+  if (s?.type === 'choice') return String((Array.isArray(s.options) ? s.options : []).find((o) => o && JSON.stringify(o.value) === JSON.stringify(v))?.label ?? v);
   if (s?.type === 'color') {
     const one = (c) => COLOURS[String(c).toLowerCase()] || String(c);
     if (typeof v === 'string') return one(v);

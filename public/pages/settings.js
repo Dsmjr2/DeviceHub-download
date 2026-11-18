@@ -35,6 +35,7 @@ import { loadSetupFile, backupsCard } from './backups.js';
 import { saveSetup } from '../core/setup.js';
 import { setupNeeds, watchSetup } from './setup.js';
 import { shareSwitch } from '../ui/driver-share.js';
+import { customOrder, saveOrder } from '../core/rail-order.js';
 
 let startup = null;
 // DeviceHub's own updates from GitHub (helpers/self-update.js): null = not read yet
@@ -50,6 +51,8 @@ async function loadSelf() {
   const started = Date.now();
   let r;
   try { r = await (await fetch('/api/self-update')).json(); } catch { r = { error: 'DeviceHub did not answer' }; }
+  // an update is running (this window was reloaded or opened during it): its progress, not a status (15 Nov 2026)
+  if (r?.updating) { selfBar.stop(); selfBar = smoothBar(); selfBusy = true; self = {}; if (r.progress) showStep(r.progress); watchSteps(); rerender(); return; }
   await pause(Math.max(0, 1200 - (Date.now() - started)));   // long enough to see the bar move
   // the bar runs to the end at its own calm pace (never longer than 4 s, e.g. when the page was left), then the answer
   await Promise.race([selfBar.done('Looking for updates'), pause(4000)]); await pause(250);
@@ -146,7 +149,7 @@ function syncRows() {
     oneDriveRow(),
     // battery care (helpers/battery-care.mjs): the wireless devices' lights down on a low battery, back once they charge
     // (27 Oct 2026, Shawn) Windows' sound and mic move to the headset when it turns on (helpers/headset-sound.mjs); on unless off
-    row('Headset sound', 'Switch sound to headset when turned on.', toggle({ value: opts?.headsetSoundSwitch !== false, label: 'Switch sound to the headset when it turns on', onCommit: (on) => setOpt('headsetSoundSwitch', on) })),
+    row('Headset sound', 'Switch sound and mic to the headset when it turns on or its cable is plugged in.', toggle({ value: opts?.headsetSoundSwitch !== false, label: 'Switch sound and mic to the headset', onCommit: (on) => setOpt('headsetSoundSwitch', on) })),
     row('Save device battery', 'Dims lights and lowers polling rate at 20% until charged.', toggle({ value: opts?.batteryCare !== false, label: 'Save device battery', onCommit: (on) => setOpt('batteryCare', on) })),
     // only a PC with a battery has anything to save (a desktop always runs at full speed)
     powerSt && !pw.hasBattery ? null : row('Battery saver', powerText, toggle({ value: opts?.batterySaver !== false, label: 'Battery saver', onCommit: (on) => setOpt('batterySaver', on) })),
@@ -492,7 +495,9 @@ function themeControls() {
     h('div', { class: 'theme-tiles' }, ...THEME_BGS.map(tile)),
     // a background picture is picked on the Wallpapers page; here only a small way back to the plain backdrop (Shawn,
     // 22 Oct 2026: "the background picture shouldnt be there, just have the remove for it very small")
-    hasPicture() ? h('button', { class: 'theme-unpic', onclick: async () => { await removePicture(); rerender(); } }, 'Remove background picture') : null);
+    hasPicture() ? h('button', { class: 'theme-unpic', onclick: async () => { await removePicture(); rerender(); } }, 'Remove background picture') : null,
+    // the sidebar dragged into another order (17 Nov 2026, core/rail-order.js): a small way back to the usual one
+    customOrder() ? h('button', { class: 'theme-unpic', onclick: async () => { try { await saveOrder([], isDemo()); } catch (e) { toast('Order not reset', 'bad', { detail: e.message }); } rerender(); } }, 'Reset sidebar order') : null);
 }
 
 // Reads every connected device twice and checks the two readings agree and pass their own checks. Writes nothing.

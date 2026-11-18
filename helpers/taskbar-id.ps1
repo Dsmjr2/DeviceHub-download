@@ -82,13 +82,19 @@ public static class DhTaskbar {
 }
 '@
 
-$id = ''
+# The ID the window keeps (16 Nov 2026, Shawn: "device hub is still duplicating"): the device helper's winbrand gives the
+# window its own "DeviceHub.<icon hash>" a moment after it opens (helpers/native/winbrand.cs). Read before that, the
+# window still had Chrome's passing ID, which was written onto the shortcuts, and the window then left the pin's group.
+# So: wait for winbrand's ID; Chrome's is used only when winbrand never comes (no helper running).
+$id = ''; $seen = ''
 $until = (Get-Date).AddSeconds($WaitSeconds)
 do {
-  $id = [DhTaskbar]::WindowId()
-  if ($id) { break }
+  $now = [DhTaskbar]::WindowId()
+  if ($now -like 'DeviceHub*') { $id = $now; break }
+  if ($now) { $seen = $now }
   Start-Sleep -Milliseconds 500
 } while ((Get-Date) -lt $until)
+if (-not $id) { $id = $seen }
 if (-not $id) { Write-Output 'taskbar-id: no DeviceHub window with an app ID'; exit 0 }
 
 $links = @(

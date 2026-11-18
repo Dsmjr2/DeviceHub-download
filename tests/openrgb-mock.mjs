@@ -136,6 +136,12 @@ check(!old.running && /0\.7 or newer/.test(old.reason), `a protocol-2 OpenRGB is
 server.close();
 const closed = await orgb.status(true);
 check(!closed.running && closed.reason === 'not running', `closed OpenRGB reads as not running (${closed.reason})`);
+const dropSrv = net.createServer((s) => s.end());
+await new Promise((r) => dropSrv.listen(PORT, '127.0.0.1', r));
+const t0 = Date.now();
+const dropped = await orgb.status(true);
+dropSrv.close();
+check(!dropped.running && /closed/i.test(dropped.reason) && Date.now() - t0 < 2000, `mid-handshake socket close fails fast (${dropped.reason})`);
 fs.rmSync(tmp, { recursive: true, force: true });
 const real = fails.filter(Boolean);
 console.log(real.length ? `openrgb: FAILED: ${real.join('; ')}` : 'openrgb (stand-in server): all good');

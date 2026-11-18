@@ -35,7 +35,7 @@ async function strictOwner(root) {
 // graphics: depends on the screen and graphics card, so it stays as each PC has it unless graphics is picked
 export const GFX = /resolution|fullscreen|screen ?(width|height|mode|percentage)|screenmanager|window ?(pos|width|height|mode)|windowmode|maximized|selectmonitor|selecteddisplay|displaymode|monitorsettings|vsync|v_sync|hdr|frame ?rate|framerate|fps|benchmark|^sg\.|quality|upscal|dlss|fsr|xess|reflex|antialias|anti_lag|msaa|motion ?blur|bloom|lens ?flare|depth ?of ?field|dynamicresolution|shadow|texture|foliage|sharpness|gamma|brightness|exposure|render|graphics|gpu|rhi|adapter|refresh|aspect|ray ?trac|illumination|reflection|postprocess|post_effects|view ?distance|lod|anisotrop|occlusion|nanite|lumen|crt|maxqueuedframes|stretching|frame ?gen|maxscale|renderscale/i;
 // never carried: who the person is, this PC's own devices, what they agreed to, a game's progress markers
-export const NEVER = /accepted|consent|terms|disclaimer|conduct|token|auth|login|password|session|userid|user_id|accountid|steamid|installation|guid|deviceid|crash|telemetry|analytics|tutorial|haswatched|firsttime|version$|path$|^unity\.|^unity_connect|^bt-|puncloud|microphone|audioinputtype|audio_device|audio ?(input|output) ?device|(input|output) ?device|proxy|selectedsave|ip_country|remotenotification|^https?:|newlabelevents|lobbytype|default_change/i;
+export const NEVER = /accepted|consent|terms|disclaimer|conduct|token|auth|login|password|session|userid|user_id|accountid|steamid|installation|guid|deviceid|crash|telemetry|analytics|tutorial|haswatched|firsttime|(?<!con)version$|path$|^unity\.|^unity_connect|^bt-|puncloud|microphone(?!_?(volume|gain|level|boost))|audioinputtype|audio_device|devicehash|device_?id|adapter_?index|hostability|audio ?(input|output) ?device|(input|output) ?device|proxy|selectedsave|ip_country|remotenotification|^https?:|newlabelevents|lobbytype|default_change/i;
 
 const ue = (dir, sub = 'WindowsClient') => [
   { root: 'local', path: `${dir}/Saved/Config/${sub}/GameUserSettings.ini`, kind: 'ini' },
@@ -45,11 +45,11 @@ export const CATALOG = [
     { root: 'local', path: 'Discovery/Saved/SaveGames/EmbarkOptionSaveGame.sav', kind: 'embark' },
     { root: 'local', path: 'Discovery/Saved/SaveGames/EmbarkSaveGameClientKeyBindings.sav', kind: 'whole' },
     { root: 'local', path: 'Discovery/Saved/SaveGames/EmbarkSaveGameClientGamepadBindings.sav', kind: 'whole' },
-    { root: 'local', path: 'Discovery/Saved/Config/WindowsClient/GameUserSettings.ini', kind: 'whole', graphics: true }] },
+    { root: 'local', path: 'Discovery/Saved/Config/WindowsClient/GameUserSettings.ini', kind: 'ini', graphics: true }] },
   { name: 'ARC Raiders', exes: ['pioneergame.exe'], files: [
     { root: 'local', path: 'PioneerGame/Saved/SaveGames/EmbarkOptionSaveGame.sav', kind: 'embark' },
     { root: 'local', path: 'PioneerGame/Saved/SaveGames/EmbarkSaveGameClientKeyBindings.sav', kind: 'whole' },
-    { root: 'local', path: 'PioneerGame/Saved/Config/WindowsClient/GameUserSettings.ini', kind: 'whole', graphics: true }] },
+    { root: 'local', path: 'PioneerGame/Saved/Config/WindowsClient/GameUserSettings.ini', kind: 'ini', graphics: true }] },
   { name: 'WARDOGS', exes: ['wardogsclient-win64-shipping.exe'], files: [
     { root: 'local', path: 'Wardogs/Saved/SaveGames/EnhancedInputUserSettings.sav', kind: 'whole' }, ...ue('Wardogs')] },
   { name: 'RuneScape: Dragonwilds', exes: ['rsdragonwilds.exe', 'rsdragonwilds-win64-shipping.exe'], files: [
@@ -57,7 +57,8 @@ export const CATALOG = [
     { root: 'local', path: 'RSDragonwilds/Saved/Config/Windows/Engine.ini', kind: 'whole', graphics: true }] },
   // its keybinds sync through Steam Cloud; this file is mostly graphics (its volumes ride along with it)
   { name: 'HELLDIVERS 2', exes: ['helldivers2.exe'], files: [
-    { root: 'roaming', path: 'Arrowhead/Helldivers2/user_settings.config', kind: 'whole', graphics: true }] },
+    // (15 Nov 2026 bug hunt) its audio device numbers, graphics card and host id stay this PC's own (keep)
+    { root: 'roaming', path: 'Arrowhead/Helldivers2/user_settings.config', kind: 'whole', graphics: true, keep: ['audio_device', 'prev_audio_device', 'adapter_index', 'hostability'] }] },
   { name: 'PEAK', exes: ['peak.exe'], reg: 'Software\\LandCrab\\PEAK' },
   { name: 'How to Fish', exes: ['how to fish.exe'], reg: 'Software\\Dazed Games\\How to Fish' },
   { name: 'Super Battle Golf', exes: ['super battle golf.exe'], reg: 'Software\\Brimstone\\Super Battle Golf', files: [
@@ -71,12 +72,13 @@ export const CATALOG = [
   { name: 'The Binding of Isaac', exes: ['isaac-ng.exe'], files: [
     { root: 'home', path: 'Documents/My Games/Binding of Isaac Repentance+/options.ini', kind: 'ini' }] },
   { name: 'Halo Infinite', exes: ['haloinfinite.exe'], files: [
-    { root: 'local', path: 'HaloInfinite/Settings/SpecControlSettings.json', kind: 'whole', graphics: true },
-    { root: 'local', path: 'HaloInfinite/Settings/SpecControlMPSettings.json', kind: 'whole', graphics: true }] },
+    { root: 'local', path: 'HaloInfinite/Settings/SpecControlSettings.json', kind: 'json', graphics: true },
+    { root: 'local', path: 'HaloInfinite/Settings/SpecControlMPSettings.json', kind: 'json', graphics: true }] },
 ];
 const MAX_FILE = 2 * 1024 * 1024;
 const bare = (name) => String(name).replace(/_h\d+$/, '');   // Unity adds a hash to each name
-const isGfx = (k) => GFX.test(bare(k));
+// a field of view is a control even in a graphics section (Super Battle Golf's graphicsSettings.fieldOfView)
+const isGfx = (k) => GFX.test(bare(k)) && !/field ?of ?view|(^|_)fov$/i.test(bare(k).split('.').pop());
 const never = (k) => NEVER.test(bare(k)) || String(k).split('.').some((p) => NEVER.test(p));
 
 // ---------- the PC: folders and the registry (both replaceable, for tests) ----------
@@ -144,9 +146,9 @@ export function iniMerge(mine, theirs, graphics) {
   const eol = /\r\n/.test(mine ?? theirs) ? '\r\n' : '\n';
   const ok = pick(graphics);
   const src = iniParse(theirs).filter((l) => l.key && ok(l.key));
-  if (mine == null) {   // nothing here yet: the file's lines without the ones left out (the game fills in the rest)
-    return iniParse(theirs).filter((l) => !l.key || ok(l.key)).map((l) => l.raw).join(eol);
-  }
+  // nothing here yet: not made (15 Nov 2026 bug hunt: without its Version, which never carries, Unreal throws the
+  // file away; and the game was not started here). Start the game once, then load again.
+  if (mine == null) return null;
   const bom = mine.startsWith('\uFEFF') ? '\uFEFF' : '';
   const lines = iniParse(mine);
   const low = (s) => String(s).toLowerCase();
@@ -241,6 +243,21 @@ export async function capture({ roots = realRoots(), reg = realReg } = {}) {
 }
 
 // ---------- what loading would change here ----------
+// text as the game wrote it: UTF-16 with its byte-order mark (Unreal, once a value is not plain ASCII), else UTF-8
+// (15 Nov 2026 bug hunt: a UTF-16 ini read as UTF-8 was written back as garbage)
+const decodeText = (buf) => (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe ? { text: buf.subarray(2).toString('utf16le'), utf16: true } : { text: buf.toString('utf8'), utf16: false });
+const encodeText = (text, utf16) => (utf16 ? Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, 'utf16le')]) : Buffer.from(text, 'utf8'));
+// a whole file with this PC's own lines for keys that name its devices ("key = value", one line each)
+function keepOwn(theirs, mine, keys) {
+  let text = theirs.toString('utf8');
+  const own = mine.toString('utf8');
+  for (const k of keys) {
+    const re = new RegExp(`^[ \\t]*${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[ \\t]*=.*$`, 'm');
+    const line = own.match(re)?.[0];
+    text = line != null ? text.replace(re, () => line) : text.replace(new RegExp(`${re.source}\\r?\\n?`, 'm'), '');
+  }
+  return Buffer.from(text, 'utf8');
+}
 // the writes for one game: [{ what: 'file'|'reg', graphics, path|name, text/bytes|type+data }]
 async function writesFor(g, saved, graphics, { roots, reg }) {
   const out = [];
@@ -252,14 +269,15 @@ async function writesFor(g, saved, graphics, { roots, reg }) {
     let mine = null;
     try { mine = fs.readFileSync(p); } catch {}
     let next;
-    if (f.kind === 'whole') next = theirs;
+    if (f.kind === 'whole') next = f.keep && mine ? keepOwn(theirs, mine, f.keep) : theirs;
     else if (f.kind === 'embark') { next = embarkMerge(mine, theirs, graphics); if (!next) continue; }
     else {
       let text;
-      try { text = f.kind === 'ini' ? iniMerge(mine?.toString('utf8') ?? null, theirs.toString('utf8'), graphics) : jsonMerge(mine?.toString('utf8') ?? null, theirs.toString('utf8'), graphics); } catch { continue; }
+      const m = mine ? decodeText(mine) : null, t = decodeText(theirs);
+      try { text = f.kind === 'ini' ? iniMerge(m?.text ?? null, t.text, graphics) : jsonMerge(m?.text ?? null, t.text, graphics); } catch { continue; }
       if (text == null) continue;
-      if (f.kind === 'json' && mine && JSON.stringify(parseExact(mine.toString('utf8'))) === JSON.stringify(parseExact(text))) continue;
-      next = Buffer.from(text, 'utf8');
+      if (f.kind === 'json' && mine && JSON.stringify(parseExact(m.text)) === JSON.stringify(parseExact(text))) continue;
+      next = encodeText(text, m ? m.utf16 : t.utf16);
     }
     if (next.length > MAX_FILE || (mine && mine.equals(next))) continue;
     out.push({ what: 'file', path: p, bytes: next, graphics: !!f.graphics });
@@ -311,6 +329,8 @@ export async function apply(saved, picks, { roots = realRoots(), reg = realReg, 
     const s = (Array.isArray(saved) ? saved : []).find((x) => x?.name === p?.name);
     if (!g || !s) continue;
     if (g.exes.some((x) => running.has(x))) { lines.push({ name: g.name, text: 'running: close it, then load again' }); failed++; continue; }
+    // (15 Nov 2026 bug hunt) only the page checked this; a game not here is never written (its folders were made)
+    if (!here(g, roots, g.reg ? !!(await reg.read(g.reg)) : false)) { lines.push({ name: g.name, text: 'not on this PC: start it once here, then load again' }); continue; }
     const writes = await writesFor(g, s, !!p.graphics, { roots, reg });
     if (!writes.length) continue;
     // back up everything about to change, before the first write

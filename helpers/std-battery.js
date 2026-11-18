@@ -48,7 +48,7 @@ const USAGE_NAMES = {
   '133:44': 'capacityMode', '133:208': 'acPresent',
 };
 
-const hex4 = (n) => (n == null ? null : Number(n).toString(16).toUpperCase().padStart(4, '0'));
+const hex4 = (n) => (n == null || n === '' || !Number.isFinite(Number(n)) ? null : Number(n).toString(16).toUpperCase().padStart(4, '0'));
 
 // "VID&02045E_PID&0B13" (BTHLEDEVICE child: 2 digits source + 4 vid) or "VID&0001004C_PID&2014" (BTHENUM child: 4 + 4).
 // Source 1 = a Bluetooth SIG company id, 2 = a USB vendor id (the Device ID profile's VendorIDSource).
@@ -79,8 +79,10 @@ function parseHid(json) {
   const cols = json?.hid?.collections; const list = Array.isArray(cols) ? cols : cols ? [cols] : [];
   return list.map((c) => {
     const m = /VID_([0-9A-F]{4})&PID_([0-9A-F]{4})/i.exec(c.instanceId || '') || /_VID&[0-9A-F]{2}([0-9A-F]{4})_PID&([0-9A-F]{4})/i.exec(c.instanceId || '');
-    const fields = (Array.isArray(c.fields) ? c.fields : c.fields ? [c.fields] : []).map((f) => ({
-      ...f, name: USAGE_NAMES[`${f.usagePage}:${f.usage}`] || `0x${f.usagePage.toString(16)}/0x${f.usage.toString(16)}`,
+    const fields = (Array.isArray(c.fields) ? c.fields : c.fields ? [c.fields] : []).filter(Boolean).map((f) => ({
+      ...f,
+      name: USAGE_NAMES[`${f.usagePage}:${f.usage}`]
+        || (Number.isFinite(f.usagePage) && Number.isFinite(f.usage) ? `0x${f.usagePage.toString(16)}/0x${f.usage.toString(16)}` : 'unknown'),
     }));
     return {
       instanceId: c.instanceId, name: c.name || null, vid: m ? m[1].toUpperCase() : null, pid: m ? m[2].toUpperCase() : null,
@@ -98,10 +100,11 @@ function parseHid(json) {
 
 // One field out of a report buffer (byte 0 = report id, as Windows hands it): little-endian bits at bitOffset.
 function decodeField(field, report) {
-  if (!field || field.bitOffset == null || !report) return null;
+  if (!field || !Number.isInteger(field.bitOffset) || field.bitOffset < 0 || !report) return null;
   const bytes = report instanceof Uint8Array ? report : Uint8Array.from(report);
   if (field.reportId && bytes[0] !== field.reportId) return null;
   const len = field.bitLength || field.bitSize || 1;
+  if (!Number.isInteger(len) || len <= 0 || len > 53) return null;
   let v = 0;
   for (let i = 0; i < len; i++) {
     const bit = field.bitOffset + i;
@@ -115,11 +118,11 @@ function decodeField(field, report) {
 // A battery value -> percent: scaled over its logical range, as Linux's hid-input battery code does (0..100 stays as is).
 // remainingCapacity in mAh-like units needs fullChargeCapacity: pass it as `full`.
 function toPercent(field, value, full) {
-  if (value == null || !field) return null;
+  if (!Number.isFinite(value) || !field) return null;
   if (field.logicalMax != null && field.logicalMin != null && value < field.logicalMin) return null;   // null / out of range
-  if (field.name === 'remainingCapacity' && full > 0) return Math.round(Math.max(0, Math.min(100, (value / full) * 100)));
+  if (field.name === 'remainingCapacity' && Number.isFinite(full) && full > 0) return Math.round(Math.max(0, Math.min(100, (value / full) * 100)));
   const lo = field.logicalMin ?? 0, hi = field.logicalMax ?? 100;
-  if (hi <= lo) return null;
+  if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) return null;
   return Math.round(Math.max(0, Math.min(100, ((value - lo) * 100) / (hi - lo))));
 }
 
@@ -143,11 +146,10 @@ function cached(kind, every, parse, fresh) {
   if (c.pending) return c.pending;
   if (c.value && fresh && Date.now() - c.at < 5000) return Promise.resolve(c.value);   // "fresh" still never more than every 5 s
   c.pending = read1(kind).then((j) => {
-    c.pending = null;
     if (j.error) return c.value || { error: j.error, list: [] };   // keep the last good reading
     c.value = { at: Date.now(), list: parse(j) }; c.at = c.value.at;
     return c.value;
-  });
+  }).finally(() => { c.pending = null; });
   return c.pending;
 }
 

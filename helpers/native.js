@@ -18,10 +18,13 @@ try { CUE_DLL = path.join(path.dirname(require.resolve('cue-sdk')), 'prebuilds',
 // the sources it was built from (helpers/bin/helper-sources.sha256); while they match it is never rebuilt. A copy
 // without that file (a development copy) rebuilds when a source is newer than the exe, as before (helpers/helper-sources.js).
 // (dir and run are for tests/prebuilt-helper.mjs: another helpers folder, a stand-in for the compiler; returns the mode)
+// tests only (tests/native-stale-helper.mjs): stands in for the build; csharpStale: see start()
+let buildForTest = null, csharpStale = false;
 const runBuildPs1 = (dir) => execFileSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(dir, 'native', 'build.ps1')], { windowsHide: true, stdio: 'ignore', timeout: 120000 });
 function build(dir = __dirname, run = runBuildPs1) {
+  if (buildForTest) { buildForTest(); csharpStale = false; return 'test'; }
   const d = helperSources.decide(dir);
-  if (!d.build) return d.mode;
+  if (!d.build) { csharpStale = false; return d.mode; }
   try {
     run(dir);
   } catch (e) {
@@ -35,6 +38,7 @@ function build(dir = __dirname, run = runBuildPs1) {
     throw e;
   }
   if (d.mode === 'changed') { try { helperSources.recordHash(dir); } catch {} }
+  csharpStale = false;
   return d.mode;
 }
 
@@ -69,14 +73,28 @@ let buildFailedAt = 0, goneLogged = false, helperChoiceLogged = null, activeKind
 // (13 Nov 2026 bug hunt) the Rust helper on trial: each time it stops by itself or cannot start; selectHelper then
 // runs C# for the rest of this run, so a broken Rust build does not leave every device answering GONE
 const rustCrashes = [];
+// (15 Nov 2026, work map job 5) once it fell back, C# stays until DeviceHub restarts, as the message says: before, the
+// next helper start after 10 minutes (the crashes no longer recent) picked the broken Rust helper again. Only the
+// last 10 minutes of stops are kept.
+let rustFellBack = null;
+const noteRustCrash = () => { const now = Date.now(); rustCrashes.push(now); while (rustCrashes.length && now - rustCrashes[0] > 600000) rustCrashes.shift(); };
+// tests only (tests/native-watchdog.mjs): picks the helper instead of selectHelper, so the Rust crash path can be run
+// with a stand-in script; never set in DeviceHub itself
+let selectForTest = null;
+// (15 Nov 2026 review) the C# helper kept after a failed rebuild was built from earlier sources, which may not know the
+// request deadline (@deadline=, work map job 1): it would answer every request "ERR unknown command". Its requests go
+// without the deadline until a build succeeds. (The Rust helper is never run stale: selectHelper checks its hash.)
+let deadlines = true;
 function start() {
   if (proc) return;
-  const choice = rustSources.selectHelper({ dir: __dirname, crashes: rustCrashes });
+  const standIn = process.env.DEVICEHUB_HELPER_JS;
+  const choice = standIn ? { kind: 'standin', exe: standIn, reason: 'DEVICEHUB_HELPER_JS' } : (rustFellBack || (selectForTest || rustSources.selectHelper)({ dir: __dirname, crashes: rustCrashes }));
+  if (choice.crashed) rustFellBack = choice;
   if (choice.crashed && !problemsSoFar.some(([c]) => c === 'rust-helper-fallback')) problem('rust-helper-fallback', choice.reason);
   const useRust = choice.kind === 'rust';
   activeKind = choice.kind;
   const targetExe = choice.exe;
-  if (!useRust && Date.now() - buildFailedAt > 600000) {
+  if (choice.kind === 'csharp' && Date.now() - buildFailedAt > 600000) {
     try {
       build(); buildFailedAt = 0;
       // still no exe after a build (1 Nov 2026, a new-setup audit: antivirus removes it): without this every request
@@ -85,25 +103,34 @@ function start() {
         buildFailedAt = Date.now();
         if (!goneLogged) { goneLogged = true; console.log('[helper] the helper was removed after it was built (antivirus?); trying again in 10 minutes'); problem('helper-build', 'the helper was removed after it was built (antivirus?)'); }
       }
-    } catch (e) { buildFailedAt = Date.now(); console.log(e.fallback ? `[helper] ${e.message}` : `[helper] could not be built: ${String(e.message).split('\n')[0]}`); problem('helper-build', e.fallback ? e.message : `could not be built: ${String(e.message).split('\n')[0]}`); }
+    } catch (e) { buildFailedAt = Date.now(); if (e.fallback) csharpStale = true; console.log(e.fallback ? `[helper] ${e.message}` : `[helper] could not be built: ${String(e.message).split('\n')[0]}`); problem('helper-build', e.fallback ? e.message : `could not be built: ${String(e.message).split('\n')[0]}`); }
   }
   if (!fs.existsSync(targetExe)) return;
   const logKey = `${choice.kind}:${choice.reason}`;
   if (helperChoiceLogged !== logKey) {
     helperChoiceLogged = logKey;
-    console.log(`[helper] running ${useRust ? 'Rust' : 'C#'} helper (${choice.reason})`);
+    console.log(`[helper] running ${standIn ? 'stand-in' : useRust ? 'Rust' : 'C#'} helper (${choice.reason})`);
   }
-  const p = spawn(targetExe, CUE_DLL ? [CUE_DLL] : [], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
+  const p = standIn || /\.m?js$/i.test(targetExe)
+    ? spawn(process.execPath, [targetExe], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true })
+    : spawn(targetExe, CUE_DLL ? [CUE_DLL] : [], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
   proc = p; buf = '';
+  deadlines = !(choice.kind === 'csharp' && csharpStale);
   // a write to a helper that has just stopped fails with EPIPE; unhandled, that took the whole server down (19 Oct
   // 2026, 20:26). The helper's exit is handled below (waiters answered "GONE", the next request starts a new one).
   p.stdin.on('error', () => {});
   // the helper could not start (not built: no C# compiler on this PC): DeviceHub keeps running without it
-  p.on('error', (e) => { if (useRust) rustCrashes.push(Date.now()); console.log(`[helper] could not start: ${e.message}`); problem('helper-start', `could not start: ${e.message}`); if (proc === p) { proc = null; for (const w of waiters.values()) w('GONE'); waiters.clear(); } });
+  p.on('error', (e) => { if (useRust) noteRustCrash(); console.log(`[helper] could not start: ${e.message}`); problem('helper-start', `could not start: ${e.message}`); if (proc === p) { proc = null; for (const w of waiters.values()) w('GONE'); waiters.clear(); } });
   p.stdout.setEncoding('utf8');
+  let bufWarned = false;
   p.stdout.on('data', (d) => {
     if (proc !== p) return;
     buf += d;
+    if (buf.length > 1048576 && !buf.includes('\n')) {
+      buf = '';
+      if (!bufWarned) { bufWarned = true; console.log('[helper] dropped oversized stdout chunk without newline'); }
+      return;
+    }
     let i;
     while ((i = buf.indexOf('\n')) >= 0) {
       const l = buf.slice(0, i).replace(/\r$/, ''); buf = buf.slice(i + 1);
@@ -125,7 +152,7 @@ function start() {
     proc = null;
     // stopped by itself (or by the watchdog), not by stop(): the third time in an hour is a problem report
     exits = exits.filter((t) => Date.now() - t < 3600000); exits.push(Date.now());
-    if (useRust) rustCrashes.push(Date.now());
+    if (useRust) noteRustCrash();
     if (exits.length === 3) problem('helper-restarts', `the helper stopped ${exits.length} times in the last hour (last exit code ${code})`);
     for (const w of waiters.values()) w('GONE');
     waiters.clear();
@@ -159,6 +186,7 @@ const callCounts = () => ({ ...calls });
 
 // One request on one channel; resolves with the reply text, or 'TIMEOUT'.
 function request(chan, cmd, ms = 8000) {
+  const timeoutMs = Number.isFinite(ms) && ms > 0 ? ms : 8000;
   // (9 Nov 2026, security audit run-2) one request per line: a channel name with a space or a line break, or a command
   // with a line break, would be read by the helper as more than one request, so it is refused before anything is written
   if (/\s/.test(String(chan)) || /[\r\n]/.test(String(cmd))) { console.log('[native] refused a request with a space or line break in its channel or a line break in its command'); return Promise.resolve('ERR refused: line break in a helper request'); }
@@ -179,20 +207,32 @@ function request(chan, cmd, ms = 8000) {
     const t = setTimeout(() => {
       waiters.delete(key); resolve('TIMEOUT');
       if (chan === 'watchdog') return;
-      const x = timeouts.get(chan) || { n: 0, since: Date.now() - ms };
+      const x = timeouts.get(chan) || { n: 0, since: Date.now() - timeoutMs };
       x.n++; timeouts.set(chan, x);
       if (x.n >= 3 && Date.now() - x.since > 60000) restartFrozen(`the ${chan.split(':')[0]} channel stopped answering (${x.n} timeouts in a row)`);
-    }, ms);
+    }, timeoutMs);
     waiters.set(key, (v) => { clearTimeout(t); timeouts.delete(chan); resolve(v); });
     // no helper (it could not be built or started): answer at once instead of throwing
     if (!proc || !proc.stdin.writable) { waiters.delete(key); clearTimeout(t); resolve('GONE'); return; }
-    try { proc.stdin.write(`${key} ${cmd}\n`); } catch { waiters.delete(key); clearTimeout(t); resolve('GONE'); }
+    const wireCmd = String(cmd) === 'CLOSE' || !deadlines ? cmd : `@deadline=${Date.now() + timeoutMs} ${cmd}`;
+    try { proc.stdin.write(`${key} ${wireCmd}\n`); } catch { waiters.delete(key); clearTimeout(t); resolve('GONE'); }
   });
 }
 
 const onEvent = (chan, fn) => { if (fn) eventHandlers.set(chan, fn); else eventHandlers.delete(chan); };
 const onExit = (fn) => exitHandlers.add(fn);
-function stop() { const p = proc; proc = null; if (p) p.stdin.end(); }
+// (15 Nov 2026, work map job 4) proc is cleared first, so the exit handler above skips this process: what was still
+// waiting answers GONE here at once (it waited 8-15 s for TIMEOUT before), and the exit listeners (hid-host marks its
+// devices unplugged) hear it, as for any other stop. Not counted as a crash.
+function stop() {
+  const p = proc;
+  proc = null;
+  if (!p) return;
+  try { p.stdin.end(); } catch {}
+  for (const w of waiters.values()) w('GONE');
+  waiters.clear();
+  for (const fn of exitHandlers) { try { fn(); } catch {} }
+}
 
 // is the helper running now (helpers/helper-reads.js asks it only then: a read never starts or builds it, so a test or
 // script that reads the PC does not start a helper of its own)
@@ -200,4 +240,5 @@ const running = () => !!(proc && proc.stdin.writable);
 const helperKind = () => activeKind || rustSources.selectHelper({ dir: __dirname }).kind;
 // the helper's process id (Settings > Health measures it when the helper does not report its own memory: the Rust one)
 const helperPid = () => (proc && proc.stdin.writable ? proc.pid : null);
-module.exports = { request, onEvent, onDeviceChange, onExit, onProblem, stop, start, heartbeat, callCounts, running, buildHelper: build, helperKind, helperPid };
+const _test = { setSelect(fn) { selectForTest = fn; }, setBuild(fn) { buildForTest = fn; } };
+module.exports = { request, onEvent, onDeviceChange, onExit, onProblem, stop, start, heartbeat, callCounts, running, buildHelper: build, helperKind, helperPid, _test };

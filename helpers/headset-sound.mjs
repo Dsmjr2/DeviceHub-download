@@ -66,5 +66,49 @@ export function headsetSound({ call, log, readSettings, now = Date.now, wait = (
     return move(dev);
   }
 
-  return { seen, move };
+  // The HS80's cable plugged in or pulled out (16 Nov 2026, Shawn: "All I want is to not have to physically switch my
+  // mic when I plug it in"). The headset stays on through a plug, so seen() never fires; Windows' device-change
+  // messages call this instead. Only the default speaker and mic move (to the cable, or back to the receiver): nothing
+  // is disabled and nothing polls (audio-follow.js did both and was switched off on 19 Oct). The first look only learns
+  // where the cable is; a change moves the defaults once, so a pick by hand in between is left alone.
+  let onCable = null, cableBusy = false;
+  async function cable() {
+    if (cableBusy) return null;
+    cableBusy = true;
+    try {
+      let set = {};
+      try { set = readSettings() || {}; } catch {}
+      if (set.headsetSoundSwitch === false) return null;
+      // Windows lists the cable's sound devices a moment after its device message: a few looks before "no change"
+      let r = null, now = onCable;
+      for (const ms of tries) {
+        if (ms) await wait(ms);
+        try { r = await call('hs80-endpoints', {}); } catch { r = null; }
+        if (!r) continue;
+        now = (r.endpoints || []).some((e) => e.wired && e.state === 1);
+        if (onCable === null || now !== onCable) break;
+      }
+      if (!r) return null;
+      const was = onCable;
+      onCable = now;
+      if (was === null || was === now) return null;
+      const moved = [], failed = [];
+      let name = null;
+      for (const [i, flow] of FLOWS.entries()) {
+        const live = (r.endpoints || []).filter((e) => e.flow === flow && e.state === 1);
+        const w = now ? live.find((e) => e.wired) : live.find((e) => e.wireless);
+        if (!w) continue;
+        name = name || w.name;
+        if ((r.defaults || {})[flow] === w.id) continue;
+        let ok = false;
+        try { ok = (await call('set-default', { id: w.id, flow: i })).now === w.id; } catch {}
+        (ok ? moved : failed).push(w);
+      }
+      if (failed.length) log(`Could not move sound to ${name}`, 'bad');
+      else if (moved.length) log(`Sound moved to ${name}`, 'good');
+      return { moved: moved.map((e) => e.id), failed: failed.map((e) => e.id) };
+    } finally { cableBusy = false; }
+  }
+
+  return { seen, move, cable };
 }

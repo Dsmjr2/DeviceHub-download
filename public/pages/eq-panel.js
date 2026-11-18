@@ -240,7 +240,7 @@ function eqCard(redraw) {
           }, { kind: 'ghost small', ic: 'trash', disabled: ui.saving }) : null),
         APO() ? h('div', {}, h('div', { class: 'srow', style: { marginTop: '10px' } },
           h('div', {}, h('div', { class: 'srow-title' }, 'Prevent distortion'), h('div', { class: 'srow-desc' }, 'No crackle. Slightly quieter.')),
-          h('div', { class: 'srow-ctl' }, toggle({ value: ui.eq.headroom, label: 'Prevent distortion', onCommit: async (on) => { try { ui.eq = await env.api('/api/eq/headroom', { on }); rerender(); } catch (e) { toast('Not changed', 'bad', { detail: e.message }); } } }))),
+          h('div', { class: 'srow-ctl' }, toggle({ value: ui.eq.headroom, label: 'Prevent distortion', onCommit: async (on) => { try { ui.eq = await env.api('/api/eq/headroom', { on }); rerender(); } catch (e) { toast('Not changed', 'bad', { detail: e.message }); throw e; } } }))),
           // Reset sound to normal (22 Oct 2026, Shawn: "make a revert to default in the app so he can easily do it"):
           // every effect off, asked once in place; presets are kept
           h('div', { class: 'srow' },
@@ -258,8 +258,10 @@ function eqCard(redraw) {
 // and the other speakers' EQ. Every change is written at once (helpers/eqapo.js setExtras).
 async function setExtras(change) {
   if (isDemo()) { Object.assign(ui.eq.extras, change); rerender(); return; }
-  try { ui.eq = await env.api('/api/eq/extras', change); ui.at = Date.now(); rerender(); } catch (e) { toast('Not changed', 'bad', { detail: e.message }); }
+  try { ui.eq = await env.api('/api/eq/extras', change); ui.at = Date.now(); rerender(); return true; } catch (e) { toast('Not changed', 'bad', { detail: e.message }); return false; }
 }
+// a switch's commit: fails when the change failed, so the switch goes back (15 Nov 2026 bug hunt: it stayed flipped)
+const mustExtras = async (change) => { if (!(await setExtras(change))) throw new Error('not changed'); };
 const num = (v, w, onSet, title) => {
   const el = h('input', { class: 'text eq-num', type: 'text', inputmode: 'decimal', value: String(v), title, style: { width: w } });
   el.addEventListener('change', () => onSet(Number(el.value.replace(',', '.').replace(/[^0-9.+-]/g, ''))));
@@ -285,21 +287,21 @@ export function soundTools() {
   return card([h('h2', {}, 'Sound tools')],
     // AutoEq's measurement of the HS80: offered for an HS80 only (another headset would need its own measurement)
     !ui.eq.headsetModel || ui.eq.headsetModel === 'HS80' ? row('Natural sound', 'Best with Pure Direct.',
-      toggle({ value: x.correction, label: 'Natural sound', onCommit: (on) => setExtras({ correction: on }) })) : null,
+      toggle({ value: x.correction, label: 'Natural sound', onCommit: (on) => mustExtras({ correction: on }) })) : null,
     row('Extra filters', null, null),
     filterRows(x),
     row('Loudness boost', 'Fuller sound when quiet.',
-      toggle({ value: x.loudness, label: 'Loudness boost', onCommit: (on) => setExtras({ loudness: on }) })),
+      toggle({ value: x.loudness, label: 'Loudness boost', onCommit: (on) => mustExtras({ loudness: on }) })),
     row('Balance', 'Louder left or right.',
       slider({ value: x.balance, min: -12, max: 12, step: 0.5, format: balanceText, live: isDemo() ? null : (v) => env.api('/api/eq/extras', { balance: v }).catch(() => {}), onCommit: (v) => setExtras({ balance: v }) })),
     h('h3', { class: 'eq-sub' }, 'Mic'),
     ui.eq.micFound ? null : h('p', { class: 'faint', style: { margin: '0 0 6px' } }, 'Headset mic not connected.'),
     row('Cut rumble', 'Removes hum and bumps.',
-      toggle({ value: x.micRumble, label: 'Cut rumble', onCommit: (on) => setExtras({ micRumble: on }) })),
+      toggle({ value: x.micRumble, label: 'Cut rumble', onCommit: (on) => mustExtras({ micRumble: on }) })),
     row('Voice clarity', 'Easier to understand.',
-      toggle({ value: x.micClarity, label: 'Voice clarity', onCommit: (on) => setExtras({ micClarity: on }) })),
+      toggle({ value: x.micClarity, label: 'Voice clarity', onCommit: (on) => mustExtras({ micClarity: on }) })),
     row('Smooth highs', 'Tames hiss and sharp sounds.',
-      toggle({ value: !!x.micDeEss, label: 'Smooth highs', onCommit: (on) => setExtras({ micDeEss: on }) })),
+      toggle({ value: !!x.micDeEss, label: 'Smooth highs', onCommit: (on) => mustExtras({ micDeEss: on }) })),
     row('Even volume', ui.eq.levelerAvailable ? 'Turn off Discord\'s auto gain.' : 'Needs ReaPlugs installed.',
-      toggle({ value: !!x.micLevel && ui.eq.levelerAvailable, disabled: !ui.eq.levelerAvailable, label: 'Even volume', onCommit: (on) => setExtras({ micLevel: on }) })));
+      toggle({ value: !!x.micLevel && ui.eq.levelerAvailable, disabled: !ui.eq.levelerAvailable, label: 'Even volume', onCommit: (on) => mustExtras({ micLevel: on }) })));
 }

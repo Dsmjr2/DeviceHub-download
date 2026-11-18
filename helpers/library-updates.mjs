@@ -137,7 +137,7 @@ export function cachedEntries(root = ROOT) {
     const mark = readJson(path.join(cacheRoot(root), name, MARKER));
     if (!mark) continue;
     const meta = readJson(path.join(cacheRoot(root), name, 'device.json'), {}) || {};
-    out.push({ name, version: mark.version, sha256: mark.sha256, bundleBuiltAt: mark.bundleBuiltAt, vendor: meta.vendor, product: meta.product, kind: meta.kind, status: meta.status });
+    out.push({ name, version: mark.version, sha256: mark.sha256, metaSha256: mark.metaSha256, bundleBuiltAt: mark.bundleBuiltAt, vendor: meta.vendor, product: meta.product, kind: meta.kind, status: meta.status });
   }
   return out;
 }
@@ -165,19 +165,26 @@ async function download(url, timeoutMs, since = null) {
 
 // writes the good entries to library-cache\<name>\ (staged, then swapped in one folder at a time); removes cached
 // entries a newer signed bundle no longer lists; keeps the last good copy of an entry refused in this bundle
-async function writeCache(root, v) {
+async function writeCache(root, v, existingEntries = null) {
   const cache = cacheRoot(root);
   await fsp.mkdir(cache, { recursive: true });
+  // clean up any leftover staging/backup directories from an interrupted write
+  try {
+    for (const d of await fsp.readdir(cache, { withFileTypes: true })) {
+      if (d.isDirectory() && (d.name.startsWith('.incoming-') || d.name.startsWith('.old-'))) {
+        await fsp.rm(path.join(cache, d.name), { recursive: true, force: true }).catch(() => {});
+      }
+    }
+  } catch {}
   const stamp = `${Date.now()}-${process.pid}`;
   const stage = path.join(cache, `.incoming-${stamp}`);
   await fsp.mkdir(stage);
   const changed = [];
   try {
-    const before = new Map(cachedEntries(root).map((e) => [e.name, e]));
+    const before = new Map((existingEntries || cachedEntries(root)).map((e) => [e.name, e]));
     for (const e of v.entries) {
       const old = before.get(e.name);
-      const markOld = readJson(path.join(cache, e.name, MARKER));
-      if (old && markOld?.sha256 === e.sha256 && markOld?.metaSha256 === e.metaSha256) continue;  // unchanged
+      if (old && old.sha256 === e.sha256 && old.metaSha256 === e.metaSha256) continue;  // unchanged
       const d = path.join(stage, e.name);
       await fsp.mkdir(d);
       const file = driverFile(e.mjs);
@@ -233,7 +240,8 @@ async function doCheck(opts = {}) {
   let pem;
   try { pem = await fsp.readFile(publicKeyFile, 'utf8'); } catch { return fail('the publisher\'s public key (helpers/release-public-key.pem) is missing, so no library update is believed'); }
   // a conditional fetch only when the bundle those headers name is the one in the cache
-  const since = s.etagFor && s.etagFor === s.bundleBuiltAt && cachedEntries(root).length ? { etag: s.etag || null, lastModified: s.lastModified || null } : null;
+  const cached = cachedEntries(root);
+  const since = s.etagFor && s.etagFor === s.bundleBuiltAt && cached.length ? { etag: s.etag || null, lastModified: s.lastModified || null } : null;
   let got;
   try { got = await download(url, timeoutMs, since); } catch (e) { return fail(`could not fetch the library bundle (${e.name === 'TimeoutError' || e.name === 'AbortError' ? 'timed out' : e.cause?.code || e.message}); the cached entries stay`); }
   if (got.notModified) {
@@ -242,16 +250,16 @@ async function doCheck(opts = {}) {
     delete next.lastError;
     try { await writeState(root, next); } catch {}
     const refreshed = await refreshCopies(root, log, now, opts);
-    return { ...status(root), ok: true, unchanged: true, changed: [], removed: [], refreshed };
+    return { ...status(root, cached), ok: true, unchanged: true, changed: [], removed: [], refreshed };
   }
   const b = got.bundle;
   const v = verifyBundle(b, pem);
   if (!v.ok) return fail(`the library bundle was refused: ${v.error}; the cached entries stay`);
   // never go back to an older bundle (a replayed old one could bring back a withdrawn driver)
-  const newest = [s.bundleBuiltAt, ...cachedEntries(root).map((e) => e.bundleBuiltAt)].filter(Boolean).sort((x, y) => Date.parse(x) - Date.parse(y)).at(-1);
+  const newest = [s.bundleBuiltAt, ...cached.map((e) => e.bundleBuiltAt)].filter(Boolean).sort((x, y) => Date.parse(x) - Date.parse(y)).at(-1);
   if (newest && Date.parse(b.builtAt) < Date.parse(newest)) return fail(`the library bundle was refused: it is older (${b.builtAt}) than the one already cached (${newest})`);
   let done;
-  try { done = await writeCache(root, v); } catch (e) { return fail(`the library cache could not be written (${e.message}); the cached entries stay`); }
+  try { done = await writeCache(root, v, cached); } catch (e) { return fail(`the library cache could not be written (${e.message}); the cached entries stay`); }
   next.lastSuccessAt = at;
   next.bundleBuiltAt = b.builtAt;
   next.refused = v.refused;
@@ -318,7 +326,7 @@ export function schedule({ root = ROOT, log = () => {}, everyMs = 60 * 60 * 1000
   return true;
 }
 
-export function status(root = ROOT) {
+export function status(root = ROOT, entries = null) {
   const s = readState(root);
   const last = Date.parse(s.lastCheckAt || '');
   return {
@@ -330,7 +338,7 @@ export function status(root = ROOT) {
     nextCheckAt: Number.isNaN(last) ? null : new Date(last + EVERY_MS).toISOString(),
     lastReason: s.lastReason || null,
     bundleBuiltAt: s.bundleBuiltAt || null,
-    entries: cachedEntries(root),
+    entries: entries || cachedEntries(root),
     lastChange: s.lastChange || null,
     errors: s.errors || [],
     refused: s.refused || [],

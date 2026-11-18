@@ -86,9 +86,20 @@ async function hs80Pick() {
   const other = list && chosenOther(list, pick, { asGeneric: forceGeneric() });
   if (other) throw gone(`switching to ${other.device || other.usb}`);
 }
-// a sidetone control's own range: percent as loudness, 100% = its top (the HS80's is -42..+4 dB)
-const pctOf = (db, min, max) => (db <= min ? 0 : Math.max(0, Math.min(100, Math.round(100 * 10 ** ((db - max) / 20)))));
-const dbOf = (pct, min, max) => (pct <= 0 ? min : Math.max(min, Math.min(max, max + 20 * Math.log10(pct / 100))));           // direct mode: 'wired' (USB cable) or 'receiver'  // from the last direct reading; iCUE's SDK does not report it
+// a sidetone control's own range: percent as loudness from its bottom (0%) to its top (100%), so every percent has a
+// level of its own and comes back as the same percent (15 Nov 2026 bug hunt: on a -20..0 dB control 2-10% all wrote
+// the bottom and then failed "Windows reads 0% after setting 5%"). The HS80 keeps its own scale (sidetonePct below).
+const floorOf = (min, max) => 10 ** ((min - max) / 20);
+export const pctOf = (db, min, max) => {
+  if (db <= min) return 0;
+  const f = floorOf(min, max);
+  return Math.max(0, Math.min(100, Math.round((100 * (10 ** ((db - max) / 20) - f)) / (1 - f))));
+};
+export const dbOf = (pct, min, max) => {
+  if (pct <= 0) return min;
+  const f = floorOf(min, max);
+  return Math.max(min, Math.min(max, max + 20 * Math.log10(f + ((1 - f) * Math.min(100, pct)) / 100)));
+};           // direct mode: 'wired' (USB cable) or 'receiver'  // from the last direct reading; iCUE's SDK does not report it
 
 const ep = (flow) => endpoints.find((e) => e.flow === flow);
 let sidetone = null;  // { db, on, min, max } from Windows
@@ -267,7 +278,11 @@ const adapter = {
     if (key === 'sidetone') {
       if (!(Number.isInteger(value) && value >= 0 && value <= 100)) throw new Error('sidetone must be 0-100');
       const g = generic ? { usb: generic.usb } : {};
-      const after = await call('sidetone-set', { db: generic && sidetone ? dbOf(value, sidetone.min, sidetone.max) : sidetoneDb(value), ...g });
+      // a headset other than the HS80 goes by its own control's range, read first when there is no reading yet (it
+      // was set with the HS80's formula then)
+      let range = sidetone;
+      if (generic && !range) { range = (await call('sidetone', g)).sidetone; if (!range) throw new Error('no sidetone control in Windows for this headset'); }
+      const after = await call('sidetone-set', { db: generic ? dbOf(value, range.min, range.max) : sidetoneDb(value), ...g });
       const got = generic ? pctOf(after.db, after.min, after.max) : sidetonePct(after.db);
       if (Math.abs(got - value) > 1) throw new Error(`Windows reads ${got}% after setting ${value}%`);
       return value;

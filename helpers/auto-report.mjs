@@ -264,7 +264,7 @@ export async function sendNow({ fingerprint: fp, title, body, version, channel =
   if (first === 'ok') { inFlight.delete(fp); options.log(`support request sent (${fp})`); return { sent: true, payload }; }
   if (first === 'drop') { inFlight.delete(fp); free(); options.log(`support request not sent (${fp}): the relay turned it down`); return { sent: false, fallback: true, why: 'the relay refused it', payload }; }
   quiet((async () => {
-    for (const ms of options.retryMs) { await wait(ms); const r = await post(url, payload); if (r === 'ok') { options.log(`support request sent (${fp})`); return; } if (r === 'drop') break; }
+    for (const ms of options.retryMs) { await wait(ms); if (channel !== 'driver' && !enabled()) break; const r = await post(url, payload); if (r === 'ok') { options.log(`support request sent (${fp})`); return; } if (r === 'drop') break; }
     free(); options.log(`support request not sent (${fp}): given up`);
   })().finally(() => inFlight.delete(fp)));
   return { sent: false, queued: true, payload };

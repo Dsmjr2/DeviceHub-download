@@ -3,7 +3,7 @@ use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -1100,7 +1100,7 @@ fn mic_status_locked(r: &RecInner) -> Value {
 }
 
 pub fn mic_rec_status() -> Value {
-    let mut guard = REC.lock().unwrap();
+    let mut guard = REC.lock().unwrap_or_else(PoisonError::into_inner);
     let r = guard.get_or_insert_with(|| RecInner {
         pcm: None,
         running: false,
@@ -1115,7 +1115,7 @@ pub fn mic_rec_status() -> Value {
 
 pub fn mic_rec_stop() -> Value {
     let handle = {
-        let mut guard = REC.lock().unwrap();
+        let mut guard = REC.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(r) = guard.as_mut() {
             r.running = false;
             r.stop_flag.store(true, Ordering::SeqCst);
@@ -1131,7 +1131,7 @@ pub fn mic_rec_stop() -> Value {
 }
 
 pub fn mic_rec_clear() {
-    let mut guard = REC.lock().unwrap();
+    let mut guard = REC.lock().unwrap_or_else(PoisonError::into_inner);
     if let Some(r) = guard.as_mut() {
         if let Some(buf) = r.pcm.as_mut() {
             buf.fill(0);
@@ -1148,7 +1148,7 @@ pub fn mic_rec_start(id: Option<String>) -> Value {
     let stop_flag = Arc::new(AtomicBool::new(false));
     let stop_c = Arc::clone(&stop_flag);
     {
-        let mut guard = REC.lock().unwrap();
+        let mut guard = REC.lock().unwrap_or_else(PoisonError::into_inner);
         *guard = Some(RecInner {
             pcm: Some(Vec::new()),
             running: true,
@@ -1227,7 +1227,7 @@ pub fn mic_rec_start(id: Option<String>) -> Value {
                 return Err(format!("GetService failed 0x{hr_cc:08X}"));
             }
             (vtbl::<IAudioClientVtbl>(ac).start)(ac);
-            if let Some(r) = REC.lock().unwrap().as_mut() {
+            if let Some(r) = REC.lock().unwrap_or_else(PoisonError::into_inner).as_mut() {
                 r.rate = sr;
             }
             let mut outb = vec![0u8; (sr as usize) * 2];
@@ -1269,7 +1269,7 @@ pub fn mic_rec_start(id: Option<String>) -> Value {
                         }
                     }
                     (vtbl::<IAudioCaptureClientVtbl>(cc).release_buffer)(cc, frames);
-                    if let Some(r) = REC.lock().unwrap().as_mut() {
+                    if let Some(r) = REC.lock().unwrap_or_else(PoisonError::into_inner).as_mut() {
                         if let Some(pcm) = r.pcm.as_mut() {
                             pcm.extend_from_slice(&outb[..n * 2]);
                         }
@@ -1292,7 +1292,7 @@ pub fn mic_rec_start(id: Option<String>) -> Value {
             release(ac);
             Ok(())
         })();
-        if let Some(r) = REC.lock().unwrap().as_mut() {
+        if let Some(r) = REC.lock().unwrap_or_else(PoisonError::into_inner).as_mut() {
             r.running = false;
             if let Err(e) = res {
                 r.error = Some(e);
@@ -1300,14 +1300,17 @@ pub fn mic_rec_start(id: Option<String>) -> Value {
         }
     });
 
-    if let Some(r) = REC.lock().unwrap().as_mut() {
+    if let Some(r) = REC.lock().unwrap_or_else(PoisonError::into_inner).as_mut() {
         r.worker = Some(handle);
     }
     for _ in 0..40 {
         let done = {
-            let guard = REC.lock().unwrap();
-            let r = guard.as_ref().unwrap();
-            !r.running || r.rate != 0 || r.error.is_some()
+            let guard = REC.lock().unwrap_or_else(PoisonError::into_inner);
+            // a mic-rec-clear on another request may have emptied it meanwhile: then there is nothing to wait for
+            match guard.as_ref() {
+                Some(r) => !r.running || r.rate != 0 || r.error.is_some(),
+                None => true,
+            }
         };
         if done {
             break;
@@ -1341,7 +1344,7 @@ fn b64_encode(data: &[u8]) -> String {
 }
 
 pub fn mic_rec_read(offset: i64, length: i32) -> String {
-    let guard = REC.lock().unwrap();
+    let guard = REC.lock().unwrap_or_else(PoisonError::into_inner);
     let Some(r) = guard.as_ref() else {
         return String::new();
     };
@@ -1473,8 +1476,11 @@ pub fn handle(rest: &str) -> Result<String, String> {
             let s = sidetone_read(usb)?
                 .ok_or("no sidetone control in Windows for this headset (is it connected?)")?;
             if let Some(db) = q.get("db").and_then(|v| v.as_f64()) {
-                if !(-42.0..=4.0).contains(&db) {
-                    return Err("sidetone must be between -42 and +4 dB".into());
+                // the control's own range (the HS80's is -42..+4 dB; another headset's may differ: 15 Nov 2026)
+                let lo = s["min"].as_f64().unwrap_or(-42.0) - 0.01;
+                let hi = s["max"].as_f64().unwrap_or(4.0) + 0.01;
+                if !(lo..=hi).contains(&db) {
+                    return Err(format!("sidetone must be between {:.1} and {:.1} dB", lo + 0.01, hi - 0.01));
                 }
                 let unit = s["unit"].as_u64().unwrap_or(0) as u32;
                 topology_set_level(usb, unit, db as f32)?;
@@ -1494,4 +1500,24 @@ pub fn handle(rest: &str) -> Result<String, String> {
         _ => return Ok(json!({ "ok": false, "error": format!("unknown op {op}") }).to_string()),
     }
     Ok(Value::Object(o).to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // (18 Nov 2026) a request that crashed while holding the mic-recording lock used to leave it poisoned: every later
+    // mic request crashed too, until DeviceHub restarted. Now the next request carries on.
+    #[test]
+    fn mic_status_answers_after_a_crash_held_its_lock() {
+        let _ = std::thread::spawn(|| {
+            let _g = REC.lock().unwrap_or_else(PoisonError::into_inner);
+            panic!("a crash while holding the lock (on purpose)");
+        })
+        .join();
+        assert!(REC.is_poisoned(), "the lock is poisoned, as after a real crash");
+        let s = mic_rec_status();
+        assert_eq!(s["recording"], Value::Bool(false));
+        assert!(mic_rec_stop().is_object());
+    }
 }

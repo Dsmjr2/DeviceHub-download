@@ -106,6 +106,11 @@ try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
   let err = null;
   try { await new HidChannel(quiet, { length: 8 }).request([1, 2, 3], { timeoutMs: 20 }); } catch (e) { err = e; }
   check(err && /no reply/.test(err.message) && guard.driverOf(err) === 'a device', `a real "no reply" from hid.js is a device's error (${err && guard.driverOf(err)})`);
+  check(guard.driverOf({ device: true, message: 'no reply' }) === 'a device', 'stackless device-marked error still returns a device');
+  check(guard.handle({ device: true, message: 'no reply' }, 'unhandled rejection', null) === 'driver', 'handle tolerates null options');
+  // (15 Nov 2026 review of PR #29) a device error from inside a my-devices driver still counts against that driver
+  const inDriver = { device: true, message: 'no reply', stack: 'Error: no reply\n    at x (C:\\DeviceHub\\my-devices\\acme-mouse\\device.mjs:1:1)' };
+  check(guard.driverOf(inDriver) === 'acme-mouse', `a marked device error from a my-devices driver is that driver's (${guard.driverOf(inDriver)})`);
 }
 
 console.log(fails.length ? `driver-guard: FAILED:\n  ${fails.join('\n  ')}` : "driver-guard (a driver's late timeout, a throw from its timer: logged, its device marked, DeviceHub keeps running; DeviceHub's own errors still exit 1): all good");

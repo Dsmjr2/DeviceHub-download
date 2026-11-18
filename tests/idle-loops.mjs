@@ -46,6 +46,27 @@ ok(/if \(chan === 'dev'\) for \(const fn of deviceListeners\)/.test(nat), 'devic
 const agent = src('helpers/agent.mjs');
 ok((agent.match(/'\.\/audio-follow', '\.\/receiver-light'/g) || []).length === 2, 'the agent tells both loops when device messages come and go');
 
+// receiver-light: start() without callbacks is safe and registers onDeviceChange only once
+{
+  const natMod = require('../helpers/native.js');
+  let dcCount = 0;
+  const origOnDc = natMod.onDeviceChange;
+  const origReq = natMod.request;
+  natMod.onDeviceChange = (fn) => { dcCount++; return origOnDc(fn); };
+  natMod.request = async () => 'TIMEOUT';
+  try {
+    const rl = require('../helpers/receiver-light.js');
+    rl.start(null, null);
+    rl.stop();
+    rl.start();
+    rl.stop();
+    ok(dcCount === 1, `receiver-light registers onDeviceChange once across restarts (${dcCount})`);
+  } finally {
+    natMod.onDeviceChange = origOnDc;
+    natMod.request = origReq;
+  }
+}
+
 if (fails.length) { console.log(`idle-loops: ${fails.length} failed`); for (const f of fails) console.log(`  FAIL ${f}`); process.exit(1); }
 console.log('idle-loops (backstop looks while device messages arrive; a plug heard at once): all good');
 process.exit(0);

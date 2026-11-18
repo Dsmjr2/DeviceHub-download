@@ -19,7 +19,10 @@ export const SPECS = [
     // other Pulsar dongles the same mouse can be paired with (29 Oct 2026: a copy with the same mouse on 3710:5403 was
     // never opened). Tried after the 8K dongle. pulsar.js reads every value with its checksum and writes only a value
     // that read back cleanly, so a dongle that talks differently stays read-only and nothing is written to it.
-    dongles: ['5403'] },
+    dongles: ['5403'],
+    // asked again over the dongle when the cable is pulled mid-request: reads only (pulsar.js CMD battery, readFlash,
+    // currentConfig, version, dongleVersion). Writes (writeFlash 07, host control 03) are never sent twice.
+    resend: [0x04, 0x08, 0x0e, 0x12, 0x1d] },
   { id: 'keyboard', vendorId: 0x342d, productId: 0xe479, usagePage: 0xff60, vid: '342D', pid: 'E479', page: 'FF60', usage: '0061', len: 32, reportId: 0, replyMs: 750, productName: 'EPOMAKER P75', echo: (b) => ECHO[b[0]] ?? 1 },
 ];
 
@@ -179,8 +182,14 @@ class HostDevice {
     if (!other && id !== s.reportId) this.checkNever(s.reportId, bytes, s.page);
     const req = `${other ? `REQR ${hex2(id)} ` : 'REQ '}${s.echo(bytes)} ${s.replyMs} ${bytes.map((b) => b.toString(16).padStart(2, '0')).join(' ')}`;
     let reply = await this.line(req, s.replyMs + 3000);
-    // the cable was pulled: carry on over the dongle
-    if (reply === 'GONE' && this.onCable && (await this.backToDongle())) reply = await this.line(req, s.replyMs + 3000);
+    // the cable was pulled: carry on over the dongle. Only a read (spec.resend, by its first byte) is asked again; a
+    // write may already have reached the device before the cable went (15 Nov 2026), so it is never sent twice: the
+    // caller gets an error that is not "gone" (nothing is queued to resend), and the moved handler reads it again
+    if (reply === 'GONE' && this.onCable && (await this.backToDongle())) {
+      onMoved(s.id);
+      if (!(s.resend || []).includes(bytes[0])) throw Object.assign(new Error('the cable was unplugged during this change, so it may or may not have been applied (read again)'), { maybeSent: true });
+      reply = await this.line(req, s.replyMs + 3000);
+    }
     if (reply === 'GONE') throw this.gone();
     // only a channel with spec.refusals answers this (rf=1): the device refused the write and is still there
     if (/^REFUSED/.test(reply)) throw this.refused(reply, id);

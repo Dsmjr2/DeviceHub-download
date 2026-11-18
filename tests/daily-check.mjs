@@ -35,6 +35,9 @@ fs.writeFileSync(path.join(root, 'data', 'daily-check.json'), JSON.stringify({ a
 r = await run({ all: false });
 const item = r.items['Pretend mouse'];
 ok(item && item.ok === false && /changed between two reads: dpi$/.test(item.text), `a real change fails, a missing one is not counted (${JSON.stringify(item)})`);
+reads.push(full, { ...full });
+r = await run(null);
+ok(r && r.items && typeof r.items === 'object', 'run(null) succeeds without throwing');
 
 try { fs.rmSync(root, { recursive: true, force: true }); } catch {}
 if (fails.length) { console.log(`daily-check: ${fails.length} failed`); for (const f of fails) console.log(`  FAIL ${f}`); process.exit(1); }

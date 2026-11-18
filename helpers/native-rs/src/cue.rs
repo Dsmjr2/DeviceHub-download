@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use std::ffi::{c_char, c_void, CString};
 use std::path::Path;
 use std::sync::atomic::{AtomicI32, Ordering};
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 use std::thread;
 use std::time::Duration;
 
@@ -51,7 +51,7 @@ fn prop_name(prop: i32) -> &'static str {
 }
 
 pub fn ensure(dll_path: Option<&str>) -> bool {
-    let mut guard = CUE.lock().unwrap();
+    let mut guard = CUE.lock().unwrap_or_else(PoisonError::into_inner);
     if guard.is_none() {
         let Some(dll) = dll_path else {
             return false;
@@ -161,7 +161,7 @@ pub fn handle(dll_path: Option<&str>, rest: &str) -> Result<String, String> {
                 .to_string(),
         );
     }
-    let guard = CUE.lock().unwrap();
+    let guard = CUE.lock().unwrap_or_else(PoisonError::into_inner);
     let api = guard.as_ref().ok_or("iCUE SDK not loaded")?;
     let id = q.get("id").and_then(|v| v.as_str()).unwrap_or("");
     match op {

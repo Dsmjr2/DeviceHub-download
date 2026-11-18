@@ -13,6 +13,7 @@ check(notice({ owner: false, status: { ...zip, error: 'offline' } }) === null, '
 check(notice({ owner: false, status: { git: true, shared: false, behind: 2, version: 'x' } }) === null, 'a git copy following a branch (not the signed release) gets none');
 check(notice({ owner: false, status: { git: true, shared: true, behind: 2, version: 'x' } })?.version === 'x', 'a download copy behind the signed release gets it');
 check(notice({ owner: false, status: { ...zip, version: null } }) === null, 'no version id, no notice');
+check(notice({ owner: false, status: { ...zip, versionAt: null } })?.text === 'A new version of DeviceHub is ready.', 'null versionAt omits date instead of formatting 1970');
 check(/1 file was changed/.test(notice({ owner: false, status: { ...zip, blocked: true, blockedFiles: ['a.js'] } }).text), 'files changed on this PC are named in the notice');
 check(notice({ owner: false, status: null }) === null, 'no status, no notice');
 
@@ -36,6 +37,9 @@ check(notice({ owner: false, status: { ...zip, versionName: '1.5', notes: [1, ''
   check(/status\?\.error\)[\s\S]{0,120}setTimeout\(check, 120000\)/.test(server), 'a failed check tries again every 2 minutes');
   check(/if \(!updateNotice\) return;/.test(server) && /openWindows > 0[\s\S]{0,300}spawn\('wscript\.exe', \[path\.join\(ROOT, 'DeviceHub\.vbs'\)\]/.test(server), 'with no window open, the window is opened only when a version is ready');
   check(!/130000 - performance\.now\(\)/.test(app), 'the window asks at once, not after 130 s');
+  // (15 Nov 2026 bug hunt) a zip copy with changed files: the pop-up promises "Update keeps a copy", so its Update must
+  // ask for exactly that (it was refused every time and only Settings' own button worked)
+  check(/runSelfUpdate\(\{ overwrite: !!n\.blocked \}\)/.test(app), 'the pop-up\'s Update keeps a copy of changed files, as its text says');
 }
 
 const { nextVersion, notesFrom, shortLine, plan, readPublished } = await import('../helpers/release-notes.mjs');

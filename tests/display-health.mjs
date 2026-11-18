@@ -26,6 +26,8 @@ check(dt.refreshFlag({ width: 1920, height: 1080, hz: 60, modes })?.fix.hz === 2
 check(dt.refreshFlag({ width: 800, height: 600, hz: 60, modes }) === null, 'a resolution with no listed modes: no flag');
 const sh = dt.shape({ screen: '\\\\.\\DISPLAY1', id: 'AOC#1', name: 'AOC', primary: true, width: 2560, height: 1440, hz: 60, modes, hdr: { supported: true, on: false } });
 check(sh.resolutions[0].width === 2560 && JSON.stringify(sh.resolutions[0].rates) === '[144,120,60]' && sh.flag?.fix.hz === 144, 'shape: largest resolution first, rates high to low, flag carried');
+const shBad = dt.shape({ screen: '\\\\.\\DISPLAY1', width: 1920, height: 1080, hz: 60, modes: [[1920, 1080, 60], ['bad', 1080, 60], [0, 0, 60], [1920, 1080, -1]] });
+check(shBad.modes.length === 1 && shBad.resolutions.length === 1, 'shape: drops non-finite and non-positive modes');
 
 // ---------- Night light (read only) ----------
 const OFF = '43 42 01 00 0A 02 01 00 2A 06 94 B4 BA E5 09 2A 2B 0E 13 43 42 01 00 D0 0A 02 C6 14 CA 85 EE 89 E1 91 A3 EE 01 00 00 00 00';

@@ -51,7 +51,8 @@ export async function run() {
   check(JSON.stringify(P.diff(file[0])) === JSON.stringify([{ id: 'mouse', key: 'pollingRate', from: 1000, to: 8000, ready: true }]), `the old shape's diff is the same rows as before (${JSON.stringify(P.diff(file[0]))})`);
   check(P.diff(file[1]).length === 0, 'a profile that already matches has no rows');
   let r = await P.apply(file[0]);
-  check(JSON.stringify(r) === JSON.stringify({ done: 1, failed: 0, skipped: 0, asleep: 0 }), `apply answers as before (${JSON.stringify(r)})`);
+  // (15 Nov 2026) apply also answers refused, left and refusedKeys for auto-switch's retry; the four counts are as before
+  check(JSON.stringify({ done: r.done, failed: r.failed, skipped: r.skipped, asleep: r.asleep }) === JSON.stringify({ done: 1, failed: 0, skipped: 0, asleep: 0 }) && r.left.length === 0, `apply answers as before (${JSON.stringify(r)})`);
   check(events.join() === 'backup mouse,write mouse.pollingRate=8000', `backup, then the one write (${events.join()})`);
   check(lines().join(' | ') === 'Profile "Aim": 1 changed | Polling rate → 8000 Hz', `the same Activity lines as before (${lines().join(' | ')})`);
   check(JSON.stringify(file) === JSON.stringify(SHAPE), 'applying never changes the profile itself');

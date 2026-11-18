@@ -2,12 +2,13 @@
 // server.js's eqDevices() names the HS80 (else the first USB headset) as "the headset". When another USB headset was
 // picked (settings.json "headsetPick") and Windows has it, its sound devices take that place: the EQ, mic boost and
 // mic filters play on it, and it is no longer listed as a speaker or a mic of its own. No pick, or "hs80": unchanged.
-const fs = require('fs');
 const path = require('path');
 
-const guidOf = (id) => String(id).slice(String(id).indexOf('}.') + 2);
+const { readJson } = require('./safe-write');
+
+const guidOf = (id) => { const s = String(id || ''), i = s.indexOf('}.'); return i >= 0 ? s.slice(i + 2) : s; };
 const SETTINGS = require('./data-dir').dataFile('settings.json');
-const readPick = () => { try { return JSON.parse(fs.readFileSync(SETTINGS, 'utf8')).headsetPick || null; } catch { return null; } };
+const readPick = () => readJson(SETTINGS, {})?.headsetPick || null;
 // the native helper's USB headset list, through the Corsair helper server.js already loaded (loaded here only when used)
 const listHeadsets = async () => (await require('./corsair').handle('usb-headsets', {})).headsets || [];
 

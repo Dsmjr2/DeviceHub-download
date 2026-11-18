@@ -29,7 +29,7 @@ function rowsPs(list) {
   return new Promise((resolve) => execFile('powershell.exe', ['-NoProfile', '-Command', '[Console]::OutputEncoding = [Text.Encoding]::UTF8; ' + ps], { windowsHide: true, timeout: 20000 }, (err, out) => resolve(parseRows(out))));
 }
 // the script's lines "flow|guid|state|True/False|name" -> rows
-const parseRows = (out) => String(out || '').trim().split(/\r?\n/).filter(Boolean).map((l) => { const [flow, guid, state, on, name] = l.split('|'); return { flow, guid, state, on: on === 'True', name }; });
+const parseRows = (out) => String(out || '').trim().split(/\r?\n/).filter(Boolean).map((l) => { const parts = l.split('|'); const [flow, guid, state, on] = parts; return { flow, guid, state, on: on === 'True', name: parts.slice(4).join('|') }; });
 function fromRows(rows) {
   rows = (Array.isArray(rows) ? rows : []).map((r) => ({ flow: r.flow, guid: r.guid, active: String(r.state) === '1', on: r.on === true, name: r.name || '' }));
   // only devices Windows is using now count (the old ones of a replaced driver stay listed as not present)
@@ -50,6 +50,7 @@ function turnOn() {
     const say = (outcome) => import('./uac.mjs').then((u) => u.record({ area: 'sound', action: "open Equalizer APO's Device Selector", outcome })).catch(() => {});
     let gaveUp = false;
     const timer = setTimeout(() => { gaveUp = true; say('unanswered'); try { spawn('taskkill.exe', ['/PID', String(p.pid), '/T', '/F'], { windowsHide: true }); } catch {} reject(Object.assign(new Error("Windows' permission box was not answered within 2 minutes. If it is still open, close it (No), then press Turn on again."), { uac: 'unanswered' })); }, 2 * 60 * 1000);
+    p.on('error', (err) => { clearTimeout(timer); if (!gaveUp) reject(err); });
     p.on('exit', (code) => { clearTimeout(timer); if (gaveUp) return; cache.at = 0; say(code === 0 ? 'yes' : 'declined'); code === 0 ? resolve({ started: true }) : reject(Object.assign(new Error("Windows' permission box was declined, so the Device Selector did not open. Press Turn on again and choose Yes."), { uac: 'declined' })); });
   });
 }

@@ -7,13 +7,20 @@ const PRIVATE = /private=([\d.]+)MB/;
 // line: the helper's own MEM answer; pid: its process; measure(pid) -> private bytes (replaceable for tests)
 async function helperMemoryMB(line, pid, measure = privateBytes) {
   const own = Number((PRIVATE.exec(String(line || '')) || [])[1]);
-  if (own) return own;
-  if (!pid) return null;
-  try { const b = await measure(pid); return b > 0 ? +(b / 1048576).toFixed(1) : null; } catch { return null; }
+  if (Number.isFinite(own) && own > 0) return own;
+  const pidNum = Number(pid);
+  if (!Number.isInteger(pidNum) || pidNum <= 0) return null;
+  try { const b = await measure(pidNum); return Number.isFinite(b) && b > 0 ? +(b / 1048576).toFixed(1) : null; } catch { return null; }
 }
 function privateBytes(pid) {
-  const ps = `(Get-Process -Id ${Number(pid)} -ErrorAction Stop).PrivateMemorySize64`;
+  const n = Number(pid);
+  if (!Number.isInteger(n) || n <= 0) return Promise.resolve(null);
+  const ps = `(Get-Process -Id ${n} -ErrorAction Stop).PrivateMemorySize64`;
   return new Promise((resolve, reject) => execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, timeout: 8000 },
-    (e, out) => (e ? reject(e) : resolve(Number(String(out).trim())))));
+    (e, out) => {
+      if (e) return reject(e);
+      const val = Number(String(out).trim());
+      resolve(Number.isFinite(val) ? val : null);
+    }));
 }
 module.exports = { helperMemoryMB };

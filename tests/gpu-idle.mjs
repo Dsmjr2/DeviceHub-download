@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const { _test: { asleep } } = require('../helpers/gpu.js');
+const { _test: { asleep, num } } = require('../helpers/gpu.js');
 const fails = [];
 const ok = (c, m) => { if (!c) fails.push(m); };
 const nv = (d) => ({ name: 'NVIDIA GeForce RTX 4060 Laptop GPU', id: 'PCI\\VEN_10DE&DEV_28A0', d });
@@ -16,6 +16,8 @@ ok((await asleep(async () => ({ result: [amd, nv(3)] })))?.length === 1, 'the NV
 ok((await asleep(async () => ({ result: [amd, nv(0)] }))) === null, 'in D0: awake, nvidia-smi reads it');
 ok((await asleep(async () => ({ result: [amd] }))) === null, 'no NVIDIA card: not "asleep"');
 ok((await asleep(async () => ({ fail: 'the helper is not running' }))) === null, 'no answer from the helper: nvidia-smi as before');
+ok((await asleep(async () => ({ result: 'bad' }))) === null, 'non-array helper result: nvidia-smi as before');
+ok(num('') === null && num('   ') === null && num(null) === null && num('[N/A]') === null && num('42.5') === 42.5, 'num() treats blank/nullish fields as null instead of 0');
 ok((await asleep(async () => { throw new Error('x'); })) === null, 'an error: nvidia-smi as before');
 const cs = fs.readFileSync(path.join(ROOT, 'helpers/pc-reads.cs'), 'utf8');
 ok(/case "gpu-power": o\["result"\] = GpuPower\(\);/.test(cs) && /a45c254e-df1c-4efd-8020-67d146a850e0", 32/.test(cs), 'the helper reads DEVPKEY_Device_PowerData from Windows, never the card');

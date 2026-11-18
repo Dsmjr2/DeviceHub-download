@@ -5,7 +5,7 @@ use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -229,7 +229,7 @@ fn write_wide_fixed<const N: usize>(dst: &mut [u16; N], s: &str) {
 }
 
 fn api(path: &str, body: Option<&Value>) -> Option<Value> {
-    let port = CONFIG.lock().unwrap().as_ref()?.port;
+    let port = CONFIG.lock().unwrap_or_else(PoisonError::into_inner).as_ref()?.port;
     let addr: SocketAddr = format!("127.0.0.1:{port}").parse().ok()?;
     let timeout = Duration::from_secs(if body.is_some() { 60 } else { 15 });
     let mut stream = TcpStream::connect_timeout(&addr, Duration::from_secs(3)).ok()?;
@@ -254,7 +254,7 @@ fn api(path: &str, body: Option<&Value>) -> Option<Value> {
 }
 
 fn open_app() {
-    let mut last = LAST_OPEN.lock().unwrap();
+    let mut last = LAST_OPEN.lock().unwrap_or_else(PoisonError::into_inner);
     if let Some(t) = *last {
         if t.elapsed() < Duration::from_secs(2) {
             return;
@@ -263,7 +263,7 @@ fn open_app() {
     *last = Some(Instant::now());
     drop(last);
 
-    let root = match CONFIG.lock().unwrap().as_ref() {
+    let root = match CONFIG.lock().unwrap_or_else(PoisonError::into_inner).as_ref() {
         Some(c) => c.root.clone(),
         None => return,
     };
@@ -274,7 +274,7 @@ fn open_app() {
 }
 
 fn post_balloon(title: String, msg: String, is_err: bool) {
-    *PENDING_BALLOON.lock().unwrap() = Some((title, msg, is_err));
+    *PENDING_BALLOON.lock().unwrap_or_else(PoisonError::into_inner) = Some((title, msg, is_err));
     let hwnd = HWND_VAL.load(Ordering::SeqCst);
     if hwnd != 0 {
         // SAFETY: Win32 window/tray/GDI call on valid HWND/HINSTANCE/resource with initialized structs.
@@ -378,7 +378,7 @@ fn make_dot_icon(base_icon: isize, dot: &str) -> isize {
 }
 
 fn update_tray_icon(hwnd: isize, dot: Option<&str>, tip: &str) {
-    let mut guard = ICON_STATE.lock().unwrap();
+    let mut guard = ICON_STATE.lock().unwrap_or_else(PoisonError::into_inner);
     let Some(st) = guard.as_mut() else { return };
     let key = dot.unwrap_or("none");
     let mut h_icon = if st.shown_dot == key {
@@ -422,7 +422,7 @@ fn update_tray_icon(hwnd: isize, dot: Option<&str>, tip: &str) {
 fn spawn_refresh() {
     thread::spawn(|| {
         let s = api("/api/agent/state", None);
-        *PENDING_STATE.lock().unwrap() = Some(s);
+        *PENDING_STATE.lock().unwrap_or_else(PoisonError::into_inner) = Some(s);
         let hwnd = HWND_VAL.load(Ordering::SeqCst);
         if hwnd != 0 {
             // SAFETY: Win32 window/tray/GDI call on valid HWND/HINSTANCE/resource with initialized structs.
@@ -462,10 +462,10 @@ fn device_line(d: &Value) -> String {
 }
 
 fn handle_refresh_done(hwnd: isize) {
-    let s_opt = PENDING_STATE.lock().unwrap().take();
+    let s_opt = PENDING_STATE.lock().unwrap_or_else(PoisonError::into_inner).take();
     let Some(s_val) = s_opt else { return };
     let Some(s) = s_val else {
-        let mut guard = ICON_STATE.lock().unwrap();
+        let mut guard = ICON_STATE.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(st) = guard.as_mut() {
             st.misses += 1;
             if st.misses >= 6 {
@@ -478,10 +478,10 @@ fn handle_refresh_done(hwnd: isize) {
         }
         return;
     };
-    if let Some(st) = ICON_STATE.lock().unwrap().as_mut() {
+    if let Some(st) = ICON_STATE.lock().unwrap_or_else(PoisonError::into_inner).as_mut() {
         st.misses = 0;
     }
-    *STATE.lock().unwrap() = Some(s.clone());
+    *STATE.lock().unwrap_or_else(PoisonError::into_inner) = Some(s.clone());
 
     let devices = s.get("devices").and_then(|v| v.as_array());
     let mut parts = Vec::new();
@@ -546,7 +546,7 @@ fn handle_refresh_done(hwnd: isize) {
 }
 
 fn show_context_menu(hwnd: isize) {
-    let state_snap = STATE.lock().unwrap().clone();
+    let state_snap = STATE.lock().unwrap_or_else(PoisonError::into_inner).clone();
     let profiles: Vec<String> = api("/api/profiles", None)
         .and_then(|v| v.as_array().cloned())
         .map(|arr| {
@@ -831,7 +831,7 @@ unsafe extern "system" fn wnd_proc(
             0
         }
         WM_APP_BALLOON => {
-            if let Some((title, text, err)) = PENDING_BALLOON.lock().unwrap().take() {
+            if let Some((title, text, err)) = PENDING_BALLOON.lock().unwrap_or_else(PoisonError::into_inner).take() {
                 show_balloon(hwnd, &title, &text, err);
             }
             0
@@ -871,7 +871,7 @@ pub fn start(port: u16, folder: &str) -> String {
     if STARTED.swap(true, Ordering::SeqCst) {
         return "OK".into();
     }
-    *CONFIG.lock().unwrap() = Some(TrayConfig {
+    *CONFIG.lock().unwrap_or_else(PoisonError::into_inner) = Some(TrayConfig {
         port,
         root: folder.to_string(),
     });
@@ -924,7 +924,7 @@ pub fn start(port: u16, folder: &str) -> String {
             sm,
             LR_LOADFROMFILE | LR_DEFAULTSIZE,
         );
-        *ICON_STATE.lock().unwrap() = Some(IconState {
+        *ICON_STATE.lock().unwrap_or_else(PoisonError::into_inner) = Some(IconState {
             base_icon,
             dot_icon: 0,
             shown_dot: "none".into(),

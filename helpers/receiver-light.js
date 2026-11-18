@@ -27,6 +27,7 @@ async function tick() {
         return;
       }
       const st = await line('MODE 2');
+      if (st === 'GONE') { opened = false; return; }
       log(st === '00' ? { kind: 'info', device: 'headset', text: 'Receiver light turned off' } : { kind: 'bad', device: 'headset', text: `Could not turn the receiver light off (${st})` });
     }
   } finally { busy = false; }
@@ -35,17 +36,22 @@ async function tick() {
 // Unplugged: looked for every 2 s until Windows' device messages are known to arrive (useWindowsEvents, from the agent);
 // then a plug is heard at once and the timed look is a 60 s backstop (3 Nov 2026: each look is a USB scan, all day on a
 // PC without the receiver)
-let stopped = false, events = false;
+let stopped = false, events = false, listenerAdded = false;
 function loop() {
   if (stopped) return;
   clearTimeout(timer);
   tick().catch(() => {}).finally(() => { if (!stopped) timer = setTimeout(loop, require('./power').every(opened ? 5000 : events ? 60000 : 2000)); });
 }
 function startLight(icueCheck, logFn) {
-  icueRunning = icueCheck; log = logFn; stopped = false; loop();
-  native.onDeviceChange(() => { if (!opened && !stopped) { clearTimeout(timer); timer = setTimeout(loop, 1500); } });
+  icueRunning = typeof icueCheck === 'function' ? icueCheck : async () => false;
+  log = typeof logFn === 'function' ? logFn : () => {};
+  stopped = false; loop();
+  if (!listenerAdded) {
+    listenerAdded = true;
+    native.onDeviceChange(() => { if (!opened && !stopped) { clearTimeout(timer); timer = setTimeout(loop, 1500); } });
+  }
 }
 function useWindowsEvents(on) { events = !!on; }
-function stopLight() { stopped = true; clearTimeout(timer); if (opened) line('CLOSE', 3000); opened = false; }
+function stopLight() { stopped = true; clearTimeout(timer); if (opened) line('CLOSE', 3000).catch(() => {}); opened = false; }
 
 module.exports = { start: startLight, stop: stopLight, useWindowsEvents };

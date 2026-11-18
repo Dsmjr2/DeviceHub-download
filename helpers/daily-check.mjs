@@ -13,7 +13,17 @@ const { writeAtomic } = require('./safe-write.js');
 
 const DAY = 24 * 3600 * 1000;
 let file = null, core = null, busy = false, memo = null;
-const read = () => { if (!memo) { try { memo = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { memo = { at: null, items: {} }; } } return JSON.parse(JSON.stringify(memo)); };
+const read = () => {
+  if (!memo) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
+      memo = raw && typeof raw === 'object' && !Array.isArray(raw)
+        ? { at: raw.at || null, items: raw.items && typeof raw.items === 'object' && !Array.isArray(raw.items) ? raw.items : {} }
+        : { at: null, items: {} };
+    } catch { memo = { at: null, items: {} }; }
+  }
+  return JSON.parse(JSON.stringify(memo));
+};
 const save = (r) => { memo = r; try { writeAtomic(file, JSON.stringify(r, null, 1)); } catch {} };
 
 async function checkDevice(d) {
@@ -37,8 +47,9 @@ async function checkDevice(d) {
 }
 
 // run: everything (all: true), or only the devices not checked in the last day that are connected now
-export async function run({ all = false } = {}) {
-  if (busy) return read();
+export async function run(opts = {}) {
+  const { all = false } = opts || {};
+  if (busy || !core || !file) return read();
   busy = true;
   const r = read();
   try {
@@ -48,11 +59,12 @@ export async function run({ all = false } = {}) {
     // only the devices this PC has had (23 Oct 2026, a friend's PC listed Shawn's Pulsar and HS80): one never seen here
     // and not connected now is left out, and a line saved for it before goes
     let seenHere = new Set();
-    try { seenHere = new Set(JSON.parse(fs.readFileSync(path.join(path.dirname(file), 'seen-devices.json'), 'utf8'))); } catch {}
-    for (const d of Object.values(core.devices)) {
+    try { const s = JSON.parse(fs.readFileSync(path.join(path.dirname(file), 'seen-devices.json'), 'utf8')); if (Array.isArray(s)) seenHere = new Set(s); } catch {}
+    for (const d of Object.values(core.devices || {})) {
       if (seenHere && !seenHere.has(d.id) && !['connected', 'asleep'].includes(d.status)) { if (r.items[d.adapter.title]) { delete r.items[d.adapter.title]; dirty = true; } continue; }
       const last = r.items[d.adapter.title];
-      if (!all && last && last.at && now - new Date(last.at) < DAY && last.ok !== null) continue;
+      const lastAt = last && last.at ? Date.parse(last.at) : NaN;
+      if (!all && last && Number.isFinite(lastAt) && now - lastAt < DAY && last.ok !== null) continue;
       if (d.status !== 'connected') {
         // never checked yet, or due: say so, and it is checked when it is next connected
         if (all || !last) put(d.adapter.title, { ok: null, text: `not checked: ${d.status === 'asleep' ? 'asleep' : 'not connected'}; checked when it is next connected` });

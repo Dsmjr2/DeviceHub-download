@@ -29,7 +29,9 @@ async function findKeyboards() {
 // a fetched one, so the keyboard is not read again on the next start.
 const P75_FILE = '342DE479';
 async function definitionFor(vid, pid, opts = {}) {
-  const file = path.join(deps.dir, `${vid}${pid}.json`.toUpperCase().replace('.JSON', '.json'));
+  const v = String(vid || '').toUpperCase(), p = String(pid || '').toUpperCase();
+  if (!/^[0-9A-F]{4}$/.test(v) || !/^[0-9A-F]{4}$/.test(p)) throw new Error('invalid vendor or product id');
+  const file = path.join(deps.dir, `${v}${p}.json`);
   try { if (fs.existsSync(file)) return { def: JSON.parse(fs.readFileSync(file, 'utf8')), from: `via-definitions\\${path.basename(file)}` }; }
   catch (e) { throw new Error(`via-definitions\\${path.basename(file)} is not valid JSON (${e.message})`); }
   // a keyboard that answered "not Vial" once is not asked again (a review, 1 Nov 2026: every start asked it FE 00);

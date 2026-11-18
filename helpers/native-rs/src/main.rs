@@ -29,7 +29,7 @@ use std::collections::{HashMap, HashSet};
 use std::io::{self, BufRead, Write};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
 
@@ -42,9 +42,17 @@ fn say_to<W: Write>(out: &mut W, s: &str) {
 }
 
 pub fn say(s: &str) {
-    let _g = OUT_LOCK.lock().unwrap();
+    let _g = OUT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut out = io::stdout().lock();
     say_to(&mut out, s);
+}
+
+fn sanitize_reply(s: &str) -> String {
+    if s.contains(['\r', '\n']) {
+        s.replace(['\r', '\n'], " ")
+    } else {
+        s.to_string()
+    }
 }
 
 struct ChannelReq {
@@ -100,14 +108,14 @@ fn main() {
         let Some((chan, seq, rest)) = parse_line(&line) else { continue };
 
         let mut req = ChannelReq { seq, rest };
-        let mut map = shared.channels.lock().unwrap();
+        let mut map = shared.channels.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(entry) = map.get(&chan) {
             match entry.tx.send(req) {
                 Ok(()) => continue,
                 Err(mpsc::SendError(returned)) => req = returned,
             }
         }
-        let mut nid = shared.next_id.lock().unwrap();
+        let mut nid = shared.next_id.lock().unwrap_or_else(|e| e.into_inner());
         let id = *nid;
         *nid += 1;
         drop(nid);
@@ -120,12 +128,13 @@ fn main() {
         let shared_c = Arc::clone(&shared);
         let chan_c = chan.clone();
         let h = thread::spawn(move || work(shared_c, chan_c, id, rx));
+        prune_finished(&mut handles);
         handles.push(h);
     }
 
     tray::stop();
     {
-        let mut map = shared.channels.lock().unwrap();
+        let mut map = shared.channels.lock().unwrap_or_else(|e| e.into_inner());
         map.clear();
     }
     for h in handles {
@@ -133,11 +142,43 @@ fn main() {
     }
 }
 
+// (15 Nov 2026, work map job 6) a channel's thread ends at its CLOSE; its handle was kept until the helper exited, one
+// per channel ever opened (a device that sleeps and wakes opens a new one each time). Finished ones are dropped when a
+// new channel starts (a finished thread needs no join); the ones still running are joined at exit as before.
+fn prune_finished(handles: &mut Vec<thread::JoinHandle<()>>) {
+    handles.retain(|h| !h.is_finished());
+}
+
+fn now_unix_ms() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0)
+}
+
+fn split_deadline(raw: &str) -> (Option<u128>, &str) {
+    if let Some(rest) = raw.strip_prefix("@deadline=") {
+        if let Some(sp) = rest.find(' ') {
+            if let Ok(dl) = rest[..sp].parse::<u128>() {
+                return (Some(dl), &rest[sp + 1..]);
+            }
+        }
+    }
+    (None, raw)
+}
+
 fn work(shared: Arc<Shared>, chan: String, id: u64, rx: mpsc::Receiver<ChannelReq>) {
     let mut state = ChannelState::default();
     for req in rx {
-        let is_close = req.rest == "CLOSE";
-        let reply = match handle(&shared, &chan, &mut state, &req.rest) {
+        let (deadline_ms, cmd) = split_deadline(&req.rest);
+        let is_close = cmd == "CLOSE";
+        if let Some(dl) = deadline_ms {
+            if !is_close && now_unix_ms() > dl {
+                say(&format!("{chan} {} TIMEOUT", req.seq));
+                continue;
+            }
+        }
+        let reply = match handle(&shared, &chan, &mut state, cmd) {
             Ok(r) => r,
             Err(e) => {
                 state.watch = None;
@@ -150,9 +191,10 @@ fn work(shared: Arc<Shared>, chan: String, id: u64, rx: mpsc::Receiver<ChannelRe
                 }
             }
         };
-        say(&format!("{chan} {} {reply}", req.seq));
+        let clean = sanitize_reply(&reply);
+        say(&format!("{chan} {} {clean}", req.seq));
         if is_close {
-            let mut map = shared.channels.lock().unwrap();
+            let mut map = shared.channels.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(cur) = map.get(&chan) {
                 if cur.id == id {
                     map.remove(&chan);
@@ -335,6 +377,25 @@ mod tests {
     }
 
     #[test]
+    fn prune_finished_drops_ended_threads_and_keeps_running_ones() {
+        let (stop_tx, stop_rx) = mpsc::channel::<()>();
+        let mut handles: Vec<thread::JoinHandle<()>> = (0..5).map(|_| thread::spawn(|| {})).collect();
+        handles.push(thread::spawn(move || {
+            let _ = stop_rx.recv();
+        }));
+        let start = std::time::Instant::now();
+        while handles.iter().filter(|h| h.is_finished()).count() < 5 && start.elapsed().as_secs() < 5 {
+            thread::sleep(std::time::Duration::from_millis(5));
+        }
+        prune_finished(&mut handles);
+        assert_eq!(handles.len(), 1, "only the running thread is kept");
+        let _ = stop_tx.send(());
+        for h in handles {
+            assert!(h.join().is_ok());
+        }
+    }
+
+    #[test]
     fn unknown_channel_and_commands_return_err() {
         let shared = test_shared();
         let mut st = ChannelState::default();
@@ -359,6 +420,12 @@ mod tests {
     fn closed_stdout_does_not_panic_or_hang() {
         let mut w = BrokenPipeWriter;
         say_to(&mut w, "diag 1 rust-helper");
+    }
+
+    #[test]
+    fn sanitize_reply_strips_line_breaks() {
+        assert_eq!(sanitize_reply("OK"), "OK");
+        assert_eq!(sanitize_reply("ERR bad\r\nline\nhere"), "ERR bad  line here");
     }
 
     #[test]
@@ -407,5 +474,13 @@ mod tests {
             };
             assert!(!r.is_empty());
         }
+    }
+
+    #[test]
+    fn split_deadline_parses_valid_and_ignores_invalid() {
+        assert_eq!(split_deadline("@deadline=123456 SET 0d 1"), (Some(123456), "SET 0d 1"));
+        assert_eq!(split_deadline("SET 0d 1"), (None, "SET 0d 1"));
+        assert_eq!(split_deadline("@deadline=bad SET 0d 1"), (None, "@deadline=bad SET 0d 1"));
+        assert_eq!(split_deadline("@deadline=123456"), (None, "@deadline=123456"));
     }
 }

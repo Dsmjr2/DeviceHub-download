@@ -22,6 +22,12 @@ function read() {
   return vals.length ? { available: true, db: vals[0], all: vals } : { available: false };
 }
 
+function applyToText(text, db) {
+  if (!Number.isInteger(db) || db < 0 || db > 10) throw new Error('mic boost must be 0-10 dB');
+  if (typeof text !== 'string' || text.search(RE) < 0) throw new Error('no mic boost setting in the iCUE settings file');
+  return text.replace(RE, (_, a, __, c) => `${a}${db}${c}`);
+}
+
 let busy = false, ours = false, queued = null;
 // Saves the boost, then lets iCUE apply it in the background: the call returns as soon as the file holds the new
 // value (well under a second). iCUE is started in the tray, and closed again (if it was not open before) once its
@@ -30,6 +36,8 @@ let busy = false, ours = false, queued = null;
 // lost to "already being applied").
 async function set(db, backupDir, sdkConnected = () => false) {
   if (!Number.isInteger(db) || db < 0 || db > 10) throw new Error('mic boost must be 0-10 dB');
+  if (typeof backupDir !== 'string' || !backupDir.trim()) throw new Error('backup folder is required');
+  if (typeof sdkConnected !== 'function') sdkConnected = () => false;
   if (!fs.existsSync(CFG)) throw new Error('iCUE settings file not found');
   if (busy) { queued = { db, backupDir, sdkConnected }; return { db, queued: true }; }
   busy = true;
@@ -39,9 +47,10 @@ async function set(db, backupDir, sdkConnected = () => false) {
     // iCUE writes this file itself while it runs: close it before editing
     if (await running()) { await kill(); killedIt = wasRunning; for (let i = 0; i < 30 && (await running()); i++) await sleep(200); }
     const text = fs.readFileSync(CFG, 'utf8');
-    if (!RE.test(text)) throw new Error('no mic boost setting in the iCUE settings file');
+    const nextText = applyToText(text, db);
+    fs.mkdirSync(backupDir, { recursive: true });
     fs.copyFileSync(CFG, path.join(backupDir, `headset-icue-config-${new Date().toISOString().replace(/[:.]/g, '-')}.cuecfg`));
-    writeAtomic(CFG, text.replace(RE, (_, a, __, c) => `${a}${db}${c}`));
+    writeAtomic(CFG, nextText);
     const back = read();
     if (back.db !== db) throw new Error(`the settings file reads ${back.db} dB after writing ${db} dB`);
     if (!wasRunning) ours = true;
@@ -68,4 +77,4 @@ async function set(db, backupDir, sdkConnected = () => false) {
 // true while DeviceHub has iCUE open to apply a boost (or one is waiting to be applied)
 const applying = () => busy || ours;
 
-module.exports = { read, set, applying };
+module.exports = { read, set, applying, _test: { applyToText } };

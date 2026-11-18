@@ -15,10 +15,19 @@ const { writeAtomic } = require('./safe-write');
 let diskDir = null;
 function useDisk(dir) { diskDir = dir; }
 // every text in a disk copy without this PC's user folder or user name (an error message can name a path)
-function scrubPersonal(value) {
-  const home = require('os').homedir(), user = process.env.USERNAME || require('os').userInfo().username || '';
+let scrubCache = null;
+function scrubPatterns() {
+  const os = require('os');
+  const home = os.homedir(), user = process.env.USERNAME || os.userInfo().username || '';
+  const key = `${home}\0${user}`;
+  if (scrubCache && scrubCache.key === key) return scrubCache.pats;
   const esc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const pats = [home && [new RegExp(esc(home), 'gi'), '%USERPROFILE%'], user.length >= 3 && [new RegExp(`\\b${esc(user)}\\b`, 'gi'), '%USERNAME%']].filter(Boolean);
+  scrubCache = { key, pats };
+  return pats;
+}
+function scrubPersonal(value) {
+  const pats = scrubPatterns();
   const walk = (v) => (typeof v === 'string' ? pats.reduce((t, [re, to]) => t.replace(re, to), v)
     : Array.isArray(v) ? v.map(walk) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)])) : v);
   return walk(value);

@@ -188,6 +188,7 @@ const require = createRequire(import.meta.url);
   const fake = async (u) => { hops.push(u); return { status: 302, ok: false, headers: { get: (k) => (k === 'location' ? 'http://127.0.0.1:5577/api/help/request?vid=1234' : null) }, text: async () => '' }; };
   const e = await throws(() => upd.page('https://pulsar.gg/x', { fetchFn: fake }));
   check(/refused a redirect/.test(e?.message || '') && hops.length === 1, `a vendor page redirecting to this PC is refused before that request (${e?.message}; ${hops.length} requests)`);
+  check(upd.cmp('1.10', '1.9') > 0 && upd.cmp('1.31.1', '1.31.0-beta') > 0 && upd.cmp(null, '1.0') < 0, 'updates.cmp handles multi-digit, pre-release suffix, and nullish versions');
   const via = fs.readFileSync(path.join(ROOT, 'helpers/via-defs.js'), 'utf8');
   check(/redirect: 'manual'/.test(via) && /next\.hostname !== LIBRARY_HOST/.test(via), 'the VIA library fetch follows redirects only within usevia.app');
 

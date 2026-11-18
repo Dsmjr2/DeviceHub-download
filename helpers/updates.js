@@ -2,7 +2,7 @@
 // and opening the vendor's own updater. DeviceHub never downloads, runs or flashes firmware itself: the update runs
 // in the Pulsar app or iCUE, which know how to recover from a failed flash. Pages are read only when Shawn checks.
 const fs = require('fs');
-const { writeAtomic } = require('./safe-write');  // crash-proof saving (helpers/safe-write.js)
+const { writeAtomic, readJson } = require('./safe-write');  // crash-proof saving (helpers/safe-write.js)
 const path = require('path');
 const { execFile, spawn } = require('child_process');
 
@@ -31,7 +31,7 @@ async function installedApps() {
   return r;
 }
 
-const cmp = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); } return 0; };
+const cmp = (a, b) => { const x = String(a || '').split('.').map(n => parseInt(n, 10) || 0), y = String(b || '').split('.').map(n => parseInt(n, 10) || 0); for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); } return 0; };
 
 // (9 Nov 2026, security audit run-2 wave 2) redirects are followed by hand, only over HTTPS and only within the maker's own
 // site: a redirect anywhere else (127.0.0.1:5577 included) is refused, so a vendor page cannot steer this request
@@ -57,7 +57,7 @@ async function page(url, { fetchFn = fetch } = {}) {
 }
 
 async function online(force) {
-  if (!cache && cacheFile && fs.existsSync(cacheFile)) { try { cache = JSON.parse(fs.readFileSync(cacheFile, 'utf8')); } catch {} }
+  if (!cache && cacheFile && fs.existsSync(cacheFile)) { cache = readJson(cacheFile, null); }
   if (!force && cache && Date.now() - cache.at < CACHE_MS) return cache;
   const result = { at: Date.now(), pulsar: null, epomaker: null, errors: {} };
   try {
@@ -117,3 +117,4 @@ function init(root) { cacheFile = require('./data-dir').dataFile('updates-cache.
 module.exports = { init, status, open, close, PAGES };
 
 module.exports.page = page;   // tests/audit-run2.mjs
+module.exports.cmp = cmp;

@@ -58,13 +58,14 @@ async function current() {
 // told when settings or profiles from the other PC were put in place (server.js: the running auto-switch reloads them)
 let onLoaded = () => {};
 async function apply(remote, local) {
+  if (!remote || typeof remote !== 'object' || Array.isArray(remote)) return [];
   const changed = [];
   try { fs.mkdirSync(path.join(ROOT, 'backups'), { recursive: true }); } catch {}
-  if (remote.eq && eqapo && eqapo.installed() && hash(remote.eq) !== hash(local.eq)) { await eqapo.importState(remote.eq); changed.push('sound'); }
-  if (remote.options && hash(remote.options) !== hash(local.options)) {
+  if (remote.eq && typeof remote.eq === 'object' && !Array.isArray(remote.eq) && eqapo && eqapo.installed() && hash(remote.eq) !== hash(local.eq)) { await eqapo.importState(remote.eq); changed.push('sound'); }
+  if (remote.options && typeof remote.options === 'object' && !Array.isArray(remote.options) && hash(remote.options) !== hash(local.options)) {
     const cur = readJsonForWrite(SETTINGS, {});
     if (fs.existsSync(SETTINGS)) fs.copyFileSync(SETTINGS, path.join(ROOT, 'backups', `settings-${new Date().toISOString().replace(/[:.]/g, '-')}.json`));
-    for (const k of OPTIONS) if (k in remote.options) cur[k] = remote.options[k];
+    for (const k of OPTIONS) if (Object.hasOwn(remote.options, k)) cur[k] = remote.options[k];
     writeAtomic(SETTINGS, JSON.stringify(cur, null, 2)); changed.push('options');
   }
   // an empty list from the main PC never empties this one's profiles (a copy sent before 5 Nov after a failed read)
@@ -138,4 +139,5 @@ module.exports = {
   status: () => status,
   // make this PC the main one (it sends, never receives), or a following one
   setRole(role) { const st = readJsonForWrite(STATE, {}); st.role = role === 'main' ? 'main' : 'follow'; if (st.role === 'main') st.lastLocal = null; writeAtomic(STATE, JSON.stringify(st)); status.role = st.role; return sync(); },
+  _apply: apply,
 };

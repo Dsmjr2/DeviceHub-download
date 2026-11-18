@@ -4,6 +4,7 @@
 // sent. No window showing it: no reading at all. A closed stream stops wanting.
 //   const w = createGpuWatch({ read })    w.want(id, on, send)   w.drop(id)   w.watching()
 function createGpuWatch({ read, every = 15000, setI = setInterval, clearI = clearInterval }) {
+  const intervalMs = Number.isFinite(every) && every > 0 ? every : 15000;
   const wants = new Map();   // stream id -> send(data)
   let timer = null, last;    // last: { tempC } once read
   // 31 Oct 2026: a read still running when the last window stopped wanting would set `last` after it was cleared, so the
@@ -12,19 +13,27 @@ function createGpuWatch({ read, every = 15000, setI = setInterval, clearI = clea
   const tick = async () => {
     const mine = gen;
     let tempC = null;
-    try { tempC = (await read()).gpus?.[0]?.tempC ?? null; } catch {}
+    try {
+      const raw = (await read())?.gpus?.[0]?.tempC;
+      tempC = Number.isFinite(raw) ? raw : null;
+    } catch {}
     if (mine !== gen) return;
     if (last && last.tempC === tempC) return;
     last = { tempC };
     for (const send of wants.values()) { try { send(last); } catch {} }
   };
   const sync = () => {
-    if (wants.size && !timer) { timer = setI(() => { tick(); }, every); timer.unref?.(); tick(); }
+    if (wants.size && !timer) { timer = setI(() => { tick(); }, intervalMs); timer.unref?.(); tick(); }
     else if (!wants.size && timer) { clearI(timer); timer = null; last = undefined; gen++; }
   };
   return {
     want(id, on, send) {
-      if (on) { const had = wants.has(id); wants.set(id, send); if (had || timer) { if (last) send(last); } }
+      if (on) {
+        if (typeof send !== 'function') return;
+        const had = wants.has(id);
+        wants.set(id, send);
+        if ((had || timer) && last) { try { send(last); } catch {} }
+      }
       else wants.delete(id);
       sync();
     },

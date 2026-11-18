@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::ffi::c_void;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -170,7 +170,7 @@ pub fn brand(ico: &str, relaunch: &str) -> String {
         EnumWindows(enum_cb, (&mut found as *mut Vec<isize>) as isize);
     }
 
-    let mut guard = STATE.lock().unwrap();
+    let mut guard = STATE.lock().unwrap_or_else(PoisonError::into_inner);
     let st = guard.get_or_insert_with(|| BrandState {
         done: HashSet::new(),
         big_icon: 0,

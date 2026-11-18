@@ -9,7 +9,7 @@ const fs = require('fs');
 const { writeAtomic } = require('./safe-write');  // crash-proof saving (helpers/safe-write.js)
 const path = require('path');
 
-let file, timer, watchTimer, getState;
+let file, firstTimer, timer, watchTimer, getState;
 let power = () => require('./power');
 const KEEP_MS = 7 * 24 * 3600 * 1000;
 // a device id the graph and the estimate take: the built-in two, or an added device's id (helpers/my-devices.mjs problem())
@@ -17,7 +17,7 @@ const ID = /^[a-z][a-z0-9-]{1,30}$/;
 const validId = (id) => typeof id === 'string' && ID.test(id);
 
 function read() {
-  if (!fs.existsSync(file)) return [];
+  if (!file || !fs.existsSync(file)) return [];
   return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
 }
 function append(rows) {
@@ -83,17 +83,18 @@ function estimates() {
 }
 
 function start(root, stateFn) {
+  stop();
   file = require('./data-dir').dataFile('battery-history.jsonl', root);
   getState = stateFn;
   // start from the last recorded plug state, so a plug or unplug while DeviceHub was closed is caught at once
   for (const r of read()) lastCharging[r.id] = r.charging;
-  setTimeout(sample, 60000);
+  firstTimer = setTimeout(sample, 60000);
   timer = setInterval(sample, 5 * 60 * 1000);
   // the charging watch every 30 s (90 s on battery with the battery saver)
   const loop = () => { Promise.resolve().then(watch).catch(() => {}).finally(() => { watchTimer = setTimeout(loop, require('./power').every(30000)); }); };
   watchTimer = setTimeout(loop, 20000);
 }
-function stop() { clearInterval(timer); clearTimeout(watchTimer); }
+function stop() { clearTimeout(firstTimer); clearInterval(timer); clearTimeout(watchTimer); firstTimer = timer = watchTimer = null; }
 
 // The recorded readings of one device for the battery graph: [{ at, pct, charging }], oldest first, the last `days` days
 function history(id, days = 7) {

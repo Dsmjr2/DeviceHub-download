@@ -129,6 +129,12 @@ lw.options.preflight = false;   // the steps after the pre-flight (tests/smoothe
   check(poll && poll.type === 'choice' && poll.options.length === 2, `Polling rate saved as a choice (${JSON.stringify(poll)})`);
   check(s.result?.appOpen && s.result.app === 'Pretend Hub' && s.result.learned.length === 2, `the result says the app is open (${JSON.stringify(s.result)})`);
   check(s.result.leftAt.some((x) => x.label === 'Polling rate'), 'the result says where Polling rate was left');
+  // (15 Nov 2026 bug hunt) Save again, or twice at once (a double click), makes no second driver: it was saved as
+  // pretend-mouse-2 with its id renamed, two drivers for one device
+  const before = fs.readdirSync(dir).length;
+  const [a1, a2] = await Promise.all([lw.act('save', { title: 'Pretend mouse' }), lw.act('save', { title: 'Pretend mouse' })]);
+  check(fs.readdirSync(dir).length === before, `Save again makes no second driver (${fs.readdirSync(dir).join(', ')})`);
+  check(a1.ok && a2.ok && a1.saved?.name === folder, `and answers with the driver already saved (${JSON.stringify(a1.saved)})`);
   const f = await auto.finish();
   check(f.ok && f.ran && w.closed === 1 && w.turnedOn === 1, `finish closes the app and turns settings on (${JSON.stringify(f)})`);
 }

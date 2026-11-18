@@ -11,7 +11,7 @@ The reads were run on Shawn's PC (see "Measured").
 - **Monitors page**: each monitor card has a "Display" part: Resolution, Refresh rate, HDR, Main screen, Night light.
   A screen with no monitor card (not in the DDC/CI list) gets a card of its own.
 - **PC page** (the sidebar entry that was "Fans"; id still `fans`, so links and Get help are unchanged): Graphics card,
-  Fan lights, **Temperatures and fans**, **PC check**.
+  Fan lights (moved to Lighting > PC lights on 25 Oct 2026), **Temperatures and fans**, **PC check**.
   One sidebar entry now covers the PC's readings, its fans and its check, so nothing was added to the sidebar.
   Settings > Health is still about DeviceHub itself; the PC check is about the PC.
 - No pop-ups, toasts or tooltips in the new parts: every question and result is a line on the card.
@@ -130,7 +130,7 @@ Shawn's PC.
 
 Layout (24 Oct 2026, Shawn): the whole PC page fits 1650x950 with no scroll (measured in demo mode, also with CPU sensors
 set up and the fine list open: 864 px). The graphics card runs down the left; the PC check spans the two right columns
-under Fan lights and Temperatures. In the check, warnings, notes and the graphics driver are short cells in two columns;
+under Temperatures (and, until 25 Oct 2026, Fan lights). In the check, warnings, notes and the graphics driver are short cells in two columns;
 everything fine is one line ("Free space, drive health, devices, crashes, restart: all fine.") that opens to a
 three-column list. One column at phone width.
 
@@ -199,6 +199,6 @@ Read when the page opens (cached 60 s) and on Check again; never in the backgrou
 - **Processor card** (PC page, under the graphics card): load and clock from Windows' counters (pc-sensors.ps1), and
   with the CPU reader its temperature, hottest core and CPU fan. The LibreHardwareMonitor reader is unchanged (it
   passes temperatures and fans only; it is installed on the person's PC).
-- **Off** (`offSwatch` in `public/ui/controls.js`): beside every colour row (Lighting, PC lights, Fan lights, Headset,
+- **Off** (`offSwatch` in `public/ui/controls.js`): beside every colour row (Lighting, PC lights with its fan lights, Headset,
   added devices' colour settings). It sends black; Lighting's Off turns every included light off (the keyboard by
   brightness 0, so its colour and effect stay).

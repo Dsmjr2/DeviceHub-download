@@ -1,5 +1,7 @@
 // Game settings in the setup file (public/core/setup-games.js): the file's games merge over this PC's.
 import { mergeGames } from '../public/core/setup-games.js';
+import { createRequire } from 'node:module';
+const { safeInstallDir, folderExes } = createRequire(import.meta.url)('../helpers/games.js');
 
 let bad = 0;
 const check = (ok, what) => { if (!ok) { bad++; console.log(`FAIL ${what}`); } };
@@ -45,6 +47,12 @@ check(r.list[0].setup.hdr?.id === 'Y' && r.list[0].setup.hdr.on === false, "this
 // junk entries are skipped
 r = mergeGames([], [null, { name: '' }, { name: 'x' }]);
 check(r.list.length === 0, 'entries without a name or program list skipped');
+
+// games.js: installdir traversal and non-string extra exes are guarded
+check(safeInstallDir('C:\\Games\\common', '..\\..\\Windows') === null, 'safeInstallDir rejects traversal');
+check(safeInstallDir('C:\\Games\\common', '') === null, 'safeInstallDir rejects empty dir');
+check(safeInstallDir('C:\\Games\\common', 'MyGame') !== null, 'safeInstallDir accepts child folder');
+check(JSON.stringify(folderExes('C:\\no-such-game-dir-xyz', [null, 123, 'Game.exe'])) === '["game.exe"]', 'folderExes ignores non-string extras');
 
 console.log(bad ? `setup-games: ${bad} failed` : 'setup-games: all checks passed');
 process.exit(bad ? 1 : 0);

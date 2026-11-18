@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::ffi::c_void;
 use std::path::Path;
 use std::process::Command;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use windows::core::{PCWSTR, PWSTR};
 use windows::Win32::Foundation::CloseHandle;
@@ -1302,7 +1302,7 @@ pub fn pc_check() -> Value {
     let tune = Arc::new(Mutex::new(Map::new()));
 
     let note = |o_ref: &Arc<Mutex<Value>>, part: &str, msg: &str| {
-        let mut g = o_ref.lock().unwrap();
+        let mut g = o_ref.lock().unwrap_or_else(PoisonError::into_inner);
         let m = msg.to_ascii_lowercase();
         if m.contains("denied")
             || m.contains("not available to the client")
@@ -1337,7 +1337,7 @@ pub fn pc_check() -> Value {
                             json!({ "drive": v.get("DeviceID"), "label": v.get("VolumeName"), "size": sz, "free": fr })
                         })
                         .collect();
-                    o_c.lock().unwrap()["volumes"] = Value::Array(vols);
+                    o_c.lock().unwrap_or_else(PoisonError::into_inner)["volumes"] = Value::Array(vols);
                 }
                 Err(e) => note(&o_c, "volumes", &e),
             }
@@ -1383,7 +1383,7 @@ pub fn pc_check() -> Value {
                             })
                         })
                         .collect();
-                    o_c.lock().unwrap()["disks"] = Value::Array(disks);
+                    o_c.lock().unwrap_or_else(PoisonError::into_inner)["disks"] = Value::Array(disks);
                 }
                 Err(e) => note(&o_c, "disks", &e),
             }
@@ -1407,7 +1407,7 @@ pub fn pc_check() -> Value {
                             })
                         })
                         .collect();
-                    o_c.lock().unwrap()["video"] = Value::Array(vids);
+                    o_c.lock().unwrap_or_else(PoisonError::into_inner)["video"] = Value::Array(vids);
                 }
                 Err(e) => note(&o_c, "video", &e),
             }
@@ -1435,7 +1435,7 @@ pub fn pc_check() -> Value {
                             })
                         })
                         .collect();
-                    o_c.lock().unwrap()["ram"] = Value::Array(ram);
+                    o_c.lock().unwrap_or_else(PoisonError::into_inner)["ram"] = Value::Array(ram);
                 }
                 Err(e) => note(&o_c, "ram", &e),
             }
@@ -1443,7 +1443,7 @@ pub fn pc_check() -> Value {
             match wmi::query("root\\cimv2", "SELECT Manufacturer, Product FROM Win32_BaseBoard", &["Manufacturer", "Product"]) {
                 Ok(rows) => {
                     let b = rows.into_iter().next();
-                    o_c.lock().unwrap()["board"] = json!({
+                    o_c.lock().unwrap_or_else(PoisonError::into_inner)["board"] = json!({
                         "maker": b.as_ref().and_then(|x| x.get("Manufacturer")),
                         "model": b.as_ref().and_then(|x| x.get("Product")),
                     });
@@ -1471,7 +1471,7 @@ pub fn pc_check() -> Value {
                     })
                 })
                 .collect();
-            o_c.lock().unwrap()["devices"] = Value::Array(devs);
+            o_c.lock().unwrap_or_else(PoisonError::into_inner)["devices"] = Value::Array(devs);
         }));
     }
 
@@ -1490,7 +1490,7 @@ pub fn pc_check() -> Value {
             let whea = run_cmd(&wevt_s, &["qe", "System", &format!("/q:{q2}"), "/f:xml", "/rd:true"])
                 .map(|x| parse_wevt_events(&x, true))
                 .unwrap_or_default();
-            o_c.lock().unwrap()["events"] = json!({ "bugchecks": bugchecks, "whea": whea });
+            o_c.lock().unwrap_or_else(PoisonError::into_inner)["events"] = json!({ "bugchecks": bugchecks, "whea": whea });
         }));
     }
 
@@ -1511,7 +1511,7 @@ pub fn pc_check() -> Value {
             let nv_app = Path::new(&pf).join(r"NVIDIA Corporation\NVIDIA App\CEF\NVIDIA App.exe");
             let amd_app = Path::new(&pf).join(r"AMD\CNext\CNext\RadeonSoftware.exe");
             {
-                let mut g = o_c.lock().unwrap();
+                let mut g = o_c.lock().unwrap_or_else(PoisonError::into_inner);
                 g["restart"] = json!({ "cbs": cbs, "wu": wu });
                 g["driverApps"] = json!({
                     "nvidia": if nv_app.exists() { json!(nv_app.to_string_lossy()) } else { Value::Null },
@@ -1525,7 +1525,7 @@ pub fn pc_check() -> Value {
                 let nv_s = nv_smi.to_string_lossy().into_owned();
                 if let Some(v) = run_cmd(&nv_s, &["--query-gpu=driver_version", "--format=csv,noheader"]) {
                     if let Some(first) = v.lines().next().map(str::trim).filter(|s| !s.is_empty()) {
-                        o_c.lock().unwrap()["nvidiaVersion"] = json!(first);
+                        o_c.lock().unwrap_or_else(PoisonError::into_inner)["nvidiaVersion"] = json!(first);
                     }
                 }
                 if let Some(mq) = run_cmd(&nv_s, &["-q", "-d", "MEMORY"]) {
@@ -1566,7 +1566,7 @@ pub fn pc_check() -> Value {
                         }
                     }
                     if let Some(b) = bar1 {
-                        let mut tg = t_c.lock().unwrap();
+                        let mut tg = t_c.lock().unwrap_or_else(PoisonError::into_inner);
                         tg.insert("bar1MiB".into(), json!(b));
                         tg.insert("vramMiB".into(), vram.map(|x| json!(x)).unwrap_or(Value::Null));
                     }
@@ -1582,10 +1582,10 @@ pub fn pc_check() -> Value {
         handles.push(thread::spawn(move || {
             match power_facts() {
                 Ok(p) => {
-                    t_c.lock().unwrap().insert("power".into(), p);
+                    t_c.lock().unwrap_or_else(PoisonError::into_inner).insert("power".into(), p);
                 }
                 Err(e) => {
-                    if let Some(arr) = o_c.lock().unwrap().get_mut("errors").and_then(|v| v.as_array_mut()) {
+                    if let Some(arr) = o_c.lock().unwrap_or_else(PoisonError::into_inner).get_mut("errors").and_then(|v| v.as_array_mut()) {
                         arr.push(json!(format!("power: {e}")));
                     }
                 }
@@ -1601,7 +1601,7 @@ pub fn pc_check() -> Value {
             .as_str()
             .and_then(|s| s.parse::<i64>().ok())
             .unwrap_or(0);
-            let mut tg = t_c.lock().unwrap();
+            let mut tg = t_c.lock().unwrap_or_else(PoisonError::into_inner);
             tg.insert("battery".into(), battery);
             tg.insert("gameMode".into(), reg_value(HKEY_CURRENT_USER, r"Software\Microsoft\GameBar", "AutoGameModeEnabled"));
             tg.insert("bgRecord".into(), reg_value(HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\GameDVR", "HistoricalCaptureEnabled"));
@@ -1640,7 +1640,7 @@ pub fn pc_check() -> Value {
                         json!({ "name": a.get("InterfaceDescription"), "bps": bps })
                     })
                     .collect();
-                t_c.lock().unwrap().insert("wired".into(), Value::Array(wired));
+                t_c.lock().unwrap_or_else(PoisonError::into_inner).insert("wired".into(), Value::Array(wired));
             }
         }));
     }
@@ -1709,7 +1709,7 @@ pub fn pc_check() -> Value {
                             }
                         }
                     }
-                    t_c.lock().unwrap().insert(
+                    t_c.lock().unwrap_or_else(PoisonError::into_inner).insert(
                         "wifi".into(),
                         json!({
                             "name": wifi_field(&wi, "Name"),
@@ -1845,7 +1845,7 @@ pub fn pc_check() -> Value {
             } else {
                 0
             };
-            t_c.lock().unwrap().insert(
+            t_c.lock().unwrap_or_else(PoisonError::into_inner).insert(
                 "latency".into(),
                 json!({
                     "gw": gw,

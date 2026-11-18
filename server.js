@@ -177,7 +177,7 @@ function runningPrograms(withWindows) {
     p.then(() => { windowsList.busy = false; windowsList.at = Date.now(); });
     return p;
   }
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     // from the helper that already runs (26 Oct 2026, idle CPU: auto-switch looks every 10 s, and each tasklist cost
     // ~170 ms of CPU); tasklist only when the helper cannot answer (it is restarting, or an older helper)
     if (corsair) {
@@ -186,7 +186,10 @@ function runningPrograms(withWindows) {
     }
     tasklist();
     function tasklist() {
+      // a failed or timed-out tasklist is an error, never an empty list (15 Nov 2026 bug hunt: auto-switch took it as
+      // the game closing, and a game settings load as no game running)
       execFile('tasklist', ['/fo', 'csv', '/nh'], { windowsHide: true, timeout: 8000 }, (err, out) => {
+        if (err) return reject(new Error('the list of running programs could not be read'));
         resolve([...new Set((out || '').split(/\r?\n/).map((l) => l.split('","')[0]?.replace(/^"/, '')).filter(Boolean))]);
       });
     }
@@ -471,14 +474,17 @@ async function api(req, res, url) {
   }
   if (url.pathname === '/api/backups' && req.method === 'GET') {
     // one stat per file (the sidebar's backup shield asks every 30 s)
+    if (!fs.existsSync(BACKUPS)) return send(res, 200, []);
     const files = fs.readdirSync(BACKUPS).filter((f) => f.endsWith('.json')).map((f) => { const st = fs.statSync(path.join(BACKUPS, f)); return { name: f, size: st.size, at: st.mtime, ms: st.mtimeMs }; });
     files.sort((a, b) => b.ms - a.ms);
     return send(res, 200, files.map(({ ms, ...f }) => f));
   }
   if (url.pathname.startsWith('/api/backups/') && req.method === 'GET') {
-    const name = path.basename(decodeURIComponent(url.pathname.slice('/api/backups/'.length)));
-    const file = path.join(BACKUPS, name);
-    if (!name.endsWith('.json') || !fs.existsSync(file)) return send(res, 404, { error: 'no such backup' });
+    const rawName = decodeURIComponent(url.pathname.slice('/api/backups/'.length));
+    if (!rawName || /[\\/]/.test(rawName) || !rawName.endsWith('.json')) return send(res, 404, { error: 'no such backup' });
+    const backupsRoot = path.resolve(BACKUPS);
+    const file = path.resolve(backupsRoot, rawName);
+    if (!file.startsWith(backupsRoot + path.sep) || !fs.existsSync(file)) return send(res, 404, { error: 'no such backup' });
     return send(res, 200, fs.readFileSync(file, 'utf8'));
   }
   // the change history, kept across restarts
@@ -571,6 +577,12 @@ async function api(req, res, url) {
       if (cur.themeBg && !['graphite', 'black', 'ocean', 'midnight', 'espresso', 'old-school', 'verde', 'milk', 'coral-reef', 'cyberpunk', 'sakura', 'terminal', 'koi-pond', 'taco-night', 'slate', 'plum', 'forest', 'cream', 'paper'].includes(cur.themeBg)) delete cur.themeBg;
       // Settings > Appearance; Crimson ('duo', and the older 'pop') became Aero (26 Oct 2026), so a saved one is kept as 'aero'
       if (cur.artStyle === 'duo' || cur.artStyle === 'pop') cur.artStyle = 'aero';
+      // the sidebar's order (17 Nov 2026, public/core/rail-order.js): page names and group headings only; [] = the usual
+      if ('navOrder' in b) {
+        if (Array.isArray(b.navOrder) && b.navOrder.length <= 60 && b.navOrder.every((t) => typeof t === 'string' && /^#?[a-z0-9][a-z0-9-]{0,39}$/.test(t))) {
+          if (b.navOrder.length) cur.navOrder = b.navOrder; else delete cur.navOrder;
+        }
+      }
       if (cur.artStyle && !['photo', 'frosted', 'blueprint', 'neon', 'aero', 'arctic', 'live', 'studio', 'glow', 'matte', 'night'].includes(cur.artStyle)) delete cur.artStyle;
       // a name for a headset (the Headset page's Rename; 22 Oct 2026, Shawn: the wired Audio-Technica): { key, name },
       // key a USB id or a wired headset's JACK_ key; an empty name puts Windows' name back
@@ -1162,7 +1174,7 @@ async function api(req, res, url) {
     const su = require('./helpers/self-update');
     if (req.method === 'GET') {
       const st = await su.status();
-      if (!st.behind) updateNotice = null;
+      if (!st.behind && !st.updating) updateNotice = null;
       return send(res, 200, st);
     }
     try {
@@ -1339,7 +1351,8 @@ http.createServer(async (req, res) => {
   if (ISOLATED) { console.log('[isolated] test mode: no devices, helper, iCUE, OpenRGB, tray, sync or updates'); return; }
   // what the window's live stream pushes (27 Oct 2026, see helloNow): new files in public/ (an update, an edit), a new
   // backup (the Backups shield), the battery saver turning on or off; read only while a window is open
-  windowEvents.watchFolder(PUBLIC, () => { if (!hub.count()) return; const v = appVersion(); if (v !== pushedVersion) { pushedVersion = v; hub.push('version', { version: v }); } }, { recursive: true, waitMs: 1500 });
+  // not while an update writes its files there (15 Nov 2026 bug hunt): the window reloaded mid-update and lost its answer
+  windowEvents.watchFolder(PUBLIC, () => { if (!hub.count()) return; if (require('./helpers/self-update').updating()) return; const v = appVersion(); if (v !== pushedVersion) { pushedVersion = v; hub.push('version', { version: v }); } }, { recursive: true, waitMs: 1500 });
   windowEvents.watchFolder(BACKUPS, () => { if (!hub.count()) return; const at = windowEvents.lastBackupAt(BACKUPS); if (at !== pushedBackup) { pushedBackup = at; hub.push('backup', { at }); } });
   require('./helpers/power').onChange(() => hub.push('power', require('./helpers/power').state()));
   // automatic problem reports to Shawn (helpers/auto-report.mjs): the helper's problems as they happen, and 2 minutes
@@ -1456,9 +1469,14 @@ http.createServer(async (req, res) => {
       const tag = require('crypto').createHash('sha1').update(data).digest('hex').slice(0, 8);
       const dir = path.join(ROOT, 'icons-cache');
       fs.mkdirSync(dir, { recursive: true });
-      for (const f of fs.readdirSync(dir)) if (f !== `DeviceHub-${tag}.ico`) fs.unlinkSync(path.join(dir, f));
-      const copy = path.join(dir, `DeviceHub-${tag}.ico`);
-      if (!fs.existsSync(copy)) writeAtomic(copy, data);
+      const targetName = `DeviceHub-${tag}.ico`;
+      for (const f of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (f.isFile() && f.name !== targetName) { try { fs.unlinkSync(path.join(dir, f.name)); } catch {} }
+      }
+      const copy = path.join(dir, targetName);
+      let needWrite = true;
+      try { needWrite = fs.statSync(copy).size !== data.length; } catch {}
+      if (needWrite) writeAtomic(copy, data);
       ico = copy;
     } catch (e) { console.error('[icon] copy', e.message); }
     const relaunch = `wscript.exe "${path.join(ROOT, 'DeviceHub.vbs')}"`;

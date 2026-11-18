@@ -49,8 +49,15 @@ if defined rb (
   rem a zip or Setup.exe update (31 Oct 2026): "files:<folder>" holds the version before, put back over the app
   if "!old:~0,6!"=="files:" (
     rem the version that failed (release.json names it), so Update does not offer it again (helpers/self-update.js zipStatus)
-    !NODE! -e "try{process.stdout.write(require('./release.json').commit||'')}catch{}" > data\update-failed.txt 2>nul
+    rem (a git copy compares the signed appCommit, a zip copy the release's commit: 15 Nov 2026)
+    !NODE! -e "try{process.stdout.write((require('fs').existsSync('.git')&&require('./release.json').appCommit)||require('./release.json').commit||'')}catch{}" > data\update-failed.txt 2>nul
     robocopy "!old:~6!" . /E /IS /IT /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >nul
+    rem a copy tied to the download repository: git back at the version before too (install.ps1 noted it; 15 Nov 2026)
+    if exist backups\pre-update-git-head.txt (
+      set /p gh=<backups\pre-update-git-head.txt
+      git cat-file -e !gh! 2>nul && git reset --quiet !gh! >> logs\server.log 2>&1
+      del /q backups\pre-update-git-head.txt
+    )
     goto loop
   )
   rem a version from before data\ (no helpers/data-migrate.js) reads this PC's files beside the app: they go back there first

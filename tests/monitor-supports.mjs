@@ -15,5 +15,8 @@ check(by['E2']?.state === 'maker' && by['E9']?.state === 'maker', "E0-FF are the
 check(!l.some((x) => x.code.length > 2), 'longer codes (the maker\'s own, F0F0) are not listed');
 check(l.map((x) => parseInt(x.code, 16)).every((c, i, a) => !i || a[i - 1] < c), 'sorted by code');
 check(supportsList('').length === 0 && supportsList('no vcp here').length === 0, 'no capabilities: an empty list');
+check(supportsList(null).length === 0, 'null capabilities: an empty list');
+const weird = supportsList('vcp(10\tXY 14(01\nZZ 05))');
+check(weird.length === 2 && weird[0].code === '10' && weird[1].code === '14' && weird[1].values.join() === '01,05', 'non-hex tokens ignored and whitespace separators handled');
 if (fails.length) { console.log(`monitor-supports: ${fails.length} failed\n - ${fails.join('\n - ')}`); process.exit(1); }
 console.log('monitor-supports (what a monitor supports): all good');
