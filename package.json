@@ -52,6 +52,7 @@
       "tests/vendor-files.mjs",
       "tests/auto-setup.mjs",
       "tests/library-updates.mjs",
+      "tests/startup-impact-secrets.mjs",
       "tests/library-refresh.mjs",
       "tests/share-route.mjs",
       "tests/get-help.mjs",

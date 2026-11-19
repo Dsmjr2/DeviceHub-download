@@ -68,7 +68,7 @@ if (-not $Overwrite -and (Test-Path -LiteralPath $prints) -and (Test-Path -Liter
     if (-not $shipped -and (Test-Path -LiteralPath $histFile)) { try { $shipped = Get-Content -LiteralPath $histFile -Raw | ConvertFrom-Json } catch {} }
   }
   # helpers/bin is built output (the pre-built helper, rebuilt on this PC if its sources change): always replaced
-  $changed = @($was.PSObject.Properties | Where-Object { -not $_.Name.StartsWith('helpers/bin/') } | Where-Object {
+  $changed = @($was.PSObject.Properties | Where-Object { -not $_.Name.StartsWith('helpers/bin/') -and -not $_.Name.StartsWith('helpers/native-rs/target/') } | Where-Object {
     $p = Join-Path $Target ($_.Name -replace '/', '\')
     # a missing file holds no change to keep (1 Nov 2026, a new-setup audit: a reinstall after a partial uninstall
     # stopped with exit 3 and pointed at Settings > Update in an app that was gone)

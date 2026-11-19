@@ -157,10 +157,11 @@ End If
 ' why in plain words instead of opening a window onto nothing (20 Oct 2026); the reason is the last "[start]" line
 ' of server.log when the server wrote one (e.g. its port taken by another program)
 ' already answering (the tray icon reopening a window it closed after 5 minutes minimized, 26 Oct 2026): no wait
-If Not Running() Then WScript.Sleep 1200
-For i = 1 To 19
+' Looked for every 200 ms (18 Nov 2026, Shawn: "it should load faster"): it waited 1.2 s first and then a whole second
+' between looks, while DeviceHub answers in about 0.2 s; a refused look returns at once, so this costs nothing
+For i = 1 To 100
   If Running() Then Exit For
-  WScript.Sleep 1000
+  WScript.Sleep 200
 Next
 ' A brand-new PC's antivirus scans node.exe on its first run, which can take longer (1 Nov 2026, a new-setup audit):
 ' while the server is still writing its log with no "[start]" line from this start, keep waiting, up to 60 s in all

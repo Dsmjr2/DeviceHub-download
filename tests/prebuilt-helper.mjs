@@ -155,9 +155,9 @@ try {
     check(mk.indexOf('$helperFiles') < mk.indexOf("'release-files.json'") && mk.indexOf("'release-files.json'") < mk.indexOf('sign-release.mjs'), 'the file list (with the helper) is made before the release is signed');
     const ins = fs.readFileSync(path.join(HELPERS, 'install.ps1'), 'utf8');
     check(/if \(\$shipped\) \{ Write-Host '   included, ready-built for this version' \}\s*elseif \(Test-Path \$csc\)/.test(ins), 'install.ps1 does not compile a matching ready-built helper');
-    check(/Where-Object \{ -not \$_\.Name\.StartsWith\('helpers\/bin\/'\) \}/.test(ins), 'install.ps1 never counts helpers/bin as changed on the PC');
+    check(/Where-Object \{ -not \$_\.Name\.StartsWith\('helpers\/bin\/'\) -and -not \$_\.Name\.StartsWith\('helpers\/native-rs\/target\/'\) \}/.test(ins), 'install.ps1 never counts helpers/bin or the ready-built Rust helper as changed on the PC');
     const su = fs.readFileSync(path.join(HELPERS, 'self-update.js'), 'utf8');
-    check(/filter\(\(\[f\]\) => !f\.startsWith\('helpers\/bin\/'\)\)/.test(su), 'self-update never counts helpers/bin as changed on the PC');
+    check(/filter\(\(\[f\]\) => !f\.startsWith\('helpers\/bin\/'\) && !f\.startsWith\('helpers\/native-rs\/target\/'\)\)/.test(su), 'self-update never counts helpers/bin or the ready-built Rust helper as changed on the PC');
     const nat = fs.readFileSync(path.join(HELPERS, 'native.js'), 'utf8');
     check(/console\.log\(e\.fallback \? `\[helper\] \$\{e\.message\}`/.test(nat), 'native.js start() logs the fallback in one line');
     // an exe gone right after its build (antivirus) waits the 10 minutes too, instead of building on every request (1 Nov 2026)

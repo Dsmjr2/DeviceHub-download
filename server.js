@@ -1442,7 +1442,7 @@ http.createServer(async (req, res) => {
   // the PC check read once in the background, so the PC page opens with it (helpers/pc-check.js)
   if (!TEST) setTimeout(() => { require('./helpers/pc-check').check(true).catch(() => {}); }, 30000).unref();
   // start-up impact: watched for the first minutes after sign-in when DeviceHub started with Windows (helpers/startup-impact.js)
-  if (!TEST && !ISOLATED) setTimeout(() => { const s = require('./helpers/startup-impact'); s._test.deps.log = (text) => serverLog({ kind: 'info', text }); s.measureAtSignIn(); }, 5000).unref();
+  if (!TEST && !ISOLATED) setTimeout(() => { const s = require('./helpers/startup-impact'); s._test.deps.log = (text) => serverLog({ kind: 'info', text }); s.cleanFile(); s.measureAtSignIn(); }, 5000).unref();
   // a screen blank cut short (helpers/sleep-monitors.ps1 on a Modern Standby PC) left the panel dark: its brightness put
   // back, only when that file is there (nothing is run otherwise)
   if (!TEST && fs.existsSync(path.join(ROOT, 'logs', 'sleep-monitors-brightness.json'))) require('child_process').execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'helpers', 'sleep-monitors.ps1'), '-Restore'], { windowsHide: true, timeout: 30000 }, () => {});

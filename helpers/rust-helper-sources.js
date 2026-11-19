@@ -1,6 +1,9 @@
-// Opt-in and staleness verification for the Rust helper (helpers/native-rs/).
-// C# stays default until Shawn opts in via DEVICEHUB_RUST_HELPER=1 or "rustHelper": true in data/settings.json.
-// DEVICEHUB_CSHARP_HELPER=1 always forces C#.
+// Which helper runs, and staleness verification for the Rust helper (helpers/native-rs/).
+// Rust is the default (18 Nov 2026, Shawn: "lets just make the rust helper the default. Monitor it still but we can go
+// back to c sharp if need be"; on trial on his PC since 13 Nov). C# (helpers/native/) stays as the fallback: it runs
+// when "rustHelper": false is in data/settings.json, DEVICEHUB_CSHARP_HELPER=1 is set, the Rust exe is missing or not
+// built from these sources (a copy that merged newer Rust sources keeps C# until a release brings the new exe), or
+// the Rust helper stopped 3 times in 10 minutes.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -67,14 +70,16 @@ function recordHash(dir = __dirname, hash = sourcesHash(dir)) {
   return hash;
 }
 
-function settingsOptIn(root = ROOT) {
+// data/settings.json rustHelper: true / false as saved, undefined when not set (then Rust, the default)
+function settingsChoice(root = ROOT) {
   try {
     const j = JSON.parse(fs.readFileSync(dataFile('settings.json', root), 'utf8'));
-    return j?.rustHelper === true;
+    return typeof j?.rustHelper === 'boolean' ? j.rustHelper : undefined;
   } catch {
-    return false;
+    return undefined;
   }
 }
+const settingsOptIn = (root = ROOT) => settingsChoice(root) === true;
 
 // crashes: when the Rust helper stopped by itself (helpers/native.js); 3 in 10 minutes = C# until DeviceHub restarts
 const CRASH_LIMIT = 3, CRASH_WINDOW = 10 * 60 * 1000;
@@ -84,11 +89,11 @@ function selectHelper({ dir = __dirname, root = ROOT, env = process.env, crashes
     return { kind: 'csharp', exe: csharpExe, reason: 'DEVICEHUB_CSHARP_HELPER=1 override', stale: false };
   }
   const envOpt = env.DEVICEHUB_RUST_HELPER === '1';
-  const cfgOpt = !envOpt && settingsOptIn(root);
-  if (!envOpt && !cfgOpt) {
-    return { kind: 'csharp', exe: csharpExe, reason: 'default', stale: false };
+  const cfg = envOpt ? undefined : settingsChoice(root);
+  if (cfg === false) {
+    return { kind: 'csharp', exe: csharpExe, reason: 'settings.json rustHelper=false', stale: false };
   }
-  const optReason = envOpt ? 'DEVICEHUB_RUST_HELPER=1' : 'settings.json rustHelper=true';
+  const optReason = envOpt ? 'DEVICEHUB_RUST_HELPER=1' : cfg === true ? 'settings.json rustHelper=true' : 'default';
   const rustExe = rustExePath(dir);
   if (!fs.existsSync(rustExe)) {
     return { kind: 'csharp', exe: csharpExe, reason: `${optReason}, but Rust exe missing; falling back to C#`, stale: true };
@@ -118,5 +123,6 @@ module.exports = {
   readStamp,
   recordHash,
   settingsOptIn,
+  settingsChoice,
   selectHelper,
 };

@@ -31,8 +31,28 @@ const deps = {
   log: () => {},
 };
 
+// A command line can carry a secret (18 Nov 2026: a password manager's command line with its unlock session was kept in
+// this file). Only the program and script names are needed (impactFor matches on them), so a value after a flag named
+// like a secret, and any long token that looks like a key, is kept as <hidden>; runs saved before this are cleaned
+// when read, and the file is written again without them (cleanFile, at start).
+const SECRET_FLAG = /((?:^|\s)(?:--?|\/)[\w-]*(?:session|password|passwd|pwd|token|secret|apikey|api-key|api_key|auth|bearer|credential|cookie|key)[\w-]*)(=|:|\s+)("[^"]*"|'[^']*'|[^\s"']+)/gi;
+const LONG_TOKEN = /(^|[\s"'=:])([A-Za-z0-9+/_-]{40,}={0,2})(?=$|[\s"'])/g;
+function redactCmd(cmd) {
+  return String(cmd || '').replace(SECRET_FLAG, (m, flag, sep) => `${flag}${sep}<hidden>`).replace(LONG_TOKEN, (m, pre) => `${pre}<hidden>`);
+}
+const cleanRun = (r) => ({ ...r, procs: Array.isArray(r?.procs) ? r.procs.map((p) => ({ ...p, cmd: redactCmd(p?.cmd) })) : [] });
 function load() {
-  try { const j = JSON.parse(fs.readFileSync(deps.file(), 'utf8')); return Array.isArray(j.runs) ? j.runs : []; } catch { return []; }
+  try { const j = JSON.parse(fs.readFileSync(deps.file(), 'utf8')); return Array.isArray(j.runs) ? j.runs.map(cleanRun) : []; } catch { return []; }
+}
+// the file written again when a run saved before the redaction still holds something it would hide
+function cleanFile() {
+  try {
+    const text = fs.readFileSync(deps.file(), 'utf8');
+    const runs = load();
+    const clean = JSON.stringify({ runs }, null, 1);
+    if (JSON.stringify(JSON.parse(text).runs) !== JSON.stringify(runs)) writeAtomic(deps.file(), clean);
+    return true;
+  } catch { return false; }
 }
 const latest = () => load().sort((a, b) => String(b.signIn).localeCompare(String(a.signIn)))[0] || null;
 
@@ -43,7 +63,7 @@ async function measureAtSignIn() {
   try {
     const r = await deps.read();
     if (!r || r.late || r.error || !r.signIn || !Array.isArray(r.procs)) return null;
-    const run = { signIn: r.signIn, at: r.at, procs: r.procs.map((p) => ({ name: p.name || '', path: p.path || '', cmd: p.cmd || '', pid: Number(p.pid) || 0, ppid: Number(p.ppid) || 0, startS: p.startS, cpuMs: Number(p.cpuMs) || 0, ioKB: Number(p.ioKB) || 0 })) };
+    const run = { signIn: r.signIn, at: r.at, procs: r.procs.map((p) => ({ name: p.name || '', path: p.path || '', cmd: redactCmd(p.cmd), pid: Number(p.pid) || 0, ppid: Number(p.ppid) || 0, startS: p.startS, cpuMs: Number(p.cpuMs) || 0, ioKB: Number(p.ioKB) || 0 })) };
     const runs = [run, ...load().filter((x) => x.signIn !== run.signIn)].sort((a, b) => String(b.signIn).localeCompare(String(a.signIn))).slice(0, KEEP);
     writeAtomic(deps.file(), JSON.stringify({ runs }, null, 1));
     deps.log(`Start-up impact measured at sign-in (${run.procs.length} programs)`);
@@ -84,4 +104,4 @@ function impactFor(it, run, root = deps.root) {
   return { level: level(cpuMs, ioKB), cpuMs, ioKB };
 }
 
-module.exports = { measureAtSignIn, latest, impactFor, _test: { deps, level, matches, scriptOf, reset: () => { busy = false; } } };
+module.exports = { measureAtSignIn, latest, impactFor, cleanFile, redactCmd, _test: { deps, level, matches, scriptOf, reset: () => { busy = false; } } };

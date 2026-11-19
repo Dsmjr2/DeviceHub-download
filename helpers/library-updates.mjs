@@ -299,6 +299,16 @@ export async function checkSoon(opts = {}) {
 // for up to waitMs so a driver published since the last start loads at once; then the my-devices copies are refreshed
 // (also with no network: a newer driver may have come with the app update itself). A check still running after waitMs
 // goes on by itself and refreshes the copies when it ends (the device page then says a restart loads it).
+// Faster start (18 Nov 2026, Shawn: "it feels like it should load faster"): the wait only helps a PC that has a driver
+// from the library (my-devices<name>library.json) a newer one could replace. With none, the devices start at once and
+// the check runs beside them (it held every start up by about a second, and up to waitMs right after Windows starts,
+// before the network is up); a library driver for a newly found device still comes from auto setup after the start.
+export function hasLibraryCopies(root = ROOT) {
+  try {
+    const dir = path.join(root, 'my-devices');
+    return fs.readdirSync(dir, { withFileTypes: true }).some((e) => e.isDirectory() && !/^[_.]/.test(e.name) && fs.existsSync(path.join(dir, e.name, 'library.json')));
+  } catch { return false; }
+}
 export async function startup({ root = ROOT, log = () => {}, waitMs = 5000, ...rest } = {}) {
   let version = null;
   try { version = (await import('./device-library.mjs')).devicehubVersion(root); } catch {}
@@ -306,6 +316,10 @@ export async function startup({ root = ROOT, log = () => {}, waitMs = 5000, ...r
   const reason = version && s.appVersion && s.appVersion !== version ? 'app updated' : 'start';
   try { if (version && s.appVersion !== version) await writeState(root, { ...readState(root), appVersion: version }); } catch {}
   if (!enabled(root)) return { skipped: 'library updates are off', reason, refreshed: await refreshCopies(root, log, rest.now, rest) };
+  if (!hasLibraryCopies(root)) {
+    check({ root, log, reason, ...rest }).catch(() => {});
+    return { reason, pending: true, skipped: 'no library drivers here: checked beside the start' };
+  }
   let timer;
   const waited = await Promise.race([
     check({ root, log, reason, ...rest }).then((r) => ({ r })),

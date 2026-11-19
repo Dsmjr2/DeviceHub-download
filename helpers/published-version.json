@@ -1,11 +1,9 @@
 {
-  "version": "1.66",
-  "commit": "06a463a2eae56e8e96b6cae9c777997b238fa35f",
+  "version": "1.67",
+  "commit": "404b3aa33d7136c49a53adc27c65b2f025036e59",
   "notes": [
-    "Rust helper: a crash no longer leaves a feature broken until restart",
-    "Drag the sidebar's entries into your own order",
-    "Sound and mic follow the headset's cable",
-    "One taskbar button: the shortcuts get winbrand's window ID, not…",
-    "Plus 54 more fixes and improvements"
+    "The ready-built Rust helper never counts as changed on a PC",
+    "Faster start: no library wait without library drivers, quicker…",
+    "Rust helper is the default"
   ]
 }

@@ -196,10 +196,22 @@ delete process.env.DEVICEHUB_LIBRARY_UPDATES;
   for (const n of fs.readdirSync(lu.cacheRoot(root3))) if (!n.endsWith('.json')) fs.rmSync(path.join(lu.cacheRoot(root3), n), { recursive: true });
   x = await lu.check({ root: root3, url: url3, timeoutMs: 1500 });
   check(x.ok && !x.unchanged && bodies === 2 && !seenHeaders[2].inm && x.entries.length === JSON.parse(body).entries.length, 'an emptied cache fetches the whole bundle again');
-  // at start: a check now (no 3-hour or 10-minute wait), the reason kept; a new DeviceHub version is "app updated"
+  // (18 Nov 2026, faster start) no driver from the library on this PC: startup does not wait, the check runs beside it
   fs.writeFileSync(path.join(root3, 'package.json'), JSON.stringify({ version: '1.0.0' }));
+  check(!lu.hasLibraryCopies(root3), 'a PC with no library drivers has no copies to refresh');
+  const t0 = Date.now();
   x = await lu.startup({ root: root3, url: url3, timeoutMs: 1500, waitMs: 3000 });
-  check(x.ok && x.reason === 'start' && seenHeaders.length === 4, `startup checks at once (${x.reason}, ${seenHeaders.length})`);
+  check(x.pending && x.skipped && !x.ok && Date.now() - t0 < 300, `no library drivers: startup returns at once (${Date.now() - t0} ms, ${x.skipped})`);
+  await lu.check({ root: root3 });   // joins the check it started
+  check(seenHeaders.length === 4 && lu.readState(root3).lastReason === 'start', `... and still checks the library beside the start (${seenHeaders.length})`);
+  // with one (my-devices<name>library.json): the waits below
+  fs.mkdirSync(path.join(root3, 'my-devices', 'some-mouse'), { recursive: true });
+  fs.writeFileSync(path.join(root3, 'my-devices', 'some-mouse', 'library.json'), '{}');
+  fs.mkdirSync(path.join(root3, 'my-devices', '_example'), { recursive: true });
+  check(lu.hasLibraryCopies(root3), 'a library driver in my-devices counts (the _example folder does not)');
+  // at start: a check now (no 3-hour or 10-minute wait), the reason kept; a new DeviceHub version is "app updated"
+  x = await lu.startup({ root: root3, url: url3, timeoutMs: 1500, waitMs: 3000 });
+  check(x.ok && x.reason === 'start' && seenHeaders.length === 5, `startup checks at once (${x.reason}, ${seenHeaders.length})`);
   fs.writeFileSync(path.join(root3, 'package.json'), JSON.stringify({ version: '1.0.1' }));
   x = await lu.startup({ root: root3, url: url3, timeoutMs: 1500, waitMs: 3000 });
   check(x.ok && x.reason === 'app updated' && lu.readState(root3).lastReason === 'app updated', `startup after a version change says "app updated" (${x.reason})`);

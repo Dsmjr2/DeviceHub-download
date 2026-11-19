@@ -36,6 +36,15 @@ try {
   $helperHashFile = Join-Path $helperDir 'helper-sources.sha256'
   [IO.File]::WriteAllText($helperHashFile, "$helperHash`n")
   $helperFiles = [ordered]@{ 'helpers/bin/DeviceHubHelper.exe' = $helperExe; 'helpers/bin/helper-sources.sha256' = $helperHashFile }
+  # The Rust helper, the default since 18 Nov 2026 (helpers/rust-helper-sources.js), ready-built the same way: a PC has
+  # no Rust compiler, so without it in the zip every copy would run the C# fallback. Built in a target folder of its own
+  # (this PC's running helper is never replaced) and stamped with its sources' hash and its own SHA-256. Publishing
+  # needs Rust (rustup; helpers/native-rs/rust-toolchain.toml picks the version).
+  $rustDir = Join-Path $helperDir 'rust'
+  & (Get-Command node).Source (Join-Path $PSScriptRoot 'build-rust-helper.mjs') --out $rustDir
+  if ($LASTEXITCODE -or -not (Test-Path (Join-Path $rustDir 'DeviceHubHelper.exe')) -or -not (Test-Path (Join-Path $rustDir 'rust-helper-sources.sha256'))) { throw 'the Rust helper could not be built (see above; publishing needs Rust: https://rustup.rs); the installer must carry it' }
+  $helperFiles['helpers/native-rs/target/release/DeviceHubHelper.exe'] = Join-Path $rustDir 'DeviceHubHelper.exe'
+  $helperFiles['helpers/native-rs/target/release/rust-helper-sources.sha256'] = Join-Path $rustDir 'rust-helper-sources.sha256'
   # ---- end PRE-BUILT HELPER ----
   if (Test-Path $zip) { Remove-Item $zip -Force }
   Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
@@ -193,6 +202,9 @@ try {
     # helpers/bin holds exactly the pre-built helper and the hash of its sources
     $bin = @($names | Where-Object { $_ -like 'helpers/bin/*' } | Sort-Object)
     if (($bin -join ',') -ne 'helpers/bin/DeviceHubHelper.exe,helpers/bin/helper-sources.sha256') { throw "helpers/bin in the zip is not the pre-built helper and its hash: $($bin -join ', ')" }
+    # and the Rust helper's build folder holds exactly its exe and stamp (no build leftovers)
+    $rsOut = @($names | Where-Object { $_ -like 'helpers/native-rs/target/*' } | Sort-Object)
+    if (($rsOut -join ',') -ne 'helpers/native-rs/target/release/DeviceHubHelper.exe,helpers/native-rs/target/release/rust-helper-sources.sha256') { throw "the Rust helper in the zip is not the ready-built exe and its stamp: $($rsOut -join ', ')" }
     # never a driver or anything PawnIO, WinRing0 or inpout (helpers/bundled-tools.json neverKeep), anywhere in the zip,
     # except OpenRGB's listed PawnIO modules (boardModules), and those only in tools/openrgb/board-modules/, never
     # beside OpenRGB.exe (it loads modules from its own folder only; helpers/board-lights.mjs copies them for board lights)

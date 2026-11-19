@@ -1,4 +1,4 @@
-// Step 1 verification: Rust helper is opt-in only (C# default), refuses stale/missing hashes,
+// Rust helper is the default (18 Nov 2026; opt-in only before), C# when settings.json says rustHelper false, refuses stale/missing hashes,
 // honors DEVICEHUB_CSHARP_HELPER=1 override, and keeps all helper-reads callers working on C#.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -24,10 +24,11 @@ try {
   fs.writeFileSync(path.join(dir, 'native-rs', 'Cargo.lock'), '# lock\n');
   fs.writeFileSync(path.join(dir, 'native-rs', 'src', 'main.rs'), 'fn main() {}\n');
 
-  // 1. Default: C#
+  // 1. Default with no Rust exe on this copy: C#, saying why
   let c = rustSources.selectHelper({ dir, root, env: {} });
   assert.equal(c.kind, 'csharp');
-  assert.equal(c.reason, 'default');
+  assert.equal(c.stale, true);
+  assert.match(c.reason, /^default, but Rust exe missing/);
 
   // 2. Opted in via env, but exe missing -> C# fallback
   c = rustSources.selectHelper({ dir, root, env: { DEVICEHUB_RUST_HELPER: '1' } });
@@ -60,6 +61,19 @@ try {
 
   // Re-record hash -> Rust again
   rustSources.recordHash(dir);
+
+  // 6b. Nothing set at all: Rust is the default (18 Nov 2026)
+  c = rustSources.selectHelper({ dir, root, env: {} });
+  assert.equal(c.kind, 'rust');
+  assert.equal(c.reason, 'default');
+
+  // 6c. "rustHelper": false in settings.json goes back to C#, even with a good Rust exe
+  fs.writeFileSync(path.join(root, 'data', 'settings.json'), JSON.stringify({ rustHelper: false }));
+  c = rustSources.selectHelper({ dir, root, env: {} });
+  assert.equal(c.kind, 'csharp');
+  assert.equal(c.reason, 'settings.json rustHelper=false');
+  // ... unless DEVICEHUB_RUST_HELPER=1 asks for Rust
+  assert.equal(rustSources.selectHelper({ dir, root, env: { DEVICEHUB_RUST_HELPER: '1' } }).kind, 'rust');
 
   // 7. Opted in via data/settings.json ("rustHelper": true)
   fs.writeFileSync(path.join(root, 'data', 'settings.json'), JSON.stringify({ rustHelper: true }));
@@ -105,11 +119,13 @@ try {
     assert.equal(valRustFail.from, 'ps-fallback');
   }
 
-  // 10. Prebuilt release install into a temp folder: C# stays default, Rust picked only when opted in
+  // 10. A ready-built Rust helper copied into a fresh install (as the zip carries it, 18 Nov 2026): Rust by default, C#
+  // when settings.json says rustHelper false. Runs where this checkout has a built helper (the stamp was looked for in
+  // the wrong folder before, so this part never ran).
   const repoHelpers = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1')), '..', 'helpers');
   const realExe = rustSources.rustExePath(repoHelpers);
-  const realStamp = path.join(repoHelpers, 'native-rs', 'rust-helper-sources.sha256');
-  if (fs.existsSync(realExe) && fs.existsSync(realStamp)) {
+  const realStamp = rustSources.rustHashPath(repoHelpers);
+  if (fs.existsSync(realExe) && fs.existsSync(realStamp) && rustSources.readStamp(repoHelpers).src === rustSources.sourcesHash(repoHelpers)) {
     const inst = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-rust-prebuilt-'));
     try {
       const instH = path.join(inst, 'helpers');
@@ -119,16 +135,18 @@ try {
       fs.cpSync(path.join(repoHelpers, 'native-rs', 'src'), path.join(instRs, 'src'), { recursive: true });
       fs.copyFileSync(path.join(repoHelpers, 'native-rs', 'Cargo.toml'), path.join(instRs, 'Cargo.toml'));
       fs.copyFileSync(path.join(repoHelpers, 'native-rs', 'Cargo.lock'), path.join(instRs, 'Cargo.lock'));
-      fs.copyFileSync(realStamp, path.join(instRs, 'rust-helper-sources.sha256'));
+      fs.copyFileSync(realStamp, rustSources.rustHashPath(instH));
       fs.copyFileSync(realExe, rustSources.rustExePath(instH));
+      assert.equal(rustSources.selectHelper({ dir: instH, root: inst, env: {} }).kind, 'rust');
+      fs.writeFileSync(path.join(inst, 'data', 'settings.json'), JSON.stringify({ rustHelper: false }));
       assert.equal(rustSources.selectHelper({ dir: instH, root: inst, env: {} }).kind, 'csharp');
-      assert.equal(rustSources.selectHelper({ dir: instH, root: inst, env: { DEVICEHUB_RUST_HELPER: '1' } }).kind, 'rust');
+      console.log('  checked against the built Rust helper in this checkout');
     } finally {
       fs.rmSync(inst, { recursive: true, force: true });
     }
   }
 
-  console.log('rust-helper-optin (opt-in, stale hash refusal, C# override, helperReads C# fallback): all good');
+  console.log('rust-helper-optin (Rust by default, rustHelper false, stale hash refusal, C# override, helperReads C# fallback): all good');
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });
 }

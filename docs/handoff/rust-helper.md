@@ -1,7 +1,7 @@
 # Rust Helper (`helpers/native-rs/`) — Inventory, Safety Proof & Status
 
 Branch: `antigravity/rust-helper` (worktree `C:\Users\shawn\DeviceHub-rust`).
-Default helper remains **C#** (`helpers/native/`); Rust is strictly opt-in (`DEVICEHUB_RUST_HELPER=1` or `"rustHelper": true` in `data/settings.json`), with `DEVICEHUB_CSHARP_HELPER=1` as a hard override and automatic SHA-256 staleness refusal falling back to C#.
+**Rust is the default helper since 18 Nov 2026** (Shawn: "lets just make the rust helper the default. Monitor it still but we can go back to c sharp if need be"), after the trial on his PC from 13 Nov. The C# helper (`helpers/native/`) stays as the fallback: `"rustHelper": false` in `data/settings.json`, `DEVICEHUB_CSHARP_HELPER=1`, a missing or stale Rust exe, or 3 Rust stops in 10 minutes (that one sends a `rust-helper-fallback` problem report from other PCs). The zip carries the Rust exe ready-built in `helpers/native-rs/target/release/` with its stamp (`helpers/make-installer.ps1` runs `node helpers/build-rust-helper.mjs --out`; publishing needs Rust). A copy that updates by git merge keeps its Rust exe; when the merge changes Rust sources it runs C# until a zip update brings the new exe. Deleting C# waits until Rust has run as the default without trouble.
 
 ---
 
@@ -142,7 +142,7 @@ Default helper remains **C#** (`helpers/native/`); Rust is strictly opt-in (`DEV
      ```
      (or set `DEVICEHUB_RUST_HELPER=1` in the environment), then restart DeviceHub.
    - To switch back to C# at any time: set `"rustHelper": false` (or remove `"rustHelper"`) in `data/settings.json`, or set `DEVICEHUB_CSHARP_HELPER=1`, and restart DeviceHub.
-2. **Retiring C#**:
+2. **Default (done 18 Nov 2026)**: see the top of this file. **Retiring C#** (not yet):
    - Once ~1 week of normal use completes with no regressions, make the Rust helper the default in `helpers/rust-helper-sources.js` / `helpers/native.js` and delete the C# helper: the sources `helpers/helper-sources.js` lists (`helpers/native/*.cs` and the `helpers/*.cs` files beside them), `helpers/native/build.ps1`, and `helpers/bin/DeviceHubHelper.exe` with its `helper-sources.sha256`.
 
 

@@ -210,8 +210,10 @@ helpers/native/            the Windows helper (C#, built on start with Windows' 
                            installer ships it ready-built with helpers/bin/helper-sources.sha256; an installed copy
                            compiles only when its sources no longer match that hash, a development copy (no hash
                            file) rebuilds when a source is newer (helpers/helper-sources.js)
-helpers/native-rs/         opt-in Rust helper (helpers/rust-helper-sources.js, built by helpers/build-rust-helper.mjs);
-                           C# stays default unless DEVICEHUB_RUST_HELPER=1 or data/settings.json has "rustHelper": true
+helpers/native-rs/         the Rust helper, the default since 18 Nov 2026 (helpers/rust-helper-sources.js, built by
+                           helpers/build-rust-helper.mjs; the zip carries it ready-built, so publishing needs Rust). C#
+                           (helpers/native/) is the fallback: data/settings.json "rustHelper": false,
+                           DEVICEHUB_CSHARP_HELPER=1, a missing or stale Rust exe, or 3 Rust stops in 10 minutes
 public/devices/            the drivers: one adapter per device slot (mouse-adapter.js, headset-adapter.js,
                            keyboard-adapter.js) over a protocol file (pulsar.js, via.js, the HS80 code in helpers/)
 public/pages/              one page per sidebar entry (mouse.js, headset.js, keyboard.js, ...; fans.js is the PC page)
