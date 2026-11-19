@@ -55,6 +55,7 @@
       "tests/startup-impact-secrets.mjs",
       "tests/startup-task.mjs",
       "tests/chrome-app.mjs",
+      "tests/theme-titlebar.mjs",
       "tests/library-refresh.mjs",
       "tests/share-route.mjs",
       "tests/get-help.mjs",

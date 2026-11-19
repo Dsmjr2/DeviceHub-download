@@ -3397,3 +3397,11 @@ html[data-skin="koi-pond"] .dd-opt.active { background: rgba(240, 138, 75, .2); 
 /* an added device's settings in groups (pages/my-device.js settingsList, 1 Nov 2026) */
 .set-group + .set-group { margin-top: 14px; }
 .set-group > h3 { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
+
+/* a theme or look changing (public/core/theme.js quietSwitch): one repaint, no colour transitions on every element */
+html.theme-switch *, html.theme-switch *::before, html.theme-switch *::after { transition: none !important; }
+
+/* the Live battery look's preview on Settings moves only while pointed at (18 Nov 2026, measured: its 16 waves and
+   bubbles kept the page repainting all the time, which made every theme change wait for it); calm when left alone */
+.art-preview[data-art-preview="live"] :is(.wave, .wave-edge, .mote) { animation-play-state: paused; }
+.art-style:is(:hover, :focus-visible) .art-preview[data-art-preview="live"] :is(.wave, .wave-edge, .mote) { animation-play-state: running; }

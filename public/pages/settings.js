@@ -481,22 +481,28 @@ function appearanceCard() {
   const cur = document.documentElement.dataset.art || 'frosted';  // applyArtStyle has already mapped an old look to its new one
   return card([h('h2', {}, 'Appearance')],
     h('div', { class: 'art-styles' }, ...ART_STYLES.filter(([key]) => key !== 'photo' || photosHere()).map(([key, name]) => h('button', { class: `art-style${key === cur ? ' sel' : ''}`, 'aria-pressed': String(key === cur), dataset: { look: key },
-      onclick: async () => { await saveArtStyle(key); toast(`Drawings: ${name}`, 'good', { ms: 1400 }); rerender(); } },
+      onclick: () => { saveArtStyle(key).catch((e) => toast('Not saved', 'bad', { detail: e.message })); markPicked('.art-style[data-look]', 'look', key); } },
       h('div', { class: 'art-preview', dataset: { artPreview: key } }, slotArt('mouse', devices.mouse), slotArt('headset', devices.headset), slotArt('keyboard', devices.keyboard)),
       h('span', {}, name)))),
     themeControls());
 }
 
+// A look or backdrop picked (18 Nov 2026, Shawn: "its slow to change theme and color"): the page takes it at once
+// (applyTheme / applyArtStyle run before the save) and only the picked tile is marked, instead of waiting for the save
+// and drawing the whole Settings page again (its nine drawing previews); no "Theme: ..." note either (nothing to say
+// on success). A save that fails still says so.
+function markPicked(selector, field, key) {
+  for (const b of document.querySelectorAll(selector)) { const on = b.dataset[field] === key; b.classList.toggle('sel', on); b.setAttribute('aria-pressed', String(on)); }
+}
 // the theme: the accent color (six swatches and any color) and the backdrop (21 Oct 2026)
 function themeControls() {
   const t = currentTheme();
-  const pickAccent = async (hex, name) => { await saveTheme({ themeAccent: hex }); toast(`Accent: ${name}`, 'good', { ms: 1400 }); rerender(); };
   // a whole look shows the silver accent in its own color (Old School gold, Verde green, Milk sky blue, Coral Reef coral) and says so
   const accentName = (t.accent === THEME_ACCENTS[0][0] && SKIN_SILVER_NAME[THEME_BGS.find(([k]) => k === t.bg)?.[4]]) || THEME_ACCENTS.find(([x]) => x === t.accent)?.[1] || 'Custom';
   // backdrops as small previews of the app: the page color, a card, and the accent (22 Oct 2026, Shawn: "make this
   // area better looking and more options")
   const tile = ([key, name, bg, pool]) => h('button', { class: `theme-tile${t.bg === key ? ' sel' : ''}`, dataset: { bg: key }, 'aria-label': `${name} backdrop`, 'aria-pressed': String(t.bg === key),
-    onclick: async () => { await saveTheme({ themeBg: key }); toast(`Theme: ${name}`, 'good', { ms: 1400 }); rerender(); } },
+    onclick: () => { saveTheme({ themeBg: key }).catch((e) => toast('Not saved', 'bad', { detail: e.message })); markPicked('.theme-tile[data-bg]', 'bg', key); } },
     h('span', { class: 'theme-mini', style: { '--b': bg, '--p': pool } }, h('i', { class: 'mini-card' }), h('i', { class: 'mini-dot' })),
     h('span', { class: 'theme-tile-name' }, name));
   return h('div', { class: 'theme-grid' },

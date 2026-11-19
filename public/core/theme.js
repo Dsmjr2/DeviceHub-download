@@ -39,6 +39,7 @@ if (typeof fetch === 'function' && typeof document !== 'undefined') {
   fetch('/img/hs80.png', { method: 'HEAD' }).then((r) => r.ok, () => true).then((ok) => { photos = ok; if (!ok && shown === 'photo') applyArtStyle('photo'); });
 }
 export function applyArtStyle(style) {
+  quietSwitch();
   style = RENAMED[style] || style;
   const resolved = ART_STYLES.some(([k]) => k === style) ? style : 'blueprint';
   shown = resolved;
@@ -129,7 +130,25 @@ const theme = { accent: SILVER, bg: 'graphite' };
 export const SKIN_SILVER = { black: '#ffffff', espresso: '#dca878', 'old-school': '#ffb83f', verde: '#8cc63f', milk: '#8cc4ec', 'coral-reef': '#ff7f6a', cyberpunk: '#00f0ff', sakura: '#ffb7c5', terminal: '#4af626', 'koi-pond': '#f08a4b' };
 export const SKIN_SILVER_NAME = { black: 'Pure white', espresso: 'Crema', 'old-school': 'Gold', verde: 'Verde', milk: 'Sky blue', 'coral-reef': 'Coral', cyberpunk: 'Neon cyan', sakura: 'Blossom', terminal: 'Phosphor', 'koi-pond': 'Koi orange' };
 export const currentTheme = () => ({ ...theme });
+// The window's title bar colour for each backdrop (18 Nov 2026, Shawn: "these dont seem to match"): the colour painted
+// along the top of the page, not the backdrop's base colour (Espresso's base #0b0806 is near black, but its warm glow
+// makes the top #211710). Measured headless at 2000x1125 as the mean of the top 6 rows of each backdrop (tests/
+// theme-titlebar.mjs checks every backdrop has one). A DeviceHub installed as a Chrome app shows it in its title bar.
+export const TITLEBAR = { graphite: '#0c0c0f', black: '#010101', espresso: '#211710', 'old-school': '#1f1912', verde: '#1c260a', milk: '#ecf2f5',
+  'coral-reef': '#135463', cyberpunk: '#121425', sakura: '#2e1c2c', terminal: '#060d06', 'koi-pond': '#296b64' };
+// While a theme or look changes, no transitions (18 Nov 2026, measured headless: one backdrop click restyled the page
+// up to 147 times in half a second, every button's and card's colour transition running at once over ~4,000 elements);
+// the switch is one repaint, then transitions come back two frames later (style.css html.theme-switch)
+function quietSwitch() {
+  if (typeof document === 'undefined' || !document.documentElement) return;
+  const d = document.documentElement;
+  d.classList.add('theme-switch');
+  clearTimeout(quietSwitch.t);
+  requestAnimationFrame(() => requestAnimationFrame(() => d.classList.remove('theme-switch')));
+  quietSwitch.t = setTimeout(() => d.classList.remove('theme-switch'), 400);   // a hidden window has no frames
+}
 export function applyTheme(s = {}) {
+  quietSwitch();
   if (/^#[0-9a-f]{6}$/i.test(s.themeAccent || '')) theme.accent = s.themeAccent.toLowerCase();
   const bgKey = OLD_BGS[s.themeBg] || s.themeBg;
   if (THEME_BGS.some(([k]) => k === bgKey)) theme.bg = bgKey;
@@ -146,7 +165,7 @@ export function applyTheme(s = {}) {
   r.setProperty('--theme-art', silver ? '#7fb4ff' : a);
   r.setProperty('--switch-on', silver ? 'var(--good)' : a);
   r.setProperty('--bg', bg[2]); r.setProperty('--pool', bg[3]);
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bg[2]);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', TITLEBAR[theme.bg] || bg[2]);
 }
 export async function saveTheme(change) {
   if (change.themeBg && !change.themeAccent && THEME_BGS.find(([k]) => k === change.themeBg)?.[4]) {

@@ -1,7 +1,7 @@
 {
-  "version": "1.70",
-  "commit": "c403aef2405a1bb99cd9946948b98e65d93f4f6b",
+  "version": "1.71",
+  "commit": "9e03cd34dc4fa8579d792ce0a6a5c426eee94a74",
   "notes": [
-    "Install DeviceHub as a Chrome app: title bar in DeviceHub's theme…"
+    "Title bar matches each backdrop"
   ]
 }
