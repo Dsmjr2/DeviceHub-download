@@ -1,7 +1,7 @@
 {
-  "version": "1.68",
-  "commit": "1eb4b8fad1eeac0faa0a76d507d88ea1d8ac7177",
+  "version": "1.69",
+  "commit": "c5c64bfca31b93167923d8ad4eaaf48d5439b419",
   "notes": [
-    "Start with Windows as a sign-in task: DeviceHub starts right at…"
+    "New window gets DeviceHub's taskbar button at once, even while loading"
   ]
 }

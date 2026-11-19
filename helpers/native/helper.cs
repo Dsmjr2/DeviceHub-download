@@ -168,7 +168,7 @@ public static class Helper {
         + " private=" + (me.PrivateMemorySize64 / 1048576.0).ToString("0.0") + "MB handles=" + me.HandleCount + " threads=" + me.Threads.Count;
     }
     if (c.Name == "win") {  // BRAND <ico>|<relaunch command>: the DeviceHub window's taskbar identity (winbrand.cs)
-      if (rest.StartsWith("BRAND ")) { var a = rest.Substring(6).Split('|'); return WinBrand.Brand(a[0], a.Length > 1 ? a[1] : ""); }
+      if (rest.StartsWith("BRAND ")) { var a = rest.Substring(6).Split('|'); return WinBrand.Brand(a[0], a.Length > 1 ? a[1] : "", a.Length > 2 ? a[2] : ""); }
       return "ERR unknown command";
     }
     return "ERR unknown channel";

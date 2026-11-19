@@ -44,9 +44,19 @@ static class WinBrand {
     PropVariantClear(ref v);
   }
 
-  // BRAND <ico path>|<relaunch command>: brands every visible top-level Chrome window titled "DeviceHub" or
+  // BRAND <ico path>|<relaunch command>[|<address>]: brands every visible top-level Chrome window titled "DeviceHub" or
   // "... · DeviceHub" not branded yet. Returns how many windows it branded now ("0" when there was nothing new).
-  public static string Brand(string ico, string relaunch) {
+  // address (18 Nov 2026, e.g. "localhost:5577"): a window still loading shows its address as its title (an app window's
+  // title is the page's own, so only DeviceHub's window is titled that); taken too, so it is labelled before it loads.
+  public static bool Ours(string title, string address) {
+    if (title == "DeviceHub" || title.EndsWith(" · DeviceHub")) return true;
+    if (string.IsNullOrEmpty(address)) return false;
+    var port = address.Substring(address.LastIndexOf(':') + 1);
+    foreach (var host in new[] { "localhost:" + port, "127.0.0.1:" + port })
+      if (title == host || title.StartsWith(host + "/")) return true;
+    return false;
+  }
+  public static string Brand(string ico, string relaunch, string address = "") {
     var found = new List<IntPtr>();
     EnumWindows((h, p) => {
       if (!IsWindowVisible(h) || GetWindow(h, GW_OWNER) != IntPtr.Zero) return true;
@@ -54,7 +64,7 @@ static class WinBrand {
       if (!cls.ToString().StartsWith("Chrome_WidgetWin")) return true;
       var t = new StringBuilder(256); GetWindowText(h, t, 256);
       var title = t.ToString();
-      if (title == "DeviceHub" || title.EndsWith(" · DeviceHub")) found.Add(h);
+      if (Ours(title, address)) found.Add(h);
       return true;
     }, IntPtr.Zero);
     int n = 0;

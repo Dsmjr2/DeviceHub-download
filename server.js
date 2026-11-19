@@ -97,6 +97,12 @@ if (!ISOLATED) monitors.start(require('./helpers/native'), BACKUPS, (text, bad) 
 const camera = require('./helpers/camera');
 if (!ISOLATED) camera.start(require('./helpers/native'), BACKUPS);
 let openWindows = 0;
+// A new window gets DeviceHub's own taskbar button at once (18 Nov 2026, Shawn: "it still quickly shows the chrome
+// window then unifies to the devicehub app"): it was labelled by the 5-second check, so for up to 5 s it sat on
+// Chrome's button. brandSoon() looks every 100 ms for 6 s (the helper's BRAND finds a window titled DeviceHub and
+// labels it once, so extra looks cost one window list each); the launcher asks for it as it opens the window
+// (GET /api/windows?opening=1), and a window's live stream opening asks again. Set once the helper is ready.
+let brandSoon = () => {};
 let pointerBackupAt = 0;   // when the Windows pointer settings were last backed up (/api/pointer)
 // the slow reads' last answers (Bluetooth, the optional tools, OpenRGB, board lights) kept on disk across restarts
 // (helpers/last-answer.js; read-cache\ is gitignored); not in a test or the isolated copy
@@ -334,7 +340,7 @@ async function api(req, res, url) {
   }
   // how many DeviceHub windows are open (each keeps one live-update stream): the launcher brings an open one to the
   // front instead of opening another (20 Oct 2026)
-  if (url.pathname === '/api/windows') return send(res, 200, { open: openWindows });
+  if (url.pathname === '/api/windows') { if (url.searchParams.has('opening')) brandSoon(); return send(res, 200, { open: openWindows }); }
   // Close the window when it is not in use (26 Oct 2026, Shawn approved; public/core/idle-close.js asks after 5 minutes
   // hidden, helpers/window-close.js closes only DeviceHub's own window-profile browser). Never without the tray icon to
   // come back from, never while DeviceHub is doing something the person started; the next window opens on that page.
@@ -755,6 +761,7 @@ async function api(req, res, url) {
     const safeWrite = (chunk) => { if (res.writableEnded || res.destroyed) return false; try { res.write(chunk); return true; } catch { return false; } };
     safeWrite(windowEvents.frame('hello', { ...helloNow(), stream: sid }));
     openWindows++;
+    brandSoon();
     const offHub = hub.add(res);
     const offAgent = agent ? agent.subscribe((type, data) => safeWrite(windowEvents.frame(type, data))) : () => {};
     const ping = setInterval(() => safeWrite(': ping\n\n'), 25000);
@@ -1504,9 +1511,21 @@ http.createServer(async (req, res) => {
       if (needWrite) writeAtomic(copy, data);
       ico = copy;
     } catch (e) { console.error('[icon] copy', e.message); }
-    const relaunch = `wscript.exe "${path.join(ROOT, 'DeviceHub.vbs')}"`;
+    // |address: a window still loading is titled with it (helpers/native-rs/src/winbrand.rs ours)
+    const relaunch = `wscript.exe "${path.join(ROOT, 'DeviceHub.vbs')}"|localhost:${PORT}`;
     // only while a DeviceHub window is open (26 Oct 2026, idle CPU: with none open it was a helper call every 5 s for nothing)
     const brand = () => { if (!quitting && openWindows > 0) native.request('win', `BRAND ${ico}|${relaunch}`, 5000).catch(() => {}); setTimeout(brand, require('./helpers/power').every(5000)); };
+    let soonUntil = 0, soonTimer = null;
+    brandSoon = () => {
+      soonUntil = Date.now() + 6000;
+      if (soonTimer) return;
+      const look = () => {
+        if (quitting || Date.now() > soonUntil) { soonTimer = null; return; }
+        native.request('win', `BRAND ${ico}|${relaunch}`, 2000).catch(() => {}).finally(() => { soonTimer = setTimeout(look, 100); });
+      };
+      soonTimer = true;   // looking (a look in flight counts, so two loops never run)
+      look();
+    };
     setTimeout(brand, 5000);
   }
 });

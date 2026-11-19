@@ -258,10 +258,11 @@ fn handle(
     }
     if chan == "win" {
         if let Some(body) = rest.strip_prefix("BRAND ") {
-            let mut parts = body.splitn(2, '|');
+            let mut parts = body.splitn(3, '|');
             let ico = parts.next().unwrap_or("");
             let relaunch = parts.next().unwrap_or("");
-            return Ok(winbrand::brand(ico, relaunch));
+            let address = parts.next().unwrap_or("");
+            return Ok(winbrand::brand(ico, relaunch, address));
         }
         return Ok("ERR unknown command".to_string());
     }

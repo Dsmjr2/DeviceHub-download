@@ -40,6 +40,17 @@ Sub Launch(cmd, style)
 End Sub
 ' One taskbar button (13 Nov 2026): once the window is up, helpers\taskbar-id.ps1 (hidden) copies the window's taskbar app ID
 ' onto DeviceHub's own shortcuts, so the window groups under the pinned icon instead of opening a button of its own
+' A window is about to open (18 Nov 2026): DeviceHub then looks for it every 100 ms and gives it DeviceHub's own taskbar
+' button at once, instead of it showing on Chrome's button until the 5-second check (server.js brandSoon)
+Sub Opening()
+  On Error Resume Next
+  Dim x
+  Set x = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+  x.setTimeouts 500, 500, 500, 500
+  x.Open "GET", "http://127.0.0.1:" & port & "/api/windows?opening=1", False
+  x.Send
+  Err.Clear
+End Sub
 Sub TaskbarId()
   Launch "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & dir & "\helpers\taskbar-id.ps1""", 0
 End Sub
@@ -255,6 +266,7 @@ End If
 userData = sh.ExpandEnvironmentStrings("%LocalAppData%") & "\Google\Chrome\User Data"
 If InStr(LCase(chrome), "msedge") > 0 Then userData = sh.ExpandEnvironmentStrings("%LocalAppData%") & "\Microsoft\Edge\User Data"
 If light And Not fs.FileExists(userData & "\Local State") Then light = False
+Opening
 If light Then
   Launch """" & chrome & """" & " --app=http://localhost:" & port & "/ --start-maximized", 1
   TaskbarId

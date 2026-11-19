@@ -123,11 +123,27 @@ unsafe extern "system" fn enum_cb(hwnd: isize, lparam: isize) -> i32 {
     let mut t = [0u16; 256];
     let tlen = GetWindowTextW(hwnd, t.as_mut_ptr(), 256).max(0) as usize;
     let title = String::from_utf16_lossy(&t[..tlen]);
-    if title == "DeviceHub" || title.ends_with(" \u{00B7} DeviceHub") {
-        let found = &mut *(lparam as *mut Vec<isize>);
-        found.push(hwnd);
-    }
+    let found = &mut *(lparam as *mut Vec<(isize, String)>);
+    found.push((hwnd, title));
     1
+}
+
+// (18 Nov 2026) a window still loading shows its address as its title ("localhost:5577/"): an app window's title is
+// its page's own, so only DeviceHub's window is titled that; taken too, so it is labelled before its page loads
+pub fn ours(title: &str, address: &str) -> bool {
+    if title == "DeviceHub" || title.ends_with(" \u{00B7} DeviceHub") {
+        return true;
+    }
+    let Some(port) = address
+        .rsplit(':')
+        .next()
+        .filter(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+    else {
+        return false;
+    };
+    [format!("localhost:{port}"), format!("127.0.0.1:{port}")]
+        .iter()
+        .any(|h| title == h || title.starts_with(&format!("{h}/")))
 }
 
 // SAFETY: Caller must pass valid, non-dangling COM/Win32 pointers with matching lifetimes.
@@ -163,12 +179,17 @@ fn ico_hash(ico: &str) -> Option<&str> {
     }
 }
 
-pub fn brand(ico: &str, relaunch: &str) -> String {
-    let mut found = Vec::<isize>::new();
+pub fn brand(ico: &str, relaunch: &str, address: &str) -> String {
+    let mut all = Vec::<(isize, String)>::new();
     // SAFETY: Win32 window/tray/GDI call on valid HWND/HINSTANCE/resource with initialized structs.
     unsafe {
-        EnumWindows(enum_cb, (&mut found as *mut Vec<isize>) as isize);
+        EnumWindows(enum_cb, (&mut all as *mut Vec<(isize, String)>) as isize);
     }
+    let found: Vec<isize> = all
+        .into_iter()
+        .filter(|(_, t)| ours(t, address))
+        .map(|(h, _)| h)
+        .collect();
 
     let mut guard = STATE.lock().unwrap_or_else(PoisonError::into_inner);
     let st = guard.get_or_insert_with(|| BrandState {
@@ -240,4 +261,22 @@ pub fn brand(ico: &str, relaunch: &str) -> String {
         n += 1;
     }
     n.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ours;
+
+    #[test]
+    fn takes_devicehub_and_its_loading_address_only() {
+        assert!(ours("DeviceHub", ""));
+        assert!(ours("Mouse \u{00B7} DeviceHub", ""));
+        assert!(ours("localhost:5577/", "localhost:5577"));
+        assert!(ours("127.0.0.1:5577", "localhost:5577"));
+        assert!(!ours("localhost:5577/", ""), "no address given: only the title");
+        assert!(!ours("localhost:55770/", "localhost:5577"), "another port");
+        assert!(!ours("localhost:3000/", "localhost:5577"), "another local app");
+        assert!(!ours("DeviceHub - Google Chrome", "localhost:5577"), "a Chrome tab");
+        assert!(!ours("x", "localhost:"), "a bad address");
+    }
 }
