@@ -6,7 +6,8 @@
 //   DeviceHub's folder (%USERPROFILE%\DeviceHub), with window-profile\ (its own Chrome profile), runtime\ (Node),
 //     tools\ (its OpenRGB), backups\, logs\ ........................................ helpers/install.ps1
 //   Desktop and Start menu "DeviceHub.lnk" ............................................ helpers/install.ps1
-//   Startup "DeviceHub.lnk" (Settings > Start with Windows) ........................... server.js /api/startup
+//   task "DeviceHub start" (Settings > Start with Windows; the person's own, no admin) helpers/startup-task.js
+//   Startup "DeviceHub.lnk" (Start with Windows before 18 Nov 2026, or when the task was refused) server.js /api/startup
 //   Settings > Apps entry HKCU\...\Uninstall\DeviceHub ................................ helpers/install.ps1
 //   C:\Program Files\DeviceHub sensors\ + task "DeviceHub sensors" (admin) ............ helpers/cpu-sensors.mjs
 //   C:\Program Files\DeviceHub Wi-Fi pause\ + tasks "DeviceHub Wi-Fi pause" / "... resume" (admin) helpers/wifi-pause.mjs
@@ -100,6 +101,9 @@ export function buildPlan({ dir, key = 'DeviceHub', facts, exists = fs.existsSyn
     if (!t || typeof t.name !== 'string' || known.has(t.name)) continue;
     if (t.name === LEGACY_TASK && String(t.exe || '').split('|').every((x) => same(x, path.join(legacyOpenRGB(e), 'OpenRGB.exe')))) {
       extraTasks.push(t.name); remove.push({ kind: 'task', what: `task "${t.name}" (an older DeviceHub's board lights)`, name: t.name, admin: true, part: 'tasks' });
+    } else if (t.name === 'DeviceHub start' && [t.args, t.dir].some((x) => inside(x, full) || same(x, full))) {
+      // Start with Windows (helpers/startup-task.js): the person's own task, removed without a Windows prompt
+      remove.push({ kind: 'usertask', what: `task "${t.name}" (Start with Windows)`, name: t.name });
     } else if (/^DeviceHub/i.test(t.name) && [t.exe, t.args, t.dir].some((x) => inside(x, full))) {
       extraTasks.push(t.name); remove.push({ kind: 'task', what: `task "${t.name}" (runs a file in ${full})`, name: t.name, admin: true, part: 'tasks' });
     } else if (/^DeviceHub/i.test(t.name)) keep.push({ what: `task "${t.name}"`, why: 'it does not run anything of this DeviceHub, so it is not DeviceHub\'s to remove' });

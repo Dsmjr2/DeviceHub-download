@@ -211,6 +211,21 @@ function appVersion() {
 }
 
 const readText = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return ''; } };
+const STARTUP_LNK = path.join(process.env.APPDATA || '', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'DeviceHub.lnk');
+// A PC that starts DeviceHub from the Startup folder shortcut (before 18 Nov 2026) moves to the sign-in task once, at
+// start: only when the shortcut opens THIS DeviceHub, and the shortcut is removed only after the task was made
+async function startupToTask() {
+  if (!fs.existsSync(STARTUP_LNK)) return;
+  const task = require('./helpers/startup-task');
+  if (await task.status()) { try { fs.unlinkSync(STARTUP_LNK); } catch {} return; }
+  const q = require('./helpers/ps-quote').psEscape;
+  const target = await new Promise((resolve) => execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', `$s=(New-Object -ComObject WScript.Shell).CreateShortcut('${q(STARTUP_LNK)}'); $s.Arguments`], { windowsHide: true, timeout: 10000 }, (e, out) => resolve(e ? '' : String(out || ''))));
+  if (!target.toLowerCase().includes(path.join(ROOT, 'DeviceHub.vbs').toLowerCase())) return;
+  const r = await task.enable(ROOT);
+  if (!r.ok) { console.log(`[startup] kept the Startup folder shortcut: the sign-in task could not be made (${r.error})`); return; }
+  try { fs.unlinkSync(STARTUP_LNK); } catch {}
+  console.log('[startup] Start with Windows moved from the Startup folder to the sign-in task "DeviceHub start" (starts sooner after sign-in)');
+}
 function makeShortcut(lnk) {
   // every path in single quotes with its apostrophes doubled (20 Oct 2026: a user folder like O'Brien broke it)
   const q = require('./helpers/ps-quote').psEscape;
@@ -543,15 +558,23 @@ async function api(req, res, url) {
     } catch (e) { return send(res, 400, { error: e.message }); }
     return send(res, 404, { error: 'not found' });
   }
-  // Start with Windows: a shortcut to DeviceHub.vbs in the user's Startup folder (only when the user turns it on).
+  // Start with Windows (only when the user turns it on): a sign-in task since 18 Nov 2026 (helpers/startup-task.js;
+  // Windows started the Startup folder shortcut 11-24 s after sign-in), the shortcut only when Windows refuses the task
   if (url.pathname === '/api/startup') {
-    const lnk = path.join(process.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'DeviceHub.lnk');
+    const task = require('./helpers/startup-task');
     if (req.method === 'POST') {
       const { enabled } = await readBody(req);
-      if (enabled) await makeShortcut(lnk);
-      else if (fs.existsSync(lnk)) fs.unlinkSync(lnk);
+      if (enabled) {
+        const r = await task.enable(ROOT);
+        if (r.ok) { if (fs.existsSync(STARTUP_LNK)) fs.unlinkSync(STARTUP_LNK); }
+        else { console.log(`[startup] the sign-in task could not be made (${r.error}); the Startup folder shortcut instead`); await makeShortcut(STARTUP_LNK); }
+      } else {
+        await task.disable();
+        if (fs.existsSync(STARTUP_LNK)) fs.unlinkSync(STARTUP_LNK);
+      }
     }
-    return send(res, 200, { enabled: fs.existsSync(lnk) });
+    const viaTask = await task.status();
+    return send(res, 200, { enabled: viaTask || fs.existsSync(STARTUP_LNK), how: viaTask ? 'task' : fs.existsSync(STARTUP_LNK) ? 'shortcut' : null });
   }
   if (url.pathname === '/api/reveal' && req.method === 'POST') {
     // ?folder=via-definitions (the Keyboard page's VIA file note) opens that folder, made first if missing; else DeviceHub's
@@ -1443,6 +1466,8 @@ http.createServer(async (req, res) => {
   if (!TEST) setTimeout(() => { require('./helpers/pc-check').check(true).catch(() => {}); }, 30000).unref();
   // start-up impact: watched for the first minutes after sign-in when DeviceHub started with Windows (helpers/startup-impact.js)
   if (!TEST && !ISOLATED) setTimeout(() => { const s = require('./helpers/startup-impact'); s._test.deps.log = (text) => serverLog({ kind: 'info', text }); s.cleanFile(); s.measureAtSignIn(); }, 5000).unref();
+  // Start with Windows: a Startup folder shortcut from before 18 Nov 2026 becomes the sign-in task (helpers/startup-task.js)
+  if (!TEST && !ISOLATED) setTimeout(() => { startupToTask().catch((e) => console.error('[startup]', e.message)); }, 8000).unref();
   // a screen blank cut short (helpers/sleep-monitors.ps1 on a Modern Standby PC) left the panel dark: its brightness put
   // back, only when that file is there (nothing is run otherwise)
   if (!TEST && fs.existsSync(path.join(ROOT, 'logs', 'sleep-monitors-brightness.json'))) require('child_process').execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'helpers', 'sleep-monitors.ps1'), '-Restore'], { windowsHide: true, timeout: 30000 }, () => {});

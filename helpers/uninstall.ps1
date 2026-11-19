@@ -107,6 +107,7 @@ try {
   # 3. start with Windows, shortcuts, the Apps entry, DeviceHub's temporary files (exactly the ones in the plan)
   foreach ($r in @($plan.remove)) {
     if ($r.kind -eq 'shortcut' -or $r.kind -eq 'temp') { if (Test-Path -LiteralPath $r.path) { Remove-Item -LiteralPath $r.path -Recurse -Force -ErrorAction SilentlyContinue; Log "removed $($r.path)" } }
+    elseif ($r.kind -eq 'usertask') { & schtasks.exe /delete /tn $r.name /f 2>&1 | Out-Null; if ($LASTEXITCODE -eq 0) { Log "removed the task $($r.name)" } else { Log "could not remove the task $($r.name)" } }
     elseif ($r.kind -eq 'apps') { $reg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$($r.key)"; if (Test-Path $reg) { Remove-Item $reg -Recurse -Force; Log "removed the Apps entry $($r.key)" } }
   }
   # 4. Equalizer APO's config.txt, only when ticked and DeviceHub wrote it: the old one to the backups, then empty

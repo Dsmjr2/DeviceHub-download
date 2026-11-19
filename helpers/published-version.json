@@ -1,9 +1,7 @@
 {
-  "version": "1.67",
-  "commit": "404b3aa33d7136c49a53adc27c65b2f025036e59",
+  "version": "1.68",
+  "commit": "1eb4b8fad1eeac0faa0a76d507d88ea1d8ac7177",
   "notes": [
-    "The ready-built Rust helper never counts as changed on a PC",
-    "Faster start: no library wait without library drivers, quicker…",
-    "Rust helper is the default"
+    "Start with Windows as a sign-in task: DeviceHub starts right at…"
   ]
 }
