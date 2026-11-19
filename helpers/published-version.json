@@ -1,7 +1,7 @@
 {
-  "version": "1.69",
-  "commit": "c5c64bfca31b93167923d8ad4eaaf48d5439b419",
+  "version": "1.70",
+  "commit": "c403aef2405a1bb99cd9946948b98e65d93f4f6b",
   "notes": [
-    "New window gets DeviceHub's taskbar button at once, even while loading"
+    "Install DeviceHub as a Chrome app: title bar in DeviceHub's theme…"
   ]
 }

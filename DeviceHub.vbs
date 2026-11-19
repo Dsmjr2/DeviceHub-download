@@ -267,8 +267,44 @@ userData = sh.ExpandEnvironmentStrings("%LocalAppData%") & "\Google\Chrome\User 
 If InStr(LCase(chrome), "msedge") > 0 Then userData = sh.ExpandEnvironmentStrings("%LocalAppData%") & "\Microsoft\Edge\User Data"
 If light And Not fs.FileExists(userData & "\Local State") Then light = False
 Opening
+' DeviceHub installed as a Chrome (or Edge) app in the person's own browser (18 Nov 2026, Shawn: "can we not make the
+' top bar the same theme as the theme in device hub"; Settings > Install as an app): that app opens instead. Chrome
+' gives an installed app DeviceHub's colours in its title bar (the page's theme colour, which follows Settings >
+' Appearance) and its own taskbar button from the first moment; a plain app window takes the browser theme's colours
+' and Chrome's button. The profile the browser used last is tried first, then any profile that has it.
+appId = "gbcckkpijkfkcllfaiefimkinkmpohlk"
+Function AppProfile()
+  Dim txt, p, q, last, f
+  AppProfile = ""
+  If port <> "5577" Then Exit Function   ' the app is DeviceHub at localhost:5577 (a test copy on another port is not it)
+  On Error Resume Next
+  txt = fs.OpenTextFile(userData & "\Local State", 1).ReadAll
+  p = InStr(txt, """last_used"":""")
+  If p > 0 Then
+    q = InStr(p + 13, txt, """")
+    If q > p + 13 Then last = Mid(txt, p + 13, q - p - 13)
+  End If
+  If last <> "" And InStr(last, "\") = 0 And InStr(last, "..") = 0 Then
+    If fs.FolderExists(userData & "\" & last & "\Web Applications\Manifest Resources\" & appId) Then
+      AppProfile = last
+      Exit Function
+    End If
+  End If
+  For Each f In fs.GetFolder(userData).SubFolders
+    If fs.FolderExists(f.Path & "\Web Applications\Manifest Resources\" & appId) Then
+      AppProfile = f.Name
+      Exit Function
+    End If
+  Next
+  Err.Clear
+End Function
 If light Then
-  Launch """" & chrome & """" & " --app=http://localhost:" & port & "/ --start-maximized", 1
+  appProf = AppProfile()
+  If appProf <> "" Then
+    Launch """" & chrome & """" & " --profile-directory=""" & appProf & """ --app-id=" & appId, 1
+  Else
+    Launch """" & chrome & """" & " --app=http://localhost:" & port & "/ --start-maximized", 1
+  End If
   TaskbarId
   WScript.Quit
 End If
@@ -279,7 +315,6 @@ End If
 ' without a cost: site isolation off saved nothing more (and links open in this profile), low-end mode trades
 ' picture quality, the rest (sync, pings, crash, V8, GPU memory caps, one renderer) measured within the noise.
 profile = dir & "\window-profile"
-appId = "gbcckkpijkfkcllfaiefimkinkmpohlk"
 If fs.FolderExists(profile & "\Default\Web Applications\Manifest Resources\" & appId) Then
   Launch """" & chrome & """" & " --user-data-dir=""" & profile & """ --no-first-run --no-default-browser-check --hide-crash-restore-bubble --disable-extensions --disable-component-update --disk-cache-size=8388608 --disable-features=OptimizationGuideModelDownloading,OptimizationHints,OptimizationTargetPrediction,SpareRendererForSitePerProcess --start-maximized --app-id=" & appId, 1
 Else

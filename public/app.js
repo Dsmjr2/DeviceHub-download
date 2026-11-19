@@ -20,6 +20,7 @@ import { everyVisible, isHidden } from './core/visible-timer.js';
 import { startEvents, onEvent, streamUp } from './core/events.js';
 import { startIdleClose, unsavedWatcher } from './core/idle-close.js';
 import { displayWaiting } from './ui/display-settings.js';
+import { offerInstall } from './ui/install-app.js';   // Install as a Chrome app (Settings > Startup; ?install)
 import { defaultTokens, orderTokens, moveToken, isGroup, loadOrder, savedOrder, saveOrder, onOrderChange } from './core/rail-order.js';
 
 // Demo mode: ?demo on the local server, or always in the shareable build (index sets window.DEVICEHUB_DEMO).
@@ -448,6 +449,7 @@ setGlow();
 // a window opened again after it was closed for not being in use (core/idle-close.js): back on the page it was on
 if (!DEMO && !location.hash) { try { const r = await (await fetch('/api/window/resume', { cache: 'no-store' })).json(); if (r?.page) history.replaceState(null, '', r.page); } catch {} }
 if ((await firstStart({ demo: DEMO, ready: REMOTE || LOCAL, search: location.search, hash: location.hash, devices: Object.values(devices) })).setup) history.replaceState(null, '', '#/setup');
+if (!DEMO) offerInstall();
 render(true);
 
 // a device change that failed has its own message; it is not an unhandled error as well (core/devices.js marks it shown)

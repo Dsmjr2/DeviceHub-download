@@ -90,7 +90,8 @@ $id = ''; $seen = ''
 $until = (Get-Date).AddSeconds($WaitSeconds)
 do {
   $now = [DhTaskbar]::WindowId()
-  if ($now -like 'DeviceHub*') { $id = $now; break }
+  # an installed Chrome or Edge app's ID (Chrome._crx_..., 18 Nov 2026) is final too: the helper leaves that window as it is
+  if ($now -like 'DeviceHub*' -or $now -like '*._crx_*') { $id = $now; break }
   if ($now) { $seen = $now }
   Start-Sleep -Milliseconds 500
 } while ((Get-Date) -lt $until)

@@ -129,9 +129,12 @@ export async function runSelfUpdate({ overwrite = false } = {}) {
 }
 // settings sync and the battery saver (helpers/settings-sync.js, helpers/power.js)
 let syncSt = null, powerSt = null, opts = null, syncBusy = false;
+// DeviceHub as an installed Chrome app (helpers/chrome-app.js, 18 Nov 2026): { browser, installed, profile }
+let chromeApp = null;
 async function loadSyncPower() {
   if (isDemo()) { syncSt = { enabled: true, last: new Date().toISOString() }; powerSt = { hasBattery: true, onBattery: false, enabled: true }; opts = {}; return; }
   try { [syncSt, powerSt, opts] = await Promise.all(['/api/settings-sync', '/api/power', '/api/settings'].map(async (u) => (await fetch(u)).json())); } catch {}
+  try { chromeApp = await (await fetch('/api/chrome-app')).json(); } catch { chromeApp = null; }
   rerender();
 }
 const syncAgo = (iso) => { if (!iso) return 'not yet'; const m = Math.round((Date.now() - new Date(iso)) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : dateTime(iso); };
@@ -161,6 +164,12 @@ function syncRows() {
       await setOpt('lightWindow', on);
       toast(on ? 'Low-memory window on' : 'Low-memory window off', 'good', { detail: 'Applies next time DeviceHub opens.' });
     } })),
+    // Install as an app (18 Nov 2026, Shawn: the title bar showed his Chrome theme): an installed app's title bar takes
+    // DeviceHub's theme and its window opens on its own taskbar button; shown only while the low-memory window is on and
+    // the app is not installed (DeviceHub.vbs opens the app once it is). The click opens the browser's install prompt.
+    opts?.lightWindow !== false && chromeApp?.browser && !chromeApp.installed && !chromeApp.isolated ? row(`Install as ${chromeApp.browser} app`, 'Title bar follows DeviceHub\'s theme.', button('Install', async () => {
+      try { const r = await env.api('/api/chrome-app/install', {}); if (!r.ok) throw new Error(r.error || 'not opened'); } catch (e) { toast('Not opened', 'bad', { detail: e.message }); }
+    }, { kind: 'ghost small', ic: 'external' })) : null,
     // the window closes itself after 5 minutes minimized, never mid-task; the tray icon opens it again on the same page
     // (26 Oct 2026, core/idle-close.js, helpers/window-close.js); on unless switched off
     row('Close window when minimized', 'Frees memory after 5 minutes minimized.', toggle({ value: opts?.closeWhenMinimized !== false, label: 'Close window when minimized', onCommit: (on) => setOpt('closeWhenMinimized', on) })),

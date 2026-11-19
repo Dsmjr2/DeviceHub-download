@@ -264,7 +264,7 @@ function isolatedApi(req, res, url) {
     '/api/agent-config': { agent: false, ready: false, isolated: true },
     '/api/health': { uptimeS: Math.round(process.uptime()), serverMB: +(m.rss / 1048576).toFixed(0), heapMB: +(m.heapUsed / 1048576).toFixed(0), helperMB: null, crashes24h: 0, lastCrashAt: null, lastProblem: null, backups: { count: 0, mb: 0 }, isolated: true },
     '/api/setups': [], '/api/monitors': [], '/api/cameras': [], '/api/power': { saver: false, isolated: true },
-    '/api/startup': { enabled: false, isolated: true }, '/api/processes': [], '/api/games': [], '/api/game-mode': { games: [], status: null }, '/api/game-mode/installed': [],
+    '/api/startup': { enabled: false, isolated: true }, '/api/chrome-app': { browser: null, installed: false, profile: null, isolated: true }, '/api/chrome-app/install': { ok: false, isolated: true }, '/api/processes': [], '/api/games': [], '/api/game-mode': { games: [], status: null }, '/api/game-mode/installed': [],
     '/api/battery-estimate': {}, '/api/helper-calls': { uptimeS: Math.round(process.uptime()), calls: {} },
     '/api/settings-sync': { isolated: true, on: false }, '/api/auto-report': { isolated: true, on: true, configured: false, owner: false, active: false }, '/api/self-update': { isolated: true, count: 0 }, '/api/publish-release': { owner: false }, '/api/driver-share': { choice: null, owner: true }, '/api/self-update/progress': {},
     '/api/updates': { isolated: true, apps: [] }, '/api/openrgb': { running: false, isolated: true, controllers: [] },
@@ -566,6 +566,10 @@ async function api(req, res, url) {
   }
   // Start with Windows (only when the user turns it on): a sign-in task since 18 Nov 2026 (helpers/startup-task.js;
   // Windows started the Startup folder shortcut 11-24 s after sign-in), the shortcut only when Windows refuses the task
+  // DeviceHub as an installed Chrome or Edge app (helpers/chrome-app.js, 18 Nov 2026): its state, and the person's click
+  // on Install, which opens DeviceHub in a browser tab where the browser's own install prompt is one more click
+  if (url.pathname === '/api/chrome-app' && req.method === 'GET') return send(res, 200, require('./helpers/chrome-app').status());
+  if (url.pathname === '/api/chrome-app/install' && req.method === 'POST') return send(res, 200, require('./helpers/chrome-app').openInstall(PORT));
   if (url.pathname === '/api/startup') {
     const task = require('./helpers/startup-task');
     if (req.method === 'POST') {

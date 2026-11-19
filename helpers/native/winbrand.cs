@@ -37,6 +37,14 @@ static class WinBrand {
   static readonly HashSet<IntPtr> done = new HashSet<IntPtr>();
   static IntPtr bigIcon = IntPtr.Zero, smallIcon = IntPtr.Zero;
 
+  static string Get(IPropertyStore ps, uint pid) {
+    var k = new PropertyKey(AUMI, pid);
+    PropVariant v;
+    if (ps.GetValue(ref k, out v) != 0) return "";
+    var s = v.vt == 31 ? Marshal.PtrToStringUni(v.p) : "";
+    PropVariantClear(ref v);
+    return s ?? "";
+  }
   static void Set(IPropertyStore ps, uint pid, string value) {
     var k = new PropertyKey(AUMI, pid);
     var v = new PropVariant { vt = 31, p = Marshal.StringToCoTaskMemUni(value) };  // VT_LPWSTR
@@ -74,12 +82,16 @@ static class WinBrand {
     if (smallIcon == IntPtr.Zero) smallIcon = LoadImage(IntPtr.Zero, ico, IMAGE_ICON, GetSystemMetrics(49), GetSystemMetrics(50), LR_LOADFROMFILE);
     foreach (var h in found) {
       if (done.Contains(h)) continue;
-      // the window's own icons, big and small, at the sizes Windows asks for; set once per window
-      if (bigIcon != IntPtr.Zero) SendMessage(h, WM_SETICON, (IntPtr)1, bigIcon);
-      if (smallIcon != IntPtr.Zero) SendMessage(h, WM_SETICON, IntPtr.Zero, smallIcon);
       var iid = typeof(IPropertyStore).GUID;
       IPropertyStore ps;
       if (SHGetPropertyStoreForWindow(h, ref iid, out ps) != 0 || ps == null) continue;
+      // DeviceHub installed as a Chrome or Edge app (18 Nov 2026, DeviceHub.vbs AppProfile): the window has the app's own
+      // taskbar ID ("Chrome._crx_..."), icon and title bar colours from the first moment; relabelling it would move it
+      // to another taskbar button, so it is left as it is (helpers/taskbar-id.ps1 copies its ID onto the shortcuts)
+      if (Get(ps, 5).Contains("._crx_")) { Marshal.ReleaseComObject(ps); done.Add(h); continue; }
+      // the window's own icons, big and small, at the sizes Windows asks for; set once per window
+      if (bigIcon != IntPtr.Zero) SendMessage(h, WM_SETICON, (IntPtr)1, bigIcon);
+      if (smallIcon != IntPtr.Zero) SendMessage(h, WM_SETICON, IntPtr.Zero, smallIcon);
       // AppUserModel.ID: "DeviceHub.<icon hash>" when the icon is the content-named copy (icons-cache\DeviceHub-<hash>.ico).
       // The taskbar remembers an identity's icon, so a new icon under the old identity kept showing the old picture
       // (19 Oct 2026: the D stayed after the change to Port); a new icon now means a new identity.

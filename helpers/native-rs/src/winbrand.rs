@@ -239,28 +239,73 @@ pub fn brand(ico: &str, relaunch: &str, address: &str) -> String {
             continue;
         }
         // SAFETY: Win32 window/tray/GDI call on valid HWND/HINSTANCE/resource with initialized structs.
-        unsafe {
-            if st.big_icon != 0 {
-                SendMessageW(hwnd, WM_SETICON, 1, st.big_icon);
-            }
-            if st.small_icon != 0 {
-                SendMessageW(hwnd, WM_SETICON, 0, st.small_icon);
-            }
+        let labelled = unsafe {
             let mut ps: *mut IPropertyStore = std::ptr::null_mut();
             if SHGetPropertyStoreForWindow(hwnd, &IID_IPROPERTYSTORE, &mut ps) != 0 || ps.is_null() {
                 continue;
             }
-            set_prop(ps, 5, &aumid);
-            set_prop(ps, 3, &icon_res);
-            set_prop(ps, 4, "DeviceHub");
-            set_prop(ps, 2, relaunch);
-            ((*(*ps).vtbl).commit)(ps as *mut c_void);
-            ((*(*ps).vtbl).release)(ps as *mut c_void);
-        }
+            // DeviceHub installed as a Chrome or Edge app (18 Nov 2026, DeviceHub.vbs AppProfile): the window already
+            // has the app's own taskbar ID, icon and title bar colours from the first moment; relabelling it would move
+            // it to another taskbar button (the flash), so it is left as it is (helpers/taskbar-id.ps1 copies its ID
+            // onto DeviceHub's shortcuts instead)
+            if installed_app_id(&get_prop(ps, 5)) {
+                ((*(*ps).vtbl).release)(ps as *mut c_void);
+                false
+            } else {
+                if st.big_icon != 0 {
+                    SendMessageW(hwnd, WM_SETICON, 1, st.big_icon);
+                }
+                if st.small_icon != 0 {
+                    SendMessageW(hwnd, WM_SETICON, 0, st.small_icon);
+                }
+                set_prop(ps, 5, &aumid);
+                set_prop(ps, 3, &icon_res);
+                set_prop(ps, 4, "DeviceHub");
+                set_prop(ps, 2, relaunch);
+                ((*(*ps).vtbl).commit)(ps as *mut c_void);
+                ((*(*ps).vtbl).release)(ps as *mut c_void);
+                true
+            }
+        };
         st.done.insert(hwnd);
-        n += 1;
+        if labelled {
+            n += 1;
+        }
     }
     n.to_string()
+}
+
+// An installed Chrome or Edge app's taskbar ID ("Chrome._crx_<app id>...", "MSEdge._crx_..."); a plain app window's is
+// "Chrome.localhost_/..." and a DeviceHub-labelled one "DeviceHub.<hash>"
+pub fn installed_app_id(id: &str) -> bool {
+    id.contains("._crx_")
+}
+
+// SAFETY: Caller must pass a valid IPropertyStore pointer.
+unsafe fn get_prop(ps: *mut IPropertyStore, pid: u32) -> String {
+    let k = PROPERTYKEY { fmtid: AUMI, pid };
+    let mut v = PROPVARIANT {
+        vt: 0,
+        r1: 0,
+        r2: 0,
+        r3: 0,
+        p: std::ptr::null_mut(),
+        p2: std::ptr::null_mut(),
+    };
+    if ((*(*ps).vtbl).get_value)(ps as *mut c_void, &k, &mut v) != 0 {
+        return String::new();
+    }
+    let mut out = String::new();
+    if v.vt == 31 && !v.p.is_null() {
+        let p = v.p as *const u16;
+        let mut len = 0usize;
+        while len < 1024 && *p.add(len) != 0 {
+            len += 1;
+        }
+        out = String::from_utf16_lossy(std::slice::from_raw_parts(p, len));
+    }
+    PropVariantClear(&mut v);
+    out
 }
 
 #[cfg(test)]
@@ -278,5 +323,20 @@ mod tests {
         assert!(!ours("localhost:3000/", "localhost:5577"), "another local app");
         assert!(!ours("DeviceHub - Google Chrome", "localhost:5577"), "a Chrome tab");
         assert!(!ours("x", "localhost:"), "a bad address");
+    }
+}
+
+#[cfg(test)]
+mod app_tests {
+    use super::installed_app_id;
+
+    #[test]
+    fn tells_an_installed_app_window_apart() {
+        assert!(installed_app_id("Chrome._crx_gbcckkpijkfkcllfaiefimkinkmpohlk"));
+        assert!(installed_app_id("Chrome._crx_gbcckkpijkfkcllfaiefimkinkmpohlk.UserData.Profile1"));
+        assert!(installed_app_id("MSEdge._crx_gbcckkpijkfkcllfaiefimkinkmpohlk"));
+        assert!(!installed_app_id("Chrome.localhost_/.UserData.Profile1"));
+        assert!(!installed_app_id("DeviceHub.1a2b3c4d"));
+        assert!(!installed_app_id(""));
     }
 }
